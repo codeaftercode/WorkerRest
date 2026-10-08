@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>吃饼人也敢休息？</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: #f5f8f6; color: #1f2a24; min-height: 100vh; padding: 28px 32px 36px;
+  }
+  .head { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
+  .logo {
+    width: 34px; height: 34px; border-radius: 10px; flex: none;
+    background: linear-gradient(140deg, #3f9e6b, #226b46);
+  }
+  h1 { font-size: 20px; margin: 0; letter-spacing: .3px; }
+  .badge {
+    display: inline-block; background: #e6f3ec; color: #226b46; font-weight: 700;
+    font-size: 11.5px; padding: 2px 9px; border-radius: 999px; margin-left: 8px;
+    vertical-align: 2px;
+  }
+  .sub { color: #5c6b63; font-size: 13px; margin: 2px 0 20px; }
+  .grid { display: grid; grid-template-columns: 1.05fr .95fr; gap: 16px; align-items: start; }
+  .card {
+    background: #fff; border: 1px solid #e0e9e4; border-radius: 14px; padding: 18px 20px;
+    box-shadow: 0 6px 18px rgba(31, 42, 36, .05);
+  }
+  .card h2 { font-size: 13px; margin: 0 0 12px; color: #4b5a52; letter-spacing: 1px; }
+  dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 7px 14px; font-size: 12.5px; }
+  dt { color: #83918a; white-space: nowrap; }
+  dd { margin: 0; word-break: break-all; font-family: ui-monospace, Consolas, monospace; }
+  .row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+  button {
+    font-family: inherit; font-size: 14px; font-weight: 600; cursor: pointer;
+    border-radius: 999px; padding: 10px 20px; border: 1.5px solid transparent;
+    transition: background .15s, border-color .15s, transform .15s;
+  }
+  button.primary { background: #2f8a5b; color: #fff; }
+  button.primary:hover { background: #226b46; transform: translateY(-1px); }
+  button.ghost { background: #fff; border-color: #dfe9e3; color: #1f2a24; }
+  button.ghost:hover { border-color: #b9c9c1; }
+  select {
+    font-family: inherit; font-size: 13.5px; padding: 9px 10px; border-radius: 10px;
+    border: 1.5px solid #dfe9e3; background: #fff; color: inherit; min-width: 190px;
+  }
+  .roles { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 2px; }
+  .role {
+    width: 78px; text-align: center; font-size: 11.5px; color: #5c6b63;
+  }
+  .role img {
+    width: 78px; height: 78px; object-fit: contain; object-position: bottom;
+    background: #f2f6f4; border: 1px solid #e4ece8; border-radius: 10px; display: block;
+  }
+  .role span { display: block; margin-top: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .role.off img { filter: grayscale(.75); opacity: .62; }
+  #log { margin-top: 14px; font-size: 12.5px; color: #7d8b84; min-height: 1.3em; }
+  .hint { color: #97a49d; font-size: 11.5px; margin-top: 10px; line-height: 1.7; }
+</style>
+</head>
+<body>
+  <div class="head">
+    <div class="logo"></div>
+    <h1>吃饼人也敢休息？<span class="badge" id="engine">Go + Wails v3</span></h1>
+  </div>
+  <div class="sub">后端已由 Go 重写，提醒窗口与休息督导的渲染层原样复用。下面是本机环境与一次提醒的触发入口。</div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>运行环境</h2>
+      <dl id="env"><dt>读取中</dt><dd>…</dd></dl>
+      <div class="hint" id="settingsHint"></div>
+    </div>
+    <div class="card">
+      <h2>触发一次提醒</h2>
+      <div class="row">
+        <button class="primary" id="short">弹短休息</button>
+        <button class="ghost" id="long">弹长休息</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <select id="rolePick"><option value="">（按配置选角色）</option></select>
+        <button class="ghost" id="preview">预览该角色</button>
+      </div>
+      <div class="row" style="margin-top:12px">
+        <button class="ghost" id="quit">退出程序</button>
+      </div>
+      <div id="log"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>休息督导（角色目录扫描）</h2>
+    <div class="roles" id="roles"></div>
+    <div class="hint">角色即目录：在软件运行目录的 <code>roles/</code> 下增删子目录即可增删角色，重启后自动跟上。</div>
+  </div>
+
+  <script src="./shim.js"></script>
+  <script>
+    var log = function (t) { document.getElementById('log').textContent = t; };
+
+    function esc(s) { return String(s).replace(/[&<>"]/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+    function fillEnv(state, info) {
+      var rows = [
+        ['引擎', (info && info.engine) || 'go+wails3'],
+        ['版本', (info && info.version) || '—'],
+        ['角色数', info ? info.roles : '—'],
+        ['角色目录', state && state.rolesRoot],
+        ['配置文件', state && state.settings],
+        ['运行模式', state ? (state.serverMode ? '无头服务（-tags server）' : '图形界面') : '—'],
+      ];
+      document.getElementById('env').innerHTML = rows.map(function (r) {
+        return '<dt>' + esc(r[0]) + '</dt><dd>' + esc(r[1] == null ? '—' : r[1]) + '</dd>';
+      }).join('');
+    }
+
+    function fillRoles(list) {
+      var box = document.getElementById('roles');
+      var pick = document.getElementById('rolePick');
+      if (!list || !list.length) {
+        box.innerHTML = '<div class="hint">没有扫描到角色目录</div>';
+        return;
+      }
+      box.innerHTML = '';
+      list.forEach(function (r) {
+        var d = document.createElement('div');
+        d.className = 'role' + (r.enabled ? '' : ' off');
+        var img = document.createElement('img');
+        img.alt = r.name;
+        img.src = r.thumb || '';
+        d.appendChild(img);
+        var s = document.createElement('span');
+        s.textContent = r.name;
+        s.title = r.key + (r.enabled ? '' : '（已停用）');
+        d.appendChild(s);
+        box.appendChild(d);
+
+        var opt = document.createElement('option');
+        opt.value = r.key;
+        opt.textContent = r.name + (r.enabled ? '' : '（已停用）');
+        pick.appendChild(opt);
+      });
+    }
+
+    (async function init() {
+      var state = await window.api.getState();
+      var info = await window.api.appInfo();
+      fillEnv(state, info);
+      if (state && state.settings && state.settings.indexOf('未找到') === 0) {
+        document.getElementById('settingsHint').textContent =
+          '未找到已有配置，正在使用出厂默认值（安装版/免安装版会把配置写在程序目录或 %APPDATA% 下）。';
+      }
+      fillRoles(await window.api.listSupervisorRoles());
+
+      document.getElementById('short').addEventListener('click', async function () {
+        log('弹出中…');
+        var id = await window.api.startBreak('short');
+        log(id ? '已弹出短休息：' + id : '弹出失败');
+      });
+      document.getElementById('long').addEventListener('click', async function () {
+        log('弹出中…');
+        var id = await window.api.startBreak('long');
+        log(id ? '已弹出长休息：' + id : '弹出失败');
+      });
+      document.getElementById('preview').addEventListener('click', async function () {
+        var key = document.getElementById('rolePick').value;
+        if (!key) { log('先在左侧选一个角色'); return; }
+        var ok = await window.api.previewSupervisor(null, key);
+        log(ok ? '已用「' + key + '」预览' : '预览失败：' + key);
+      });
+      document.getElementById('quit').addEventListener('click', function () {
+        window.api.quit();
+      });
+    })();
+  </script>
+</body>
+</html>

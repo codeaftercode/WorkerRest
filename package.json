@@ -1,0 +1,8 @@
+{
+  "name": "workerrest-go-probe",
+  "private": true,
+  "description": "渲染层探针的 Node 依赖（仅验证用，非产品依赖）：Playwright 驱动系统 Edge 加载 frontend/dist 页面做 DOM 断言。",
+  "devDependencies": {
+    "playwright": "^1.64.0"
+  }
+}

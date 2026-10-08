@@ -1,0 +1,873 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"log"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"strings"
+	"sync"
+	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+)
+
+// Go + Wails v3 的后端。前端复用 Electron 版 renderer 的产物，只通过 shim.js 把
+// window.api 映射到这里的绑定方法（见 frontend/dist/shim.js 与 contract.go）。
+//
+// 多窗口是选 Wails v3（而非 v2）的原因：本项目核心交互就是多个无边框透明窗口
+// （每屏一个提醒窗口 + 外卖窗口 + 提前提示窗口 + 设置窗口），v2 只有单窗口。
+type App struct {
+	app *application.App
+
+	mu    sync.Mutex
+	wins  map[string]*application.WebviewWindow
+	sess  *BreakInfo
+	start time.Time
+
+	cfg       *Settings // 整份配置（见 settings.go 的说明；保存时会整体替换指针）
+	rolesRoot string
+	sched     *Scheduler
+
+	// 台词选取：random 用 rng（测试可固定种子），sequence 的游标按 key 记忆
+	rng      *rand.Rand
+	cursor   map[string]int
+	roleTurn int // 角色本体按顺序轮换时的游标
+
+	// 最近一次检查更新结果（内存态、不落盘；与 Electron 版 updateStatus 同语义）
+	updateStatus map[string]any
+
+	// 托盘（server 模式为 nil）：状态一变就刷新提示与菜单文案
+	tray          *application.SystemTray
+	trayStatus    *application.MenuItem
+	trayAction    *application.MenuItem
+	trayPause     *application.MenuItem
+	trayAutostart *application.MenuItem
+
+	// 提前提示窗当前该显示的内容（打开时算一次，轮询期间不随计划漂移；见 prebreak.go）
+	preInfo PreBreakInfo
+
+	// 提示音（见 sound.go）：顺序播放的游标跨播放持续递增（不是每次从头开始）
+	soundCursor int
+
+	// 外卖提醒（见 takeout.go）：已触发去重键 + 待推迟提醒 + 当前会话 + 在场窗口。
+	// takeoutFired 同时是状态快照的输入（timeline 与 fixedNext.takeout 的口径与 Electron 一致）。
+	takeoutFired     map[string]bool
+	takeoutPostponed *TakeoutPostponed
+	takeoutCurrent   *TakeoutInfo
+	takeoutWins      []*application.WebviewWindow
+	// takeoutStop / takeoutRaiseStop 外卖每秒检查与抬升循环的停止信号（nil = 未启动）
+	takeoutStop      chan struct{}
+	takeoutRaiseStop chan struct{}
+	// raise 窗口层级簿记（对应 windows/raise.ts）
+	raise raiseState
+	// supWatch / supWatchStop 系统级键鼠活动轮询（对应 windows/reminderSync.ts）
+	supWatch     supWatchInfo
+	supWatchStop chan struct{}
+
+	// 系统能力（见 sys_*.go）：空闲状态机 + 三条监视链路的停止信号与「上一跳状态」。
+	// idleAway / dndActiveLogged / appPauseHitLogged 只被各自的 goroutine 读写，
+	// 提成字段是为了让单测能直接调 tick 函数；它们的值不影响任何跨链路判定。
+	idle              *IdleState
+	sysStop           chan struct{}
+	idleAway          bool
+	dndActiveLogged   bool
+	appPauseHitLogged bool
+
+	// 使用统计（见 stats.go）：天记录 + 名字快照 + 防抖落盘 + 每秒工作累加。
+	// 懒建（statsStore 首次访问时建好并读盘），启动时由 startStats 起后台 goroutine。
+	stats *StatsStore
+}
+
+func NewApp(app *application.App) *App {
+	a := &App{
+		app:          app,
+		wins:         make(map[string]*application.WebviewWindow),
+		start:        time.Now(),
+		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
+		cursor:       make(map[string]int),
+		takeoutFired: map[string]bool{},
+		idle:         NewIdleState(),
+	}
+	a.rolesRoot = filepath.Join(a.resourcesRoot(), "roles")
+	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
+	resourcesRootHintFn = a.resourcesRoot
+	a.cfg = loadSettings(a.resourcesRoot())
+	// 旧版「角色数据存 settings.json」→ 角色目录 role.json：一次性迁移，迁移了就当场落盘
+	// （对应 electron/main.ts 的 `if (migrateLegacyRoles(settings)) saveSettings(settings)`）。
+	// 必须在 loadSettings 之后 —— 迁移要读归一化后的 supervisor 配置，还要写 role.json。
+	if migrateLegacyRoles(a.cfg.Raw(), a.rolesRoot) {
+		if err := a.cfg.Save(); err != nil {
+			log.Printf("[supervisor] 迁移后配置落盘失败: %v", err)
+		}
+	}
+	return a
+}
+
+// ServiceStartup 由 Wails 在服务注册后调用（替代 Electron 的 app.whenReady）
+func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
+	ap := a.cfg.AppearanceCfg()
+	log.Printf("[boot] 启动完成 engine=go+wails3 serverMode=%v", serverMode)
+	log.Printf("[boot] 角色目录 %s（扫描到 %d 个角色）", a.rolesRoot, len(scanRoles(a.rolesRoot)))
+	log.Printf("[boot] 配置 %s；外观 %s %.0f%%x%.0f%%，短休息 %d ms",
+		orNone(a.cfg.Path()), ap.Color, ap.WidthPct, ap.HeightPct, a.cfg.Break("short").DurationMs)
+	// 前端契约自检：shim.js 按名字调用绑定，JS 侧拼错没有任何编译期检查，
+	// 只能在这里把「契约里有、Go 侧没有」的方法名点出来
+	if missing := missingFrontendBindings(); len(missing) > 0 {
+		log.Printf("[boot] ⚠ 前端契约缺失绑定：%v（shim.js 调用会静默失败）", missing)
+	} else {
+		log.Printf("[boot] 前端契约自检通过：%d 个绑定方法全部存在（已接通 %d + 待接通 %d）",
+			len(allCalls()), len(wiredCalls), len(pendingCalls))
+	}
+	a.startScheduler()
+	log.Printf("[plan] %s short=%s long=%s", a.sched.planSummary(),
+		a.cfg.Break("short").Mode, a.cfg.Break("long").Mode)
+	// 系统能力：空闲 / 勿扰 / 应用占用（无头模式只做探测，不启动会改状态的监视）
+	a.startSystemWatchers()
+	// 使用统计：读盘 + 周期落盘 + 每秒工作累加（两条判定注入，见 statsIsBreak / statsIsIdle）
+	a.startStats()
+	a.startTray()
+	// 外卖提醒：每秒检查固定时刻线与推迟线（对应 Electron 的 startTakeoutWatcher）
+	a.startTakeoutWatcher()
+	// 提示音宿主：一个隐藏的 1×1 窗口承载 <audio>（主进程自己放不了声音，见 sound.go）。
+	// 无头构建下只记日志、不建窗。
+	a.initSoundHost()
+	// 本次是开机自启动拉起来的：只起托盘，不显示设置窗口（托盘图标在，点一下就出来）。
+	// 与 Electron 版 `if (!launchedAtLogin()) openSettingsWindow(...)` 同口径。
+	// 服务的启动发生在「窗口真正被 run 起来」之前，所以这里的 Hide 不会闪一下窗口。
+	if hasAutostartFlag() {
+		if w := a.settingsWindow(); w != nil {
+			w.Hide()
+		}
+		log.Printf("[autostart] 本次由开机自启动拉起：只起托盘，不显示设置窗口")
+	}
+	// 启动时检查更新：按配置延时 15 秒静默查一次（失败不打扰，见 update.go）。
+	a.startAutoUpdateCheck()
+	return nil
+}
+
+// hasAutostartFlag 本次进程是不是被开机自启动拉起来的（Windows 看命令行，与
+// autostart.ts 写入 Run 键时带的那个参数同名）
+func hasAutostartFlag() bool {
+	for _, arg := range os.Args[1:] {
+		if arg == autostartFlag {
+			return true
+		}
+	}
+	return false
+}
+
+// ServiceShutdown 退出清理
+func (a *App) ServiceShutdown() error {
+	if a.sched != nil {
+		a.sched.Stop()
+	}
+	a.stopTakeoutWatcher()
+	a.closeTakeoutWindows()
+	a.stopSystemWatchers()
+	a.destroySoundHost()
+	// 统计收尾：无条件写一次盘（比 2 秒防抖 / 1 分钟兜底更早生效，退出时不丢账）
+	a.stopStats()
+	log.Println("[boot] 退出")
+	return nil
+}
+
+func orNone(s string) string {
+	if s == "" {
+		return "(未找到，使用出厂默认)"
+	}
+	return s
+}
+
+// cfgSnapshot 取当前配置指针。保存配置时会**整体替换** a.cfg（新对象），所以读取一律
+// 先拿一次快照再用——不要在别处直接摸 a.cfg，那会和 settings:save 抢同一块内存。
+func (a *App) cfgSnapshot() *Settings {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg
+}
+
+// ---------- 路径 ----------
+
+// resourcesRoot 定位随包数据目录（roles/ 等）：打包态取 exe 旁，开发态回退到模块根。
+// roles/ 随 Go 工程一起分发（在模块根下），不再复用上层 Electron 工程的数据。
+func (a *App) resourcesRoot() string {
+	exe, err := os.Executable()
+	if err != nil || isDevBuild(exe) {
+		return a.devOrCwd()
+	}
+	dir := filepath.Dir(exe)
+	if hasRoles(dir) {
+		return dir
+	}
+	// 开发态：exe 落在 build/bin/ 这类构建输出目录里，roles/ 在模块根。
+	// 判据是向上找到**最近的 go.mod 所在目录**（= 模块根）——打包安装目录的上方
+	// 不会有 go.mod，所以这条回退在正式环境里不会触发、也不会误认别人的 roles/。
+	if modRoot := nearestModuleRoot(dir); modRoot != "" {
+		return modRoot
+	}
+	return dir
+}
+
+// devOrCwd 非可执行路径可判时的回退（go run / IDE 直接跑）
+func (a *App) devOrCwd() string {
+	wd, _ := os.Getwd()
+	if hasRoles(wd) {
+		return wd
+	}
+	// 在模块根的子目录里直接 run 时，向上找模块根（roles/ 随工程在模块根下）
+	if modRoot := nearestModuleRoot(wd); modRoot != "" {
+		return modRoot
+	}
+	return wd
+}
+
+// nearestModuleRoot 从 dir 起向上找最近的、含 go.mod 的目录；找不到返回空串
+func nearestModuleRoot(dir string) string {
+	for i := 0; i < 6; i++ {
+		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
+			return dir
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			break
+		}
+		dir = parent
+	}
+	return ""
+}
+
+func hasRoles(dir string) bool {
+	st, err := os.Stat(filepath.Join(dir, "roles"))
+	return err == nil && st.IsDir()
+}
+
+func isDevBuild(exe string) bool {
+	return len(exe) > 0 && (strings.Contains(exe, "go-build") || strings.Contains(exe, "Temp"))
+}
+
+// ---------- 会话构建 ----------
+
+// buildSupervisorSession 组装下发给渲染层的休息督导信息：
+// 与 electron/src/supervisor.ts 的 buildSupervisorSession 同规则——按 selection
+// 从角色目录里选一个角色，随机取一条劝说台词兜底，命令台词从该角色 role.json 抽。
+// 关掉开关、没有可用角色、立绘读不出来时返回 nil，渲染层退回无角色布局。
+func (a *App) buildSupervisorSession(force bool, forceKey string) *SupStageInfo {
+	return a.buildSupervisorSessionWith(a.cfg.SupervisorCfg(), force, forceKey)
+}
+
+// buildSupervisorSessionWith 同上，但允许传入一份**未落盘**的督导配置覆盖：
+// 设置页调整角色选择后立刻要预览，此时配置还在表单里、没保存到磁盘。
+func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, forceKey string) *SupStageInfo {
+	if !force && !cfg.Enabled {
+		return nil
+	}
+	all := scanRoles(a.rolesRoot)
+	usable := make([]Role, 0, len(all))
+	for _, r := range all {
+		if r.FigurePath != "" {
+			usable = append(usable, r)
+		}
+	}
+	if len(usable) == 0 {
+		return nil
+	}
+
+	var picked *Role
+	switch {
+	case forceKey != "":
+		// 预览指定的角色：无视 enabled（预览要能看到已关闭角色的效果）
+		for i := range usable {
+			if usable[i].Key == forceKey {
+				picked = &usable[i]
+				break
+			}
+		}
+	case cfg.Selection == "random":
+		if pool := a.enabledRoles(usable, force); len(pool) > 0 {
+			picked = &pool[a.rng.Intn(len(pool))]
+		}
+	case cfg.Selection == "sequence":
+		if pool := a.enabledRoles(usable, force); len(pool) > 0 {
+			picked = &pool[a.roleTurn%len(pool)]
+			a.roleTurn = (a.roleTurn + 1) % len(pool)
+		}
+	default: // fixed：取指定角色，取不到（或已禁用）回退第一个可用角色
+		for i := range usable {
+			if usable[i].Key == cfg.FixedKey && (force || usable[i].Enabled) {
+				picked = &usable[i]
+				break
+			}
+		}
+		if picked == nil {
+			if pool := a.enabledRoles(usable, force); len(pool) > 0 {
+				picked = &pool[0]
+			}
+		}
+	}
+	if picked == nil {
+		return nil
+	}
+
+	image := toDataURL(picked.FigurePath)
+	if image == "" {
+		return nil
+	}
+	name := picked.Name
+	if name == "" {
+		name = "休息督导"
+	}
+	return &SupStageInfo{
+		Image:    image,
+		ImageKey: picked.Key,
+		Name:     name,
+		Gaze:     cfg.Gaze,
+		Geom:     &picked.Geom,
+		Lines: SupLines{
+			// 第一段兜底：提醒内容为空时角色不至于哑口（正常由渲染层优先用提醒的提醒内容）
+			Urge: pickOne(urgeLines, a.rng),
+			// 第二段（命令）：该角色 role.json 的台词池（空池返回空串，渲染层沿用第一段台词）
+			Command: pickRoleLine(picked.Messages, picked.Key, a.cursor, a.rng),
+		},
+	}
+}
+
+// SupervisorPreview 设置页的立绘预览：返回一次「虚拟角色会话」而不是弹窗
+// （对应 Electron 的 supervisor:preview → buildSupervisorSession(settings, true, key)）。
+//
+// sup 是设置页表单里**当前**的督导配置（可能还没落盘），null 时用磁盘上的配置。
+// 与弹窗预览的区别：force=true 无视「已启用」开关，forceKey 指定要预览的角色。
+func (a *App) SupervisorPreview(sup map[string]any, key string) *SupStageInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	cfg := a.cfg.SupervisorCfg()
+	if sup != nil {
+		// 与 Electron 的 {...settings, supervisor: sup} 同义：整份替换，缺的字段按默认
+		sel := strOf(sup["selection"])
+		if sel != "sequence" && sel != "random" {
+			sel = "fixed"
+		}
+		cfg = SupervisorConfig{
+			Enabled:   sup["enabled"] != false,
+			Gaze:      sup["gaze"] != false,
+			Selection: sel,
+			FixedKey:  strOf(sup["fixedKey"]),
+		}
+	}
+	return a.buildSupervisorSessionWith(cfg, true, key)
+}
+
+// enabledRoles 过滤掉已禁用角色（force=true 预览时不过滤）
+func (a *App) enabledRoles(all []Role, force bool) []Role {
+	if force {
+		return all
+	}
+	out := make([]Role, 0, len(all))
+	for _, r := range all {
+		if r.Enabled {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// pickMessage 选本次要显示的提醒内容（与 Electron 版 pickMessageOrName 同规则）：
+// 固定取 fixedId，顺序轮换，随机等概率；一条都没有时用提醒名称兜底，保证窗口不空。
+// 返回的切片至少 1 条——渲染层把它整块渲染，同时把第 0 条当角色第一段台词。
+//
+// kind 可以是 'short' / 'long' / 'takeout'，也可以是自定义提醒的 id（各有一套自己的池）。
+func (a *App) pickMessage(kind, fallbackName string) []string {
+	rm := a.cfg.RemindersByID(kind)
+	if rm.Order == "fixed" {
+		for _, it := range rm.Items {
+			if it.ID == rm.FixedID && it.Text != "" {
+				return []string{it.Text}
+			}
+		}
+	}
+	pool := make([]string, 0, len(rm.Items))
+	for _, it := range rm.Items {
+		if it.Enabled && it.Text != "" {
+			pool = append(pool, it.Text)
+		}
+	}
+	if len(pool) == 0 {
+		return []string{fallbackName}
+	}
+	if rm.Order == "sequence" {
+		// 顺序游标按「类别」记忆（角色台词用同一张表的另一个键，互不干扰）
+		key := "msg-" + kind
+		cur := a.cursor[key] % len(pool)
+		a.cursor[key] = (cur + 1) % len(pool)
+		return []string{pool[cur]}
+	}
+	return []string{pool[a.rng.Intn(len(pool))]}
+}
+
+// showBreakSession 构建一次休息会话并弹窗，返回会话 id。
+// 真实休息（调度器 / 托盘）与预览共用它，差别只在 preview 标志。
+//
+// 会话构建与「弹窗」必须分开：渲染层随后会自己再拉一次 breakCurrent，
+// 所以这里先把会话写完再放窗（跨多次调用期间保持一致）。
+func (a *App) showBreakSession(kind string, preview bool, forceKey string) string {
+	a.mu.Lock()
+	cfg := a.cfg
+	bcfg, ok := cfg.BreakByID(kind)
+	if !ok {
+		a.mu.Unlock()
+		log.Printf("[break] 未知的休息身份 %q（可能刚被删除），忽略", kind)
+		return ""
+	}
+	name := cfg.BreakNameByID(kind)
+	dur := bcfg.DurationMs
+	if dur <= 0 {
+		dur = 20_000
+	}
+	now := time.Now()
+	info := &BreakInfo{
+		ID:         fmt.Sprintf("%s-%d", kind, now.UnixMilli()),
+		Type:       kind,
+		Name:       name,
+		EndsAt:     now.Add(time.Duration(dur) * time.Millisecond).UnixMilli(),
+		DurationMs: dur,
+		Preview:    preview,
+		Appearance: cfg.AppearanceView(),
+		Messages:   a.pickMessage(kind, name),
+		Supervisor: a.buildSupervisorSession(preview, forceKey),
+	}
+	a.sess = info
+	a.mu.Unlock()
+
+	// 休息真的开始了：顺手收掉右下角的提前提示窗
+	//（对应 Electron 在 break-start 事件里调 closePreBreakWindow）。
+	a.closePreBreakWindow()
+	a.ShowBreakWindow(kind)
+	// 提示音：只给真实休息放（预览是「看一眼窗口长什么样」，不该出声）
+	if !preview {
+		a.playConfiguredSound()
+		// 统计：休息开始 —— 从这里起休息时长逐秒实时入账（见 StatsStore.OnBreakTick），
+		// 中途断电最多丢 1 分钟，而不是把整次休息的时长全丢掉
+		a.statsStore().OnBreakStart(kind)
+	}
+	return info.ID
+}
+
+// closeBreakWindows 关掉休息窗口并清掉会话（调度器收尾路径用，不经过渲染层）。
+// 目前唯一的调用点是调度器的 finishBreak，所以这里顺带承担「休息结束」的副作用：
+// 播一次提示音（对应 Electron 的 break-end → playConfiguredSound）。
+func (a *App) closeBreakWindows() {
+	a.mu.Lock()
+	w := a.wins["break"]
+	delete(a.wins, "break")
+	info := a.sess
+	a.sess = nil
+	a.mu.Unlock()
+	if w != nil {
+		w.Close()
+	}
+	a.playConfiguredSound()
+	// 统计：休息结束（唯一调用点是调度器的 finishBreak，所以这里就是 break-end）。
+	// 类型取自会话本身 —— 休息结束时调度器状态可能已经翻篇，而记录要用**刚刚结束的那次**；
+	// 自定义提醒把名字快照一起记下来，提醒删了 / 改名了报表也还能对上号。
+	if info != nil && !info.Preview {
+		name := ""
+		if cfg := a.cfgSnapshot(); cfg != nil {
+			name = cfg.BreakNameByID(info.Type)
+		}
+		a.statsStore().OnBreakEnd(name)
+	}
+}
+
+// ---------- 调度器事件（Electron 版 scheduler.on(...) 的对应物） ----------
+
+// onSchedulerState 状态一变：推给设置页 + 刷新托盘
+func (a *App) onSchedulerState() {
+	a.pushState()
+	a.refreshTray()
+}
+
+// onPreNotify 进入「距下次休息不足 notifyBeforeMs」的区间了：弹出右下角的提前提示小窗
+// （系统通知在 Windows 上带不了按钮，所以是自绘窗口，见 prebreak.go）。
+//
+// 内容在这里**算一次**并记进 a.preInfo：窗口内轮询 PreBreakState 拿到的是同一份，
+// 中途计划漂移（比如固定时刻线重排）不会让标题 / 后缀跟着变。
+func (a *App) onPreNotify(kind string, notifyBeforeMs int64) {
+	info := a.rememberPreBreakInfo(kind)
+	log.Printf("[prebreak] 即将休息：%s（提前 %d ms）custom=%v title=%q",
+		kind, notifyBeforeMs, info.Custom, info.Title)
+	a.ShowPreBreakWindow(info)
+}
+
+// onPaused 暂停提醒：关掉提前提示窗。托盘暂停与弹窗内「暂停计时」共用这条路径；
+// 恢复时若仍在提前提示区间内，调度器会再走一次 onPreNotify 把窗口弹回来（倒计时继续）。
+func (a *App) onPaused() {
+	a.closePreBreakWindow()
+}
+
+// ---------- 外卖状态的快照（供状态快照读取） ----------
+
+func (a *App) takeoutPostponedSnapshot() *TakeoutPostponed {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.takeoutPostponed == nil {
+		return nil
+	}
+	cp := *a.takeoutPostponed
+	return &cp
+}
+
+func (a *App) takeoutFiredSnapshot() map[string]bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.takeoutFired) == 0 {
+		return nil
+	}
+	out := make(map[string]bool, len(a.takeoutFired))
+	for k := range a.takeoutFired {
+		out[k] = true
+	}
+	return out
+}
+
+// ---------- 窗口 ----------
+
+// breakWindowBounds 提醒窗口的位置与大小：与 Electron 版 breakWindow.ts 同规则——
+// 主显示器工作区的 widthPct × heightPct，居中；全屏时铺满工作区。
+func (a *App) breakWindowBounds() (x, y, w, h int) {
+	x, y, w, h = 60, 60, 720, 520
+	cfg := a.cfgSnapshot().AppearanceCfg()
+	if sc := a.app.Screen.GetPrimary(); sc != nil {
+		wa := sc.WorkArea
+		if cfg.Fullscreen {
+			return wa.X, wa.Y, wa.Width, wa.Height
+		}
+		w = int(float64(wa.Width) * cfg.WidthPct / 100)
+		h = int(float64(wa.Height) * cfg.HeightPct / 100)
+		x = wa.X + (wa.Width-w)/2
+		y = wa.Y + (wa.Height-h)/2
+	}
+	if w < 320 {
+		w = 320
+	}
+	if h < 240 {
+		h = 240
+	}
+	return
+}
+
+// ShowBreakWindow 弹出休息提醒窗口（托盘 / 设置页按钮 / 调度器都走这里）。
+// 无头（-tags server）构建下没有原生窗口，跳过创建——会话数据仍然构建，
+// 因此无头构建可以完整验证「绑定 → 会话 JSON」这条链路。
+func (a *App) ShowBreakWindow(kind string) {
+	if serverMode {
+		log.Printf("[win] server 模式无原生窗口，跳过创建 break 窗口（会话已就绪）")
+		return
+	}
+	a.mu.Lock()
+	if w, ok := a.wins["break"]; ok && w != nil {
+		a.mu.Unlock()
+		w.Show()
+		w.Focus()
+		return
+	}
+	a.mu.Unlock()
+
+	x, y, w, h := a.breakWindowBounds()
+	win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
+		Name:             "break",
+		Title:            "休息一下",
+		X:                x,
+		Y:                y,
+		Width:            w,
+		Height:           h,
+		Frameless:        true,
+		AlwaysOnTop:      a.cfgSnapshot().AppearanceCfg().AlwaysOnTop,
+		DisableResize:    true,
+		URL:              "/break.html",
+		BackgroundType:   application.BackgroundTypeTranslucent,
+		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+		// 注入窗口身份：shim.js 用它决定调哪个绑定方法、上报哪个窗口名
+		JS: `window.__WR_WIN = "break";`,
+		// 无边框窗口在 Windows 上会留一圈原生装饰（阴影/描边），与 Electron 版一致地关掉
+		Windows: application.WindowsWindow{
+			DisableFramelessWindowDecorations: true,
+		},
+	})
+
+	a.mu.Lock()
+	a.wins["break"] = win
+	a.mu.Unlock()
+}
+
+// settingsWindow 取设置窗口（按名字查，避免跨 tick 持有已销毁的窗口引用 ——
+// 跨 tick 拿着旧窗口再访问会抛 "object has been destroyed"）。
+// 返回接口类型 application.Window：Wails 的窗口管理器按名字交付的就是接口。
+func (a *App) settingsWindow() application.Window {
+	w, ok := a.app.Window.GetByName("settings")
+	if !ok {
+		return nil
+	}
+	return w
+}
+
+// ShowSettingsWindow 打开（或唤起）设置窗口。窗口在 main.go 里随应用创建，
+// 这里只负责显示与聚焦——托盘、单实例二次启动都走它。
+func (a *App) ShowSettingsWindow() {
+	if w := a.settingsWindow(); w != nil {
+		w.Show()
+		w.Focus()
+	}
+}
+
+// CloseWindow 渲染层「关窗」入口（休息窗口的预览点任意处 / 设置窗口的关闭按钮）
+func (a *App) CloseWindow(win string) {
+	a.mu.Lock()
+	w := a.wins[win]
+	delete(a.wins, win)
+	if win == "break" {
+		a.sess = nil
+	}
+	a.mu.Unlock()
+	if w != nil {
+		w.Close()
+	}
+}
+
+// ---------- 绑定给前端的接口（对应 electron/preload.ts 的 window.api） ----------
+
+// BreakCurrent 当前休息会话（渲染层首帧拉取；无会话返回 nil）
+func (a *App) BreakCurrent(win string) *BreakInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.sess
+}
+
+// Action 窗口上的动作。win 决定动作归属，name 决定做什么：
+//
+//	调度器类（设置页侧栏按钮 / 托盘 / 快捷键共用同一批名字）：
+//	  breakNow / postpone / skip / pauseToggle / resetCycle / endBreak
+//	设置窗口自绘标题栏：winMin / winMaxToggle / winClose
+//	休息窗口：endBreak（提前结束）、close（预览点任意处）
+//
+// 与 Electron 版一致：这些动作全部汇聚到**调度器**上，而不是各自直接开关窗口——
+// 否则 phase / 已消费记账 / 派生视图会对不上。
+func (a *App) Action(win, name string) error {
+	switch name {
+	case "breakNow":
+		a.schedBreakNow()
+		return nil
+	case "postpone":
+		a.schedPostpone()
+		return nil
+	case "skip":
+		a.schedSkip()
+		return nil
+	case "pauseToggle":
+		a.schedPauseToggle()
+		return nil
+	case "resetCycle":
+		a.schedResetCycle()
+		return nil
+	case "endBreak":
+		log.Printf("[action] endBreak <- %s", win)
+		a.schedEndBreak()
+		return nil
+	}
+	if win != "settings" {
+		switch name {
+		case "close":
+			a.CloseWindow(win)
+		default:
+			log.Printf("[action] 未实现的动作 %q（<- %s）", name, win)
+		}
+		return nil
+	}
+	switch name {
+	case "winMin":
+		if w := a.settingsWindow(); w != nil {
+			w.Minimise()
+		}
+	case "winMaxToggle":
+		if w := a.settingsWindow(); w != nil {
+			if w.IsMaximised() {
+				w.UnMaximise()
+			} else {
+				w.Maximise()
+			}
+		}
+	case "winClose":
+		if w := a.settingsWindow(); w != nil {
+			w.Close()
+		}
+	default:
+		log.Printf("[action] 设置窗口未实现的动作 %q", name)
+	}
+	return nil
+}
+
+// 调度器动作的转发（a.sched 在启动后一定非 nil，这里仍判空以防启动期的调用）
+func (a *App) schedBreakNow() {
+	if a.sched != nil {
+		a.sched.breakNow()
+	}
+}
+func (a *App) schedPostpone() {
+	if a.sched != nil {
+		a.sched.postpone()
+	}
+}
+func (a *App) schedSkip() {
+	if a.sched != nil {
+		a.sched.skip()
+	}
+}
+func (a *App) schedPauseToggle() {
+	if a.sched != nil {
+		a.sched.pauseToggle()
+	}
+}
+func (a *App) schedResetCycle() {
+	if a.sched != nil {
+		a.sched.resetCycle()
+	}
+}
+func (a *App) schedEndBreak() {
+	if a.sched != nil {
+		a.sched.endBreak()
+	}
+}
+
+// SupActivity 页内捕获到键鼠操作 → 广播给其余窗口（多屏同步）。
+// 与 Electron 版同一条铁律：收到广播的窗口不再上报，否则窗口之间回环。
+func (a *App) SupActivity(win string) {
+	a.app.Event.Emit("sup:active")
+}
+
+// PreviewBreak 弹一次预览：force=true 忽略显示开关（设置页要能看到已停用角色的效果），
+// forceKey 指定角色（空 = 按配置选）。预览窗口带「预览模式」角标、点任意处关闭，
+// 且不影响真实倒计时与统计——与 Electron 版 break:preview 同语义。
+//
+// 预览**完全不进调度器**：不消费 occurrence、不改 phase、不占会话（与 Electron 一致，
+// 那边 break:preview 直接调 showBreakWindows）。
+func (a *App) PreviewBreak(kind, forceKey string) string {
+	if kind == "" {
+		kind = "short"
+	}
+	return a.showBreakSession(kind, true, forceKey)
+}
+
+// StartBreak 立即开始一次指定类型的休息（托盘 / 诊断页）。
+// kind 留空 = 用当前计划的那一条（与托盘「立即休息一下」同义）。
+//
+// 走调度器而不是直接建会话：phase / 已消费记账 / 派生视图都要跟着动，
+// 否则到点前又会被 replan 排回来弹第二次。
+func (a *App) StartBreak(kind string) string {
+	if a.sched == nil {
+		return a.showBreakSession(kind, false, "")
+	}
+	return a.sched.breakNowOf(kind)
+}
+
+// GetState 给设置页的状态快照。
+//
+// 字段集**必须完整**：设置页的 renderStatus() 一上来就读 st.paused /
+// st.pauseReasons.length / st.phase，缺一个就在 init 里抛错、整页停摆
+// （见 electron/src/types.ts 的 SchedulerState 与 main.ts 的 stateForRenderer）。
+func (a *App) GetState() map[string]any {
+	st := SchedulerState{
+		Phase: "idle", NextType: "short", NextName: shortBreakName,
+		Lines: []PlannedBreak{}, Timeline: []TimelineItem{},
+		FixedNext: map[string]int64{}, PauseReasons: []string{},
+	}
+	if a.sched != nil {
+		st = a.sched.stateForRenderer()
+	}
+	out := structToMap(st)
+	// Go 侧扩展字段（Electron 版没有；诊断与控制台用）
+	out["engine"] = "go+wails3"
+	out["rolesRoot"] = a.rolesRoot
+	out["settings"] = orNone(a.cfgSnapshot().Path())
+	out["serverMode"] = serverMode
+	return out
+}
+
+// structToMap 把结构体转成 map（走一次 JSON 往返，字段名与 json tag 完全一致）
+func structToMap(v any) map[string]any {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return map[string]any{}
+	}
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		return map[string]any{}
+	}
+	return m
+}
+
+// AppInfo 关于页的环境信息。
+//
+// ⚠️ 已知不匹配：设置页把版本行**写死**成「打工人休息提醒 v<版本> · Electron <electron>」，
+// 所以 Go 版这行会出现「Electron」字样（见 dist/renderer/settings.js 的 d-version）。
+// 这里如实回报引擎信息，不伪装成 Electron；该文案需要渲染层改一处（待定）。
+func (a *App) AppInfo() map[string]any {
+	return map[string]any{
+		"name":     a.cfgSnapshot().AppName(),
+		"version":  appVersion,
+		"electron": "Wails v3 (Go)",
+		"node":     "-",
+		"engine":   "go+wails3",
+		"platform": "windows",
+		"roles":    len(scanRoles(a.rolesRoot)),
+	}
+}
+
+// ListRoles 角色目录扫描结果（预览图为 data URL，设置页角色列表用）
+func (a *App) ListRoles() []Role {
+	return scanRoles(a.rolesRoot)
+}
+
+// QuitApp 退出应用（托盘 / 主窗口按钮）
+func (a *App) QuitApp() {
+	log.Println("[app] 退出请求")
+	a.app.Quit()
+}
+
+// WindowMaximized 设置窗口当前是否最大化（自绘标题栏首帧拉一次，之后靠事件推）
+func (a *App) WindowMaximized() bool {
+	if w := a.settingsWindow(); w != nil {
+		return w.IsMaximised()
+	}
+	return false
+}
+
+// appVersion 与前端 appInfo() 里的版本号保持同一处来源。
+// 用 var 而非 const：打包时可通过 -ldflags "-X main.appVersion=<版本>" 注入，
+// 默认 1.0.0（开发 / 无头验证直接用默认值即可）。
+var appVersion = "1.0.0"
+
+// pauseReasonText 暂停原因键 → 界面文案：内部用稳定的英文键，展示层不该原样抛给用户；
+// 中文原因（'勿扰' / '应用占用'）原样返回，未知键也不会消失（与 types.ts 同口径）。
+func pauseReasonText(reason string) string {
+	switch reason {
+	case "idle":
+		return "系统空闲"
+	case "manual":
+		return "手动暂停"
+	default:
+		return reason
+	}
+}
+
+func pauseReasonsText(reasons []string) string {
+	if len(reasons) == 0 {
+		return "已暂停"
+	}
+	out := make([]string, 0, len(reasons))
+	for _, r := range reasons {
+		out = append(out, pauseReasonText(r))
+	}
+	return strings.Join(out, "、")
+}

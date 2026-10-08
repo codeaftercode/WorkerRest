@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>外卖提醒</title>
+  <link rel="stylesheet" href="./takeout.css" />
+</head>
+<body>
+  <div id="app" data-rounded="1">
+    <div id="vignette"></div>
+    <div id="preview-badge" class="hidden">预览模式 · 点击任意处关闭</div>
+    <!-- 虚拟角色：与休息窗口同一套结构（立绘锚定左下，见 supervisorStage.ts 与 takeout.css）。
+         台词只有一段：本提醒配置的提醒内容——外卖窗口进入命令阶段也不换台词 -->
+    <div class="figure hidden" id="figure">
+      <div class="trim" id="figure-trim">
+        <div class="gaze" id="gaze">
+          <!-- 镜像层：勾选「水平翻转」时整层 scaleX(-1)（与休息窗口同结构） -->
+          <div class="mirror"><img id="figure-img" alt="" /></div>
+        </div>
+      </div>
+    </div>
+    <div class="content">
+      <!-- 状态徽标：提前通知（还差几分钟）与"这是第几次推迟" -->
+      <div class="tk-badges" id="tk-badges">
+        <span class="tk-badge hidden" id="tk-lead">提前提醒</span>
+        <span class="tk-badge warn hidden" id="tk-postponed">已推迟 1 次</span>
+      </div>
+      <!-- 提醒内容：外卖提醒自己的那一套配置，每次弹窗随机/顺序取 1 条；未配置则整块隐藏 -->
+      <div class="tk-msg hidden" id="tk-msg"></div>
+      <!-- 虚拟角色的台词气泡：有角色时提醒内容改由角色"说"出（第一段），这里随之显示 -->
+      <div class="supervisor-line hidden" id="supervisor-line"></div>
+      <!-- 支付红包：开关打开即显示该区域；二维码指向本机专属领取地址，手机扫码打开 -->
+      <div class="tk-redpacket hidden" id="redpacket">
+        <canvas class="rp-qr hidden" id="rp-qr" width="88" height="88"></canvas>
+        <div class="rp-info">
+          <span class="rp-icon">&#129511;</span>
+          <span class="rp-text" id="rp-text">支付红包 · 暂未接入（后续版本提供）</span>
+        </div>
+      </div>
+      <div class="tk-clock">当前时间 <span id="tk-clock">--:--:--</span></div>
+      <div class="tk-actions">
+        <button class="tk-btn primary" id="tk-ordered">已点好</button>
+        <button class="tk-btn" id="tk-skip">不点了</button>
+        <button class="tk-btn postpone" id="tk-postpone">推迟</button>
+      </div>
+    </div>
+  </div>
+  <script src="./shim.js"></script>
+  <script src="./takeout.js"></script>
+</body>
+</html>

@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <title>打工人休息提醒</title>
+  <link rel="stylesheet" href="./settings.css" />
+</head>
+<body>
+  <!-- 自绘标题栏（无边框窗口没有原生标题栏）：图标 + 名称 + 拖拽区 + 窗口控制按钮。
+       三颗按钮包在 .tb-btns 里 —— 外层 flex 的 gap 会插到每一对子元素之间，不包的话
+       按钮之间会多出 9px 缝、最右边那颗也贴不到窗口右上角。
+       图标一律用内联 SVG：文字符号（制表横线 / 乘号）是字形，落点在基线上、粗细与
+       对齐都不可控，跟真正的窗口控制图标不是一个东西，悬停时尤其明显。 -->
+  <div id="titlebar">
+    <img class="tb-icon" src="./icon.png" alt="" />
+    <div class="tb-title" id="tb-title">打工人休息提醒</div>
+    <div class="tb-drag" title="拖动可移动窗口；双击切换最大化 / 还原"></div>
+    <div class="tb-btns">
+      <button id="wb-min" title="最小化" aria-label="最小化">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.4 6h7.2" /></svg>
+      </button>
+      <!-- 最大化 / 还原共用一颗按钮：图标由 #titlebar 上的 .maximized 类切换，类由主进程
+           推来的窗口状态驱动（窗口也可能被双击标题栏 / 拖到屏幕上边缘 / Win+↑ 最大化） -->
+      <button id="wb-max" title="最大化" aria-label="最大化">
+        <svg class="ico-max" viewBox="0 0 12 12" aria-hidden="true"><rect x="2.3" y="2.3" width="7.4" height="7.4" rx="1.4" /></svg>
+        <svg class="ico-restore" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M4.2 3.9V2.6a1.2 1.2 0 0 1 1.2-1.2h4.1a1.2 1.2 0 0 1 1.2 1.2v4.1a1.2 1.2 0 0 1-1.2 1.2H8.2" />
+          <rect x="1.4" y="3.9" width="6.7" height="6.7" rx="1.3" />
+        </svg>
+      </button>
+      <button id="wb-close" title="关闭" aria-label="关闭">
+        <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.8 2.8l6.4 6.4M9.2 2.8l-6.4 6.4" /></svg>
+      </button>
+    </div>
+  </div>
+  <div id="layout">
+    <aside id="sidebar">
+      <nav id="nav">
+        <button class="nav-item active" data-tab="general"><span class="icon">⚙️</span>通用配置</button>
+        <button class="nav-item" data-tab="timing"><span class="icon">⏱️</span>时间规划</button>
+        <button class="nav-item" data-tab="supervisor"><span class="icon">🕵️</span>虚拟角色</button>
+        <button class="nav-item" data-tab="stats"><span class="icon">📊</span>统计报表</button>
+        <button class="nav-item" data-tab="shortcuts"><span class="icon">⌨️</span>快捷键</button>
+        <button class="nav-item" data-tab="about"><span class="icon">🗂️</span>关于</button>
+      </nav>
+      <div class="sidebar-footer">
+        <div id="data-status" class="status-grid"></div>
+        <div class="quick-actions">
+          <button class="btn ghost" id="qa-break">立即休息</button>
+          <button class="btn ghost" id="qa-pause">暂停休息/恢复休息</button>
+          <button class="btn ghost" id="qa-postpone">推迟休息</button>
+          <button class="btn ghost" id="qa-skip">跳过本次</button>
+          <button class="btn ghost" id="qa-reset">重置周期</button>
+        </div>
+      </div>
+    </aside>
+
+    <main id="content">
+      <!-- 通用配置（行为 / 提醒窗口（合并原多屏幕·主题·外观） / 声音） -->
+      <section class="tab active" id="tab-general">
+        <h2>通用配置</h2>
+        <div class="card">
+          <h3>行为</h3>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="autostart" /> 开机自启动</label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="startMinimized" /> 启动时最小化到托盘</label></div>
+        </div>
+        <div class="card">
+          <h3>自动暂停</h3>
+          <!-- 空闲自动暂停始终启用、不可关闭，所以这里没有勾选框，只有分钟数（最小 1）；
+               行本身仍用 .mixed（内容紧挨着左对齐 + 行内窄数字框） -->
+          <div class="row mixed">
+            <label class="lead" for="idlePauseMin">系统空闲</label>
+            <input type="number" id="idlePauseMin" min="1" max="120" />
+            <span class="tail">分钟后自动暂停</span>
+          </div>
+          <div class="row check">
+            <label class="switch-row"><input type="checkbox" id="dndPause" /> 系统勿扰时自动暂停</label>
+          </div>
+          <div class="row check">
+            <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 指定应用运行时自动暂停</label>
+          </div>
+          <!-- 应用列表：与「提醒内容」「高级选项」共用同一套折叠外观（details.advanced），默认收起；
+               卡片内顺序固定为「按钮行 → 列表 → 说明」，三个添加入口都在列表上方 -->
+          <details class="advanced" id="app-advanced">
+            <summary>
+              <span class="adv-title">应用列表</span>
+              <span class="adv-summary" id="app-advanced-summary">—</span>
+            </summary>
+            <div class="adv-body">
+              <div class="row inline">
+                <button class="btn ghost" id="app-pause-pick">从运行的应用选择</button>
+                <button class="btn ghost" id="app-pause-file">从应用安装路径选择</button>
+                <button class="btn ghost" id="app-pause-add">手动输入应用名称</button>
+              </div>
+              <div id="app-pause-list" class="tk-list"></div>
+              <p class="hint">列表中的任一程序正在运行时自动暂停提醒，全部退出后自动恢复。按可执行文件名匹配（如 Code.exe），忽略路径、不区分大小写；左侧是可执行文件名（按它匹配），右侧是软件名（可以自己改，仅用于显示）。</p>
+            </div>
+          </details>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h3>提醒窗口</h3>
+          </div>
+          <div class="row field"><label>背景颜色</label>
+            <!-- 色块与「预览」并排、各占输入框宽度（180px）的一半 -->
+            <div class="ap-color-row">
+              <button type="button" id="ap-color-open" class="color-chip" title="选择背景颜色：内置预设或自己调一个（恢复默认在选择器弹窗里）" aria-haspopup="dialog"></button>
+              <button type="button" class="btn ghost" id="ap-preview-short">预览</button>
+            </div>
+          </div>
+          <div class="row field"><label>透明度 <span id="ap-opacity-val"></span></label><input type="range" id="ap-opacity" min="0" max="0.9" step="0.02" /></div>
+          <div class="row field"><label>窗口宽度（屏幕百分比）</label><input type="number" id="ap-widthPct" min="20" max="100" /></div>
+          <div class="row field"><label>窗口高度（屏幕百分比）</label><input type="number" id="ap-heightPct" min="20" max="100" /></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-fullscreen" /> 全屏显示（开启后忽略宽高比例）</label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-alwaysOnTop" /> 窗口置顶（强制显示在所有其他窗口之上）</label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-allScreens" /> 在所有屏幕显示提醒窗口（取消则只在当前活动的屏幕显示）</label></div>
+        </div>
+        <div class="card">
+          <div class="card-head">
+            <h3>声音</h3>
+          </div>
+          <!-- 总开关放在卡片内容第一行（与「时间规划」三张提醒卡一致）：勾选框在左、「启用」在右 -->
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="snd-enabled" /> 启用</label></div>
+          <div class="row field"><label>音量 <span id="snd-volume-val"></span></label><input type="range" id="snd-volume" min="0" max="1" step="0.05" /></div>
+          <div class="row field"><label>播放方式</label>
+            <div class="inline">
+              <select id="snd-mode">
+                <option value="single">单曲循环</option>
+                <option value="random">随机播放</option>
+                <option value="sequence">顺序循环</option>
+              </select>
+            </div>
+          </div>
+          <!-- 音乐列表：默认折叠（自建折叠面板，不走提醒内容的 .msg-panel 接线） -->
+          <div class="fold-panel" id="snd-music-panel">
+            <!-- 标题行：折叠开关占满 + 右侧「＋」导入（悬浮提示支持批量） -->
+            <div class="snd-music-head">
+              <button type="button" class="msg-toggle" id="snd-music-toggle"><span class="msg-arrow">▸</span>音乐列表</button>
+              <button type="button" class="snd-music-add" id="snd-music-add" title="导入音频文件（支持批量导入）">＋</button>
+            </div>
+            <div class="msg-body hidden" id="snd-music-body">
+              <div id="snd-music-list"></div>
+            </div>
+          </div>
+          <!-- 试听播放条：点任意「试听」出现，可暂停 / 拖进度 / 停止（结束自动收起） -->
+          <div class="snd-player hidden" id="snd-player">
+            <span class="snd-player-name" id="snd-player-name"></span>
+            <input type="range" id="snd-player-seek" min="0" max="1000" value="0" title="拖动调整进度" />
+            <span class="snd-player-time" id="snd-player-time">0:00 / 0:00</span>
+            <button class="btn mini" id="snd-player-toggle">暂停</button>
+            <button class="btn mini danger" id="snd-player-stop" title="结束试听">■</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 时间规划（休息节奏 + 外卖提醒） -->
+      <section class="tab" id="tab-timing">
+        <h2>时间规划</h2>
+        <!-- 今日提醒时间线：综合全部提醒设置推算当天未触发的提醒，自动跟随调度更新（默认折叠） -->
+        <div class="card tl-card" id="tl-card">
+          <button type="button" class="tl-head" id="tl-toggle">
+            <span class="card-fold" aria-hidden="true">▾</span>今日提醒时间线<span class="tl-count" id="tl-count">—</span>
+          </button>
+          <div id="tl-body" class="hidden">
+            <div id="tl-list"></div>
+            <p class="hint" id="tl-empty">今天已没有未触发的提醒。</p>
+          </div>
+        </div>
+        <div class="card foldable" id="short-card">
+          <div class="card-head">
+            <!-- 折叠箭头在标题左侧；整条标题行都是折叠热区（点标题 / 摘要 / 空白处均可） -->
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
+            <h3>短休息</h3>
+            <span class="adv-summary" id="short-summary">—</span>
+          </div>
+          <!-- 总开关：卡片内容第一行，勾掉 = 不启用这种提醒；「预览」按钮与各行输入框同列 -->
+          <div class="row check has-btn">
+            <label class="switch-row"><input type="checkbox" id="short-enabled" /> 启用</label>
+            <button class="btn ghost" id="short-preview" title="预览短休息">预览</button>
+          </div>
+          <div class="row field"><label>触发方式</label><select id="short-mode"></select></div>
+          <div class="row field bk-countdown" data-break="short"><label>间隔（分钟）</label><input type="number" id="short-interval" min="1" max="240" /></div>
+          <div class="row field"><label>时长（秒）</label><input type="number" id="short-duration" min="5" max="600" /></div>
+          <div class="row field"><label>提前通知（秒）</label><input type="number" id="short-notify" min="0" max="300" /></div>
+          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="short-postpone" min="1" max="60" /></div>
+          <div class="row field msg-order-row"><label>提醒内容显示方式</label>
+            <select class="msg-order"><option value="fixed">固定显示</option><option value="random">随机显示</option><option value="sequence">顺序循环</option></select>
+          </div>
+          <!-- 提醒时间列表：固定时间方式的时刻表，默认折叠（与提醒内容面板同一套外观；
+               行不可拖动、无单选框，只有行首的启停勾选框）。「＋」新增放标题行右侧 -->
+          <div class="slot-fixed" data-break="short">
+            <div class="slot-head">
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
+              <button type="button" class="slot-add" id="short-add" title="添加提醒时间">＋</button>
+            </div>
+            <div class="slot-body hidden">
+              <div id="short-list" class="tk-list"></div>
+            </div>
+          </div>
+          <div class="msg-panel" data-kind="short">
+            <div class="msg-head">
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
+              <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+            </div>
+            <div class="msg-body hidden">
+              <div class="msg-list"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card foldable" id="long-card">
+          <div class="card-head">
+            <!-- 折叠箭头在标题左侧；整条标题行都是折叠热区（点标题 / 摘要 / 空白处均可） -->
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
+            <h3>长休息</h3>
+            <span class="adv-summary" id="long-summary">—</span>
+          </div>
+          <!-- 总开关：卡片内容第一行，勾掉 = 不启用这种提醒；「预览」按钮与各行输入框同列 -->
+          <div class="row check has-btn">
+            <label class="switch-row"><input type="checkbox" id="long-enabled" /> 启用</label>
+            <button class="btn ghost" id="long-preview" title="预览长休息">预览</button>
+          </div>
+          <div class="row field"><label>触发方式</label><select id="long-mode"></select></div>
+          <div class="row field bk-countdown" data-break="long"><label>间隔（分钟）</label><input type="number" id="long-interval" min="1" max="480" /></div>
+          <div class="row field"><label>时长（分钟）</label><input type="number" id="long-duration" min="1" max="60" /></div>
+          <div class="row field"><label>提前通知（秒）</label><input type="number" id="long-notify" min="0" max="300" /></div>
+          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="long-postpone" min="1" max="120" /></div>
+          <div class="row field" id="longEveryNRow">
+            <label>每 N 次短休息后 1 次长休息<span class="q-mark" title="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
+            <input type="number" id="longEveryNShort" min="1" max="20" />
+          </div>
+          <div class="row field msg-order-row"><label>提醒内容显示方式</label>
+            <select class="msg-order"><option value="fixed">固定显示</option><option value="random">随机显示</option><option value="sequence">顺序循环</option></select>
+          </div>
+          <div class="slot-fixed" data-break="long">
+            <div class="slot-head">
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
+              <button type="button" class="slot-add" id="long-add" title="添加提醒时间">＋</button>
+            </div>
+            <div class="slot-body hidden">
+              <div id="long-list" class="tk-list"></div>
+            </div>
+          </div>
+          <div class="msg-panel" data-kind="long">
+            <div class="msg-head">
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
+              <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+            </div>
+            <div class="msg-body hidden">
+              <div class="msg-list"></div>
+            </div>
+          </div>
+        </div>
+        <div class="card foldable" id="tk-card">
+          <div class="card-head">
+            <!-- 折叠箭头在标题左侧；整条标题行都是折叠热区（点标题 / 摘要 / 空白处均可） -->
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
+            <h3>外卖提醒</h3>
+            <span class="adv-summary" id="tk-summary">—</span>
+          </div>
+          <!-- 总开关：卡片内容第一行，勾掉 = 不启用这种提醒；「预览」按钮与各行输入框同列 -->
+          <div class="row check has-btn">
+            <label class="switch-row"><input type="checkbox" id="tk-enabled" /> 启用</label>
+            <button class="btn ghost" id="tk-preview" title="预览外卖提醒">预览</button>
+          </div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="tk-redpacket" /> 显示外卖优惠券</label></div>
+          <div class="row field"><label>提前通知（分钟）</label><input type="number" id="tk-lead" min="0" max="120" /></div>
+          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="tk-postpone" min="1" max="120" /></div>
+          <div class="row field msg-order-row"><label>提醒内容显示方式</label>
+            <select class="msg-order"><option value="fixed">固定显示</option><option value="random">随机显示</option><option value="sequence">顺序循环</option></select>
+          </div>
+          <div class="slot-fixed">
+            <div class="slot-head">
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
+              <button type="button" class="slot-add" id="tk-add" title="添加提醒时间">＋</button>
+            </div>
+            <div class="slot-body hidden">
+              <div id="tk-list" class="tk-list"></div>
+            </div>
+          </div>
+          <div class="msg-panel" data-kind="takeout">
+            <div class="msg-head">
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
+              <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+            </div>
+            <div class="msg-body hidden">
+              <div class="msg-list"></div>
+            </div>
+          </div>
+        </div>
+        <!-- 新建自定义提醒：虚线卡（明显是"可点"的动作入口）。
+             新建出来的卡片由 settings.ts 插入到这张卡**上方**，它永远排在最后。 -->
+        <div class="card card-add" id="cb-add-card">
+          <button type="button" class="card-add-btn" id="cb-add">新建自定义提醒</button>
+        </div>
+      </section>
+
+      <!-- 虚拟角色（开关 / 预览 / 立绘） -->
+      <section class="tab" id="tab-supervisor">
+        <h2>虚拟角色</h2>
+        <div class="card">
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="sup-enabled" />启用</label></div>
+          <!-- 立绘显示方式：固定显示 / 随机显示 / 顺序循环。固定显示不另设下拉——
+               点选下方立绘磁贴即固定为该立绘（选项与提示文案由脚本按类型常量填充） -->
+          <div class="row field">
+            <label for="sup-selection">立绘显示方式</label>
+            <select id="sup-selection"></select>
+          </div>
+          <!-- 提醒内容显示方式（第二段台词的取词方式）：从下方「提醒内容」面板处上移到
+               「立绘显示方式」下方；下拉在另一张卡里，接线按 id 取（见 setupMsgPanel） -->
+          <div class="row field msg-order-row" id="sup-msg-order-row"><label>提醒内容显示方式</label>
+            <select class="msg-order" id="sup-msg-order"><option value="fixed">固定显示</option><option value="random">随机显示</option><option value="sequence">顺序循环</option></select>
+          </div>
+        </div>
+        <div class="card">
+          <div class="sup-preview" id="sup-preview" data-stage="1">
+            <div class="sup-preview-fig">
+              <div class="sup-preview-trim" id="sup-preview-trim">
+                <!-- 镜像层：勾选「水平翻转」时整层 scaleX(-1)（与休息窗口同结构，见 break.html） -->
+                <div class="mirror"><img id="sup-preview-img" alt="立绘预览" /></div>
+              </div>
+            </div>
+            <div class="sup-preview-side">
+              <div class="sup-preview-badge hidden" id="sup-preview-badge"></div>
+              <div class="sup-preview-line" id="sup-preview-line">加载中…</div>
+            </div>
+          </div>
+          <!-- 「预览」按钮已收进角色磁贴的右键菜单（按菜单所属角色预览） -->
+          <!-- 立绘列表：所有角色（内置 + 自定义）都可改名、可禁用、可删除。
+               收进可折叠面板（默认展开、两行磁贴高，溢出出纵向滚动条，底部拖柄可拖调高度） -->
+          <div class="fold-panel gallery-panel open" id="sup-gallery-panel">
+            <div class="msg-head">
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span><span class="toggle-label">立绘列表（<span id="sup-gallery-count">0</span>）</span></button>
+            </div>
+            <div class="gallery-body" id="sup-gallery-body">
+              <div class="role-gallery" id="sup-gallery"></div>
+            </div>
+            <div class="gallery-resize" id="sup-gallery-resize" title="上下拖动调整列表高度，显示更多立绘"></div>
+          </div>
+          <!-- 尺寸与位置属进阶调节，折叠收起，默认不展开 -->
+          <details class="advanced" id="sup-advanced">
+            <summary>
+              <span class="adv-title">高级选项（<span id="sup-adv-role">—</span>）</span>
+              <span class="adv-summary" id="sup-geom-summary">—</span>
+            </summary>
+            <div class="adv-body">
+              <div class="subhead">显示</div>
+              <div class="row check"><label class="switch-row"><input type="checkbox" id="sup-flip" /> 水平翻转（左右镜像）</label></div>
+              <div class="subhead">尺寸与位置</div>
+              <div class="row field"><label>立绘高度 <span id="sup-size-val"></span></label><input type="range" id="sup-size" min="20" max="100" step="1" /></div>
+              <div class="row field"><label>距窗口左侧 <span id="sup-posx-val"></span></label><input type="range" id="sup-posx" min="0" max="30" step="1" /></div>
+              <div class="row field"><label>距窗口底边 <span id="sup-posy-val"></span></label><input type="range" id="sup-posy" min="0" max="40" step="1" /></div>
+              <div class="row inline">
+                <button class="btn ghost" id="sup-geom-reset">恢复默认尺寸与位置</button>
+              </div>
+            </div>
+          </details>
+          <!-- 提醒内容面板（第二段台词）：按当前立绘（含自定义图）分别保存，交互与提醒的提醒内容相同。
+               默认折叠，点开才显示列表；显示方式下拉已上移到「立绘显示方式」下方（#sup-msg-order） -->
+          <div class="msg-panel" data-kind="sup">
+            <div class="msg-head">
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span><span class="toggle-label">提醒内容（<span id="sup-msg-role">—</span>）</span></button>
+              <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+            </div>
+            <div class="msg-body hidden">
+              <div class="msg-list"></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 快捷键 -->
+      <section class="tab" id="tab-shortcuts">
+        <h2>快捷键</h2>
+        <div class="card">
+          <p class="hint">点击输入框后按下组合键即可录入；留空表示禁用。</p>
+          <div class="row field"><label>推迟当前休息</label><input type="text" class="shortcut" id="sc-postpone" readonly placeholder="点击后按键录入" /></div>
+          <div class="row field"><label>提前结束休息</label><input type="text" class="shortcut" id="sc-endEarly" readonly placeholder="点击后按键录入" /></div>
+          <div class="row field"><label>暂停 / 恢复休息</label><input type="text" class="shortcut" id="sc-pause" readonly placeholder="点击后按键录入" /></div>
+          <div class="row field"><label>跳转到下一次休息</label><input type="text" class="shortcut" id="sc-nextBreak" readonly placeholder="点击后按键录入" /></div>
+        </div>
+      </section>
+
+      <!-- 统计报表：全部卡片可折叠（样式与行为同时间规划页，状态记本地、默认展开） -->
+      <section class="tab" id="tab-stats">
+        <h2>统计报表</h2>
+        <div class="card foldable" id="stats-today-card">
+          <div class="card-head">
+            <span class="card-fold" aria-hidden="true">▾</span>
+            <h3>今天<span id="stats-date" class="hint"></span></h3>
+          </div>
+          <div id="stats-today" class="status-grid"></div>
+        </div>
+        <div class="card foldable" id="stats-break-card">
+          <div class="card-head">
+            <span class="card-fold" aria-hidden="true">▾</span>
+            <h3>休息报表</h3>
+          </div>
+          <div class="rest-chart" id="rest-chart">
+            <div class="rc-toolbar">
+              <div class="rc-units" id="rc-units" title="横轴粒度"></div>
+              <div class="rc-tools">
+                <button type="button" class="rc-tool" id="rc-empty-btn" title="显示没有数据的周期（补空位：轴标签保留、折线断开）">空周期</button>
+                <button type="button" class="rc-tool" id="rc-exp-csv" title="把当前统计表导出为 CSV 文件">导出CSV</button>
+                <button type="button" class="rc-tool" id="rc-exp-png" title="把图表保存为 PNG 图片">导出图片</button>
+              </div>
+              <div class="rc-range" id="rc-range"></div>
+            </div>
+            <div class="rc-badges" id="rc-badges"></div>
+            <div class="rc-plot" id="rc-plot"></div>
+            <div class="rc-legend" id="rc-legend"></div>
+          </div>
+          <div class="table-scroll rc-scroll"><table class="stats-table" id="rc-table"></table></div>
+        </div>
+        <div class="card foldable" id="stats-takeout-card">
+          <div class="card-head">
+            <span class="card-fold" aria-hidden="true">▾</span>
+            <h3>外卖报表</h3>
+          </div>
+          <div class="rest-chart" id="takeout-chart">
+            <div class="rc-toolbar">
+              <div class="rc-units" id="tk-units" title="横轴粒度"></div>
+              <div class="rc-tools">
+                <button type="button" class="rc-tool" id="tk-empty-btn" title="显示没有数据的周期（补空位：轴标签保留、折线断开）">空周期</button>
+                <button type="button" class="rc-tool" id="tk-exp-csv" title="把当前统计表导出为 CSV 文件">导出CSV</button>
+                <button type="button" class="rc-tool" id="tk-exp-png" title="把图表保存为 PNG 图片">导出图片</button>
+              </div>
+              <div class="rc-range" id="tk-range"></div>
+            </div>
+            <div class="rc-badges" id="tk-badges"></div>
+            <div class="rc-plot" id="tk-plot"></div>
+            <div class="rc-legend" id="tk-legend"></div>
+          </div>
+          <div class="table-scroll rc-scroll"><table class="stats-table" id="tk-table"></table></div>
+        </div>
+        <div class="card foldable" id="stats-custom-card">
+          <div class="card-head">
+            <span class="card-fold" aria-hidden="true">▾</span>
+            <h3>自定义提醒报表</h3>
+          </div>
+          <div class="rest-chart" id="custom-chart">
+            <div class="rc-toolbar">
+              <div class="rc-units" id="ck-units" title="横轴粒度"></div>
+              <div class="rc-tools">
+                <button type="button" class="rc-tool" id="ck-empty-btn" title="显示没有数据的周期（补空位：轴标签保留、折线断开）">空周期</button>
+                <button type="button" class="rc-tool" id="ck-exp-csv" title="把当前统计表导出为 CSV 文件">导出CSV</button>
+                <button type="button" class="rc-tool" id="ck-exp-png" title="把图表保存为 PNG 图片">导出图片</button>
+              </div>
+              <div class="rc-range" id="ck-range"></div>
+            </div>
+            <div class="rc-badges" id="ck-badges"></div>
+            <div class="rc-plot" id="ck-plot"></div>
+            <div class="rc-legend" id="ck-legend"></div>
+          </div>
+          <div class="table-scroll rc-scroll"><table class="stats-table" id="ck-table"></table></div>
+        </div>
+      </section>
+
+      <!-- 关于（外观（标题 / 主题）/ 数据与隐私 / 软件信息） -->
+      <section class="tab" id="tab-about">
+        <h2>关于</h2>
+        <div class="card">
+          <h3>外观</h3>
+          <div class="row field"><label>标题</label><input type="text" id="appName" maxlength="30" placeholder="打工人休息提醒" /></div>
+          <div class="row field"><label>主题</label>
+            <div class="inline">
+              <label class="switch-row"><input type="radio" name="theme" value="system" /> 跟随系统</label>
+              <label class="switch-row"><input type="radio" name="theme" value="light" /> 浅色</label>
+              <label class="switch-row"><input type="radio" name="theme" value="dark" /> 深色</label>
+            </div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>数据与隐私</h3>
+          <p class="hint">本软件无账户、无遥测，所有配置保存在本地 settings.json，使用统计数据保存在本地 stats.json。唯一会随外链发出的标识是安装 ID（用于优惠券二维码，见下）。</p>
+          <div class="btn-row">
+            <button class="btn ghost" id="d-export">导出全部配置</button>
+            <button class="btn ghost" id="d-import">导入配置</button>
+            <button class="btn ghost" id="d-openpath">打开配置文件位置</button>
+            <button class="btn ghost" id="d-clearstats">清空统计数据</button>
+          </div>
+          <div class="btn-row">
+            <button class="btn danger" id="d-reset">恢复默认设置</button>
+          </div>
+          <p class="hint">恢复默认设置会把当前配置先备份成 settings.backup.json（每次覆盖），然后重置全部选项；安装 ID 保留，虚拟角色目录与已导入的音乐文件不受影响。</p>
+        </div>
+        <div class="card">
+          <h3>软件信息</h3>
+          <p class="hint" id="d-version">打工人休息提醒 v— · Electron + TypeScript · 本地优先</p>
+          <p class="hint hidden" id="d-update-status"></p>
+          <div class="btn-row">
+            <button class="btn ghost" id="d-checkupdate">检查更新</button>
+            <button class="btn ghost hidden" id="d-update-go">前往下载</button>
+            <button class="btn ghost" id="d-manual">查看使用手册</button>
+          </div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="chk-update" /> 启动时检查更新（有新版才提示，失败不打扰）</label></div>
+          <p class="hint">开源与素材：基于 <a class="ext-link" href="#" data-url="https://github.com/electron/electron">Electron</a>、<a class="ext-link" href="#" data-url="https://www.typescriptlang.org/">TypeScript</a>、<a class="ext-link" href="#" data-url="https://github.com/soldair/node-qrcode">node-qrcode</a> 等开源组件构建（MIT 许可）；<a class="ext-link" href="#" data-url="https://github.com/lwb/worker-rest/blob/main/LICENSE">本软件同为 MIT 开源</a>。立绘均为 AI 生成的原创角色，不含第三方素材。</p>
+          <button class="btn danger" id="d-quit">退出软件</button>
+        </div>
+      </section>
+    </main>
+  </div>
+  <div id="toast" class="hidden"></div>
+  <div id="batch-modal" class="modal hidden">
+    <div class="modal-box">
+      <h3 id="batch-title">批量新增提醒内容</h3>
+      <textarea id="msg-batch-text" rows="8" placeholder="每行一条提醒内容，空行将被忽略"></textarea>
+      <div class="modal-actions">
+        <button class="btn ghost" id="msg-batch-cancel">取消</button>
+        <button class="btn" id="msg-batch-ok">添加</button>
+      </div>
+    </div>
+  </div>
+  <!-- 通用确认框：替代原生 confirm()，样式与设置页同源（删除等破坏性操作前询问） -->
+  <div id="confirm-modal" class="modal hidden">
+    <div class="modal-box cf-box" role="alertdialog" aria-modal="true" aria-labelledby="cf-title">
+      <div class="cf-head">
+        <span class="cf-icon" aria-hidden="true">!</span>
+        <div class="cf-titles">
+          <h3 id="cf-title">确认删除</h3>
+          <p id="cf-desc" class="cf-desc"></p>
+        </div>
+      </div>
+      <div id="cf-detail" class="cf-detail"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="cf-cancel">取消</button>
+        <button class="btn danger-solid" id="cf-ok">删除</button>
+      </div>
+    </div>
+  </div>
+  <!-- 命名输入框：导入自定义立绘时给立绘起角色名（替代原生 prompt） -->
+  <div id="prompt-modal" class="modal hidden">
+    <div class="modal-box cf-box" role="dialog" aria-modal="true" aria-labelledby="pm-title">
+      <div class="cf-head">
+        <span class="cf-icon prompt" aria-hidden="true">＋</span>
+        <div class="cf-titles">
+          <h3 id="pm-title">命名立绘</h3>
+          <p id="pm-desc" class="cf-desc"></p>
+        </div>
+      </div>
+      <div class="pm-row">
+        <!-- 输入框前的文字前缀：只有需要时（如新建自定义提醒）才由 promptDialog 填上并显示 -->
+        <label id="pm-label" class="pm-label hidden"></label>
+        <input type="text" id="pm-input" class="modal-input" maxlength="20" />
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="pm-cancel">取消</button>
+        <button class="btn" id="pm-ok">确定</button>
+      </div>
+    </div>
+  </div>
+  <!-- 从运行中的程序里挑选（多选）：与确认框 / 命名框同一套骨架 -->
+  <div id="app-pick-modal" class="modal hidden">
+    <div class="modal-box cf-box" role="dialog" aria-modal="true" aria-labelledby="app-pick-title">
+      <div class="cf-head">
+        <span class="cf-icon prompt" aria-hidden="true">＋</span>
+        <div class="cf-titles">
+          <h3 id="app-pick-title">从运行中的程序选择</h3>
+          <p id="app-pick-note" class="cf-desc"></p>
+        </div>
+      </div>
+      <input type="text" id="app-pick-filter" class="modal-input" placeholder="过滤：输入程序名关键字" />
+      <div id="app-pick-list" class="pk-list"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="app-pick-cancel">取消</button>
+        <button class="btn" id="app-pick-ok">添加</button>
+      </div>
+    </div>
+  </div>
+  <!-- 背景颜色选择器：自绘弹窗（12 个预设 + 饱和度/明度调色板 + 色相条 + 十六进制手输） -->
+  <!-- 预设与调色板都是「点了就生效」，不需要再确认：底部只留一个「完成」收窗 -->
+  <div id="color-modal" class="modal hidden">
+    <div class="modal-box color-box" role="dialog" aria-modal="true" aria-labelledby="color-title">
+      <div class="cf-head">
+        <span class="cf-icon accent" aria-hidden="true">◉</span>
+        <div class="cf-titles">
+          <h3 id="color-title">背景颜色</h3>
+          <p class="cf-desc">提醒窗口的背景色。直接挑选一个预设，或者用下面的调色板自己选，改完立即生效。</p>
+        </div>
+      </div>
+      <div class="cp-label">预设</div>
+      <div id="color-presets" class="cp-presets"></div>
+      <div class="cp-label">自定义</div>
+      <div id="cp-pad" class="cp-pad"><span id="cp-pad-thumb" class="cp-thumb"></span></div>
+      <div id="cp-hue" class="cp-hue"><span id="cp-hue-thumb" class="cp-thumb"></span></div>
+      <div class="cp-foot">
+        <span id="cp-preview" class="cp-preview" title="当前颜色"></span>
+        <input type="text" id="cp-hex" class="cp-hex" maxlength="7" spellcheck="false" placeholder="#4f7cff" />
+        <button type="button" class="btn ghost" id="cp-reset">恢复默认</button>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn" id="cp-done">完成</button>
+      </div>
+    </div>
+  </div>
+  <script src="./shim.js"></script>
+  <script src="./settings.js"></script>
+</body>
+</html>

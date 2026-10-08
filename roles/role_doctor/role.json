@@ -1,0 +1,42 @@
+{
+  "name": "值班医生",
+  "enabled": true,
+  "image": "figure.png",
+  "preview": "preview.png",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_doctor-0",
+        "text": "医嘱：立即停止用眼，起身活动五分钟。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_doctor-1",
+        "text": "你的视力和腰椎都在向我报警，听医生的。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_doctor-2",
+        "text": "别和处方讨价还价——去休息。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_doctor-3",
+        "text": "再盯下去，下次来挂号的还是你自己。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_doctor-4",
+        "text": "我在值班室看着呢，离开屏幕，执行。",
+        "enabled": true
+      }
+    ]
+  }
+}

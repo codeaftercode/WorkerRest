@@ -1,0 +1,42 @@
+{
+  "name": "冷面上司",
+  "enabled": true,
+  "image": "figure.png",
+  "preview": "preview.png",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_executive-0",
+        "text": "我不重复第二遍：放下手上的事。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_executive-1",
+        "text": "休息是硬性规定，没有商量的余地。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_executive-2",
+        "text": "你的状态已经开始拖累全局了，去休息。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_executive-3",
+        "text": "这是最后通牒：离开屏幕。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_executive-4",
+        "text": "我看得比你清楚——你已经撑不住了。",
+        "enabled": true
+      }
+    ]
+  }
+}

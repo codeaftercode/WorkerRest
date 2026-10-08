@@ -1,0 +1,42 @@
+{
+  "name": "温柔学姐",
+  "enabled": true,
+  "image": "figure.png",
+  "preview": "preview.png",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_mentor-0",
+        "text": "乖，先停一下好吗？屏幕又不会跑。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_mentor-1",
+        "text": "学姐看着呢，把眼睛闭上半分钟也好。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_mentor-2",
+        "text": "你答应过学到一半要休息的，别赖账呀。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_mentor-3",
+        "text": "再不离开屏幕，学姐可要生气了哦。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_mentor-4",
+        "text": "听学姐的话，站起来伸个懒腰，好不好？",
+        "enabled": true
+      }
+    ]
+  }
+}

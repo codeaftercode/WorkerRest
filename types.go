@@ -1,0 +1,89 @@
+package main
+
+// 会话与状态的数据结构：字段名/JSON 形状必须与现有渲染层（renderer/break.ts、
+// takeout.ts、supervisorStage.ts）期望的结构**逐字对齐**——渲染层代码原样复用，
+// 只把 window.api 的实现从 Electron IPC 换成 Wails 绑定（见 frontend/dist/shim.js）。
+
+// Appearance 提醒窗口外观（颜色 / 透明度 / 模糊 / 全屏）
+type Appearance struct {
+	Color        string  `json:"color"`
+	Transparency float64 `json:"transparency"`
+	Blur         bool    `json:"blur"`
+	Fullscreen   bool    `json:"fullscreen"`
+}
+
+// SupGeom 立绘尺寸与位置（占窗口百分比）
+type SupGeom struct {
+	SizePct float64 `json:"sizePct"`
+	PosXPct float64 `json:"posXPct"`
+	PosYPct float64 `json:"posYPct"`
+	Flip    bool    `json:"flip"`
+}
+
+// SupLines 虚拟角色（休息督导）两段台词
+type SupLines struct {
+	Urge    string `json:"urge"`
+	Command string `json:"command"`
+}
+
+// SupStageInfo 虚拟角色（休息督导）在提醒窗口里的出场信息。
+// 字段与 electron/src/supervisor.ts 的 SupervisorSessionInfo 逐字对齐 ——
+// 设置页的预览面板直接读它（supPreview.geom / supPreview.lines.urge / .command），
+// 少一个字段就是「Cannot read properties of undefined」把预览打断。
+type SupStageInfo struct {
+	Image    string   `json:"image"` // data URL
+	ImageKey string   `json:"imageKey,omitempty"`
+	Name     string   `json:"name,omitempty"`
+	Gaze     bool     `json:"gaze"`
+	Geom     *SupGeom `json:"geom,omitempty"`
+	Lines    SupLines `json:"lines"`
+}
+
+// BreakInfo 一次休息会话（渲染层 Info 的 Go 对应物）
+type BreakInfo struct {
+	ID         string        `json:"id"`
+	Type       string        `json:"type"` // short | long | 自定义 id
+	Name       string        `json:"name"`
+	EndsAt     int64         `json:"endsAt"`     // Unix 毫秒
+	DurationMs int64         `json:"durationMs"` // 本次休息总时长
+	Preview    bool          `json:"preview"`
+	Appearance Appearance    `json:"appearance"`
+	Messages   []string      `json:"messages"`
+	Supervisor *SupStageInfo `json:"supervisor"`
+}
+
+// TakeoutInfo 外卖提醒会话（与 electron/src/types.ts 的 TakeoutSessionInfo 逐字对齐）。
+// 渲染层 takeout.ts 读 id / at / hour / minute / firedAt / preview / meal / leadMin /
+// postponeMin / postponedCount / message / appearance / supervisor / redPacket / redPacketData；
+// slot 额外保留给主进程「推迟」记账（takeout:action 按 cur.slot 重弹），渲染层不读也无妨。
+type TakeoutInfo struct {
+	ID     string `json:"id"`
+	At     int64  `json:"at"` // 预定时刻（当天的 hour:minute，Unix 毫秒）
+	Hour   int    `json:"hour"`
+	Minute int    `json:"minute"`
+	// Slot 触发本次提醒的时间条目（点「推迟」后按同一条目重新弹出）
+	Slot TimeSlot `json:"slot"`
+	// FiredAt 本次弹出时间（Unix 毫秒）
+	FiredAt int64  `json:"firedAt"`
+	Preview bool   `json:"preview"`
+	Meal    string `json:"meal"` // 餐段文案：早餐 / 午餐 / 下午茶 / 晚餐 / 夜宵
+	// LeadMin 提前通知分钟数（生成会话时的配置快照）：>0 时窗口显示「还差几分钟」
+	LeadMin int `json:"leadMin"`
+	// PostponeMin 可推迟的分钟数（「推迟」按钮文案与主进程推迟时长共用）
+	PostponeMin int `json:"postponeMin"`
+	// PostponedCount 本次是第几次推迟：0=到点正常弹出，>0 显示「已推迟 N 次」
+	PostponedCount int `json:"postponedCount"`
+	// Message 本次展示的提醒内容（外卖提醒自己的那一套配置；空串窗口不显示）
+	Message    string        `json:"message"`
+	Appearance Appearance    `json:"appearance"`
+	Supervisor *SupStageInfo `json:"supervisor"`
+	// RedPacket 是否显示外卖优惠券（弹窗内展示红包二维码）
+	RedPacket bool `json:"redPacket"`
+	// RedPacketData 红包二维码指向的地址；开关关闭时为 nil（渲染层据此隐藏二维码）
+	RedPacketData *TakeoutRedPacket `json:"redPacketData"`
+}
+
+// TakeoutRedPacket 红包二维码地址（开关打开时指向本机专属领取地址）
+type TakeoutRedPacket struct {
+	URL string `json:"url"`
+}

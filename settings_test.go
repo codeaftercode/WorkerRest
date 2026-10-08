@@ -1,0 +1,262 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// 归一化的快速回归。
+//
+// 为什么还需要它（已经有 scripts/verify_settings_parity.py 与 Electron 对拍）：
+// 那个对拍要起 node + 无头服务，跑一轮十几秒；这里是纯函数、毫秒级，`go test` 顺手就跑了。
+// 两边分工：**这里拦住「规则写错了」**（老配置迁移、越界夹紧、种子条目），
+// **对拍拦住「与 Electron 不一致」**（包括这里没想到的规则）。
+// 真实的老配置样本见 verify_settings_parity.py 的 legacy_fixture / rich_fixture。
+
+func TestNormalizeLoadLegacyMigration(t *testing.T) {
+	raw := map[string]any{
+		"appName":        "  老  配置  ",
+		"screens":        "main", // 旧键：休息窗口显示位置
+		"idlePause":      true,   // 旧键：空闲暂停开关（功能已删）
+		"startMinimized": "yes",  // 非布尔
+		"short": map[string]any{
+			"mode":   "bogus",
+			"strict": true,
+			"slots": []any{
+				map[string]any{"hour": 99.0, "minute": 99.0, "repeat": "weekly", "days": []any{}},
+				map[string]any{"hour": -5.0, "minute": "30"},
+				"不是对象",
+			},
+		},
+		"appearance": map[string]any{"opacity": 0.92, "widthPct": 0.0},
+		"supervisor": map[string]any{"level": 3.0, "selection": "bogus"},
+		"sound": map[string]any{
+			"mode": "bogus", "shortStart": "old_start.wav", "longEnd": "old_end.wav",
+		},
+		"takeout":  map[string]any{"leadMin": 999.0, "postponeMin": 999.0},
+		"appPause": nil,
+		"workTime": map[string]any{"start": "09:00"},
+		"customBreaks": []any{
+			map[string]any{"id": "short", "name": "  喝水  ", "config": map[string]any{"durationMs": 0.0}},
+			map[string]any{"id": "standup"},
+			"不是对象",
+		},
+		"reminderMessages": map[string]any{
+			"short": map[string]any{"order": "bogus", "fixedId": "不存在", "items": []any{}},
+			"long":  map[string]any{"items": []any{map[string]any{"text": "没有 id"}}},
+		},
+	}
+	installIDCreated, presetSeeded := normalizeLoad(raw)
+	if !installIDCreated {
+		t.Fatal("老配置没有 installId，应当补生成")
+	}
+	if !presetSeeded {
+		t.Fatal("老配置没有 seeded 标记，应当种入预置条目")
+	}
+	if got := raw["installId"].(string); got == "" {
+		t.Fatal("installId 应已写入")
+	}
+
+	assertAbsent(t, raw, "screens", "idlePause", "workTime")
+
+	// 旧键 screens=main ⇒ allScreens=false；startMinimized 非布尔 ⇒ false
+	if raw["allScreens"] != false {
+		t.Errorf("screens=main 应迁移成 allScreens=false，得到 %v", raw["allScreens"])
+	}
+	if raw["startMinimized"] != false {
+		t.Errorf("非布尔的 startMinimized 应回退 false，得到 %v", raw["startMinimized"])
+	}
+
+	// appName 归一化**不发生在加载路径**（Electron 也不做），原样保留
+	if got := raw["appName"]; got != "  老  配置  " {
+		t.Errorf("加载路径不应改写 appName，得到 %q", got)
+	}
+
+	// short：mode 归一到 countdown、strict 清掉、时刻表夹紧
+	short := raw["short"].(map[string]any)
+	assertAbsent(t, short, "strict")
+	if short["mode"] != "countdown" {
+		t.Errorf("非法 mode 应回退 countdown，得到 %v", short["mode"])
+	}
+	slots := short["slots"].([]any)
+	if len(slots) != 2 {
+		t.Fatalf("非对象的时刻条目应被剔除，剩 %d 条", len(slots))
+	}
+	s0 := slots[0].(map[string]any)
+	if s0["hour"] != 23 || s0["minute"] != 59 {
+		t.Errorf("越界时刻应夹紧到 23:59，得到 %v:%v", s0["hour"], s0["minute"])
+	}
+	if days := s0["days"].([]any); len(days) != 5 {
+		t.Errorf("weekly 且没勾星期应补工作日（5 天），得到 %v", days)
+	}
+	s1 := slots[1].(map[string]any)
+	if s1["hour"] != 0 || s1["minute"] != 30 {
+		t.Errorf("负数小时应夹到 0、字符串分钟应解析成 30，得到 %v:%v", s1["hour"], s1["minute"])
+	}
+
+	// appearance：opacity 换算成 transparency（默认已有 transparency ⇒ 只删旧键）
+	ap := raw["appearance"].(map[string]any)
+	assertAbsent(t, ap, "opacity")
+
+	// supervisor：level 清掉、selection 归一到 fixed、gaze 恒 true
+	sup := raw["supervisor"].(map[string]any)
+	assertAbsent(t, sup, "level")
+	if sup["selection"] != "fixed" {
+		t.Errorf("非法 selection 应回退 fixed，得到 %v", sup["selection"])
+	}
+	if sup["gaze"] != true {
+		t.Errorf("视线跟随应恒为 true，得到 %v", sup["gaze"])
+	}
+
+	// sound：旧键合并进 sound 并删除；mode 归一；预置音乐种入
+	snd := raw["sound"].(map[string]any)
+	assertAbsent(t, snd, "shortStart", "longEnd")
+	if snd["mode"] != "single" {
+		t.Errorf("非法 mode 应回退 single，得到 %v", snd["mode"])
+	}
+	music := snd["music"].([]any)
+	if len(music) != len(builtinMusic) {
+		t.Errorf("应种入 %d 条内置提示音，得到 %d", len(builtinMusic), len(music))
+	}
+
+	// takeout：leadMin 0–120、postponeMin 1–120
+	tk := raw["takeout"].(map[string]any)
+	if tk["leadMin"] != float64(120) || tk["postponeMin"] != float64(120) {
+		t.Errorf("外卖分钟数应夹到 120，得到 %v / %v", tk["leadMin"], tk["postponeMin"])
+	}
+
+	// appPause：null ⇒ 空配置 + 种入 8 条内置会议软件
+	apz := raw["appPause"].(map[string]any)
+	if apz["seeded"] != true {
+		t.Error("appPause 应被种入并置 seeded=true")
+	}
+	if n := len(apz["items"].([]any)); n != len(appPausePresets) {
+		t.Errorf("应种入 %d 条内置应用，得到 %d", len(appPausePresets), n)
+	}
+
+	// customBreaks：非法条目剔除、id 补 cb- 前缀且不许占用内置身份、name 截 24
+	cbs := raw["customBreaks"].([]any)
+	if len(cbs) != 2 {
+		t.Fatalf("非对象条目应被剔除，剩 %d 条", len(cbs))
+	}
+	cb0 := cbs[0].(map[string]any)
+	if id := cb0["id"].(string); id == "short" || !hasPrefix(id, customBreakPrefix) {
+		t.Errorf("占用了内置身份的 id 应重新发号并带 %s 前缀，得到 %q", customBreakPrefix, id)
+	}
+	if cb0["name"] != "喝水" {
+		t.Errorf("名字应去首尾空白，得到 %q", cb0["name"])
+	}
+	if cb1 := cbs[1].(map[string]any); cb1["id"] != customBreakPrefix+"standup" {
+		t.Errorf("缺前缀的 id 应补 cb-，得到 %v", cb1["id"])
+	}
+	// config 缺字段时用出厂配置补齐
+	cfg0 := cb0["config"].(map[string]any)
+	if cfg0["intervalMs"] != float64(10*60_000) {
+		t.Errorf("自定义提醒的 config 应深合并出厂配置，intervalMs=%v", cfg0["intervalMs"])
+	}
+
+	// reminderMessages：order 归位、fixedId 失焦置空、预置条目种入
+	rm := raw["reminderMessages"].(map[string]any)
+	shortMsg := rm["short"].(map[string]any)
+	if shortMsg["order"] != "fixed" {
+		t.Errorf("非法 order 应回退 fixed，得到 %v", shortMsg["order"])
+	}
+	if shortMsg["fixedId"] != "" {
+		t.Errorf("fixedId 指不到真实条目应置空，得到 %v", shortMsg["fixedId"])
+	}
+	if n := len(shortMsg["items"].([]any)); n != len(builtinShortMessages) {
+		t.Errorf("空池应种入 %d 条预置提醒内容，得到 %d", len(builtinShortMessages), n)
+	}
+	longMsg := rm["long"].(map[string]any)
+	if n := len(longMsg["items"].([]any)); n != 1 {
+		t.Errorf("已有升级带来的条目时应只置 seeded、不再种入，得到 %d 条", n)
+	}
+}
+
+func TestNormalizeLoadIsIdempotent(t *testing.T) {
+	// 连跑两次归一化必须收敛：第二次不应再有任何变化（否则每次启动都会回写配置）
+	raw := defaultSettingsMap()
+	normalizeLoad(raw)
+	first, _ := json.Marshal(raw)
+
+	again := defaultSettingsMap()
+	normalizeLoad(again)
+	// 用第一轮的结果当输入再跑一遍
+	var feed map[string]any
+	if err := json.Unmarshal(first, &feed); err != nil {
+		t.Fatal(err)
+	}
+	installIDCreated, presetSeeded := normalizeLoad(feed)
+	if installIDCreated || presetSeeded {
+		t.Error("已归一化的配置再跑一次不该再补 installId / 种条目")
+	}
+	second, _ := json.Marshal(feed)
+	if string(first) != string(second) {
+		t.Errorf("归一化不收敛（第二次仍改动了配置）\n第一次: %s\n第二次: %s", first, second)
+	}
+}
+
+func TestDeepMergeReplacesArrays(t *testing.T) {
+	// 数组整体替换、不逐项合并：用户删掉的条目不能被默认值补回来
+	base := map[string]any{"items": []any{1.0, 2.0, 3.0}, "keep": "x"}
+	over := map[string]any{"items": []any{}}
+	got := deepMerge(base, over).(map[string]any)
+	if n := len(got["items"].([]any)); n != 0 {
+		t.Errorf("数组应整体替换成空，得到 %d 项", n)
+	}
+	if got["keep"] != "x" {
+		t.Error("未覆盖的键应保留")
+	}
+	// over 不是普通对象时原样返回（含 nil）
+	if v := deepMerge(base, nil); v != nil {
+		t.Errorf("over 为 nil 应原样返回 nil，得到 %v", v)
+	}
+}
+
+// TestSaveFirstRunPortableFirst 首次运行（无来源配置）Save 时，落点必须是便携优先候选
+// （<运行目录>/config/settings.json），而不是 APPDATA 兜底。这是便携目录「数据跟着程序走」
+// 的关键 —— 若落到 APPDATA，解压到别处的便携目录会各写各的、互不认账。
+func TestSaveFirstRunPortableFirst(t *testing.T) {
+	root := t.TempDir()
+	resourcesRootHintFn = func() string { return root }
+	defer func() { resourcesRootHintFn = nil }()
+
+	// 隔离环境变量：不能让它读到用户真实的 APPDATA / WR_SETTINGS_PATH
+	oldAppdata := os.Getenv("APPDATA")
+	oldWrPath := os.Getenv("WR_SETTINGS_PATH")
+	os.Setenv("APPDATA", filepath.Join(root, "roaming"))
+	os.Unsetenv("WR_SETTINGS_PATH")
+	defer func() {
+		os.Setenv("APPDATA", oldAppdata)
+		if oldWrPath != "" {
+			os.Setenv("WR_SETTINGS_PATH", oldWrPath)
+		}
+	}()
+
+	s := &Settings{raw: map[string]any{"installId": "x"}, path: ""}
+	if err := s.Save(); err != nil {
+		t.Fatalf("Save 失败：%v", err)
+	}
+	want := filepath.Join(root, "config", "settings.json")
+	if s.path != want {
+		t.Fatalf("首次落点 = %q，应为便携优先 %q", s.path, want)
+	}
+	if _, err := os.Stat(want); err != nil {
+		t.Fatalf("便携落点文件没写出来：%v", err)
+	}
+}
+
+func assertAbsent(t *testing.T, m map[string]any, keys ...string) {
+	t.Helper()
+	for _, k := range keys {
+		if _, ok := m[k]; ok {
+			t.Errorf("旧键 %q 应被清理，实际还在：%v", k, m[k])
+		}
+	}
+}
+
+func hasPrefix(s, p string) bool {
+	return len(s) >= len(p) && s[:len(p)] == p
+}

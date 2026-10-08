@@ -1,0 +1,320 @@
+package main
+
+import (
+	"encoding/base64"
+	"encoding/json"
+	"math/rand"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+)
+
+// 角色目录读取：语义与 electron/src/supervisor.ts 的 role.json 完全对齐——
+// 一个角色 = roles/<key>/ 一个子目录，内含 role.json + 立绘 + 预览图。
+// 用户在该目录里增删子目录即增删角色，重启即生效（本阶段先做到「扫描 + 读取」，
+// 增删改留到设置页迁移那一阶段）。
+
+// RoleMessageItem 一条台词（命令阶段），id 沿用内置前缀规则
+type RoleMessageItem struct {
+	ID      string `json:"id"`
+	Text    string `json:"text"`
+	Enabled bool   `json:"enabled"`
+}
+
+// RoleMessages 角色的命令台词池（order: random | sequence | fixed）
+type RoleMessages struct {
+	Order   string            `json:"order"`
+	FixedID string            `json:"fixedId,omitempty"`
+	Items   []RoleMessageItem `json:"items"`
+}
+
+// RoleFile role.json 的磁盘结构（字段名与 Electron 版逐字一致，两侧可互相识别）
+type RoleFile struct {
+	Name     string       `json:"name"`
+	Enabled  bool         `json:"enabled"`
+	Image    string       `json:"image"`
+	Preview  string       `json:"preview,omitempty"`
+	Geom     SupGeom      `json:"geom"`
+	Messages RoleMessages `json:"messages"`
+}
+
+// builtinRoleMeta 内置角色的固定顺序与兜底名字（与 electron/src/supervisor.ts 的
+// BUILTIN_ROLE_META 逐字一致）。顺序**不是**按目录名排的 —— 它就是「立绘库磁贴」与
+// 「顺序轮换」的出场次序，改成字典序会让内置角色的出场顺序与 Electron 版不同。
+var builtinRoleMeta = []struct{ key, name string }{
+	{"supervisor_default", "眼镜主管"},
+	{"role_instructor", "魔鬼教官"},
+	{"role_executive", "冷面上司"},
+	{"role_mentor", "温柔学姐"},
+	{"role_doctor", "值班医生"},
+	{"role_coach", "体能教练"},
+	{"role_warden", "宿管大爷"},
+	{"role_shopkeeper", "古风掌柜"},
+	{"role_ai", "赛博监考官"},
+}
+
+// roleFallbackName role.json 里没写 name 时的兜底名
+func roleFallbackName(key string) string {
+	for _, m := range builtinRoleMeta {
+		if m.key == key {
+			return m.name
+		}
+	}
+	return "自定义角色"
+}
+
+// isImageName 图片文件名合法性（与 supervisor.ts 的 isImageName 同口径）：
+// 只要名字合法就先用着，文件在不在由调用方另外判断——「名字非法」与「文件缺失」
+// 是两件事，Electron 用前者决定要不要回落到 figure.png。
+func isImageName(name string) bool {
+	if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") {
+		return false
+	}
+	_, ok := imageExtMIME[strings.ToLower(filepath.Ext(name))]
+	return ok
+}
+
+// normalizeRoleMessages 归一化 role.json 的台词池（对应 supervisor.ts 的
+// normalizeRoleFile 里的 messages 部分）：order 只认三个合法值（缺省 fixed）、
+// 逐条补 id、enabled 只认非 false。
+func normalizeRoleMessages(m map[string]any) RoleMessages {
+	out := RoleMessages{Order: "fixed", Items: []RoleMessageItem{}}
+	if s, ok := m["order"].(string); ok {
+		switch s {
+		case "fixed", "random", "sequence":
+			out.Order = s
+		}
+	}
+	if s, ok := m["fixedId"].(string); ok {
+		out.FixedID = s
+	}
+	for _, it := range anySlice(m["items"]) {
+		mm, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		text, ok := mm["text"].(string)
+		if !ok {
+			continue
+		}
+		id := ""
+		if s, ok := mm["id"].(string); ok && s != "" {
+			id = s
+		}
+		if id == "" {
+			id = newUUID()
+		}
+		out.Items = append(out.Items, RoleMessageItem{ID: id, Text: text, Enabled: mm["enabled"] != false})
+	}
+	return out
+}
+
+// normalizeRoleFile 把 role.json 的原始 map 归一化（对应 supervisor.ts 的
+// normalizeRoleFile）。**必须从原始 map 取 geom**，不能从反序列化后的结构体取：
+// 结构体里「字段缺失」与「显式 0」长得一样，而 0 对 sizePct 是非法值（会被夹成 20%）、
+// 对 posXPct/posYPct 却合法 —— 混了就会把「没写过 geom」的角色算成缩到 20%。
+func normalizeRoleFile(raw map[string]any) RoleFile {
+	name := strings.TrimSpace(jsStr(raw["name"]))
+	out := RoleFile{
+		Name:     name,
+		Enabled:  raw["enabled"] != false,
+		Image:    "figure.png",
+		Geom:     normalizeSupGeom(asMap(raw["geom"])),
+		Messages: normalizeRoleMessages(asMap(raw["messages"])),
+	}
+	if s, ok := raw["image"].(string); ok && isImageName(s) {
+		out.Image = s
+	}
+	if s, ok := raw["preview"].(string); ok && isImageName(s) {
+		out.Preview = s
+	}
+	return out
+}
+
+// asMap 取子对象；缺失 / 类型不符给空 map
+func asMap(v any) map[string]any {
+	if m, ok := v.(map[string]any); ok {
+		return m
+	}
+	return map[string]any{}
+}
+
+// Role 扫描结果 = electron/src/supervisor.ts 里 listRoleViews() 的输出
+// （{key, thumb, ...cfg}），字段名逐字对齐 —— 设置页直接读这些字段：
+//   - thumb    → 立绘库磁贴的缩略图（data URL），少了它就是一片碎图；
+//   - geom     → 尺寸/位置滑条的当前值；
+//   - messages → 「提醒内容」面板的条目（见 settings.js 的 msgCfgOf），
+//     少了下发面板会永远显示「暂无提醒内容」。
+type Role struct {
+	Key      string       `json:"key"`
+	Thumb    string       `json:"thumb"`
+	Name     string       `json:"name"`
+	Enabled  bool         `json:"enabled"`
+	Image    string       `json:"image"`
+	Preview  string       `json:"preview,omitempty"`
+	Geom     SupGeom      `json:"geom"`
+	Messages RoleMessages `json:"messages"`
+	// FigurePath 立绘绝对路径，只给 Go 侧用（组装会话时读图）
+	FigurePath string `json:"-"`
+}
+
+// 内置劝说台词库：第一段台词的兜底（正常情况下第一段说的就是提醒配置的提醒内容，
+// 只有提醒内容为空时才会用到它）。与 electron/src/supervisor.ts 的 URGE_LINES 同源。
+var urgeLines = []string{
+	"休息时间到了，先把视线从屏幕上移开。",
+	"我在看着你呢——去休息吧。",
+	"这几分钟不属于屏幕，站起来活动一下。",
+	"眼睛累了不会喊疼，但我知道它在抗议。",
+	"肩膀有点僵了吧？离开椅子两分钟就好。",
+	"我不催你，只是提醒你：该歇会儿了。",
+}
+
+var imageExtMIME = map[string]string{
+	".png":  "image/png",
+	".jpg":  "image/jpeg",
+	".jpeg": "image/jpeg",
+	".webp": "image/webp",
+	".gif":  "image/gif",
+}
+
+// validRoleKey 目录名合法性：与 Electron 版 isValidRoleKey 同口径
+// （拒绝空、隐藏目录、路径分隔符与 .. —— 角色 key 会拼进文件路径）
+func validRoleKey(key string) bool {
+	if key == "" || len(key) > 128 {
+		return false
+	}
+	if strings.HasPrefix(key, ".") {
+		return false
+	}
+	if strings.ContainsAny(key, `/\:*?"<>|`) || key == ".." {
+		return false
+	}
+	return true
+}
+
+// scanRoles 扫描角色目录。读不到 role.json 的子目录跳过（可能正在写入）；
+// 立绘缺失的角色**仍然列出**（figurePath 为空）——与 Electron 版一致：要被设置页看到
+// 才能改名 / 删除 / 换图，不能凭空消失。
+//
+// 顺序：内置角色按 BUILTIN_ROLE_META 的清单顺序在前，其余（自定义 / 用户手放）按目录名
+// 跟在后面。这个顺序就是立绘库磁贴与「顺序轮换」的出场次序。
+func scanRoles(root string) []Role {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	byKey := make(map[string]Role, len(entries))
+	dirKeys := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() || !validRoleKey(e.Name()) {
+			continue
+		}
+		key := e.Name()
+		dir := filepath.Join(root, key)
+		raw, err := os.ReadFile(filepath.Join(dir, "role.json"))
+		if err != nil {
+			continue
+		}
+		var rawMap map[string]any
+		if err := json.Unmarshal(raw, &rawMap); err != nil {
+			continue
+		}
+		cfg := normalizeRoleFile(rawMap)
+		if cfg.Name == "" {
+			cfg.Name = roleFallbackName(key)
+		}
+		r := Role{
+			Key:      key,
+			Name:     cfg.Name,
+			Enabled:  cfg.Enabled,
+			Image:    cfg.Image,
+			Preview:  cfg.Preview,
+			Geom:     cfg.Geom,
+			Messages: cfg.Messages,
+		}
+		if p := filepath.Join(dir, cfg.Image); isRegularFile(p) {
+			r.FigurePath = p
+		}
+		prevName := cfg.Preview
+		if prevName == "" {
+			prevName = "preview.png"
+		}
+		if p := filepath.Join(dir, prevName); isRegularFile(p) {
+			r.Thumb = toDataURL(p)
+		}
+		byKey[key] = r
+		dirKeys = append(dirKeys, key)
+	}
+	sort.Strings(dirKeys)
+	out := make([]Role, 0, len(byKey))
+	used := make(map[string]bool, len(byKey))
+	for _, m := range builtinRoleMeta {
+		if r, ok := byKey[m.key]; ok {
+			out = append(out, r)
+			used[m.key] = true
+		}
+	}
+	for _, k := range dirKeys {
+		if !used[k] {
+			out = append(out, byKey[k])
+		}
+	}
+	return out
+}
+
+// isRegularFile 路径存在且是普通文件
+func isRegularFile(p string) bool {
+	st, err := os.Stat(p)
+	return err == nil && st.Mode().IsRegular()
+}
+
+// toDataURL 读图并转 data URL（渲染层 <img src> 直接用，省一次 HTTP 往返）
+func toDataURL(file string) string {
+	b, err := os.ReadFile(file)
+	if err != nil {
+		return ""
+	}
+	mime, ok := imageExtMIME[strings.ToLower(filepath.Ext(file))]
+	if !ok {
+		mime = "image/png"
+	}
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(b)
+}
+
+// pickRoleLine 从角色的台词池里选 1 条（与 Electron 版 pickRoleLine 同规则）：
+// fixed 取指定条目（与启停无关）；sequence 在启用条目间轮换（游标按角色记忆）；
+// random 等概率抽启用条目。取不到返回空串——由渲染层沿用第一段台词。
+func pickRoleLine(cfg RoleMessages, key string, seq map[string]int, rng *rand.Rand) string {
+	if cfg.Order == "fixed" {
+		for _, it := range cfg.Items {
+			if it.ID == cfg.FixedID {
+				return it.Text
+			}
+		}
+		return ""
+	}
+	pool := make([]RoleMessageItem, 0, len(cfg.Items))
+	for _, it := range cfg.Items {
+		if it.Enabled {
+			pool = append(pool, it)
+		}
+	}
+	if len(pool) == 0 {
+		return ""
+	}
+	if cfg.Order == "sequence" {
+		cur := seq[key] % len(pool)
+		seq[key] = (cur + 1) % len(pool)
+		return pool[cur].Text
+	}
+	return pool[rng.Intn(len(pool))].Text
+}
+
+// pickOne 等概率取一条（掷骰子交给调用方持有的 rng，便于测试时固定种子）
+func pickOne(lines []string, rng *rand.Rand) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	return lines[rng.Intn(len(lines))]
+}

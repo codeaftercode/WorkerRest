@@ -1,0 +1,42 @@
+{
+  "name": "体能教练",
+  "enabled": true,
+  "image": "figure.png",
+  "preview": "preview.png",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_coach-0",
+        "text": "计划上写着呢：屏幕时间到，人给我离场！",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_coach-1",
+        "text": "别让我吹哨子——走，离开椅子！",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_coach-2",
+        "text": "你的肌肉比你诚实，它们早想站起来了。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_coach-3",
+        "text": "键盘练不出腹肌！起来，活动开！",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_coach-4",
+        "text": "最后一组也不许做——先去喝水走两步！",
+        "enabled": true
+      }
+    ]
+  }
+}

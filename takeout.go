@@ -1,0 +1,602 @@
+package main
+
+import (
+	"log"
+	"sync"
+	"time"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
+)
+
+// 外卖提醒：按固定时刻弹出（不做倒计时），显示逻辑与休息窗口一致（同一套外观配置、
+// 多屏策略、透明与圆角），区别只在内容。对应 electron/main.ts 的「外卖提醒」段 +
+// electron/src/windows/takeoutWindow.ts + raise.ts + displays.ts + reminderSync.ts。
+//
+// 与 Electron 版的两处**有意差异**（见 README「已知差异」）：
+//   ① z-order：Electron 用 moveTop() 在同层（screen-saver）内「谁后抬谁在上」把外卖压到
+//      休息窗口之上；Wails v3 没有暴露 z-order 抬升 API，这里降级成 SetAlwaysOnTop(true) +
+//      Focus() 近似（抬升簿记 raiseState 仍保留，供诊断 / 冒烟断言）。
+//   ② 系统级键鼠轮询：Electron 有 powerMonitor.getSystemIdleTime() 可降级秒级；Go 侧只有
+//      user32!GetLastInputInfo 一个来源，读不到 tick 时整段不启动（不假装有活动）。
+
+const (
+	// takeoutWindowBaseName 外卖窗口在 wins 里不按名存（多窗口），这里只作日志 / 诊断名
+	takeoutWindowBaseName = "takeout"
+	// raiseIntervalMs 抬升循环间隔：足够密集以压过异步显示的休息窗口，又不至于视觉抖动
+	raiseIntervalMs = 700
+	// takeoutPostponeGraceMs 推迟计划有效期：到点后若一直暂停 / 睡眠，超过此宽限即作废
+	takeoutPostponeGraceMs = 5 * 60_000
+)
+
+// ---------- 抬升簿记（对应 windows/raise.ts） ----------
+
+// raiseKind 抬升方：休息窗口或外卖窗口
+type raiseKind string
+
+const (
+	raiseKindBreak   raiseKind = "break"
+	raiseKindTakeout raiseKind = "takeout"
+)
+
+// raiseState 窗口层级簿记。休息窗口与外卖窗口都要求置顶（Windows 上是 topmost 层级）。
+// 记录抬升顺序与「休息窗口是否在场」，给诊断与冒烟自检一个可断言的状态。
+type raiseState struct {
+	mu      sync.Mutex
+	last    raiseKind
+	seq     []raiseKind
+	breakOn bool
+}
+
+func (r *raiseState) noteRaised(k raiseKind) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.last = k
+	r.seq = append(r.seq, k)
+	if len(r.seq) > 40 {
+		r.seq = r.seq[len(r.seq)-40:]
+	}
+}
+
+func (r *raiseState) lastRaised() raiseKind {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.last
+}
+
+func (r *raiseState) raiseSequence() []raiseKind {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]raiseKind, len(r.seq))
+	copy(out, r.seq)
+	return out
+}
+
+func (r *raiseState) setBreaksActive(v bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.breakOn = v
+}
+
+func (r *raiseState) anyBreakActive() bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.breakOn
+}
+
+// ---------- 会话构建 ----------
+
+// buildTakeoutInfo 组装一次外卖会话（对应 takeoutWindow.ts 的 showTakeoutWindows 里
+// 那个 TakeoutSessionInfo）。会话与「弹窗」分开：渲染层随后会自己再拉一次 TakeoutCurrent。
+func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) *TakeoutInfo {
+	cfg := a.cfgSnapshot()
+	now := time.Now()
+	at := time.Date(now.Year(), now.Month(), now.Day(), slot.Hour, slot.Minute, 0, 0, now.Location())
+	// 红包二维码指向本机专属领取地址：installId 是每台设备一枚的 UUID，
+	// 服务端（nav.hcctc.cn）按 id 区分来源。开关关闭时不带地址。
+	var redData *TakeoutRedPacket
+	if cfg.TakeoutRedPacket() {
+		redData = &TakeoutRedPacket{URL: "https://nav.hcctc.cn/api/cps/id=" + cfg.Str("", "installId")}
+	}
+	info := &TakeoutInfo{
+		ID:             takeoutID(),
+		At:             at.UnixMilli(),
+		Hour:           slot.Hour,
+		Minute:         slot.Minute,
+		Slot:           slot,
+		FiredAt:        now.UnixMilli(),
+		Preview:        preview,
+		Meal:           takeoutMealLabel(slot.Hour),
+		LeadMin:        cfg.TakeoutLeadMin(),
+		PostponeMin:    cfg.TakeoutPostponeMin(),
+		PostponedCount: postponedCount,
+		Appearance:     cfg.AppearanceView(),
+		RedPacket:      cfg.TakeoutRedPacket(),
+		RedPacketData:  redData,
+	}
+	// 外卖提醒自己的提醒内容：每次弹窗选 1 条；一条启用的都没有时用提醒名「外卖提醒」
+	// 兜底（窗口里「本该显示提醒内容的位置」不空着）。pickMessage 返回的切片第 0 条即内容。
+	if msgs := a.pickMessage("takeout", TAKEOUT_NAME); len(msgs) > 0 {
+		info.Message = msgs[0]
+	}
+	// 虚拟角色：与休息窗口同一条构建路径；外卖窗口的角色第一段台词 = 本提醒的提醒内容。
+	// 第二阶段**不换台词**：命令台词清空，渲染层 applyStage 的 `command || stage1` 沿用第一段。
+	if sup := a.buildSupervisorSession(preview, ""); sup != nil {
+		sup.Lines.Command = ""
+		info.Supervisor = sup
+	}
+	return info
+}
+
+// takeoutID 生成本次外卖会话 id（对应 Electron 的 `${Date.now()}-${random36}`；Go 侧用 UUID 同样唯一）
+func takeoutID() string {
+	return newUUID()
+}
+
+// ---------- 触发与推迟（对应 main.ts 的 checkTakeoutReminders） ----------
+
+// fireTakeout 弹出一次外卖提醒（固定时刻线、推迟线两条触发路径共用）
+func (a *App) fireTakeout(slot TimeSlot, postponedCount int) {
+	log.Printf("[takeout] 触发提醒 %02d:%02d lead=%d分 postponed=%d次",
+		slot.Hour, slot.Minute, a.cfgSnapshot().TakeoutLeadMin(), postponedCount)
+	a.showTakeoutWindows(slot, false, postponedCount)
+	a.playConfiguredSound()
+}
+
+// checkTakeoutReminders 外卖提醒检查：与休息调度不同，这里不累加时间，而是「到某一时刻
+// 就触发」。每秒跑一次（按分钟匹配），因此就算某次 tick 被阻塞也不会漏掉整分钟的窗口。
+// 暂停提醒期间不弹，恢复后也不补弹——时刻已经过去，补弹只是打扰。
+//
+// 两条触发线，谁先到谁弹：
+//
+//	① 推迟线：用户刚点了「推迟」，到点就重新弹一次
+//	② 固定时刻线：到条目时刻（再减去「提前通知」的分钟数）就弹
+func (a *App) checkTakeoutReminders() {
+	cfg := a.cfgSnapshot()
+	if !cfg.TakeoutEnabled() {
+		a.mu.Lock()
+		a.takeoutPostponed = nil
+		a.mu.Unlock()
+		return
+	}
+	// 推迟计划过期即作废（只在暂停 / 休眠期间才可能发生）
+	a.mu.Lock()
+	pp := a.takeoutPostponed
+	if pp != nil && nowMs() > pp.DueAt+takeoutPostponeGraceMs {
+		log.Printf("[takeout] 推迟计划已过期，作废")
+		a.takeoutPostponed = nil
+		pp = nil
+	}
+	a.mu.Unlock()
+	if a.sched != nil && a.sched.isPaused() {
+		return
+	}
+	if pp != nil && nowMs() >= pp.DueAt {
+		a.mu.Lock()
+		a.takeoutPostponed = nil
+		a.mu.Unlock()
+		a.fireTakeout(pp.Slot, pp.Count)
+		return
+	}
+	leadMs := int64(cfg.TakeoutLeadMin()) * 60_000
+	// findDueTimeSlots 会往 fired 里写新触发的键，所以必须拿 a.takeoutFired 本身（加锁），
+	// 不能拿快照——否则去重键写不回去，同一分钟内的多次 tick 会重复弹窗。
+	a.mu.Lock()
+	due := findDueTimeSlots(cfg.TakeoutSlots(), nowMs(), a.takeoutFired, leadMs)
+	a.mu.Unlock()
+	for _, slot := range due {
+		a.fireTakeout(slot, 0)
+	}
+}
+
+// startTakeoutWatcher 启动外卖每秒检查（对应 Electron 的 startTakeoutWatcher）
+func (a *App) startTakeoutWatcher() {
+	a.takeoutStop = make(chan struct{})
+	ch := a.takeoutStop
+	go func() {
+		t := time.NewTicker(time.Second)
+		defer t.Stop()
+		for {
+			select {
+			case <-ch:
+				return
+			case <-t.C:
+				a.checkTakeoutReminders()
+			}
+		}
+	}()
+}
+
+// stopTakeoutWatcher 停止外卖检查（退出清理）
+func (a *App) stopTakeoutWatcher() {
+	a.mu.Lock()
+	ch := a.takeoutStop
+	a.takeoutStop = nil
+	a.mu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+}
+
+// ---------- 窗口（对应 takeoutWindow.ts + displays.ts） ----------
+
+// targetDisplays 按「在所有屏幕显示提醒窗口」开关选出要显示的显示器（休息窗口与外卖
+// 窗口共用同一策略）。取消勾选 ⇒ 只在当前活动的屏幕（光标所在屏）上显示。
+func (a *App) targetDisplays() []*application.Screen {
+	cfg := a.cfgSnapshot()
+	all := a.app.Screen.GetAll()
+	if len(all) == 0 {
+		return nil
+	}
+	if cfg.AllScreens() {
+		return all
+	}
+	// 光标所在屏：Wails v3 没有 getCursorScreenPoint 的等价物，用主屏兜底
+	if sc := a.app.Screen.GetPrimary(); sc != nil {
+		return []*application.Screen{sc}
+	}
+	return all[:1]
+}
+
+// showTakeoutWindows 弹出外卖提醒窗口（每个目标屏各一个）。无头（server 模式）下不建窗，
+// 但会话照常构建，于是无头冒烟能验证「触发 → 会话 JSON → 动作记账」整条链路。
+func (a *App) showTakeoutWindows(slot TimeSlot, preview bool, postponedCount int) {
+	info := a.buildTakeoutInfo(slot, preview, postponedCount)
+	a.mu.Lock()
+	a.takeoutCurrent = info
+	a.mu.Unlock()
+
+	if serverMode || a.app == nil {
+		if serverMode {
+			log.Printf("[takeout] server 模式无原生窗口，跳过创建（会话已就绪 %s）", info.Meal)
+		}
+		return
+	}
+
+	cfg := a.cfgSnapshot()
+	ap := cfg.AppearanceCfg()
+	displays := a.targetDisplays()
+	var wins []*application.WebviewWindow
+	for _, display := range displays {
+		wa := display.WorkArea
+		w := int(float64(wa.Width) * ap.WidthPct / 100)
+		h := int(float64(wa.Height) * ap.HeightPct / 100)
+		if w < 320 {
+			w = 320
+		}
+		if h < 240 {
+			h = 240
+		}
+		x, y := wa.X, wa.Y
+		if !ap.Fullscreen {
+			x = wa.X + (wa.Width-w)/2
+			y = wa.Y + (wa.Height-h)/2
+		}
+		win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
+			Title:            "外卖提醒",
+			X:                x,
+			Y:                y,
+			Width:            w,
+			Height:           h,
+			Frameless:        true,
+			AlwaysOnTop:      ap.AlwaysOnTop,
+			DisableResize:    true,
+			URL:              "/takeout.html",
+			BackgroundType:   application.BackgroundTypeTranslucent,
+			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+			JS:               `window.__WR_WIN = "takeout";`,
+			Windows: application.WindowsWindow{
+				DisableFramelessWindowDecorations: true,
+				HiddenOnTaskbar:                   true,
+			},
+		})
+		// 窗口被系统 / 用户直接关掉（Alt+F4）时清掉引用
+		win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			a.removeTakeoutWindow(win)
+		})
+		wins = append(wins, win)
+	}
+	a.mu.Lock()
+	a.takeoutWins = wins
+	a.mu.Unlock()
+
+	// 抬升：降级成置顶 + 聚焦（见文件头注释）。用户点「知道了」类路径不经过这里。
+	if ap.AlwaysOnTop {
+		for _, w := range wins {
+			w.SetAlwaysOnTop(true)
+		}
+	}
+	if len(wins) > 0 {
+		wins[0].Focus()
+	}
+	a.raise.noteRaised(raiseKindTakeout)
+	// 抬升循环：在场期间每 raiseIntervalMs 抬一次（只在有休息窗口时），
+	// 把随后显示的休息窗口压回下面。
+	a.startRaiseLoop()
+	// 系统级键鼠活动轮询：广播给所有提醒窗口（见 reminderSync 段）
+	a.ensureSupActivityWatch()
+}
+
+func (a *App) removeTakeoutWindow(w *application.WebviewWindow) {
+	a.mu.Lock()
+	ws := a.takeoutWins
+	for i, x := range ws {
+		if x == w {
+			a.takeoutWins = append(ws[:i], ws[i+1:]...)
+			break
+		}
+	}
+	live := len(a.takeoutWins) > 0
+	a.mu.Unlock()
+	if !live {
+		a.resetTakeoutState()
+	}
+}
+
+// closeTakeoutWindows 关掉全部外卖窗口并清会话
+func (a *App) closeTakeoutWindows() {
+	a.mu.Lock()
+	ws := a.takeoutWins
+	a.takeoutWins = nil
+	a.takeoutCurrent = nil
+	a.mu.Unlock()
+	for _, w := range ws {
+		w.Close()
+	}
+	a.resetTakeoutState()
+}
+
+// resetTakeoutState 会话 / 定时器状态复位（收窗与「最后一个窗口被关闭」两条路径共用）
+func (a *App) resetTakeoutState() {
+	a.stopRaiseLoop()
+	a.releaseSupActivityWatch()
+}
+
+// hasTakeoutWindows 是否有外卖窗口在场（含「刚建还没 show」的）
+func (a *App) hasTakeoutWindows() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.takeoutWins) > 0
+}
+
+// raiseTakeoutWindows 把外卖窗口抬到休息窗口之上：降级为置顶 + 聚焦（见文件头注释）
+func (a *App) raiseTakeoutWindows() {
+	a.mu.Lock()
+	ws := append([]*application.WebviewWindow(nil), a.takeoutWins...)
+	cur := a.takeoutCurrent
+	a.mu.Unlock()
+	raised := false
+	for _, w := range ws {
+		if cur != nil && cur.Appearance.Fullscreen {
+			continue
+		}
+		w.SetAlwaysOnTop(true)
+		w.Focus()
+		raised = true
+	}
+	if raised {
+		a.raise.noteRaised(raiseKindTakeout)
+	}
+}
+
+func (a *App) startRaiseLoop() {
+	a.mu.Lock()
+	if a.takeoutRaiseStop != nil {
+		a.mu.Unlock()
+		return
+	}
+	ch := make(chan struct{})
+	a.takeoutRaiseStop = ch
+	a.mu.Unlock()
+	go func() {
+		t := time.NewTicker(raiseIntervalMs * time.Millisecond)
+		defer t.Stop()
+		for {
+			select {
+			case <-ch:
+				return
+			case <-t.C:
+				if !a.hasTakeoutWindows() {
+					a.stopRaiseLoop()
+					return
+				}
+				if a.raise.anyBreakActive() {
+					a.raiseTakeoutWindows()
+				}
+			}
+		}
+	}()
+}
+
+func (a *App) stopRaiseLoop() {
+	a.mu.Lock()
+	ch := a.takeoutRaiseStop
+	a.takeoutRaiseStop = nil
+	a.mu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+}
+
+// ---------- 系统级键鼠活动轮询（对应 reminderSync.ts） ----------
+
+const (
+	// supPollMs 采样周期：100ms 足够跟上人手操作，开销可忽略
+	supPollMs = 100
+	// supBroadcastGapMs 两次广播之间的最小间隔
+	supBroadcastGapMs = 250
+)
+
+// supWatchInfo 轮询状态（冒烟自检读它做断言，不去数日志行数）
+type supWatchInfo struct {
+	Running bool   `json:"running"`
+	Mode    string `json:"mode"` // tick | idle | off
+	Polls   int    `json:"polls"`
+	Pulses  int    `json:"pulses"`
+}
+
+// ensureSupActivityWatch 启动系统级键鼠活动轮询（已在跑则忽略）。有提醒窗口在场时调用。
+// 用户在**任意应用**里敲了键或动了鼠标 → 广播 sup:active（与窗口焦点无关）。
+//
+// 与 Electron 的差异：只有 GetLastInputInfo 一个来源，读不到 tick 时整段不启动。
+func (a *App) ensureSupActivityWatch() {
+	a.mu.Lock()
+	if a.supWatchStop != nil {
+		a.mu.Unlock()
+		return
+	}
+	if !serverMode {
+		if _, ok := lastInputTick(); !ok {
+			a.mu.Unlock()
+			log.Printf("[sup-watch] 读不到系统输入 tick，键鼠活动轮询不启动")
+			return
+		}
+	}
+	a.supWatch = supWatchInfo{Mode: "tick"}
+	ch := make(chan struct{})
+	a.supWatchStop = ch
+	a.mu.Unlock()
+
+	go func() {
+		t := time.NewTicker(supPollMs * time.Millisecond)
+		defer t.Stop()
+		var lastTick int64
+		hasTick := false
+		lastSentAt := int64(0)
+		for {
+			select {
+			case <-ch:
+				return
+			case <-t.C:
+				a.mu.Lock()
+				w := &a.supWatch
+				w.Polls++
+				a.mu.Unlock()
+				tk, ok := lastInputTick()
+				if !ok {
+					// 读取中途失效：整段降级（但 Go 侧无秒级来源，直接停止比较）
+					continue
+				}
+				active := hasTick && tk != lastTick
+				lastTick = tk
+				hasTick = true
+				if !active {
+					continue
+				}
+				now := nowMs()
+				if now-lastSentAt < supBroadcastGapMs {
+					continue
+				}
+				lastSentAt = now
+				a.mu.Lock()
+				a.supWatch.Pulses++
+				n := a.broadcastSupActive()
+				first := a.supWatch.Pulses == 1
+				a.mu.Unlock()
+				if first {
+					log.Printf("[smoke] global input pulse: mode=tick to=%d", n)
+				}
+			}
+		}
+	}()
+}
+
+// broadcastSupActive 把「用户仍在操作键鼠」广播给所有提醒窗口，返回实际广播的次数。
+// Go 侧用 Event.Emit("sup:active") 全局广播（不按窗口定向，见文件头注释）。
+func (a *App) broadcastSupActive() int {
+	a.app.Event.Emit("sup:active")
+	return 1
+}
+
+// releaseSupActivityWatch 全部提醒窗口都收掉了才停止轮询
+func (a *App) releaseSupActivityWatch() {
+	a.mu.Lock()
+	ch := a.supWatchStop
+	if ch == nil {
+		a.mu.Unlock()
+		return
+	}
+	if a.hasTakeoutWindowsLocked() || a.hasBreakWindowLocked() {
+		a.mu.Unlock()
+		return
+	}
+	a.supWatchStop = nil
+	a.supWatch.Mode = "off"
+	a.mu.Unlock()
+	close(ch)
+}
+
+func (a *App) hasTakeoutWindowsLocked() bool {
+	return len(a.takeoutWins) > 0
+}
+
+func (a *App) hasBreakWindowLocked() bool {
+	w, ok := a.wins["break"]
+	return ok && w != nil
+}
+
+// supActivityWatchInfo 当前轮询状态（冒烟自检用）
+func (a *App) supActivityWatchInfo() supWatchInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.supWatch
+}
+
+// ---------- 绑定（对应 main.ts 的 takeout:current / takeout:preview / takeout:action） ----------
+
+// TakeoutCurrent 当前外卖会话（渲染层首帧拉取；无会话返回 nil）
+func (a *App) TakeoutCurrent(win string) *TakeoutInfo {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.takeoutCurrent
+}
+
+// PreviewTakeout 预览外卖提醒窗口：有配置的时间就预览「下一条」，否则用当前时刻
+func (a *App) PreviewTakeout(win string) string {
+	cfg := a.cfgSnapshot()
+	slot := TimeSlot{ID: "preview", Hour: time.Now().Hour(), Minute: time.Now().Minute(), Enabled: true}
+	if hit, ok := nextSlotAt(cfg.TakeoutSlots(), nowMs()); ok {
+		slot = hit.Slot
+	}
+	a.showTakeoutWindows(slot, true, 0)
+	return "ok"
+}
+
+// TakeoutAction 外卖窗口上的三个按钮：已点好 / 不点了 / 推迟。
+// 「推迟」不在窗口里排定时器，而是记一笔交给每秒的 tick（见 checkTakeoutReminders）；
+// 预览态只关窗不记账，免得「看一眼预览」把真实提醒推后。
+func (a *App) TakeoutAction(win, action string) error {
+	a.mu.Lock()
+	cur := a.takeoutCurrent
+	a.mu.Unlock()
+	if cur == nil {
+		a.closeTakeoutWindows()
+		return nil
+	}
+	if !cur.Preview {
+		a.statsStore().RecordTakeoutAction(action)
+	}
+	if action == "postpone" && cur != nil && !cur.Preview {
+		mins := cur.PostponeMin
+		count := cur.PostponedCount + 1
+		a.mu.Lock()
+		a.takeoutPostponed = &TakeoutPostponed{
+			Slot:  cur.Slot,
+			DueAt: nowMs() + int64(mins)*60_000,
+			Count: count,
+		}
+		a.mu.Unlock()
+		log.Printf("[takeout] 用户选择 推迟 %d 分钟（第 %d 次）", mins, count)
+	} else {
+		a.mu.Lock()
+		a.takeoutPostponed = nil
+		a.mu.Unlock()
+		label := map[string]string{"ordered": "已点好", "skip": "不点了", "postpone": "推迟（预览，忽略）"}[action]
+		if label == "" {
+			label = action
+		}
+		log.Printf("[takeout] 用户选择 %s", label)
+	}
+	a.closeTakeoutWindows()
+	return nil
+}

@@ -1,0 +1,9 @@
+# 默认按文本处理并在仓库内统一为 LF，避免 Windows 换行符造成的噪声 diff
+* text=auto
+
+# Go 源码固定 LF：gofmt 的规范形式就是 LF，工作区用 CRLF 会让 `gofmt -l` 长期报噪声
+*.go text eol=lf
+
+*.png binary
+*.ico binary
+*.wav binary

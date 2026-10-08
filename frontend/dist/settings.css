@@ -1,0 +1,1203 @@
+:root {
+  --bg: #f5f6fa;
+  --panel: #ffffff;
+  --border: #e6e8f0;
+  --text: #1f2430;
+  --text-2: #6b7280;
+  --accent: #4f7cff;
+  --accent-weak: #eef2ff;
+  --danger: #e5484d;
+  --danger-weak: #fdeced;
+  --radius: 14px;
+  /* 字段行：标签列定宽 → 控件左缘恒在一条竖线上，标签↔控件的距离与窗口宽度无关 */
+  --label-w: 200px;
+  --row-gap: 16px;
+}
+
+[data-theme='dark'] {
+  --bg: #12141c;
+  --panel: #1b1e2b;
+  --border: #2a2e40;
+  --text: #e8eaf2;
+  --text-2: #9aa1b5;
+  --accent: #6d95ff;
+  --accent-weak: #232842;
+  --danger-weak: #3b2226;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 自绘标题栏：无边框窗口的图标 + 名称 + 拖拽区 + 窗口控制按钮（最小化 / 最大化·还原 / 关闭） */
+#titlebar {
+  height: 38px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding-left: 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.tb-icon { width: 20px; height: 20px; border-radius: 6px; pointer-events: none; }
+.tb-title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.tb-drag { flex: 1; align-self: stretch; -webkit-app-region: drag; }
+
+/* 窗口控制按钮成组：gap:0 + 不给标题栏右内边距 —— 这样三颗按钮彼此紧挨、最右边那颗
+   正好贴住窗口右上角，悬停高亮块连成一片。（以前按钮是标题栏的直接子元素，外层
+   flex 的 gap:9px 会插进每一对按钮之间，高亮块之间露白、关闭按钮也离角上差一截，
+   看着很怪。） */
+.tb-btns { display: flex; align-self: stretch; gap: 0; flex-shrink: 0; }
+#titlebar .tb-btns button {
+  width: 46px;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-2);
+  cursor: default;
+  -webkit-app-region: no-drag;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+/* 图标统一 12px 描边 SVG（fill:none + currentColor）：粗细与落点完全可控，
+   不像文字符号那样跟着字体基线走、悬停时两块高亮里的图形重心还对不上 */
+#titlebar .tb-btns svg {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.05;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+#titlebar .tb-btns button:hover { background: var(--border); color: var(--text); }
+#titlebar .tb-btns button:active { background: var(--accent-weak); }
+/* 关闭按钮：悬停整块变危险色（Windows 的习惯）。两个 id 选择器是为了压过上面那条
+   `#titlebar .tb-btns button:hover`，避免用 !important */
+#titlebar #wb-close:hover { background: var(--danger); color: #ffffff; }
+#titlebar #wb-close:active { background: #c93b3f; color: #ffffff; }
+#titlebar .tb-btns button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* 最大化态：主进程把窗口状态推下来后 #titlebar 带上 .maximized，图标在「最大化 ⇄ 还原」间切 */
+#titlebar .ico-restore { display: none; }
+#titlebar.maximized .ico-max { display: none; }
+#titlebar.maximized .ico-restore { display: block; }
+
+#layout { display: flex; flex: 1; min-height: 0; }
+
+/* 侧栏 */
+#sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 18px 14px;
+  overflow-y: auto;
+}
+
+#nav { display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 0; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px;
+  border: none; background: transparent;
+  border-radius: 10px;
+  font-size: 14px; color: var(--text);
+  cursor: pointer; text-align: left;
+}
+.nav-item:hover { background: var(--accent-weak); }
+.nav-item.active { background: var(--accent); color: #fff; }
+.nav-item .icon { font-size: 16px; }
+
+/* 侧栏底部：当前状态网格 + 快捷操作（合并自原「关于」页的当前状态卡） */
+.sidebar-footer { border-top: 1px solid var(--border); padding-top: 14px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
+.sidebar-footer .status-grid { grid-template-columns: 1fr; gap: 6px; }
+.sidebar-footer .status-cell { background: var(--bg); border-radius: 8px; padding: 6px 10px; }
+.sidebar-footer .status-cell .k { font-size: 11px; }
+.sidebar-footer .status-cell .v { font-size: 13px; margin-top: 2px; }
+.quick-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.sidebar-footer .quick-actions .btn { flex: 1 1 auto; padding: 7px 8px; font-size: 12px; text-align: center; }
+
+/* 按钮 */
+.btn {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  border-radius: 9px;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); color: #fff; }
+.btn.ghost { background: transparent; }
+.btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+.btn.danger { color: var(--danger); border-color: var(--danger); background: transparent; }
+.btn.mini { padding: 4px 8px; font-size: 12px; border-radius: 7px; }
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* 内容区 */
+#content { flex: 1; overflow-y: auto; padding: 26px 32px 60px; }
+.tab { display: none; }
+.tab.active { display: block; }
+.tab h2 { font-size: 20px; margin-bottom: 18px; }
+/* 内容区封顶并居中：默认窗口（980 宽）下可用宽度只有 676px，小于此值，所以默认尺寸下
+   完全不受影响；窗口宽过约 1140px 才开始封顶，标签与控件的距离不再随窗口无限增长。
+   统计报表页是数据表（10 列、不换行）不是配置项，单独豁免，见下方 #tab-stats。 */
+.tab { max-width: 860px; margin: 0 auto; }
+.tab#tab-stats { max-width: none; }
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px 20px;
+  margin-bottom: 16px;
+}
+.card h3 { font-size: 14px; margin-bottom: 14px; color: var(--text-2); font-weight: 600; }
+/* 标题行：折叠箭头在标题左侧、标题紧跟其后，右侧由 .adv-summary / .card-actions 的
+   margin-left:auto 顶到行尾。不用 space-between —— 那会让三个子元素均分，标题被挤到中间。 */
+.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+.card-head h3 { margin-bottom: 0; }
+
+/* 配置行：全站只保留三种形态，卡片里不再有「半列网格 + 整行」混排。
+   改版式前这里是单个 .row 承担四种语义（勾选/字段/按钮/说明），唯一的对齐规则是
+   space-between，于是按钮被推到两端、说明被挤到行尾、控件贴右边缘 —— 窄窗口看不出来，
+   一拉宽全暴露。现在各自一种明确的对齐。 */
+.row {
+  display: flex; align-items: center; gap: var(--row-gap);
+  /* 统一高度节奏：输入框行（控件 33px）与滑条行 / 勾选行（控件 16px）原本相差 17px，
+     现在都落到 40px，相邻行不再一跳一跳。 */
+  min-height: 40px; padding: 4px 0;
+}
+.row > label { color: var(--text-2); font-size: 14px; flex-shrink: 0; }
+
+/* 勾选行：整个条目就是一个开关，文字紧跟勾选框、整行左对齐 */
+.row.check { justify-content: flex-start; }
+/* 带动作按钮的勾选行（外卖卡「启用」+「预览」）：与字段行同一套网格——
+   按钮落在第二列，左缘与其他行输入框严格同列 */
+.row.check.has-btn {
+  display: grid;
+  grid-template-columns: var(--label-w) minmax(0, 1fr);
+  align-items: center;
+}
+.row.check.has-btn > .btn { justify-self: start; }
+
+/* 字段行：标签列定宽 + 控件列。控件左缘因此恒在同一竖线上，标签到控件的距离恒为
+   标签列宽 - 标签本身宽度 + 16px —— 与窗口宽度无关，最大化也不会「隔很远」。 */
+.row.field { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr); align-items: center; }
+.row.field > label { line-height: 1.4; }
+
+/* 动作行：按钮紧挨着排成一串（.row 不再有 space-between，这里显式声明避免回退） */
+.row.inline { justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
+
+/* 混合行：勾选框 / 前置文字 + 行内小控件 + 尾随文字（如「系统空闲 [5] 分钟后自动暂停」）。
+   与动作行同属"内容紧挨着左对齐"一类，间距收到 8px；行内数字框只占三四位数的宽度，
+   不用字段行那 180px 的整宽。 */
+.row.mixed { justify-content: flex-start; gap: 8px; }
+.row.mixed > input[type='number'] { width: 68px; text-align: center; }
+.row.mixed > .lead { color: var(--text); font-size: 14px; flex-shrink: 0; }
+.row.mixed > .tail { color: var(--text); font-size: 14px; }
+
+/* 属于上一行的说明：缩进到控件列起点，与它解释的字段对齐；卡片级说明仍用 .hint 全宽 */
+.hint.sub { margin-left: calc(var(--label-w) + var(--row-gap)); }
+
+/* 统计页数据表：窄窗口下横向滚动，不裁切 */
+.table-scroll { overflow-x: auto; }
+
+input[type='number'], input[type='text'], select {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px;
+  width: 180px;
+}
+input[type='date'] {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 148px;
+  color-scheme: light; /* 让原生日历图标/下拉跟随主题（暗色在下方单独翻转） */
+}
+[data-theme='dark'] input[type='date'] { color-scheme: dark; }
+input[type='date']:hover { border-color: var(--accent); }
+input[type='date']:focus,
+input[type='number']:focus,
+input[type='text']:focus,
+select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-weak);
+}
+input[type='color'] { width: 60px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 2px; }
+input[type='range'] { width: 200px; accent-color: var(--accent); }
+/* 滑条收窄特例：透明度滑条与同行数字框对齐、音量滑条与播放方式下拉（180px）对齐 */
+#ap-opacity { width: 180px; }
+#snd-volume { width: 180px; }
+input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width: 16px; height: 16px; }
+/* 勾选项行：勾选框一律在文字左侧、与文字紧贴（gap 8px）。
+   注意不要改成"文字在左、勾选框被 space-between 推到行尾"的写法——那会让框与文字
+   分居两端，看起来和这一行没关系；也不必为了与相邻输入框右对齐而牺牲这一点。 */
+.switch-row { display: flex; align-items: center; gap: 8px; color: var(--text) !important; }
+
+.hint { font-size: 12px; color: var(--text-2); line-height: 1.6; }
+/* 说明文字里的外链（开源许可 / 素材声明）：主题色 + 下划线，与 hint 同字号 */
+.hint .ext-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
+.hint .ext-link:hover { filter: brightness(1.1); }
+/* 参数说明问号：行内小圆圈，悬浮显示 title 提示（不占一行，替代原说明段落） */
+.q-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 6px;
+  border: 1px solid var(--border, var(--text-2));
+  border-radius: 50%;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--text-2);
+  cursor: help;
+  user-select: none;
+  vertical-align: 1px;
+}
+/* 卡片内的次级小标题（如预览卡里紧挨舞台的"尺寸与位置"） */
+.subhead { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 12px 0 2px; }
+
+/* 折叠面板（提醒内容 .msg-panel ↔ 提醒时间 .slot-fixed ↔ 高级选项 details.advanced）
+   共用同一套外观：相同的描边/圆角/底色（不设底色，随卡片 --panel 走）、相同的头部
+   内边距与悬停态、相同的「▸」三角箭头与展开转向；前者是 button 切 .open，后者是原生
+   <details>，这里只统一长相，交互各自保留。 */
+.msg-panel,
+.fold-panel,
+.slot-fixed,
+details.advanced {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-top: 12px;
+  overflow: hidden;
+}
+.msg-toggle,
+details.advanced > summary {
+  display: flex; align-items: center; gap: 6px; width: 100%;
+  background: transparent; border: none; cursor: pointer;
+  color: var(--text); font-size: 13px; font-weight: 600;
+  font-family: inherit; /* <button> 默认不继承字体，显式继承才能与 <summary> 字形一致 */
+  padding: 9px 12px; text-align: left;
+  list-style: none; user-select: none;
+}
+.msg-toggle:hover,
+details.advanced > summary:hover { background: var(--accent-weak); }
+/* 音乐列表标题行：折叠开关占满剩余宽度，右侧「＋」导入按钮同高同悬停态 */
+.snd-music-head { display: flex; align-items: stretch; }
+.snd-music-head .msg-toggle { flex: 1; }
+.snd-music-add {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-2); font-size: 16px; line-height: 1;
+  padding: 0 14px; font-family: inherit;
+}
+.snd-music-add:hover { background: var(--accent-weak); color: var(--text); }
+details.advanced > summary::-webkit-details-marker { display: none; }
+/* 「▸」三角箭头：展开时转向下方（.msg-arrow 是行内元素、details 用 ::before 生成，故声明分开写） */
+.msg-arrow { display: inline-block; transition: transform 0.15s ease; font-size: 11px; }
+.msg-panel.open .msg-arrow,
+.fold-panel.open .msg-arrow,
+.slot-fixed.open .msg-arrow { transform: rotate(90deg); }
+details.advanced > summary::before {
+  content: '▸'; display: inline-block; flex-shrink: 0;
+  transition: transform 0.15s ease; font-size: 11px;
+}
+details.advanced[open] > summary::before { transform: rotate(90deg); }
+.adv-title { flex-shrink: 0; }
+.adv-summary {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+/* 偏离默认值时高亮，收起状态也能看出这张图调过 */
+.adv-summary.customized { color: var(--accent); font-weight: 600; }
+.msg-body,
+.slot-body,
+.adv-body { padding: 4px 12px 12px; border-top: 1px solid var(--border); }
+.adv-body .subhead { margin-top: 4px; }
+/* 提醒时间面板：列表贴头部一点（tk-list 自带的下外边距在面板里显松） */
+.slot-body .tk-list { margin: 10px 0 2px; }
+/* 提醒内容 / 提醒时间面板标题行：折叠开关占满剩余宽度，右侧「＋」按钮（与音乐列表标题行同一套） */
+.msg-head,
+.slot-head { display: flex; align-items: stretch; }
+.msg-head .msg-toggle,
+.slot-head .msg-toggle { flex: 1; }
+.msg-add,
+.slot-add {
+  border: none; background: transparent; cursor: pointer;
+  color: var(--text-2); font-size: 16px; line-height: 1;
+  padding: 0 14px; font-family: inherit;
+}
+.msg-add:hover,
+.slot-add:hover { background: var(--accent-weak); color: var(--text); }
+
+/* 立绘列表折叠面板：复用 .fold-panel 折叠外观与 .msg-head/.msg-toggle 头部行。
+   展开后列表体固定高度（默认 = 两行磁贴，由脚本按实测行高写入），溢出出纵向滚动条；
+   底部拖柄上下拖动调高度（记 localStorage，下次打开保持）。折叠时体与拖柄一并隐藏。 */
+.gallery-body {
+  padding: 4px 12px 12px; border-top: 1px solid var(--border);
+  overflow-y: auto; overscroll-behavior: contain;
+}
+/* 磁贴悬停的「右键操作」提示画在磁贴边框外上方：给网格顶部留出提示高度，
+   避免首行磁贴的提示被滚动容器裁掉 */
+.gallery-body .role-gallery { padding-top: 30px; }
+.gallery-panel:not(.open) .gallery-body,
+.gallery-panel:not(.open) .gallery-resize { display: none; }
+.gallery-resize {
+  display: flex; align-items: center; justify-content: center;
+  height: 9px; cursor: ns-resize; user-select: none;
+  border-top: 1px solid var(--border);
+}
+.gallery-resize::before {
+  content: ''; width: 42px; height: 3px; border-radius: 2px;
+  background: var(--border);
+}
+.gallery-resize:hover::before,
+.gallery-resize.dragging::before { background: var(--accent); }
+.msg-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
+.msg-item {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+  background: var(--panel);
+}
+/* 拖拽手柄：抓住它才能拖动整行（行内的文本框仍可正常编辑） */
+.msg-handle {
+  cursor: grab; color: var(--text-2); user-select: none;
+  font-size: 14px; letter-spacing: -1px; padding: 0 2px;
+}
+.msg-item.dragging { opacity: 0.45; border-style: dashed; }
+.msg-item.drop-target { border-color: var(--accent); }
+.msg-item input[type='text'] { flex: 1; width: auto; }
+.msg-item.disabled { opacity: 0.5; }
+.msg-empty { color: var(--text-2); font-size: 13px; padding: 12px 0; text-align: center; }
+.inline { display: flex; gap: 8px; align-items: center; }
+/* 只读的文件路径显示（立绘） */
+.file-input { width: 200px; color: var(--text-2); }
+
+/* 内置立绘库：缩略图网格，点击即选 */
+.role-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 10px;
+  padding: 2px 0 6px;
+}
+.role-item {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  padding: 6px 6px 8px; cursor: pointer; font: inherit;
+}
+.role-item:hover { border-color: var(--accent); }
+.role-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+.role-item img {
+  width: 100%; height: 92px; object-fit: contain; object-position: center top;
+  border-radius: 6px; background: linear-gradient(180deg, rgba(127, 127, 127, 0.16), rgba(127, 127, 127, 0.04));
+}
+.role-item span { font-size: 12px; color: var(--text-2); }
+.role-item.active span { color: var(--accent); }
+
+/* 悬停提示浮层：磁贴边框外上方提示「右键操作」——深色实底胶囊 + 白字 + 白描边，
+   明暗两套主题下都醒目；禁用磁贴同样式（提示不受置灰影响）。尺寸克制，不遮挡立绘。 */
+.role-hint {
+  position: absolute; bottom: calc(100% + 5px); left: 50%; transform: translateX(-50%);
+  padding: 3px 10px; border-radius: 999px;
+  background: rgba(20, 20, 20, 0.9); color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+  font-size: 12px; font-weight: 500; letter-spacing: 1px; line-height: 1.5; white-space: nowrap;
+  opacity: 0; transition: opacity 0.12s ease; pointer-events: none;
+}
+.role-item:hover .role-hint,
+.role-item:focus-within .role-hint { opacity: 1; }
+
+/* 角色右键菜单：固定定位小面板（重命名 / 禁用启用 / 删除），点别处或 Esc 收起 */
+#sup-role-menu {
+  position: fixed; z-index: 90; min-width: 96px; padding: 4px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  display: flex; flex-direction: column; gap: 2px;
+}
+.role-menu-item {
+  border: none; background: none; cursor: pointer; font: inherit;
+  text-align: left; padding: 6px 10px; border-radius: 6px;
+  color: inherit; font-size: 12px;
+}
+.role-menu-item:hover { background: var(--accent); color: #fff; }
+.role-menu-item.danger:hover { background: var(--danger); }
+/* 固定角色：禁用/删除两项置灰不可点 */
+.role-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
+.role-menu-item:disabled:hover { background: none; color: inherit; }
+.role-menu-note {
+  font-size: 11px; line-height: 1.4; color: var(--text-2);
+  padding: 4px 10px 2px; white-space: nowrap;
+}
+
+/* 禁用的角色：整块变灰、名字划线；不能被选中（点它只提示），右键可启用 */
+.role-item.off { cursor: not-allowed; }
+.role-item.off img { filter: grayscale(1); opacity: 0.45; }
+.role-item.off .role-cap { text-decoration: line-through; }
+
+/* 末尾「＋」磁贴：导入自定义立绘。骨架与 .role-item 一致（同网格、同内边距、
+   图案区同为 92px 高），使「＋」占位与立绘磁贴等大；提示文字画在图案区上。 */
+.role-add {
+  position: relative;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+  background: var(--bg); border: 1px dashed var(--border); border-radius: 10px;
+  padding: 6px 6px 8px; cursor: pointer; font: inherit;
+}
+.role-add:hover { border-color: var(--accent); }
+.role-add-box {
+  width: 100%; height: 92px; border-radius: 6px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; text-align: center;
+  background: linear-gradient(180deg, rgba(127, 127, 127, 0.12), rgba(127, 127, 127, 0.03));
+}
+.role-add-plus { font-size: 24px; line-height: 1; color: var(--accent); }
+.role-add-hint { font-size: 10px; line-height: 1.35; color: var(--text-2); }
+.role-add-cap { font-size: 12px; color: var(--text-2); }
+
+/* 命名输入弹窗（promptDialog）：复用确认框骨架，仅补输入框与图标配色 */
+.cf-icon.prompt { background: rgba(79, 124, 255, 0.15); color: var(--accent); }
+.modal-input {
+  width: 100%; margin-top: 12px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); color: var(--text);
+  padding: 9px 10px; font: inherit;
+}
+.modal-input:focus { outline: none; border-color: var(--accent); }
+/* 命名输入框前的文字前缀（promptDialog 传了 label 才出现；给立绘命名时不传，整行只剩输入框） */
+.pm-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.pm-row .modal-input { flex: 1 1 auto; min-width: 0; margin-top: 0; }
+.pm-label { flex: 0 0 auto; color: var(--text-2); font-size: 13px; }
+
+/* 虚拟角色预览：忠实还原休息窗口的版式（立绘左下贴底、台词在右） */
+.sup-preview {
+  position: relative;
+  height: 260px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 12px;
+  background:
+    radial-gradient(700px 420px at 12% -10%, color-mix(in srgb, var(--accent) 62%, #00000000), transparent 62%),
+    linear-gradient(160deg, color-mix(in srgb, var(--accent) 78%, #10142a), #10142a);
+}
+.sup-preview-fig {
+  /* 与休息窗口同一套摆放规则，只是把 vw/vh 换成占预览面板的百分比：
+     数值直接来自"尺寸与位置"滑条，拖动即时生效。 */
+  position: absolute;
+  left: calc(var(--fig-x, 4) * 1%);
+  bottom: calc(var(--fig-y, 0) * 1%);
+  height: calc(var(--fig-size, 72) * 1%);
+  display: flex;
+  align-items: flex-end;
+}
+/* 透明边距补偿层：与休息窗口同一套规则（见 renderer/figureTrim.ts），
+   保证预览与实机看到的尺寸/位置一致。 */
+.sup-preview-trim {
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+  transform-origin: left bottom;
+  visibility: hidden;
+}
+/* 镜像层：勾选「水平翻转」时整层 scaleX(-1)（预览面板带 sup-flip 类，见 applySupGeometry）。
+   与休息窗口 / 外卖窗口同一条路径：只翻立绘，不动台词气泡与透明边距补偿层。 */
+.sup-preview .mirror {
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.sup-preview.sup-flip .mirror { transform: scaleX(-1); }
+.sup-preview-fig img {
+  height: 100%;
+  width: auto;
+  max-width: 45vw;
+  object-position: center bottom;
+  display: block;
+  filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.55));
+  transition: filter 0.4s ease, transform 0.4s ease;
+}
+.sup-preview-side {
+  position: absolute;
+  right: 26px;
+  /* 与休息窗口/外卖窗口同一锚点：垂直中心在预览面板的上三分之一处 */
+  top: 33.333%;
+  transform: translateY(-50%);
+  width: 50%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+.sup-preview-badge {
+  align-self: center;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+/* 预览里的台词气泡：与真实窗口同款造型（左下角收窄 + 指向立绘的尾巴 + 说话人名字）。
+   ⚠️ 改 break.css / takeout.css 的气泡造型时，这里要一起改，否则预览与实机不一致。 */
+.sup-preview-line {
+  position: relative;
+  width: 100%;
+  text-align: left;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+  padding: 9px 14px 11px 16px;
+  border-radius: 5px 12px 12px 3px;
+  background: rgba(9, 13, 24, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 3px solid var(--accent);
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
+  transition: border-color 0.4s ease, background 0.4s ease, color 0.4s ease;
+}
+.sup-preview-line::after {
+  content: '';
+  position: absolute;
+  left: -13px;
+  bottom: 10px;
+  width: 10px;
+  height: 14px;
+  background: inherit;
+  clip-path: polygon(100% 0, 100% 100%, 0 50%);
+}
+.sup-preview-line[data-speaker]::before {
+  content: attr(data-speaker);
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  line-height: 1.4;
+  margin-bottom: 3px;
+  opacity: 0.8;
+}
+.sup-preview[data-stage='2'] .sup-preview-line {
+  border-color: rgba(255, 96, 96, 0.78);
+  background: rgba(58, 0, 0, 0.52);
+  color: #ffe9e9;
+}
+.sup-preview[data-stage='2'] .sup-preview-line {
+  border-color: rgba(255, 96, 96, 0.78);
+  background: rgba(58, 0, 0, 0.42);
+  color: #ffe9e9;
+}
+.sup-preview[data-stage='2'] .sup-preview-fig img {
+  filter: drop-shadow(0 0 20px rgba(255, 70, 70, 0.45)) contrast(1.1);
+  transform: scale(1.04);
+}
+/* 竖屏版式的预览：内容列移到角色上方、整宽（与真实窗口同一套规则，见 supervisorLayout.ts）。
+   预览面板平时是横向的，只在面板被拉成竖长（设置窗口很窄）时才走到这里，规则保持与实机一致。 */
+[data-sup-layout='top'] .sup-preview-side {
+  right: auto;
+  top: auto;
+  transform: none;
+  gap: 6px;
+}
+[data-sup-layout='top'] .sup-preview-line {
+  width: 100%;
+  border-radius: 12px 12px 5px 5px;
+}
+[data-sup-layout='top'] .sup-preview-line::after {
+  left: var(--tail-x, 50%);
+  right: auto;
+  top: auto;
+  bottom: -10px;
+  width: 14px;
+  height: 10px;
+  transform: translateX(-50%);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.shortcut { text-align: center; letter-spacing: 1px; }
+
+.status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+.status-cell { background: var(--bg); border-radius: 10px; padding: 10px 14px; }
+.status-cell .k { font-size: 12px; color: var(--text-2); }
+.status-cell .v { font-size: 15px; font-weight: 600; margin-top: 3px; }
+/* 「今天」卡指标说明 tooltip：悬浮在指标名或 ? 图标上显示（原底部整段说明按指标拆分而来） */
+#stats-today .status-cell .k.has-tip { position: relative; cursor: help; }
+#stats-today .k-tip {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 13px; height: 13px; margin-left: 5px; border-radius: 50%;
+  background: var(--border); color: var(--text-2);
+  font-size: 10px; font-weight: 600; line-height: 1; vertical-align: 1px;
+  cursor: help; user-select: none;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+#stats-today .status-cell .k.has-tip:hover .k-tip { background: var(--accent); color: var(--panel); }
+#stats-today .status-cell .k.has-tip::after {
+  content: attr(data-tip);
+  position: absolute; top: calc(100% + 7px); left: 0;
+  width: 260px; padding: 8px 11px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--border);
+  color: var(--text); font-size: 11.5px; font-weight: 400; line-height: 1.65;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  opacity: 0; visibility: hidden; transform: translateY(-3px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+  pointer-events: none; white-space: normal; z-index: 30;
+}
+#stats-today .status-cell .k.has-tip:hover::after { opacity: 1; visibility: visible; transform: none; }
+
+/* 统计页：周期报表 / 历史明细表格（跟随主题变量，与卡片同源） */
+.stats-table {
+  width: 100%;
+  margin-top: 12px;
+  border-collapse: collapse;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.stats-table th,
+.stats-table td {
+  padding: 8px 10px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.stats-table th { color: var(--text-2); font-weight: 500; font-size: 12px; }
+.stats-table th.sortable { cursor: pointer; user-select: none; }
+.stats-table th.sortable:hover { color: var(--accent); }
+.stats-table tr.total td { font-weight: 600; border-top: 2px solid var(--border); }
+.stats-table tr:last-child td { border-bottom: none; }
+
+/* 统计页：休息报表图（堆叠柱状图 + 折线图；左上粒度开关、右侧工具、右上范围选择器） */
+.rest-chart { margin-top: 2px; position: relative; }
+.rc-toolbar {
+  display: flex; align-items: center;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 4px;
+}
+.rc-units { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+/* 工具区（空周期开关 / 导出），推到工具栏右侧、范围选择器之前 */
+.rc-tools { display: inline-flex; gap: 4px; margin-left: auto; }
+.rc-tool {
+  border: 1px solid var(--border); border-radius: 8px; background: none;
+  color: var(--text-2); font-size: 12px; padding: 3px 9px; cursor: pointer;
+}
+.rc-tool:hover { background: var(--accent-weak); color: var(--text); }
+.rc-tool.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* 摘要徽章：范围合计、期均、最长休息 + 环比（左缘色条点缀，hover 微浮起） */
+.rc-badges { display: flex; gap: 10px; flex-wrap: nowrap; margin: 8px 0 12px; }
+.rc-badge {
+  flex: 1 1 0; min-width: 0;
+  position: relative;
+  background: linear-gradient(180deg, var(--accent-weak) 0%, transparent 55%), var(--bg);
+  border: 1px solid var(--border); border-radius: 10px;
+  padding: 8px 10px 7px 14px;
+  overflow: hidden;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.rc-badge::before {
+  content: ''; position: absolute; left: 6px; top: 9px; bottom: 9px; width: 3px;
+  border-radius: 2px; background: var(--accent); opacity: 0.7;
+}
+.rc-badge:hover { border-color: var(--accent); box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08); }
+.rc-badge .k {
+  display: block; font-size: 11px; color: var(--text-2); letter-spacing: 0.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rc-badge b {
+  display: block; font-size: 16px; font-weight: 700; font-variant-numeric: tabular-nums; margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.rc-badge i {
+  display: block; font-style: normal; font-size: 11px; color: var(--text-2); margin-top: 1px;
+  font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+/* 右上角时间范围选择器：按钮 + 下拉弹层（弹层形态随粒度切换，见 rcPickerHtml） */
+.rc-range { position: relative; }
+.rc-range-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 1px solid var(--border); border-radius: 8px; background: none;
+  color: var(--text); font-size: 12px; padding: 3px 10px; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.rc-range-btn:hover { background: var(--accent-weak); }
+.rc-caret { font-size: 10px; color: var(--text-2); }
+.rc-pop {
+  display: none; position: absolute; top: calc(100% + 6px); right: 0; z-index: 40;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 10px 12px; min-width: 320px;
+}
+.rc-range.open .rc-pop { display: block; }
+.rc-pop-row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+.rc-pop-row > span { font-size: 12px; color: var(--text-2); }
+.rc-in {
+  flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); color: var(--text); font-size: 12px; padding: 4px 8px;
+}
+.rc-pop-foot { margin-top: 8px; display: flex; gap: 8px; justify-content: flex-end; }
+.rc-unit {
+  border: 0; background: none; color: var(--text-2);
+  font-size: 12px; padding: 3px 10px; cursor: pointer;
+}
+.rc-unit + .rc-unit { border-left: 1px solid var(--border); }
+.rc-unit.on { background: var(--accent); color: #fff; }
+.rc-legend { display: flex; justify-content: center; flex-wrap: wrap; gap: 2px; margin-top: 6px; }
+/* 图下方的统计表：与图同口径，跟随图的变化一起刷新 */
+.rest-chart + .table-scroll { margin-top: 10px; }
+/* 行数多（日粒度拉满几年）时表格竖向滚动，表头钉在顶部 */
+.rc-scroll { max-height: 380px; overflow-y: auto; }
+#rc-table th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: 0 1px 0 var(--border); }
+#rc-table tr:nth-child(odd):not(:first-child):not(.total) td { background: var(--bg); }
+/* 数值列右对齐 + 等宽数字（与表头同列对齐） */
+.stats-table th.num, .stats-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.stats-table .rc-empty { text-align: center; color: var(--text-2); padding: 14px 0; }
+/* 数值颜色与图例一致：统计表 td 和悬停浮层 span 共用
+   （工作时间用主题色；休息总时间是合计、无对应系列保持默认色） */
+.rcv-work { color: var(--accent); }
+.rcv-long { color: #9a6bff; }
+.rcv-short { color: #34a46f; }
+.rcv-rest { color: #2fa3b5; }
+.rcv-skip { color: #e05555; }
+.rcv-post { color: #e0a23f; }
+/* 鼠标指示器：吸附最近时间点的虚线竖线 */
+.rest-chart .rc-cursor { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 4 4; pointer-events: none; }
+.rc-legend-item {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 0; background: none; color: var(--text);
+  font-size: 12px; padding: 3px 7px; border-radius: 6px; cursor: pointer;
+}
+.rc-legend-item:hover { background: var(--accent-weak); }
+.rc-legend-item.off { opacity: 0.38; }
+.rc-legend-item i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; }
+.rc-legend-item i.line { width: 12px; height: 4px; }
+.rc-legend-item i.rc-long { background: #9a6bff; }
+.rc-legend-item i.rc-short { background: #34a46f; }
+.rc-legend-item i.rc-l-rest { background: #2fa3b5; }
+.rc-legend-item i.rc-l-skip { background: #e05555; }
+.rc-legend-item i.rc-l-post { background: #e0a23f; }
+.rc-plot svg { display: block; width: 100%; height: auto; user-select: none; }
+.rest-chart .grid { stroke: var(--border); stroke-width: 1; }
+.rest-chart .rc-axis { stroke: var(--text-2); stroke-opacity: 0.5; stroke-width: 1; }
+.rest-chart .tick { fill: var(--text-2); font-size: 11px; font-variant-numeric: tabular-nums; }
+.rest-chart .rc-cap { font-weight: 600; }
+.rest-chart .rc-hit { fill: transparent; cursor: crosshair; }
+/* 柱子填充走 SVG 内联渐变（url(#rc-g-*)）；圆角顶在 path 里画 */
+.rest-chart .bar { transform-box: fill-box; transform-origin: bottom; }
+.rest-chart .rc-line { fill: none; stroke-width: 2; pointer-events: none; }
+.rest-chart .rc-area { stroke: none; pointer-events: none; }
+.rest-chart .rc-peak { font-size: 10px; font-weight: 600; }
+.rest-chart .rc-peak.rc-l-rest { fill: #2fa3b5; }
+.rest-chart .rc-peak.rc-l-skip { fill: #e05555; }
+.rest-chart .rc-peak.rc-l-post { fill: #e0a23f; }
+/* 平均休息参考线：虚线 + 右侧小字标注（用主文本色，弱色看不清） */
+.rest-chart .rc-avgline { stroke: var(--text-2); stroke-opacity: 0.6; stroke-dasharray: 5 4; pointer-events: none; }
+.rest-chart .rc-avglabel { fill: var(--text); font-size: 11px; font-weight: 600; }
+.rest-chart svg:focus { outline: none; }
+/* 入场动画（仅换粒度 / 换范围时播，svg.anim 才生效）：柱子自下而上长出来，
+   折线沿路径描出来（pathLength=1 配 dashoffset），面积与圆点随后淡入 */
+@keyframes rcBarIn { from { transform: scaleY(0); } }
+@keyframes rcLineIn { from { stroke-dashoffset: 1; } }
+@keyframes rcFadeIn { from { opacity: 0; } }
+.rest-chart svg.anim .bar { animation: rcBarIn 0.28s ease-out; }
+.rest-chart svg.anim .rc-line { stroke-dasharray: 1; animation: rcLineIn 0.5s ease-out; }
+.rest-chart svg.anim .rc-area { animation: rcFadeIn 0.45s ease-out; }
+.rest-chart svg.anim .rc-dot { animation: rcFadeIn 0.3s 0.25s backwards; }
+.rest-chart .rc-dot { stroke: none; pointer-events: none; }
+.rest-chart .rc-l-rest { stroke: #2fa3b5; }
+.rest-chart .rc-l-skip { stroke: #e05555; }
+.rest-chart .rc-l-post { stroke: #e0a23f; }
+.rest-chart .rc-dot.rc-l-rest { fill: #2fa3b5; }
+.rest-chart .rc-dot.rc-l-skip { fill: #e05555; }
+.rest-chart .rc-dot.rc-l-post { fill: #e0a23f; }
+/* 外卖报表系列（与休息报表折线同色系：点外卖=青、取消=红、推迟=琥珀） */
+.rest-chart .tk-l-ord { stroke: #2fa3b5; }
+.rest-chart .tk-l-can { stroke: #e05555; }
+.rest-chart .tk-l-post { stroke: #e0a23f; }
+.rest-chart .rc-dot.tk-l-ord { fill: #2fa3b5; }
+.rest-chart .rc-dot.tk-l-can { fill: #e05555; }
+.rest-chart .rc-dot.tk-l-post { fill: #e0a23f; }
+.rest-chart .rc-peak.tk-l-ord { fill: #2fa3b5; }
+.rest-chart .rc-peak.tk-l-can { fill: #e05555; }
+.rest-chart .rc-peak.tk-l-post { fill: #e0a23f; }
+.rc-legend-item i.tk-l-ord { background: #2fa3b5; }
+.rc-legend-item i.tk-l-can { background: #e05555; }
+.rc-legend-item i.tk-l-post { background: #e0a23f; }
+.tkv-ord { color: #2fa3b5; }
+.tkv-can { color: #e05555; }
+.tkv-post { color: #e0a23f; }
+#tk-table th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: 0 1px 0 var(--border); }
+#tk-table tr:nth-child(odd):not(:first-child):not(.total) td { background: var(--bg); }
+/* 悬停浮层：与「右键操作」提示同款近黑实底，两套主题下都看得清 */
+.rc-tip {
+  position: fixed; z-index: 99; display: none; pointer-events: none;
+  background: rgba(22, 24, 32, 0.92); color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px;
+  padding: 7px 10px; font-size: 12px; line-height: 1.7;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25); white-space: nowrap;
+}
+.rc-tip b { display: block; font-size: 12px; letter-spacing: 0.5px; }
+.rc-tip span { display: block; font-variant-numeric: tabular-nums; }
+.rc-tip .rc-tip-d { color: rgba(255, 255, 255, 0.72); }
+/* 点击周期弹出的逐日明细浮层（挂在 #rest-chart 内，绝对定位跟随所点的桶） */
+.rc-detail {
+  display: none; position: absolute; z-index: 30; width: 292px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.18);
+}
+.rc-detail.open { display: block; }
+.rc-detail-head { display: flex; justify-content: space-between; align-items: center; padding: 8px 10px 6px; }
+.rc-detail-head b { font-size: 12px; }
+.rc-detail-x { border: 0; background: none; color: var(--text-2); cursor: pointer; font-size: 13px; padding: 0 2px; }
+.rc-detail-x:hover { color: var(--text); }
+.rc-detail-scroll { max-height: 240px; overflow-y: auto; padding: 0 6px 8px; }
+.rc-detail table { width: 100%; font-size: 12px; }
+
+/* Toast */
+.hidden { display: none !important; }
+
+/* 触发方式：倒计时 / 固定时间两套设置项互斥显示；不适用的行变暗并禁用 */
+.row.off { opacity: 0.5; }
+/* （.slot-fixed 的折叠面板容器样式已并入上方的面板组：描边 / 圆角 / 上边距 / overflow） */
+
+/* ---------------- 固定时刻表（外卖提醒 / 短休息 / 长休息共用） ---------------- */
+
+.tk-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 12px; }
+.tk-item {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+}
+.tk-item.disabled { opacity: 0.5; }
+/* 音乐列表行的拖拽态（与提醒内容列表同一套观感） */
+.tk-item.dragging { opacity: 0.45; border-style: dashed; }
+.tk-item.drop-target { border-color: var(--accent); }
+/* 声音卡音乐列表：行与行之间留一条窄缝（比提醒内容列表的 8px 略小，不显松散） */
+#snd-music-list { display: flex; flex-direction: column; gap: 5px; }
+/* 声音卡音乐列表：名称占满中间剩余宽度，过长省略 */
+.snd-music-name {
+  flex: 1 1 0; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px;
+}
+/* 试听播放条：点任意「试听」出现在声音卡底部（可暂停 / 拖进度 / 停止） */
+.snd-player {
+  display: flex; align-items: center; gap: 8px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--panel);
+  padding: 8px 10px; margin-top: 12px;
+}
+.snd-player.hidden { display: none !important; }
+.snd-player-name {
+  flex: 0 1 auto; min-width: 0; max-width: 40%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 13px; font-weight: 600;
+}
+.snd-player input[type='range'] { flex: 1 1 0; min-width: 0; }
+.snd-player-time {
+  flex-shrink: 0; font-size: 12px; color: var(--text-2);
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+}
+.tk-item input[type='number'] { width: 64px; text-align: center; }
+.tk-time { display: flex; align-items: center; gap: 4px; font-size: 13px; color: var(--text); }
+.tk-time span { color: var(--text-2); }
+.tk-repeat { width: 96px; }
+/* 星期勾选：小方块，选中即填入主色（每周模式才显示）；紧挨重复周期下拉框左对齐，
+   不再推到行尾——行尾由删除按钮的 auto margin 补位 */
+.tk-days { display: flex; align-items: center; gap: 4px; }
+.tk-days.hidden { display: none; }
+/* 时刻行 / 音乐行的删除按钮钉在行尾（星期勾选改左对齐后行尾需要有人收口） */
+.tk-item > .btn.danger { margin-left: auto; }
+.tk-day {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 7px; cursor: pointer;
+  border: 1px solid var(--border); font-size: 12px; color: var(--text-2);
+}
+/* 隐藏原生勾选框但保留可聚焦性（点击 label 即切换） */
+.tk-day input { position: absolute; opacity: 0; width: 1px; height: 1px; margin: 0; }
+.tk-day.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tk-empty {
+  color: var(--text-2); font-size: 13px; padding: 14px 0; text-align: center;
+  border: 1px dashed var(--border); border-radius: 10px;
+}
+
+/* 批量添加弹窗 */
+.modal {
+  position: fixed; inset: 0; z-index: 50;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+}
+.modal-box {
+  width: 460px; max-width: calc(100vw - 60px);
+  background: var(--panel); border: 1px solid var(--border);
+  border-radius: 14px; padding: 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25);
+}
+.modal-box h3 { margin: 0 0 10px; font-size: 15px; }
+.modal-box textarea {
+  width: 100%; resize: vertical; min-height: 160px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg); color: var(--text);
+  padding: 10px; font: inherit; line-height: 1.6;
+}
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+
+/* 实底危险按钮：只用在确认框的「删除」，比描边的 .btn.danger 更像主操作 */
+.btn.danger-solid {
+  background: var(--danger); border-color: var(--danger);
+  color: #ffffff; font-weight: 600;
+}
+.btn.danger-solid:hover { background: var(--danger); border-color: var(--danger); color: #ffffff; filter: brightness(1.08); }
+
+/* ---------------- 确认框（替代原生 confirm，风格与设置页同源） ---------------- */
+
+.cf-box { width: 420px; }
+.cf-head { display: flex; gap: 12px; align-items: flex-start; }
+.cf-icon {
+  flex-shrink: 0;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--danger-weak); color: var(--danger);
+  font-size: 17px; font-weight: 700; line-height: 1;
+  user-select: none;
+}
+.cf-titles { flex: 1; min-width: 0; }
+.cf-titles h3 { margin: 3px 0 6px; font-size: 15px; color: var(--text); }
+.cf-desc { color: var(--text-2); font-size: 13px; line-height: 1.6; }
+.cf-desc:empty { display: none; }
+/* 被删条目的内容：等宽 + 浅底，一眼看出删的是哪一条 */
+.cf-detail {
+  margin-top: 12px; padding: 9px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-size: 13px; line-height: 1.5;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  word-break: break-all; max-height: 132px; overflow-y: auto;
+}
+.cf-detail:empty { display: none; }
+
+#toast {
+  position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);
+  background: #1f2430; color: #fff; padding: 10px 22px;
+  border-radius: 999px; font-size: 13px; z-index: 99;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+
+/* ---------------- 指定应用运行时自动暂停（应用列表 + 多选弹窗） ---------------- */
+
+/* 应用行：启用框 / 文件名 / 删除。文件名占满剩余宽度，与时刻表行的宽松版式一致 */
+.app-exe {
+  flex: 1; min-width: 170px;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+}
+/* 内置清单命中的程序在输入框右侧标出中文名（不在清单里为空，靠 :empty 收起） */
+.app-alias { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.app-alias:empty { display: none; }
+/* 软件名输入框：宽度由 fitNameInput 按实测文本宽度写成内联 style（这里是兜底初值）。
+   它是 flex: 0 0 auto，所以名字一长，前面 flex: 1 的可执行名输入框就自动收窄。 */
+.app-name { flex: 0 0 auto; width: 110px; }
+.pk-list {
+  display: flex; flex-direction: column; gap: 2px;
+  max-height: 300px; overflow-y: auto;
+  margin: 10px 0 0; padding: 6px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+}
+.pk-item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 7px; border-radius: 7px;
+  font-size: 13px; color: var(--text); cursor: pointer;
+}
+.pk-item:hover { background: var(--accent-weak); }
+.pk-item em { margin-left: auto; font-style: normal; font-size: 12px; color: var(--text-2); }
+.pk-item.disabled { opacity: 0.55; cursor: default; }
+.pk-item.disabled:hover { background: transparent; }
+
+/* ---------------- 背景颜色选择器（预设 12 色 + 调色板） ---------------- */
+
+/* 收起态：与其他行输入框同宽同弧度的圆角色块，整块填充当前颜色（恢复默认在选择器弹窗里）。
+   行内与「预览」按钮并排：容器占满输入框宽度（180px），两控件各占一半。 */
+.ap-color-row {
+  width: 180px; display: flex; align-items: center; gap: 8px;
+}
+.ap-color-row .color-chip,
+.ap-color-row .btn {
+  flex: 1 1 0; width: auto; min-width: 0;
+  height: 32px; padding: 0;
+  border-radius: 8px; font-size: 13px;
+}
+.color-chip {
+  height: 32px; padding: 0;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(127, 127, 127, 0.22);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.color-chip:hover { border-color: var(--accent); }
+.color-chip:focus-visible { outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
+
+.color-box { width: 384px; }
+.cf-icon.accent { background: var(--accent-weak); color: var(--accent); }
+
+.cp-label { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 16px 0 8px; }
+.cp-presets { display: grid; grid-template-columns: repeat(6, 1fr); gap: 8px; }
+/* 预设色块：点一下即生效；选中的带主色描边环 + 对勾 */
+.cp-sw {
+  position: relative; height: 34px; padding: 0; border: none; border-radius: 9px;
+  cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.cp-sw:hover { transform: translateY(-1px); box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), 0 3px 8px rgba(0, 0, 0, 0.16); }
+.cp-sw.on { box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12), 0 0 0 2px var(--panel), 0 0 0 4px var(--accent); }
+.cp-sw.on::after {
+  content: '✓'; position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #ffffff; font-size: 15px; font-weight: 700;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+/* 饱和度 × 明度面板：三层渐变底色由 JS 按当前色相写入 */
+.cp-pad {
+  position: relative; height: 128px; border-radius: 10px;
+  cursor: crosshair; touch-action: none;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+/* 色相条：标准彩虹渐变，拖动选色相 */
+.cp-hue {
+  position: relative; height: 12px; margin-top: 12px; border-radius: 999px;
+  cursor: pointer; touch-action: none;
+  background: linear-gradient(to right,
+    #ff0000 0%, #ffff00 17%, #00ff00 33%, #00ffff 50%, #0000ff 67%, #ff00ff 83%, #ff0000 100%);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
+}
+/* 两个滑块共用一枚"白圈 + 深描边"的圆环：任何底色上都看得见 */
+.cp-thumb {
+  position: absolute; width: 14px; height: 14px; border-radius: 999px;
+  transform: translate(-50%, -50%); pointer-events: none;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 3.5px rgba(0, 0, 0, 0.35);
+}
+.cp-hue .cp-thumb { top: 50%; }
+.cp-foot { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.cp-preview {
+  width: 32px; height: 32px; border-radius: 9px; flex-shrink: 0;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.14);
+}
+.cp-hex {
+  flex: 1; width: auto;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  letter-spacing: 0.3px;
+}
+
+/* 新建自定义提醒：虚线卡（一眼看出是"可点"的动作入口，而不是又一张配置卡）。
+   卡片自身不留内边距，整块交给内部的按钮填满 —— 于是点击热区就是整张卡。
+   底色用页面底色（--bg）而不是卡片底色，读起来像"卡片流里的一个空位"。 */
+.card-add {
+  background: var(--bg);
+  border: 1px dashed var(--border);
+  padding: 0;
+}
+.card-add:hover { border-color: var(--accent); }
+.card-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 76px;
+  padding: 18px 20px;
+  background: none;
+  border: 0;
+  border-radius: inherit;
+  color: var(--text-2);
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition: color 0.12s ease;
+}
+.card-add:hover .card-add-btn { color: var(--accent); }
+.card-add-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; color: var(--accent); }
+
+/* 自定义提醒卡的标题行：标题（含启用开关）在左，右侧是摘要 + 删除按钮成组（.card-head 仍两端对齐）。
+   .card-actions 自己必须带 margin-left:auto —— .adv-summary 的 auto margin 被包进组内后只对组内生效，
+   组本身没有 auto margin 会被 space-between 挤到行中间（该右对齐的没右对齐） */
+.card-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-left: auto; }
+
+/* 今日提醒时间线（时间规划页顶部，默认折叠） */
+.tl-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; padding: 0; font: inherit; font-weight: 600; font-size: 14px; color: var(--text-2); cursor: pointer; text-align: left; }
+.tl-count { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--text-2); }
+.tl-row { display: flex; align-items: center; gap: 10px; padding: 7px 0 7px 10px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--tl-c, transparent); font-size: 13px; }
+.tl-row:last-child { border-bottom: none; }
+.tl-time { font-variant-numeric: tabular-nums; color: var(--text); font-weight: 600; min-width: 44px; }
+/* 色点与左色条同色（--tl-c 由脚本按提醒种类设置）：一眼区分短/长/外卖/各条自定义提醒 */
+.tl-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--tl-c, var(--text-2)); }
+.tl-name { color: var(--text); }
+.tl-src { font-size: 11px; color: var(--text-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
+
+/* 折叠箭头（时间线卡与其余卡同一颗「▾」，收起时转向右）：**在标题左侧**。整条 card-head
+   都是折叠热区（点标题 / 摘要 / 空白处均可），hover 行时箭头高亮给出可点暗示；
+   功能按钮（删除 / 预览等）不算折叠（委托里排除）。
+
+   箭头外挂（`margin: 0 3px 0 -9px`）是把「▾」的字形墨迹左缘顶到内容对齐线上。
+   箭头是个 22×22 的圆形热区、12px 的「▾」居中其中，字形墨迹天生比热区左缘内缩一大截；
+   而内容行（勾选框 / 字段标签 / 说明 / 面板边框）的左缘一律在 0，于是看起来「选项比
+   箭头更靠左」。外挂量按 2x 截图的像素实测校正过：-6px 时墨迹还比勾选框右 2.5px，
+   -9px 时两条左缘落在同一像素上（292.5 / 293.0 CSS px，半个像素以内）。
+   `font-family: inherit` 保留着做防御：这个圆有 <button>（五张卡）和 <span>（时间线卡的
+   标题行）两种写法，<button> 默认不继承字体，显式继承才能保证两边度量一致
+   （与 .msg-toggle 同一处理）。
+   右侧那 3px 是用来补回占位宽度的：22-9+3 = 16px，加 .card-head / .tl-head 的 gap 8px
+   = 24px，正好等于勾选行的「16px 框 + 8px 缝」——所以标题文字与勾选行文字自动同列
+   （实测都是 317 CSS px）。
+   整张卡只剩两条对齐线（0 / 24），不用去动任何一行的缩进。
+   反方向做（把内容整体右移 22px 或 30px）会连带面板边框、说明、hint 一起缩进，
+   卡片左边距涨到 42/50px 而右边距仍是 20px，反而失衡。 */
+.foldable.closed > :not(.card-head) { display: none; }
+.foldable.closed .card-head { margin-bottom: 0; }
+.foldable > .card-head { cursor: pointer; }
+.card-fold { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: none; border-radius: 50%; background: none; font-size: 12px; font-family: inherit; line-height: 1; color: var(--text-2); cursor: pointer; transition: transform 0.15s, background 0.12s, color 0.12s; margin: 0 3px 0 -9px; }
+.card-head:hover .card-fold, .tl-head:hover .card-fold { background: rgba(128, 128, 128, 0.18); color: var(--text); }
+.foldable.closed .card-fold, .tl-card:not(.open) .card-fold { transform: rotate(-90deg); }
+.tl-badge { font-size: 11px; border-radius: 999px; padding: 1px 8px; }
+.tl-badge.pause { color: #b45309; border: 1px solid currentColor; }
+
+/* ---------------- 滚动条：设置窗口内所有横 / 竖向滚动容器统一细圆角样式 ----------------
+   覆盖：#content（页面竖向）、.table-scroll（统计表横向）、.msg-list（提醒内容列表）、
+   .cf-detail（确认框详情）、.pk-list（应用选择列表）等。
+   颜色用文字色低透明度派生（两种主题自适应），hover 加深、按下变主题色；
+   thumb 上下留 2px 透明边（background-clip: padding-box）视觉上更纤细、不贴边。 */
+:root {
+  --sb-thumb: rgba(31, 36, 48, 0.22);
+  --sb-thumb-hover: rgba(31, 36, 48, 0.4);
+}
+[data-theme='dark'] {
+  --sb-thumb: rgba(232, 234, 242, 0.2);
+  --sb-thumb-hover: rgba(232, 234, 242, 0.38);
+}
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--sb-thumb);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover { background-color: var(--sb-thumb-hover); }
+::-webkit-scrollbar-thumb:active { background-color: var(--accent); }

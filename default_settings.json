@@ -1,0 +1,91 @@
+{
+  "appName": "打工人休息提醒",
+  "short": {
+    "enabled": true,
+    "mode": "countdown",
+    "intervalMs": 600000,
+    "durationMs": 20000,
+    "notifyBeforeMs": 10000,
+    "postponeMs": 120000,
+    "slots": []
+  },
+  "long": {
+    "enabled": true,
+    "mode": "countdown",
+    "intervalMs": 1800000,
+    "durationMs": 300000,
+    "notifyBeforeMs": 30000,
+    "postponeMs": 300000,
+    "slots": []
+  },
+  "customBreaks": [],
+  "longEveryNShort": 2,
+  "idlePauseMin": 5,
+  "dndPause": true,
+  "appPause": {
+    "enabled": false,
+    "seeded": false,
+    "items": []
+  },
+  "theme": "system",
+  "appearance": {
+    "color": "#4f7cff",
+    "transparency": 0.15,
+    "blur": true,
+    "fullscreen": false,
+    "alwaysOnTop": true,
+    "widthPct": 60,
+    "heightPct": 60
+  },
+  "allScreens": true,
+  "sound": {
+    "enabled": true,
+    "volume": 0.6,
+    "sound": "short_start.wav",
+    "custom": "",
+    "mode": "single",
+    "singleId": "sm-builtin-short_start",
+    "music": []
+  },
+  "shortcuts": {
+    "postpone": "Ctrl+Alt+P",
+    "endEarly": "Ctrl+Alt+X",
+    "pause": "Ctrl+Alt+S",
+    "nextBreak": "Ctrl+Alt+B"
+  },
+  "reminderMessages": {
+    "short": {
+      "order": "fixed",
+      "fixedId": "",
+      "items": []
+    },
+    "long": {
+      "order": "fixed",
+      "fixedId": "",
+      "items": []
+    },
+    "takeout": {
+      "order": "fixed",
+      "fixedId": "",
+      "items": []
+    }
+  },
+  "supervisor": {
+    "enabled": true,
+    "gaze": true,
+    "selection": "fixed",
+    "fixedKey": "supervisor_default",
+    "rolesMigrated": false
+  },
+  "takeout": {
+    "enabled": true,
+    "leadMin": 0,
+    "postponeMin": 10,
+    "redPacket": false,
+    "slots": []
+  },
+  "autostart": false,
+  "startMinimized": false,
+  "installId": "",
+  "checkUpdateOnStart": true
+}
