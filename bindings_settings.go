@@ -258,6 +258,32 @@ func (a *App) PickSupervisorImage() map[string]any {
 	return map[string]any{"key": key, "name": name}
 }
 
+// ReplaceRoleImage 修改某个已有角色的立绘图片（选图 → 覆盖 figure / preview → 回写 role.json）。
+//
+// 与 PickSupervisorImage（新建角色）不同：这里角色 key 保持不变、只换图，名字 / 启停 /
+// 几何 / 台词都保留。返回是否成功（取消 / 无头环境 / 失败都返回 false，设置页据此静默）。
+func (a *App) ReplaceRoleImage(key string) bool {
+	if !validRoleKey(key) {
+		log.Printf("[role] 非法角色 key：%q", key)
+		return false
+	}
+	if !a.dialogAvailable() {
+		log.Printf("[role] 无头 / server 模式无法弹选图对话框，返回失败")
+		return false
+	}
+	r := showOpenDialog(a.app.Dialog, "选择新的立绘图片", []application.FileFilter{
+		{DisplayName: "图片", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.gif"},
+	})
+	if r.canceled {
+		return false
+	}
+	if r.err != nil {
+		logDialogErr("选择立绘", r.err)
+		return false
+	}
+	return replaceRoleImage(a.rolesRoot, key, r.path)
+}
+
 // ---------- 关于页 / 更新 / 窗口 ----------
 
 // UpdateStatus 最近一次检查更新的结果（没查过 = idle）。

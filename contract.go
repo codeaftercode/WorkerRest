@@ -46,6 +46,7 @@ var wiredCalls = []string{
 	"SaveRole",
 	"RemoveRole",
 	"PickSupervisorImage",
+	"ReplaceRoleImage",
 	"SupervisorPreview",
 
 	// ---- 关于页 / 更新 / 手册 / 外链 ----

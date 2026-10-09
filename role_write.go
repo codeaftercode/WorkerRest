@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"log"
 	"math"
 	"os"
 	"path/filepath"
@@ -105,6 +106,68 @@ func writeRoleFile(root, key string, cfg RoleFile) error {
 		return err
 	}
 	return nil
+}
+
+// replaceRoleImage 替换某个已有角色的立绘：把新图复制成 figure<ext> 与 preview<ext>，
+// 并回写 role.json 的 image / preview 字段（名字 / 启停 / 几何 / 台词等读取侧字段原样保留）。
+//
+// 与 createRoleDir（新建角色）不同：这里角色 key 不变，只换图。旧扩展名不同的立绘 /
+// 预览文件一并清理（按 figure.* / preview.* 通配），避免不同扩展名的残留文件占着目录。
+// 返回是否成功（key 非法 / 角色不存在 / 源文件不合法或过大 / 写入失败都会返回 false）。
+func replaceRoleImage(root, key, src string) bool {
+	if !validRoleKey(key) {
+		return false
+	}
+	base, ok := readRoleFile(root, key)
+	if !ok {
+		log.Printf("[role] 角色不存在或 role.json 读不出来：%s", key)
+		return false
+	}
+	st, err := os.Stat(src)
+	if err != nil || !st.Mode().IsRegular() || st.Size() > 20*1024*1024 {
+		log.Printf("[role] 替换立绘的源文件不合法或过大：%s", src)
+		return false
+	}
+	ext := strings.ToLower(filepath.Ext(src))
+	if ext == "" {
+		ext = ".png"
+	}
+	if _, ok := imageExtMIME[ext]; !ok {
+		log.Printf("[role] 不支持的图片格式：%s", ext)
+		return false
+	}
+	b, err := os.ReadFile(src)
+	if err != nil {
+		log.Printf("[role] 读取源立绘失败 %s: %v", src, err)
+		return false
+	}
+	dir := filepath.Join(root, key)
+	// 清掉旧的 figure.* / preview.*（扩展名可能跟新图不同，残留会占着目录）
+	for _, pat := range []string{"figure.*", "preview.*"} {
+		if matches, _ := filepath.Glob(filepath.Join(dir, pat)); matches != nil {
+			for _, m := range matches {
+				_ = os.Remove(m)
+			}
+		}
+	}
+	fig := "figure" + ext
+	prev := "preview" + ext
+	if err := os.WriteFile(filepath.Join(dir, fig), b, 0o644); err != nil {
+		log.Printf("[role] 写入新立绘失败 %s: %v", key, err)
+		return false
+	}
+	if err := os.WriteFile(filepath.Join(dir, prev), b, 0o644); err != nil {
+		log.Printf("[role] 写入新预览图失败 %s: %v", key, err)
+		return false
+	}
+	base.Image = fig
+	base.Preview = prev
+	if err := writeRoleFile(root, key, base); err != nil {
+		log.Printf("[role] 回写 role.json 失败 %s: %v", key, err)
+		return false
+	}
+	log.Printf("[role] 已替换角色 %s 的立绘（%s）", key, fig)
+	return true
 }
 
 // removeRoleDir 删除整个角色子目录（角色 = 目录，删角色就是删目录）

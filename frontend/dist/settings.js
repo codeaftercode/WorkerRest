@@ -531,6 +531,21 @@
     await renderRoleGallery();
     toast(`\u5DF2\u91CD\u547D\u540D\u4E3A\u300C${role.name}\u300D`);
   }
+  async function replaceRoleImage(key) {
+    const role = ROLES.find((r) => r.key === key);
+    if (!role) return;
+    const ok = await window.api.replaceSupervisorImage(key);
+    if (!ok) return;
+    // 换图后缩略图要重读，否则磁贴仍显示旧图
+    ROLES = await window.api.listSupervisorRoles();
+    if (supEditKey === key) {
+      // 换的是当前编辑角色：预览要重读（Go 侧会按新立绘重新组装会话）
+      await refreshSupervisorPreview();
+    }
+    await renderRoleGallery();
+    fillSupervisorImageName();
+    toast(`\u5DF2\u66F4\u65B0\u300C${role.name}\u300D\u7684\u7ACB\u7ED8\u56FE\u7247`);
+  }
   function toggleRoleEnabled(key) {
     const role = ROLES.find((r) => r.key === key);
     if (!role) return;
@@ -599,6 +614,7 @@
     const items = [
       { act: "preview", label: "\u9884\u89C8" },
       { act: "rename", label: "\u91CD\u547D\u540D" },
+      { act: "replace", label: "\u4FEE\u6539\u7ACB\u7ED8\u56FE\u7247" },
       { act: "toggle", label: role.enabled ? "\u7981\u7528" : "\u542F\u7528" },
       { act: "del", label: "\u5220\u9664", danger: true }
     ];
@@ -608,12 +624,13 @@
       b.className = "role-menu-item" + (it.danger ? " danger" : "");
       b.dataset.act = it.act;
       b.textContent = it.label;
-      b.disabled = locked && it.act !== "rename" && it.act !== "preview";
+      b.disabled = locked && it.act !== "rename" && it.act !== "preview" && it.act !== "replace";
       b.addEventListener("click", () => {
         if (b.disabled) return;
         closeRoleMenu();
         if (it.act === "preview") void previewRoleFromMenu(key);
         else if (it.act === "rename") void renameRole(key);
+        else if (it.act === "replace") void replaceRoleImage(key);
         else if (it.act === "toggle") toggleRoleEnabled(key);
         else void removeRole(key);
       });

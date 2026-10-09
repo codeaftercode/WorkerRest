@@ -171,6 +171,9 @@
     removeSupervisorRole: function (key) {
       return call("RemoveRole", [str(key)]);
     },
+    replaceSupervisorImage: function (key) {
+      return call("ReplaceRoleImage", [str(key)]);
+    },
 
     // ---- 声音 ----
     soundFileUrl: function (file) {
