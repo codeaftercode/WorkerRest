@@ -240,6 +240,7 @@ func TestStatsLoadFlushRoundTrip(t *testing.T) {
 	}
 
 	back := NewStatsStore(func() string { return path })
+	back.nowFn = c.now // 用同一个测试时钟，Today() 才会定位到 10-08 而非真实今天
 	back.Load()
 	d := back.Today()
 	if d.ShortCount != 1 || d.ShortMs != 20_000 {
