@@ -275,9 +275,10 @@ type StatsStore struct {
 	awayDayKey    string
 	awayCountedMs int64
 
-	// 注入点（单测替换成假时钟 / 假落点）
-	nowFn  func() int64
-	fileFn func() string
+	// 注入点（单测替换成假时钟 / 假落点 / 假唤醒 tick 源）
+	nowFn      func() int64
+	fileFn     func() string
+	wakeTickFn func() (int64, bool)
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
@@ -302,6 +303,7 @@ func NewStatsStore(fileFn func() string) *StatsStore {
 		workSegStartAt: now,
 		nowFn:          nowMs,
 		fileFn:         fileFn,
+		wakeTickFn:     sysWakeTick,
 		stopCh:         make(chan struct{}),
 	}
 }
@@ -680,6 +682,36 @@ func (st *StatsStore) NotifyResume() {
 	st.EndAway()
 }
 
+// NotifySlept 醒来后补记一段睡眠 [fromMs, toMs)。
+//
+// 为什么需要「补记」：进程在睡眠期间被挂起，无法在入睡那一刻实时调用 NotifySuspend /
+// NotifyResume（这两个方法保留，供未来真有电源事件源时用）。工作累加器在醒来后第一跳
+// 检测到「墙钟跳变远超唤醒 tick 跳变」（见 detectSleep），就用这里一次性补记。
+//
+// 语义：睡眠 = 人不在电脑前，整段算离开（**不跨天**，只记睡眠起点所在那天 —— 周末
+// 合盖两天不会变成几十小时的离开）；工作段从醒来时刻重新起算。不是「从工作搬」——
+// 工作累加器在睡眠期间停摆，这段从没记进过工作。
+func (st *StatsStore) NotifySlept(fromMs, toMs int64) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	day := dayKeyOf(fromMs)
+	var added int64
+	for _, seg := range splitByDay(fromMs, toMs) {
+		if seg.date == day {
+			st.dayOfLocked(seg.date).AwayMs += seg.ms
+			added += seg.ms
+		}
+	}
+	// 若正处在空闲离开中，把尾账锚点推进到醒来时刻，避免 onAwayTick 重复记这段睡眠
+	if st.awayOpen && st.awaySettledAt < toMs {
+		st.awaySettledAt = toMs
+	}
+	st.workSegStartAt = toMs
+	if added > 0 {
+		st.markDirtyLocked()
+	}
+}
+
 // countedSpan 算出这一跳真正该计入**工作**的区间 `[a, b)`，跨睡眠的部分剪掉；
 // 整跳都不该计入时 ok=false。
 //
@@ -859,12 +891,29 @@ func (st *StatsStore) StartWorkAccumulator(isBreak, isIdle func() bool) {
 		t := time.NewTicker(time.Second)
 		defer t.Stop()
 		last := st.nowFn()
+		lastTick, haveTick := int64(0), false
+		if st.wakeTickFn != nil {
+			lastTick, haveTick = st.wakeTickFn()
+		}
 		for {
 			select {
 			case <-st.stopCh:
 				return
 			case <-t.C:
 				now := st.nowFn()
+				// 睡眠检测：墙钟跳变 - 唤醒 tick 跳变 > 阈值 → 这中间睡过一觉。
+				// 醒来后第一跳就触发，把睡眠整段补记成离开并跳过工作记账（见 NotifySlept）。
+				if haveTick && st.wakeTickFn != nil {
+					if tick, ok := st.wakeTickFn(); ok {
+						if detectSleep(now-last, tick-lastTick) > 0 {
+							st.NotifySlept(last, now)
+							last = now
+							lastTick = tick
+							continue
+						}
+						lastTick = tick
+					}
+				}
 				from := last
 				last = now
 				// 休息 = 这一跳归休息：顺手推进休息计时（休息时长同样是实时入账的，

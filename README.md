@@ -322,20 +322,14 @@ python scripts/verify_portable.py          # 隔离 APPDATA 下解包首跑，�
   落在 `<运行目录>/data/stats.json`；Go 版 `WR_SETTINGS_PATH` 分支直接取「配置文件同目录」，  
   便携形态下落在 `<运行目录>/config/stats.json`（与 `sounds/` 同一套约定，配置同目录旁的  
   数据文件）。功能不受影响 —— 落点由配置文件位置推导，两边读写的都是自己的那份。
-- **系统睡眠事件未接线**：Electron 靠 `powerMonitor` 的 suspend/resume 通知 `NotifySuspend` /  
-  `NotifyResume`（把睡眠整段算进离开、醒来后重锚）。Go 侧这两个方法**已实现**（`stats.go`  
-  的 `NotifySuspend` / `NotifyResume`），但没有 Wails 对应的电源事件来源可订阅，故暂时**没有  
-  调用点**——睡眠期间这段既不计工作也不计离开，醒来后若错过休息也不会重锚。
+- **系统睡眠事件（醒来后补记）**：Electron 靠 `powerMonitor` 的 suspend/resume 通知  
+  `NotifySuspend` / `NotifyResume`（把睡眠整段算进离开、醒来后重锚）。Go 侧没有 Wails  
+  对应的电源事件源，改为**醒来后补记**（`stats.go` 的 `NotifySlept` + `sys_power.go`）：  
+  工作累加器每秒 tick 里比对「墙钟跳变」与「`GetTickCount64` 跳变」（后者不含睡眠时间），  
+  差值超过 60 秒即判定睡过一觉，把睡眠整段补记进离开（不跨天）、工作段从醒来重新起算。  
+  入睡那一刻无法实时回调（进程被挂起），但账目结果与 Electron 一致。
 - **外卖/休息窗口的 z-order 抬升降级**：Electron 用 `moveTop()` 做同层「谁后抬谁在上」，  
   让外卖压在休息之上。Wails v3 没有暴露 z-order 抬升 API（只有 `SetAlwaysOnTop` 用  
   `HWND_TOPMOST` 置顶），所以 Go 版用 **`SetAlwaysOnTop(true)` + `Focus()`** 近似替代：  
   两个窗口都置顶时，后抬的那个被聚焦、通常在上，但「同层精确 z-order」语义无法逐像素复刻。  
   抬升簿记（`raiseState`）与键鼠活动轮询（`sup:active` 广播）仍照常工作。
-
-**已知文案不一致（渲染层，需要改一处）**
-
-- 设置页「关于」页把版本行写死成「… · Electron <版本> …」，Go 版会出现「Electron」字样
-
-  （见 `dist/renderer/settings.js` 的 `d-version`）。Go 侧如实回报引擎为
-
-  `Wails v3 (Go)`，文案待渲染层改。

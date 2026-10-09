@@ -592,6 +592,77 @@ func TestPeriodsAggregate(t *testing.T) {
 	}
 }
 
+// ---------- 睡眠补记 ----------
+
+// TestNotifySlept 醒来补记一段睡眠：睡眠整段算离开、工作段从醒来重起、不跨天。
+func TestNotifySlept(t *testing.T) {
+	c := &statsClock{}
+	c.set(localTime(2026, 10, 8, 10, 0))
+	st, _ := newTestStats(t, c)
+
+	// 从 10:00 睡到 10:30（30 分钟）
+	st.NotifySlept(c.now(), c.now()+30*60_000)
+	c.add(30 * time.Minute) // 醒来时刻推进 30 分钟
+
+	d := st.Today()
+	if d.AwayMs != 30*60_000 || d.WorkMs != 0 {
+		t.Fatalf("睡眠 30 分钟应全记离开、不记工作：%+v", d)
+	}
+	st.mu.Lock()
+	seg := st.workSegStartAt
+	st.mu.Unlock()
+	if seg != c.now() {
+		t.Fatalf("工作段应从醒来时刻重起：%d vs %d", seg, c.now())
+	}
+}
+
+// TestNotifySleptNotCrossDay 睡眠跨零点只记起点那天（与 OnAwayTick 同一口径）。
+func TestNotifySleptNotCrossDay(t *testing.T) {
+	c := &statsClock{}
+	c.set(localTime(2026, 10, 9, 0, 3))
+	st, _ := newTestStats(t, c)
+
+	// 从 10-08 23:58 睡到 10-09 00:03（跨零点 5 分钟）
+	from := localTime(2026, 10, 8, 23, 58).UnixMilli()
+	to := c.now()
+	st.NotifySlept(from, to)
+
+	if d := st.dayForTest("2026-10-08"); d.AwayMs != 2*60_000 {
+		t.Fatalf("只应记睡眠起点那天（10-08）的 2 分钟，得到 %+v", d)
+	}
+	if d := st.dayForTest("2026-10-09"); d.AwayMs != 0 {
+		t.Fatalf("10-09 不该记离开（不跨天），得到 %+v", d)
+	}
+}
+
+// TestNotifySleptDuringAway 睡眠撞上空闲离开：推进尾账锚点，不重复记。
+func TestNotifySleptDuringAway(t *testing.T) {
+	c := &statsClock{}
+	c.set(localTime(2026, 10, 8, 10, 0))
+	st, _ := newTestStats(t, c)
+
+	// 先进入空闲离开（把 10 分钟前到现在搬进离开）
+	st.mu.Lock()
+	st.touchTodayLocked().WorkMs = 10 * 60_000
+	st.workSegStartAt = c.now() - 10*60_000
+	st.mu.Unlock()
+	st.BeginAway(c.now() - 10*60_000)
+
+	// 离开期间睡了 5 分钟
+	sleepFrom := c.now()
+	c.add(5 * time.Minute)
+	st.NotifySlept(sleepFrom, c.now())
+
+	// 醒来后又推进一次离开尾账（模拟 onAwayTick），不该重复记睡眠那段
+	c.add(3 * time.Minute)
+	st.OnAwayTick()
+
+	// 总离开 = 10 分钟(初始搬) + 5 分钟(睡眠) + 3 分钟(醒来后) = 18 分钟
+	if d := st.Today(); d.AwayMs != 18*60_000 {
+		t.Fatalf("离开应累计 18 分钟（初始 10 + 睡眠 5 + 醒来后 3），得到 %+v", d)
+	}
+}
+
 // ---------- 落点推导 ----------
 
 func TestStatsFileForConfig(t *testing.T) {

@@ -4834,7 +4834,7 @@
     });
     $("d-quit").addEventListener("click", () => void window.api.quit());
     const info = await window.api.appInfo();
-    $("d-version").textContent = `\u6253\u5DE5\u4EBA\u4F11\u606F\u63D0\u9192 v${info.version} \xB7 Electron ${info.electron} \xB7 \u672C\u5730\u4F18\u5148`;
+    $("d-version").textContent = `\u6253\u5DE5\u4EBA\u4F11\u606F\u63D0\u9192 v${info.version} \xB7 ${info.electron} \xB7 \u672C\u5730\u4F18\u5148`;
     const updateLine = $("d-update-status");
     const updateGo = $("d-update-go");
     const renderUpdate = (st) => {
