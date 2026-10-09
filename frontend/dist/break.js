@@ -334,8 +334,16 @@
     return p;
   }
   async function main() {
+    // 一次性揭示窗口：消除「先无立绘、后有立绘」闪烁——启用督休专员时整窗先透明，
+    // 立绘就绪（load/error）后淡入；无立绘时立即显示。超时兜底防异常卡透明。
+    let revealed = false;
+    const reveal = () => {
+      if (revealed) return;
+      revealed = true;
+      document.documentElement.style.opacity = "1";
+    };
     const info = await api.breakCurrent();
-    if (!info) return;
+    if (!info) { reveal(); return; }
     const data = info;
     document.documentElement.style.setProperty("--accent", data.appearance.color);
     document.documentElement.style.setProperty("--app-opacity", String(1 - data.appearance.transparency));
@@ -350,6 +358,15 @@
         document.querySelector(".content"),
         document.getElementById("figure-trim")
       );
+      // 立绘就绪后再揭示整窗（load/error 或已缓存 complete），避免空白对话框先闪现
+      const figImg = document.getElementById("figure-img");
+      if (figImg && figImg.complete && figImg.naturalWidth > 0) reveal();
+      else if (figImg) {
+        figImg.addEventListener("load", reveal, { once: true });
+        figImg.addEventListener("error", reveal, { once: true });
+      }
+    } else {
+      reveal();
     }
     const ring = document.getElementById("ring");
     const countdown = document.getElementById("countdown");
@@ -384,6 +401,9 @@
       document.getElementById("preview-badge").classList.remove("hidden");
       document.body.addEventListener("click", () => api.closeWindow());
     }
+    // 兜底：任何异常导致立绘既没 load 也没 error 时，最多 1.5s 后强制揭示，
+    // 避免窗口一直透明不可见。
+    window.setTimeout(reveal, 1500);
   }
   main();
 })();

@@ -582,6 +582,14 @@ func (a *App) ShowBreakWindow(kind string) {
 	}
 	a.mu.Unlock()
 
+	// 把「督休专员-启用」状态经 URL query 下发，让提醒窗口首帧就定好布局，
+	// 避免先显示无立绘窗口、立绘加载完再切换的闪烁（frontend 据此决定整窗先
+	// 透明、等立绘就绪再淡入；无立绘时立即显示正确态）。
+	supFlag := "0"
+	if a.cfgSnapshot().SupervisorCfg().Enabled {
+		supFlag = "1"
+	}
+
 	x, y, w, h := a.breakWindowBounds()
 	win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "break",
@@ -593,7 +601,7 @@ func (a *App) ShowBreakWindow(kind string) {
 		Frameless:        true,
 		AlwaysOnTop:      a.cfgSnapshot().AppearanceCfg().AlwaysOnTop,
 		DisableResize:    true,
-		URL:              "/break.html?win=break",
+		URL:              "/break.html?win=break&sup=" + supFlag,
 		BackgroundType:   application.BackgroundTypeTranslucent,
 		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
 		// 窗口身份经 URL 的 ?win=break 下发；JS 字段对 URL 页面不生效（仅占位）

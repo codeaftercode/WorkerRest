@@ -15,6 +15,10 @@ html, body {
   user-select: none;
 }
 
+/* 默认整窗透明（首帧不可见）：启用督休专员（?sup=1）时保持透明直到立绘就绪，
+   由 break.js 的 reveal() 淡入；无立绘（?sup≠1）由上方早期脚本立即置 1。 */
+html { opacity: 0; transition: opacity 0.18s ease; }
+
 #app {
   height: 100vh;
   display: flex;

@@ -421,9 +421,12 @@ async function run() {
   console.log("[probe] preBreak:", JSON.stringify(metrics.preBreak));
 
   // ---- 1c. 提前提示窗：自定义提醒版式 ----
+  // supervisor:{enabled:true}：探针断言（has-supervisor 版式 / 立绘解码）以「启用」为前提，
+  // 必须在隔离副本上显式打开，不跟随用户真实配置的开关状态。
   await main.evaluate(
     "(function(){ return window.api.saveSettings({" +
       "short:{enabled:false}, long:{enabled:false}, takeout:{enabled:false}," +
+      "supervisor:{enabled:true}," +
       "customBreaks:[{id:'cb-water',name:'喝水提醒',enabled:true,config:{enabled:true," +
       "mode:'countdown',intervalMs:180000,durationMs:20000,notifyBeforeMs:180000," +
       "postponeMs:120000,slots:[]}}]}); })()",

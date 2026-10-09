@@ -5,6 +5,17 @@
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
   <title>休息一下</title>
   <link rel="stylesheet" href="./break.css" />
+  <!-- 早期脚本：首帧渲染前根据 ?sup 决定窗口初始可见性。sup=1（启用督休专员）时
+       整窗先透明，等立绘加载完成再淡入，避免「先无立绘、后有立绘」闪烁；sup=0
+       或缺失时立即显示（无立绘即正确态）。 -->
+  <script>
+    (function () {
+      try {
+        var p = new URLSearchParams(location.search);
+        if (p.get("sup") !== "1") document.documentElement.style.opacity = "1";
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div id="app">
