@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -295,6 +296,47 @@ func (a *App) ExportSettings() bool {
 	}
 	log.Printf("[settings] 配置已导出到 %s", r.path)
 	return true
+}
+
+// ExportReport 导出报表文件（CSV / PNG）：另存为对话框 → base64 解码写盘。
+//
+// 渲染层把图表内容（CSV 已含 BOM、PNG 已含底色）转成 base64 传来，存储路径完全由
+// 用户在对话框里选（取代 Electron 时代 a.download 落点不可控的下载行为）。
+// 返回 {canceled, error?, path?}：取消 → {canceled:true}（渲染层静默）；
+// 失败 → {canceled:false, error:"..."}；成功 → {canceled:false, path:"..."}。
+func (a *App) ExportReport(defaultName, b64 string) map[string]any {
+	if !a.dialogAvailable() {
+		log.Printf("[settings] 无头 / server 模式无法弹另存为对话框，返回失败")
+		return map[string]any{"canceled": false, "error": "当前环境无法弹出保存对话框"}
+	}
+	var filters []application.FileFilter
+	switch strings.ToLower(filepath.Ext(defaultName)) {
+	case ".csv":
+		filters = []application.FileFilter{{DisplayName: "CSV", Pattern: "*.csv"}}
+	case ".png":
+		filters = []application.FileFilter{{DisplayName: "PNG 图片", Pattern: "*.png"}}
+	default:
+		filters = []application.FileFilter{{DisplayName: "所有文件", Pattern: "*.*"}}
+	}
+	r := showSaveDialog(a.app.Dialog, "导出报表", defaultName, filters)
+	if r.canceled {
+		return map[string]any{"canceled": true}
+	}
+	if r.err != nil {
+		logDialogErr("导出报表", r.err)
+		return map[string]any{"canceled": false, "error": "打开保存对话框失败"}
+	}
+	data, err := base64.StdEncoding.DecodeString(b64)
+	if err != nil {
+		log.Printf("[settings] 报表数据 base64 解码失败: %v", err)
+		return map[string]any{"canceled": false, "error": "导出数据无效"}
+	}
+	if err := os.WriteFile(r.path, data, 0o644); err != nil {
+		log.Printf("[settings] 写入导出文件失败 %s: %v", r.path, err)
+		return map[string]any{"canceled": false, "error": "写入文件失败"}
+	}
+	log.Printf("[settings] 报表已导出到 %s", r.path)
+	return map[string]any{"canceled": false, "path": r.path}
 }
 
 // ImportSettings 导入配置：打开对话框 → 读 JSON → 深合并 → 归一化 → 落盘 → 同步副作用

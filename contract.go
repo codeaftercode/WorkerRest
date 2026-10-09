@@ -55,6 +55,7 @@ var wiredCalls = []string{
 	"OpenManual",
 	"OpenExternal",
 	"ExportSettings",
+	"ExportReport",
 	"ImportSettings",
 
 	// ---- 统计 ----

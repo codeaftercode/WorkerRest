@@ -1819,6 +1819,9 @@
   var LAST_STATE = null;
   function renderStatus(st) {
     LAST_STATE = st;
+    // 「暂停休息/恢复休息」互斥显示：暂停中只显示「恢复休息」，否则只显示「暂停休息」
+    const qaPause = $("qa-pause");
+    if (qaPause) qaPause.textContent = st.paused ? "\u6062\u590D\u4F11\u606F" : "\u6682\u505C\u4F11\u606F";
     const phaseText = st.phase === "break" ? "\u4F11\u606F\u4E2D" : st.phase === "pre" ? "\u5373\u5C06\u4F11\u606F" : "\u52AA\u529B\u5DE5\u4F5C\u4E2D";
     const phaseVal = st.paused ? `${phaseText}\uFF08\u5DF2\u6682\u505C${st.pauseReasons.length ? "\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001") : ""}\uFF09` : phaseText;
     const now = st.paused ? st.pausedAt : Date.now();
@@ -2822,6 +2825,28 @@
     const fp = rcRangeFilePart(rcUnit, rcGetRange(rcUnit));
     return `\u4F11\u606F\u62A5\u8868_${ul}_${fp.s}_${fp.e}.${ext}`;
   }
+  // 报表导出统一走「另存为」对话框：blob 转 base64 交给 Go 侧 ExportReport，
+  // 由用户选择存储路径（Electron 时代的 a.download 落点不可控，Wails 下也不可靠）。
+  // 取消静默、失败 toast、成功 toast 落盘路径。
+  async function saveExportFile(name, blob) {
+    const b64 = await new Promise((res) => {
+      const fr = new FileReader();
+      fr.onload = () => res(String(fr.result ?? "").split(",")[1] || "");
+      fr.onerror = () => res("");
+      fr.readAsDataURL(blob);
+    });
+    if (!b64) {
+      toast("\u5BFC\u51FA\u5931\u8D25");
+      return;
+    }
+    const r = await window.api.exportReport(name, b64);
+    if (!r || r.canceled) return;
+    if (r.error) {
+      toast(r.error);
+      return;
+    }
+    toast(`\u5DF2\u5BFC\u51FA\u5230 ${r.path}`);
+  }
   function setupRestChart() {
     $("rc-units").addEventListener("click", (e) => {
       const b = e.target.closest(".rc-unit");
@@ -2900,12 +2925,7 @@
           ].map(q).join(",")
         );
       }
-      const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = rcExportName("csv");
-      a.click();
-      URL.revokeObjectURL(a.href);
+      void saveExportFile(rcExportName("csv"), new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
     });
     $("rc-exp-png").addEventListener("click", () => {
       const svg = document.querySelector("#rc-plot svg");
@@ -2932,11 +2952,7 @@
             ctx.drawImage(img, 0, 0, cv.width, cv.height);
             cv.toBlob((blob) => {
               if (!blob) return;
-              const a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = rcExportName("png");
-              a.click();
-              URL.revokeObjectURL(a.href);
+              void saveExportFile(rcExportName("png"), blob);
             }, "image/png");
           } catch {
             toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
@@ -3467,12 +3483,7 @@
           ["\u5408\u8BA1", "", "", sum((b) => b.takeoutOrdered), sum((b) => b.takeoutSkipped), sum((b) => b.takeoutPostponed)].map(q).join(",")
         );
       }
-      const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = tkExportName("csv");
-      a.click();
-      URL.revokeObjectURL(a.href);
+      void saveExportFile(tkExportName("csv"), new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
     });
     $("tk-exp-png").addEventListener("click", () => {
       const svg = document.querySelector("#tk-plot svg");
@@ -3499,11 +3510,7 @@
             ctx.drawImage(img, 0, 0, cv.width, cv.height);
             cv.toBlob((blob) => {
               if (!blob) return;
-              const a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = tkExportName("png");
-              a.click();
-              URL.revokeObjectURL(a.href);
+              void saveExportFile(tkExportName("png"), blob);
             }, "image/png");
           } catch {
             toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
@@ -4034,12 +4041,7 @@
           ["\u5408\u8BA1", "", "", ...ckSeries.map((s) => rows.reduce((sum, b) => sum + ckVal(b, s.id), 0))].map(q).join(",")
         );
       }
-      const blob = new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(blob);
-      a.download = ckExportName("csv");
-      a.click();
-      URL.revokeObjectURL(a.href);
+      void saveExportFile(ckExportName("csv"), new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
     });
     $("ck-exp-png").addEventListener("click", () => {
       const svg = document.querySelector("#ck-plot svg");
@@ -4066,11 +4068,7 @@
             ctx.drawImage(img, 0, 0, cv.width, cv.height);
             cv.toBlob((blob) => {
               if (!blob) return;
-              const a = document.createElement("a");
-              a.href = URL.createObjectURL(blob);
-              a.download = ckExportName("png");
-              a.click();
-              URL.revokeObjectURL(a.href);
+              void saveExportFile(ckExportName("png"), blob);
             }, "image/png");
           } catch {
             toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
@@ -4656,6 +4654,12 @@
       renderSupervisorPreview(curSupStage === 1 ? 2 : 1);
     }, 5e3);
     $("sup-enabled").addEventListener("change", () => renderSupervisorPreview(curSupStage));
+    // 虚拟角色卡的「预览」：与立绘库右键菜单的预览同款行为——autoSave 后带当前选中角色的
+    // forceKey 弹真实预览窗（不弹窗时 PreviewBreak 兜底走默认角色）
+    $("sup-break-preview").addEventListener("click", async () => {
+      autoSave();
+      await window.api.previewBreak("short", supEditKey);
+    });
     for (const id of ["sup-size", "sup-posx", "sup-posy"]) {
       $(id).addEventListener("input", () => {
         const g = readGeomFromForm();

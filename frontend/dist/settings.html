@@ -48,7 +48,8 @@
         <div id="data-status" class="status-grid"></div>
         <div class="quick-actions">
           <button class="btn ghost" id="qa-break">立即休息</button>
-          <button class="btn ghost" id="qa-pause">暂停休息/恢复休息</button>
+          <!-- 文案由 renderStatus 按 st.paused 互斥切换：暂停中=恢复休息，否则=暂停休息 -->
+          <button class="btn ghost" id="qa-pause">暂停休息</button>
           <button class="btn ghost" id="qa-postpone">推迟休息</button>
           <button class="btn ghost" id="qa-skip">跳过本次</button>
           <button class="btn ghost" id="qa-reset">重置周期</button>
@@ -299,7 +300,12 @@
       <section class="tab" id="tab-supervisor">
         <h2>虚拟角色</h2>
         <div class="card">
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="sup-enabled" />启用</label></div>
+          <!-- 总开关行与其他提醒卡一致（has-btn）：「预览」按钮在右侧，弹当前选中角色的休息预览窗 -->
+          <div class="row check has-btn">
+            <label class="switch-row"><input type="checkbox" id="sup-enabled" />启用</label>
+            <!-- id 不能叫 sup-preview：那是下方常驻立绘预览面板的 id，重名会砸掉它 -->
+            <button class="btn ghost" id="sup-break-preview" title="预览虚拟角色">预览</button>
+          </div>
           <!-- 立绘显示方式：固定显示 / 随机显示 / 顺序循环。固定显示不另设下拉——
                点选下方立绘磁贴即固定为该立绘（选项与提示文案由脚本按类型常量填充） -->
           <div class="row field">

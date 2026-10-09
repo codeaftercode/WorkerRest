@@ -108,6 +108,10 @@
     exportSettings: function () {
       return call("ExportSettings");
     },
+    // 报表导出（CSV / PNG）：name=默认文件名，b64=内容 base64；Go 侧弹另存为对话框写盘
+    exportReport: function (name, b64) {
+      return call("ExportReport", [str(name), str(b64)]);
+    },
     importSettings: function () {
       return call("ImportSettings");
     },
