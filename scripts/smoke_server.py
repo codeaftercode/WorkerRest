@@ -308,7 +308,7 @@ def main():
                       "%r vs %r" % (msgs[0] if msgs else None, want_msg))
 
         sup = (sess or {}).get("supervisor") if isinstance(sess, dict) else None
-        check(isinstance(sup, dict), "会话带休息督导信息", type(sup).__name__)
+        check(isinstance(sup, dict), "会话带督休专员信息", type(sup).__name__)
         if isinstance(sup, dict):
             img = sup.get("image") or ""
             check(img.startswith("data:image/") and len(img) > 5000, "立绘以 data URL 下发", "prefix=%s len=%d" % (img[:22], len(img)))

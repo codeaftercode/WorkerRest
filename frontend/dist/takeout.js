@@ -2340,27 +2340,36 @@
     const figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
     const figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
     const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
-    // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位；
-    // 唯一要挪的是支付红包区（.tk-redpacket 的包含块是 .content，其左缘=窗口左缘，
-    // 所以 left 直接用窗口坐标）。两个锚点中点：
+    // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位。
+    // 对话框（.content）与窗口边缘有内缩间距，红包区（.tk-redpacket）的包含块
+    // 就是它——所以摆位全部用实测 rect 换算，不假设贴边。两个锚点中点：
     //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
-    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2，对话框顶边 = 窗高 - 对话框高
+    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2（框顶实测，内缩自动跟随）
     // 红包中心对准交点（left/bottom 写 inline）。红包开关关闭时它整块 hidden，
     // 照常落位无副作用（display:none 不渲染）。
     const floatEl = content.querySelector(".tk-redpacket");
-    const boxH = content.getBoundingClientRect().height;
+    const boxRect = content.getBoundingClientRect();
+    const boxH = boxRect.height;
+    const boxLeft = boxRect.left - cRect.left; // 对话框左缘相对窗口（= 水平内缩量）
+    const boxBottomGap = cRect.bottom - boxRect.bottom; // 对话框底缘距窗底（= 底部内缩量）
+    const boxTop = boxRect.top - cRect.top; // 对话框顶缘相对窗口
     const midX = (figRight + cRect.width) / 2;
-    const midY = (cRect.height - boxH) / 2;
-    let cdX = midX;
-    let cdBottom = cRect.height - midY;
+    const midY = boxTop / 2;
+    let cdX = midX - boxLeft;
+    let cdBottom = cRect.height - midY - boxBottomGap;
     if (floatEl) {
       const floatW = floatEl.offsetWidth || 240;
       const floatH = floatEl.offsetHeight || 108;
-      cdX = clamp(midX - floatW / 2, CD_EDGE, Math.max(CD_EDGE, cRect.width - floatW - CD_EDGE));
+      // clamp 的合法区间是「红包相对对话框」的坐标：窗口坐标的边界先算好再减去内缩量
+      cdX = clamp(
+        midX - boxLeft - floatW / 2,
+        CD_EDGE - boxLeft,
+        Math.max(CD_EDGE - boxLeft, cRect.width - boxLeft - floatW - CD_EDGE)
+      );
       cdBottom = clamp(
-        cRect.height - midY - floatH / 2,
-        CD_EDGE,
-        Math.max(CD_EDGE, cRect.height - floatH - CD_EDGE)
+        cRect.height - midY - floatH / 2 - boxBottomGap,
+        CD_EDGE - boxBottomGap,
+        Math.max(CD_EDGE - boxBottomGap, cRect.height - boxBottomGap - floatH - CD_EDGE)
       );
       floatEl.style.left = `${Math.round(cdX)}px`;
       floatEl.style.bottom = `${Math.round(cdBottom)}px`;

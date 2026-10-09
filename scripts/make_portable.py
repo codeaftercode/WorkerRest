@@ -187,7 +187,7 @@ def main() -> int:
     # 3. 结构核验
     checks = [
         ("exe", os.path.join(dest, EXE_NAME)),
-        ("虚拟角色目录", os.path.join(dest, "roles", "supervisor_default", "role.json")),
+        ("督休专员目录", os.path.join(dest, "roles", "supervisor_default", "role.json")),
         ("预置 sounds/", os.path.join(dest, "sounds", "short_start.wav")),
         ("预置 config/settings.json", os.path.join(dest, "config", "settings.json")),
         ("预置 data/stats.json", os.path.join(dest, "data", "stats.json")),

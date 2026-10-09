@@ -59,7 +59,7 @@ type AppearanceConfig struct {
 	HeightPct    float64 `json:"heightPct"`
 }
 
-// SupervisorConfig 休息督导显示开关（角色本体在 roles/<key>/role.json）
+// SupervisorConfig 督休专员显示开关（角色本体在 roles/<key>/role.json）
 type SupervisorConfig struct {
 	Enabled   bool   `json:"enabled"`
 	Gaze      bool   `json:"gaze"`
@@ -310,7 +310,7 @@ func mapInt(m map[string]any, key string, def int64) int64 {
 	return def
 }
 
-// SupervisorCfg 休息督导显示开关（角色本体在 roles/<key>/role.json）
+// SupervisorCfg 督休专员显示开关（角色本体在 roles/<key>/role.json）
 func (s *Settings) SupervisorCfg() SupervisorConfig {
 	return SupervisorConfig{
 		Enabled:   s.Flag(true, "supervisor", "enabled"),
@@ -1105,7 +1105,7 @@ func cleanLegacyKeys(raw map[string]any) {
 			}
 		}
 	}
-	// 虚拟角色旧的「压迫强度」level 已取消
+	// 督休专员旧的「压迫强度」level 已取消
 	if sup, ok := raw["supervisor"].(map[string]any); ok {
 		if _, ok := sup["level"]; ok {
 			delete(sup, "level")
@@ -1134,7 +1134,7 @@ func cleanLegacyKeys(raw map[string]any) {
 	}
 }
 
-// normalizeSupervisorMessages 休息督导配置归一化（与 config.ts 同义）：
+// normalizeSupervisorMessages 督休专员配置归一化（与 config.ts 同义）：
 // selection 只认固定 / 顺序 / 随机；开关类字段只认布尔；视线跟随恒为 true；
 // rolesMigrated 置位后，把可能从导入配置带进来的旧角色字段直接清掉。
 func normalizeSupervisorMessages(raw map[string]any) {
@@ -1297,7 +1297,7 @@ func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded bool) {
 	normalizeToggles(raw)
 	// ⑨ 提醒内容（含旧 messages 键迁移）
 	normalizeReminderMessages(raw)
-	// ⑩ 休息督导
+	// ⑩ 督休专员
 	normalizeSupervisorMessages(raw)
 	// ⑪ 预置提醒内容条目（幂等）
 	presetSeeded = seedPresetEntries(raw)

@@ -499,7 +499,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .pm-row .modal-input { flex: 1 1 auto; min-width: 0; margin-top: 0; }
 .pm-label { flex: 0 0 auto; color: var(--text-2); font-size: 13px; }
 
-/* 虚拟角色预览：忠实还原休息窗口的版式（立绘左下贴底、台词在右） */
+/* 督休专员预览：忠实还原休息窗口的版式（立绘左下、底部悬浮对话框 + 左上角名字牌） */
 .sup-preview {
   position: relative;
   height: 260px;
@@ -546,96 +546,75 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   filter: drop-shadow(0 14px 30px rgba(0, 0, 0, 0.55));
   transition: filter 0.4s ease, transform 0.4s ease;
 }
-.sup-preview-side {
+/* 对话框：与休息窗口（break.css 的 .content）同款——底部悬浮面板（与预览面板
+   边缘留距）、四角圆角、全周细描边 + 内侧高光。尺寸按预览面板等比缩小
+   （vh/vw 换成面板百分比），质感逐项对齐 break.css，改那边时这里同步。 */
+.sup-preview-content {
   position: absolute;
-  right: 26px;
-  /* 与休息窗口/外卖窗口同一锚点：垂直中心在预览面板的上三分之一处 */
-  top: 33.333%;
-  transform: translateY(-50%);
-  width: 50%;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: center;
+  left: 2.4%;
+  right: 2.4%;
+  bottom: 5%;
+  z-index: 9;
+  min-height: 26%;
+  padding: 22px 16px 10px 14px;
+  text-align: left;
+  background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 12px;
+  box-shadow:
+    0 12px 26px rgba(0, 0, 0, 0.42),
+    0 3px 9px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
-.sup-preview-badge {
-  align-self: center;
+/* 名字牌：对话框左上角凸出（与休息窗口的 .dialog-name 同款，字号收一档） */
+.sup-preview .dialog-name {
+  position: absolute;
+  top: 0;
+  left: 14px;
+  transform: translateY(-55%);
+  padding: 3px 14px 4px;
+  background: var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 7px;
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.72);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
 }
-/* 预览里的台词气泡：与真实窗口同款造型（左下角收窄 + 指向立绘的尾巴 + 说话人名字）。
-   ⚠️ 改 break.css / takeout.css 的气泡造型时，这里要一起改，否则预览与实机不一致。 */
+.sup-preview[data-stage='2'] .dialog-name {
+  background: #b83232;
+  border-color: rgba(255, 130, 130, 0.7);
+}
+/* 角色关闭提示：弱化为一行小字（在对话框内顶部） */
+.sup-preview-badge {
+  font-size: 11.5px;
+  color: rgba(255, 255, 255, 0.66);
+  margin-bottom: 6px;
+}
+/* 台词：对话框内的大字对白，裸排（与休息窗口同款——无气泡/尾巴/左条，
+   说话人由左上角名字牌承载）。 */
 .sup-preview-line {
   position: relative;
-  width: 100%;
   text-align: left;
   color: #fff;
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   line-height: 1.5;
-  padding: 9px 14px 11px 16px;
-  border-radius: 5px 12px 12px 3px;
-  background: rgba(9, 13, 24, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-left: 3px solid var(--accent);
-  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.32);
-  transition: border-color 0.4s ease, background 0.4s ease, color 0.4s ease;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
 }
-.sup-preview-line::after {
-  content: '';
-  position: absolute;
-  left: -13px;
-  bottom: 10px;
-  width: 10px;
-  height: 14px;
-  background: inherit;
-  clip-path: polygon(100% 0, 100% 100%, 0 50%);
-}
-.sup-preview-line[data-speaker]::before {
-  content: attr(data-speaker);
-  display: block;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 1.5px;
-  line-height: 1.4;
-  margin-bottom: 3px;
-  opacity: 0.8;
+/* 对话框第二阶段：红色告警底 + 描边转红（与休息窗口同款） */
+.sup-preview[data-stage='2'] .sup-preview-content {
+  background: linear-gradient(180deg, rgba(66, 5, 5, 0.62), rgba(40, 0, 0, 0.86));
+  border-color: rgba(255, 96, 96, 0.55);
 }
 .sup-preview[data-stage='2'] .sup-preview-line {
-  border-color: rgba(255, 96, 96, 0.78);
-  background: rgba(58, 0, 0, 0.52);
-  color: #ffe9e9;
-}
-.sup-preview[data-stage='2'] .sup-preview-line {
-  border-color: rgba(255, 96, 96, 0.78);
-  background: rgba(58, 0, 0, 0.42);
   color: #ffe9e9;
 }
 .sup-preview[data-stage='2'] .sup-preview-fig img {
   filter: drop-shadow(0 0 20px rgba(255, 70, 70, 0.45)) contrast(1.1);
   transform: scale(1.04);
-}
-/* 竖屏版式的预览：内容列移到角色上方、整宽（与真实窗口同一套规则，见 supervisorLayout.ts）。
-   预览面板平时是横向的，只在面板被拉成竖长（设置窗口很窄）时才走到这里，规则保持与实机一致。 */
-[data-sup-layout='top'] .sup-preview-side {
-  right: auto;
-  top: auto;
-  transform: none;
-  gap: 6px;
-}
-[data-sup-layout='top'] .sup-preview-line {
-  width: 100%;
-  border-radius: 12px 12px 5px 5px;
-}
-[data-sup-layout='top'] .sup-preview-line::after {
-  left: var(--tail-x, 50%);
-  right: auto;
-  top: auto;
-  bottom: -10px;
-  width: 14px;
-  height: 10px;
-  transform: translateX(-50%);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
 .shortcut { text-align: center; letter-spacing: 1px; }

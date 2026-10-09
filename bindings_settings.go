@@ -238,7 +238,7 @@ func (a *App) PickSupervisorImage() map[string]any {
 		log.Printf("[role] 无头 / server 模式无法弹选图对话框，返回取消")
 		return nil
 	}
-	r := showOpenDialog(a.app.Dialog, "选择虚拟角色立绘", []application.FileFilter{
+	r := showOpenDialog(a.app.Dialog, "选择督休专员立绘", []application.FileFilter{
 		{DisplayName: "图片", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.gif"},
 	})
 	if r.canceled {

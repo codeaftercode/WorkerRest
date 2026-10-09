@@ -258,7 +258,7 @@ func isDevBuild(exe string) bool {
 
 // ---------- 会话构建 ----------
 
-// buildSupervisorSession 组装下发给渲染层的休息督导信息：
+// buildSupervisorSession 组装下发给渲染层的督休专员信息：
 // 与 electron/src/supervisor.ts 的 buildSupervisorSession 同规则——按 selection
 // 从角色目录里选一个角色，随机取一条劝说台词兜底，命令台词从该角色 role.json 抽。
 // 关掉开关、没有可用角色、立绘读不出来时返回 nil，渲染层退回无角色布局。
@@ -325,7 +325,7 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 	}
 	name := picked.Name
 	if name == "" {
-		name = "休息督导"
+		name = "督休专员"
 	}
 	return &SupStageInfo{
 		Image:    image,
@@ -342,7 +342,7 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 	}
 }
 
-// SupervisorPreview 设置页的立绘预览：返回一次「虚拟角色会话」而不是弹窗
+// SupervisorPreview 设置页的立绘预览：返回一次「督休专员会话」而不是弹窗
 // （对应 Electron 的 supervisor:preview → buildSupervisorSession(settings, true, key)）。
 //
 // sup 是设置页表单里**当前**的督导配置（可能还没落盘），null 时用磁盘上的配置。

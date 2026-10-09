@@ -68,7 +68,7 @@ html, body {
   animation: tk-in 0.42s cubic-bezier(0.22, 0.9, 0.24, 1) both;
 }
 /* 入场动画的末帧**不要写 transform**：keyframe 动画优先级高于普通声明，
-   写死 `transform: none` 会把元素自身的 transform 一起盖掉——有虚拟角色时
+   写死 `transform: none` 会把元素自身的 transform 一起盖掉——有督休专员时
    对话框（fixed 底部）由 CSS 直接定 transform: none，无角色时是 none，
    末帧省略该属性后两种版式都回落到自身值，动画期间平移/缩放照常播。 */
 @keyframes tk-in {
@@ -182,7 +182,7 @@ html, body {
 
 .hidden { display: none !important; }
 
-/* ================= 虚拟角色（与休息窗口 break.css 同一套版式） =================
+/* ================= 督休专员（与休息窗口 break.css 同一套版式） =================
    立绘锚定左下、台词气泡在右侧内容列里；尺寸/位置由 supervisorStage.ts 写入
    --fig-* 变量。第二阶段（检测到仍在操作键鼠）立绘凑近、暗角收紧。 */
 
@@ -256,14 +256,17 @@ body.has-supervisor .figure {
 body.has-supervisor .gaze { justify-content: flex-start; }
 body.has-supervisor .figure img { max-width: 60vw; }
 
-/* 对话框：底部横贯全宽。内容保持文档流（徽标 → 台词 → 时间 → 按钮），
-   红包区由脚本/CSS 绝对定位到框外立绘右缘。入场动画 tk-in 的末帧不写
-   transform，回落到这里的 transform: none（见上方 keyframes 的说明）。 */
+/* 对话框：底部悬浮面板——与窗口边缘留出呼吸间距（不贴边），四角圆角 +
+   全周细描边 + 内侧高光，与休息窗口同款质感。内容保持文档流
+   （徽标 → 台词 → 时间 → 按钮），红包区由脚本/CSS 绝对定位到框外立绘右缘。
+   入场动画 tk-in 的末帧不写 transform，回落到这里的 transform: none
+   （见上方 keyframes 的说明）。内缩量被 layoutSupDialog 的摆位公式以
+   实测 rect 消化，改这里不用同步 JS。 */
 body.has-supervisor .content {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 1.6vw;
+  right: 1.6vw;
+  bottom: 1.8vh;
   top: auto;
   transform: none;
   width: auto;
@@ -273,9 +276,12 @@ body.has-supervisor .content {
   min-height: 21vh;
   padding: 2.6em 40px 16px 30px;
   background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
-  border-top: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.38);
-  border-radius: 22px 22px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.45),
+    0 4px 14px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 
 /* 名字标签：对话框左上角凸出（经典 VN 名字牌，与休息窗口同款） */
@@ -300,10 +306,10 @@ body.has-supervisor .content {
   border-color: rgba(255, 130, 130, 0.7);
 }
 
-/* 对话框第二阶段：红色告警底（与休息窗口同款） */
+/* 对话框第二阶段：红色告警底（描边随底色一起转红，与休息窗口同款） */
 #app[data-stage='2'] .content {
   background: linear-gradient(180deg, rgba(66, 5, 5, 0.62), rgba(40, 0, 0, 0.86));
-  border-top-color: rgba(255, 96, 96, 0.62);
+  border-color: rgba(255, 96, 96, 0.55);
 }
 
 /* block 布局后 flex 的 gap 失效，框内各块改用 margin 排距 */
@@ -311,8 +317,8 @@ body.has-supervisor .tk-badges { margin-bottom: 12px; }
 body.has-supervisor .tk-clock { margin-top: 12px; }
 body.has-supervisor .tk-actions { margin-top: 14px; }
 
-/* 支付红包区：浮到立绘可见右缘的右侧（left/bottom 由脚本写入 inline style）。
-   bottom 以对话框底边为基准 = 窗口底，挂到对话框顶边的上方。 */
+/* 支付红包区：浮到立绘可见右缘的右侧（left/bottom 由脚本写入 inline style，
+   bar 同款含对话框内缩换算）。bottom 以对话框底边为基准，挂到对话框顶边的上方。 */
 body.has-supervisor .tk-redpacket {
   position: absolute;
   left: 62vw;

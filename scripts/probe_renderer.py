@@ -219,7 +219,7 @@ def main():
         check(not (stg.get("errs") or []), "设置页无未捕获 JS 异常", (stg.get("errs") or [])[:2])
         check((stg.get("navCount") or 0) >= 6, "侧栏页签渲染出来（>=6 个）", stg.get("navCount"))
         check((stg.get("tabCount") or 0) >= 6, "各页签内容区都在 DOM 里", stg.get("tabCount"))
-        check((stg.get("supGallery") or 0) == 9, "休息督导画廊渲染出 9 个角色（ListRoles → DOM）",
+        check((stg.get("supGallery") or 0) == 9, "督休专员画廊渲染出 9 个角色（ListRoles → DOM）",
               stg.get("supGallery"))
         check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个「新建角色」磁贴",
               stg.get("supGalleryAdd"))
@@ -262,7 +262,7 @@ def main():
               "勿扰暂停勾选态 == 配置 dndPause",
               "%s vs %s" % (stg.get("dndPause"), cfg.get("dndPause")))
         check(stg.get("supSelection") == (cfg.get("supervisor") or {}).get("selection"),
-              "休息督导选择方式 == 配置 supervisor.selection",
+              "督休专员选择方式 == 配置 supervisor.selection",
               "%s vs %s" % (stg.get("supSelection"), (cfg.get("supervisor") or {}).get("selection")))
         check(same_num(stg.get("apWidthPct"), (cfg.get("appearance") or {}).get("widthPct")),
               "提醒窗口宽度百分比 == 配置 appearance.widthPct",
@@ -273,7 +273,7 @@ def main():
 
         # ---- 页签切换：切到每一页都要真的显示出来（切换时抛错会让内容空白）----
         tabs = m.get("tabs") or {}
-        for key, label in (("timing", "时间规划"), ("supervisor", "虚拟角色"), ("stats", "统计报表"),
+        for key, label in (("timing", "时间规划"), ("supervisor", "督休专员"), ("stats", "统计报表"),
                            ("shortcuts", "快捷键"), ("about", "关于")):
             t = tabs.get(key) or {}
             check(t.get("active") == "tab-" + key and t.get("visible") is True,
@@ -349,7 +349,7 @@ def main():
                       "%s提醒窗口：--accent == 配置外观色" % label, "%s vs %s" % (b.get("accent"), want_color))
             check(b.get("badgeHidden") is True, "%s提醒窗口：真实休息不带预览角标（preview=false）" % label, b.get("badgeHidden"))
 
-            # ---- 休息督导版式：游戏对话画面（底部全宽对话框），是 supervisorLayout 的核心 ----
+            # ---- 督休专员版式：游戏对话画面（底部全宽对话框），是 supervisorLayout 的核心 ----
             # 同一个会话，只换窗口尺寸（横 1100x720 / 竖 760x980），两档都应进入对话框
             # 版式：supMetrics.mode == "dialog"、名字标签亮出、倒计时环中心落在
             # 「立绘右缘~窗口右缘」「对话框顶~窗口顶」两个中点的交点上、
@@ -370,21 +370,30 @@ def main():
             check((ci.get("rectW") or 0) > 0 and (ci.get("rectH") or 0) > 0,
                   "%s提醒窗口：对话框有实际占位" % label, "%sx%s" % (ci.get("rectW"), ci.get("rectH")))
             vpw = b.get("viewportW") or 0
+            vph = b.get("viewportH") or 0
             if vpw:
-                check(abs((ci.get("rectW") or 0) - vpw) <= 2,
-                      "%s提醒窗口：对话框横贯全宽（宽度 == 视口宽）" % label,
-                      "%s vs %s" % (ci.get("rectW"), vpw))
+                # 对话框与窗口边缘留出呼吸间距（不贴边）：左右有内缩、左右对称、底部离窗底有空隙
+                check((ci.get("rectLeft") or 0) >= 4 and (ci.get("rectRight") or 0) <= vpw - 4,
+                      "%s提醒窗口：对话框左右与窗口边缘有间距（不贴边）" % label,
+                      "left=%s right=%s vpw=%s" % (ci.get("rectLeft"), ci.get("rectRight"), vpw))
+                check(abs((ci.get("rectW") or 0) - (vpw - 2 * (ci.get("rectLeft") or 0))) <= 2,
+                      "%s提醒窗口：对话框左右内缩对称（宽度 == 视口宽 - 2*左距）" % label,
+                      "w=%s vpw=%s left=%s" % (ci.get("rectW"), vpw, ci.get("rectLeft")))
+                check((ci.get("rectBottom") or vph) <= vph - 4,
+                      "%s提醒窗口：对话框底部与窗口边缘有间距（不贴底）" % label,
+                      "bottom=%s vph=%s" % (ci.get("rectBottom"), vph))
             bi = b.get("barInline") or {}
             check(bool(bi.get("left")) and bool(bi.get("bottom")),
                   "%s提醒窗口：倒计时环被 inline 摆位（left/bottom 已写入）" % label,
                   "%r / %r" % (bi.get("left"), bi.get("bottom")))
             ri = b.get("ringInline") or {}
-            if ri.get("rectLeft") is not None and sm.get("midX") is not None and ci.get("rectH"):
+            if ri.get("rectLeft") is not None and sm.get("midX") is not None and ci.get("rectBottom") is not None:
                 cx = (ri.get("rectLeft", 0) + ri.get("rectRight", 0)) / 2
                 cy = (ri.get("rectTop", 0) + ri.get("rectBottom", 0)) / 2
-                vph = b.get("viewportH") or 0
                 want_cx = sm.get("midX")
-                want_cy = (vph - ci.get("rectH", 0)) / 2
+                # 框顶 y（距窗顶）= 框底边 y - 框高（实测，含内缩），
+                # 环中心 = 「窗口上边缘(0) 与 框顶」的中点 = 框顶 / 2
+                want_cy = ((ci.get("rectBottom") or 0) - (ci.get("rectH") or 0)) / 2
                 check(abs(cx - want_cx) <= 3,
                       "%s提醒窗口：环中心 == 立绘右缘与窗口右缘的中间" % label,
                       "%s vs %s" % (round(cx), want_cx))
@@ -493,12 +502,13 @@ def main():
                 check(bool(rp.get("left")) and bool(rp.get("bottom")),
                       "外卖窗口：红包区被 inline 摆位（中心对准两个中点的交点）",
                       "%r / %r" % (rp.get("left"), rp.get("bottom")))
-                if rp.get("rectLeft") is not None and tksm.get("midX") is not None and tk.get("contentRectH"):
+                if rp.get("rectLeft") is not None and tksm.get("midX") is not None and tk.get("contentRect"):
                     rcx = (rp.get("rectLeft", 0) + rp.get("rectRight", 0)) / 2
                     rcy = (rp.get("rectTop", 0) + rp.get("rectBottom", 0)) / 2
-                    tk_vph = tk.get("viewportH") or 0
+                    tk_cr = tk.get("contentRect") or {}
                     want_rcx = tksm.get("midX")
-                    want_rcy = (tk_vph - tk.get("contentRectH", 0)) / 2
+                    # 框顶 y = 框底边 y - 框高（实测，含内缩），红包中心 = 框顶与窗顶的中点
+                    want_rcy = ((tk_cr.get("bottom") or 0) - (tk_cr.get("h") or 0)) / 2
                     check(abs(rcx - want_rcx) <= 3,
                           "外卖窗口：红包中心 == 立绘右缘与窗口右缘的中间",
                           "%s vs %s" % (round(rcx), want_rcx))

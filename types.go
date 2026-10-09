@@ -20,13 +20,13 @@ type SupGeom struct {
 	Flip    bool    `json:"flip"`
 }
 
-// SupLines 虚拟角色（休息督导）两段台词
+// SupLines 督休专员两段台词
 type SupLines struct {
 	Urge    string `json:"urge"`
 	Command string `json:"command"`
 }
 
-// SupStageInfo 虚拟角色（休息督导）在提醒窗口里的出场信息。
+// SupStageInfo 督休专员在提醒窗口里的出场信息。
 // 字段与 electron/src/supervisor.ts 的 SupervisorSessionInfo 逐字对齐 ——
 // 设置页的预览面板直接读它（supPreview.geom / supPreview.lines.urge / .command），
 // 少一个字段就是「Cannot read properties of undefined」把预览打断。

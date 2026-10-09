@@ -70,7 +70,7 @@ html, body {
 /* 内容层抬到暗角之上 */
 .stage, .messages, .bar { position: relative; z-index: 8; }
 
-/* ---------------- 虚拟角色 ---------------- */
+/* ---------------- 督休专员 ---------------- */
 
 .stage {
   display: flex;
@@ -143,10 +143,10 @@ body.sup-flip .mirror { transform: scaleX(-1); }
 }
 
 /* ---------------- 有角色时的版式：游戏对话画面 ----------------
-   参考常见游戏的对话画面：底部横贯全宽的对话框 + 左上角凸出的名字标签；
-   立绘站在对话框的左上方（geom 三滑条照常控制，z 在对话框之下——贴底时
-   下半身被对话框遮住，正是游戏里的经典站位）；倒计时环浮在立绘可见右缘
-   的右侧（水平位置由脚本量出写入 inline style）。 */
+   参考常见游戏的对话画面：底部悬浮对话框（与窗口边缘留距、四角圆角）+
+   左上角凸出的名字标签；立绘站在对话框的左上方（geom 三滑条照常控制，
+   z 在对话框之下——贴底时下半身被对话框遮住，正是游戏里的经典站位）；
+   倒计时环浮在立绘可见右缘的右侧（水平位置由脚本量出写入 inline style）。 */
 
 body.has-supervisor .stage { position: absolute; inset: 0; }
 
@@ -169,13 +169,15 @@ body.has-supervisor .figure img {
   transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
 }
 
-/* 对话框：底部横贯全宽。内容保持文档流（台词 → 提醒内容），环与「提前结束」
-   由脚本/CSS 绝对定位到框内框外的锚点。 */
+/* 对话框：底部悬浮面板——与窗口边缘留出呼吸间距（不贴边），四角圆角 +
+   全周细描边 + 内侧高光，做出「浮在场景上的名牌」质感。内容保持文档流
+   （台词 → 提醒内容），环与「提前结束」由脚本/CSS 绝对定位到框内框外的锚点。
+   ⚠️ 内缩量被 layoutSupDialog 的摆位公式以实测 rect 消化，改这里不用同步 JS。 */
 body.has-supervisor .content {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 1.6vw;
+  right: 1.6vw;
+  bottom: 1.8vh;
   top: auto;
   transform: none;
   width: auto;
@@ -185,9 +187,12 @@ body.has-supervisor .content {
   min-height: 21vh;
   padding: 2.6em 40px 16px 30px;
   background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
-  border-top: 1px solid rgba(255, 255, 255, 0.16);
-  box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.38);
-  border-radius: 22px 22px 0 0;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 18px;
+  box-shadow:
+    0 22px 48px rgba(0, 0, 0, 0.45),
+    0 4px 14px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.09);
 }
 
 /* 名字标签：对话框左上角凸出（经典 VN 名字牌） */
@@ -213,14 +218,15 @@ body.has-supervisor .content {
   border-color: rgba(255, 130, 130, 0.7);
 }
 
-/* 对话框第二阶段：红色告警底 */
+/* 对话框第二阶段：红色告警底（描边随底色一起转红） */
 #app[data-stage='2'] .content {
   background: linear-gradient(180deg, rgba(66, 5, 5, 0.62), rgba(40, 0, 0, 0.86));
-  border-top-color: rgba(255, 96, 96, 0.62);
+  border-color: rgba(255, 96, 96, 0.55);
 }
 
 /* 倒计时环：浮到「立绘可见右缘~窗口右缘」「对话框顶~窗口顶」两个中点的
-   交点上（环中心对准，left/bottom 由脚本写入 inline style）。
+   交点上（环中心对准，left/bottom 由脚本写入 inline style——bar 的包含块
+   是内缩后的对话框，脚本会做相对坐标换算）。
    「提前结束」在 bar 内跟随环居中下沉，环摆到哪它跟到哪。 */
 body.has-supervisor .bar {
   position: absolute;
@@ -299,7 +305,7 @@ body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
 }
 .messages p { margin: 2px 0; }
 
-/* 有虚拟角色时：角色是主视觉，提醒内容退为次要说明 */
+/* 有督休专员时：角色是主视觉，提醒内容退为次要说明 */
 body.has-supervisor .messages {
   font-size: 15px;
   font-weight: 400;
@@ -309,7 +315,7 @@ body.has-supervisor .messages {
   padding: 0;
 }
 
-/* 无虚拟角色时的版式：提醒内容独占窗口正中，倒计时环与「提前结束」沉到下方。
+/* 无督休专员时的版式：提醒内容独占窗口正中，倒计时环与「提前结束」沉到下方。
    角色不在场时窗口里只剩这一句话，摆在屏幕中间最容易被看到——原来的自动高度流式
    居中会让它落在中间偏上（下面还压着 180px 的倒计时环）。 */
 /* ⚠️ .stage 自己也是 positioned（见上面 .stage/.messages/.bar 的 position: relative），

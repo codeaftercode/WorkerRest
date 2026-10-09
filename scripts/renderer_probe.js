@@ -155,7 +155,7 @@ const PROBE_BREAK = `(function () {
   var cs = getComputedStyle(document.documentElement);
   var line = document.getElementById('supervisor-line');
   var img = document.getElementById('figure-img');
-  // 休息督导版式（游戏对话画面）：layoutSupDialog 把倒计时环的摆位写进 .bar 的
+  // 督休专员版式（游戏对话画面）：layoutSupDialog 把倒计时环的摆位写进 .bar 的
   // inline style，度量写进 .content 的 data-sup-metrics。这里把两者都采回来，
   // 证明版式真的摆了位，而不是「有立绘但没排对话框」。
   var content = document.querySelector('.content');
@@ -193,6 +193,7 @@ const PROBE_BREAK = `(function () {
     supMetrics: supMetrics,
     contentInline: content ? {
       rectW: Math.round(contentRect.width), rectH: Math.round(contentRect.height),
+      rectLeft: Math.round(contentRect.left), rectRight: Math.round(contentRect.right),
       rectBottom: Math.round(contentRect.bottom),
     } : null,
     barInline: bar ? {
@@ -314,9 +315,11 @@ const PROBE_TAKEOUT = `(async function () {
       if (!c || !c.dataset.supMetrics) return null;
       try { return JSON.parse(c.dataset.supMetrics); } catch (e) { return { err: String(e) }; }
     })(),
-    contentRectH: (function () {
+    contentRect: (function () {
       var c = document.querySelector('.content');
-      return c ? Math.round(c.getBoundingClientRect().height) : null;
+      if (!c) return null;
+      var r = c.getBoundingClientRect();
+      return { h: Math.round(r.height), left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom) };
     })(),
     redpacketInline: (function () {
       var rp = document.getElementById('redpacket');

@@ -39,7 +39,7 @@
       <nav id="nav">
         <button class="nav-item active" data-tab="general"><span class="icon">⚙️</span>通用配置</button>
         <button class="nav-item" data-tab="timing"><span class="icon">⏱️</span>时间规划</button>
-        <button class="nav-item" data-tab="supervisor"><span class="icon">🕵️</span>虚拟角色</button>
+        <button class="nav-item" data-tab="supervisor"><span class="icon">🕵️</span>督休专员</button>
         <button class="nav-item" data-tab="stats"><span class="icon">📊</span>统计报表</button>
         <button class="nav-item" data-tab="shortcuts"><span class="icon">⌨️</span>快捷键</button>
         <button class="nav-item" data-tab="about"><span class="icon">🗂️</span>关于</button>
@@ -296,15 +296,15 @@
         </div>
       </section>
 
-      <!-- 虚拟角色（开关 / 预览 / 立绘） -->
+      <!-- 督休专员（开关 / 预览 / 立绘） -->
       <section class="tab" id="tab-supervisor">
-        <h2>虚拟角色</h2>
+        <h2>督休专员</h2>
         <div class="card">
           <!-- 总开关行与其他提醒卡一致（has-btn）：「预览」按钮在右侧，弹当前选中角色的休息预览窗 -->
           <div class="row check has-btn">
             <label class="switch-row"><input type="checkbox" id="sup-enabled" />启用</label>
             <!-- id 不能叫 sup-preview：那是下方常驻立绘预览面板的 id，重名会砸掉它 -->
-            <button class="btn ghost" id="sup-break-preview" title="预览虚拟角色">预览</button>
+            <button class="btn ghost" id="sup-break-preview" title="预览督休专员">预览</button>
           </div>
           <!-- 立绘显示方式：固定显示 / 随机显示 / 顺序循环。固定显示不另设下拉——
                点选下方立绘磁贴即固定为该立绘（选项与提示文案由脚本按类型常量填充） -->
@@ -326,7 +326,11 @@
                 <div class="mirror"><img id="sup-preview-img" alt="立绘预览" /></div>
               </div>
             </div>
-            <div class="sup-preview-side">
+            <!-- 对话框：与休息窗口（break.css 的 .content）同款——底部悬浮面板
+                 （与预览面板边缘留距）、四角圆角、全周细描边 + 内侧高光，
+                 左上角凸出名字牌，台词裸排在框里（样式见 settings.css 的预览段） -->
+            <div class="sup-preview-content">
+              <div class="dialog-name sup-preview-name hidden" id="sup-preview-name"></div>
               <div class="sup-preview-badge hidden" id="sup-preview-badge"></div>
               <div class="sup-preview-line" id="sup-preview-line">加载中…</div>
             </div>
@@ -488,7 +492,7 @@
           <div class="btn-row">
             <button class="btn danger" id="d-reset">恢复默认设置</button>
           </div>
-          <p class="hint">恢复默认设置会把当前配置先备份成 settings.backup.json（每次覆盖），然后重置全部选项；安装 ID 保留，虚拟角色目录与已导入的音乐文件不受影响。</p>
+          <p class="hint">恢复默认设置会把当前配置先备份成 settings.backup.json（每次覆盖），然后重置全部选项；安装 ID 保留，督休专员目录与已导入的音乐文件不受影响。</p>
         </div>
         <div class="card">
           <h3>软件信息</h3>

@@ -10,7 +10,7 @@
   <div id="app" data-rounded="1">
     <div id="vignette"></div>
     <div id="preview-badge" class="hidden">预览模式 · 点击任意处关闭</div>
-    <!-- 虚拟角色：与休息窗口同一套结构（立绘锚定左下，见 supervisorStage.ts 与 takeout.css）。
+    <!-- 督休专员：与休息窗口同一套结构（立绘锚定左下，见 supervisorStage.ts 与 takeout.css）。
          台词只有一段：本提醒配置的提醒内容——外卖窗口进入命令阶段也不换台词 -->
     <div class="figure hidden" id="figure">
       <div class="trim" id="figure-trim">
@@ -33,7 +33,7 @@
       </div>
       <!-- 提醒内容：外卖提醒自己的那一套配置，每次弹窗随机/顺序取 1 条；未配置则整块隐藏 -->
       <div class="tk-msg hidden" id="tk-msg"></div>
-      <!-- 虚拟角色的台词气泡：有角色时提醒内容改由角色"说"出（第一段），这里随之显示 -->
+      <!-- 督休专员的台词气泡：有角色时提醒内容改由角色"说"出（第一段），这里随之显示 -->
       <div class="supervisor-line hidden" id="supervisor-line"></div>
       <!-- 支付红包：开关打开即显示该区域；二维码指向本机专属领取地址，手机扫码打开 -->
       <div class="tk-redpacket hidden" id="redpacket">

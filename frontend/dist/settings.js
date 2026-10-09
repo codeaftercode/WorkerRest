@@ -253,11 +253,8 @@
     }, { once: true });
   }
 
-  // renderer/supervisorLayout.ts
-  var DEFAULTS = { gap: 28, maxWidth: 520, minWidth: 224, ratio: 0.72 };
-  var PORTRAIT_RATIO = 1.02;
-  var TAIL_INSET = 22;
-  var BUBBLE = ".supervisor-line, .sup-preview-line";
+  // renderer/supervisorLayout.ts（对话框版式）：预览面板与休息窗口共用同一套
+  // 摆位规则——底部悬浮对话框（内缩、实测框顶定中点），台词裸排在框里。
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
@@ -286,128 +283,65 @@
     const h = box.height * trimFactor(figure);
     return h > 0 ? box.bottom - h : fallback;
   }
-  function figureCenterX(measureEl, fallback) {
-    const img = measureEl.querySelector("img");
-    const r = img?.getBoundingClientRect();
-    const raw = img?.dataset.trim;
-    if (!r || r.width <= 0) return fallback;
-    if (!raw) return r.left + r.width / 2;
-    try {
-      const t = JSON.parse(raw);
-      const l = typeof t.left === "number" ? t.left : 0;
-      const rr = typeof t.right === "number" ? t.right : 0;
-      return r.left + r.width * (1 + l - rr) / 2;
-    } catch {
-      return r.left + r.width / 2;
-    }
-  }
-  function layoutSupContent(figure, content, measure, opts = {}) {
+  // 与休息窗口的 layoutSupDialog 同一套规则（见 break.js）：锚点中点
+  //   水平 midX = (立绘可见右缘 + 容器右缘) / 2
+  //   垂直 midY = (对话框上边缘 + 容器上边缘) / 2（框顶实测，内缩自动跟随）。
+  // 对话框（.sup-preview-content）与预览面板边缘有内缩间距，摆位用实测 rect
+  // 换算。预览里没有倒计时环（.bar 不存在），环分支保留与 break.js 同构。
+  var CD_EDGE = 10;
+  function layoutSupDialog(figure, content, measure) {
     const container = figure?.parentElement ?? null;
     if (!container || !figure || !content) return;
-    const o = { ...DEFAULTS, ...opts };
     const cRect = container.getBoundingClientRect();
     if (cRect.width <= 0) return;
     const measureEl = pickMeasure(figure, measure);
-    const gap = o.gap ?? 0;
-    const mode = cRect.height > cRect.width * PORTRAIT_RATIO ? "top" : "side";
-    if (container.dataset.supLayout !== mode) container.dataset.supLayout = mode;
-    const bubble = content.querySelector(BUBBLE);
-    let figLeft = 0;
-    let figRight = 0;
-    let figTop = 0;
-    let width = 0;
-    let tailX = 0;
-    if (mode === "top") {
-      width = Math.max(0, Math.round(cRect.width - gap * 2));
-      content.style.left = `${Math.round(gap)}px`;
-      content.style.width = `${width}px`;
-      content.style.transform = "none";
-      content.style.top = "auto";
-      content.style.bottom = `${Math.round(gap)}px`;
-      if (figure.style.maxHeight === "") {
-        figure.dataset.supNatural = String(Math.round(figure.getBoundingClientRect().height));
-      }
-      const natural = Number(figure.dataset.supNatural) || Math.round(cRect.height);
-      figure.style.removeProperty("max-height");
-      let boxH = figure.getBoundingClientRect().height;
-      for (let i = 0; i < 3 && boxH > 1; i++) {
-        const head = figureTop(figure, 0) - cRect.top;
-        const need = content.offsetHeight + gap * 2;
-        if (head >= need || need >= cRect.height) break;
-        boxH = Math.max(1, Math.round(boxH * ((cRect.height - need) / Math.max(1, cRect.height - head))));
-        figure.style.maxHeight = `${Math.min(boxH, natural)}px`;
-      }
-      const fRect = measureEl.getBoundingClientRect();
-      figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
-      figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
-      figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
-      content.style.bottom = `${Math.round(cRect.height - figTop + gap)}px`;
-      if (content.offsetHeight > Math.max(0, figTop - gap * 2)) {
-        content.style.top = `${Math.round(gap)}px`;
-        content.style.bottom = "auto";
-      }
-      const center = figureCenterX(measureEl, (figLeft + figRight) / 2);
-      tailX = center;
-      const bRect0 = bubble?.getBoundingClientRect();
-      if (bubble && bRect0 && bRect0.width > 0) {
-        bubble.style.transform = "none";
-        const bRect = bubble.getBoundingClientRect();
-        const cr = content.getBoundingClientRect();
-        const dx = clamp(
-          center - (bRect.left + bRect.width / 2),
-          cr.left - bRect.left,
-          cr.right - bRect.right
-        );
-        bubble.style.transform = Math.abs(dx) >= 0.5 ? `translateX(${Math.round(dx)}px)` : "none";
-        const x = clamp(
-          center - (bRect.left + dx),
-          Math.min(TAIL_INSET, bRect.width / 2),
-          Math.max(bRect.width - TAIL_INSET, bRect.width / 2)
-        );
-        tailX = x;
-        bubble.style.setProperty("--tail-x", `${Math.round(x)}px`);
-      }
-    } else {
-      const fRect = measureEl.getBoundingClientRect();
-      figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
-      figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
-      figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
-      const band = cRect.width - figRight;
-      const avail = Math.max(0, band - gap * 2);
-      width = Math.min(o.maxWidth ?? Infinity, avail * (o.ratio ?? 1));
-      if (width < (o.minWidth ?? 0)) width = Math.min(o.minWidth ?? 0, avail);
-      width = Math.max(0, Math.round(width));
-      const cs = getComputedStyle(content);
-      const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-      content.style.width = `${width + padX}px`;
-      content.style.left = `${Math.round(figRight + band / 2 - width / 2)}px`;
-      const contentH = content.offsetHeight;
-      const floor = contentH / 2 + 8;
-      const desired = Math.max(cRect.height / 3, (cRect.height / 3 + figTop) / 2);
-      const cap = Math.max(cRect.height / 3, figTop - contentH / 2 - gap);
-      const centerY = Math.max(Math.min(desired, cap), floor);
-      content.style.top = `${Math.round(centerY)}px`;
-      content.style.bottom = "";
-      content.style.removeProperty("transform");
-      figure.style.removeProperty("max-height");
-      delete figure.dataset.supNatural;
-      bubble?.style.removeProperty("--tail-x");
-      bubble?.style.removeProperty("transform");
+    const fRect = measureEl.getBoundingClientRect();
+    const figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
+    const figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
+    const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
+    const bar = content.querySelector(".bar");
+    const boxRect = content.getBoundingClientRect();
+    const boxLeft = boxRect.left - cRect.left; // 对话框左缘相对容器（= 水平内缩量）
+    const boxBottomGap = cRect.bottom - boxRect.bottom; // 对话框底缘距容器底（= 底部内缩量）
+    const boxTop = boxRect.top - cRect.top; // 对话框顶缘相对容器
+    const midX = (figRight + cRect.width) / 2;
+    const midY = boxTop / 2;
+    let cdX = midX - boxLeft;
+    let cdBottom = cRect.height - midY - boxBottomGap;
+    if (bar) {
+      const ringWrap = bar.querySelector(".ring-wrap");
+      const barW = bar.offsetWidth || 84;
+      const ringH = (ringWrap && ringWrap.offsetHeight) || 84;
+      const barH = bar.offsetHeight || ringH;
+      const tailH = Math.max(0, barH - ringH);
+      cdX = clamp(
+        midX - boxLeft - barW / 2,
+        CD_EDGE - boxLeft,
+        Math.max(CD_EDGE - boxLeft, cRect.width - boxLeft - barW - CD_EDGE)
+      );
+      cdBottom = clamp(
+        cRect.height - midY - ringH / 2 - tailH - boxBottomGap,
+        CD_EDGE - boxBottomGap,
+        Math.max(CD_EDGE - boxBottomGap, cRect.height - boxBottomGap - barH - CD_EDGE)
+      );
+      bar.style.left = `${Math.round(cdX)}px`;
+      bar.style.bottom = `${Math.round(cdBottom)}px`;
+      bar.style.right = "auto";
     }
-    content.style.right = "auto";
     content.dataset.supMetrics = JSON.stringify({
-      mode,
+      mode: "dialog",
       figLeft: Math.round(figLeft),
       figRight: Math.round(figRight),
       figTop: Math.round(figTop),
-      width,
-      tailX: Math.round(tailX),
-      top: mode === "side" ? Math.round(parseFloat(content.style.top) || 0) : void 0,
+      cdX: Math.round(cdX),
+      cdBottom: Math.round(cdBottom),
+      midX: Math.round(midX),
+      midY: Math.round(midY),
       src: measureEl === measure ? "trim" : "figure"
     });
   }
-  function bindSupContentLayout(figure, content, measure, opts = {}) {
-    const relayout = () => layoutSupContent(figure, content, measure, opts);
+  function bindSupContentLayout(figure, content, measure) {
+    const relayout = () => layoutSupDialog(figure, content, measure);
     if (!figure || !content) return relayout;
     relayout();
     const container = figure.parentElement;
@@ -813,7 +747,6 @@
     el.title = "\u70B9\u5F00\u300C\u9AD8\u7EA7\u9009\u9879\u300D\u53EF\u8C03\u6574\u5F53\u524D\u7ACB\u7ED8\u7684\u663E\u793A\u5C3A\u5BF8\u4E0E\u4F4D\u7F6E\uFF0C\u4EE5\u53CA\u662F\u5426\u6C34\u5E73\u7FFB\u8F6C";
   }
   var supRelayout = null;
-  var PREVIEW_LAYOUT = { gap: 12, maxWidth: 420, minWidth: 150, ratio: 0.66 };
   function applySupGeometry(g) {
     const box = $("sup-preview");
     box.style.setProperty("--fig-size", String(g.sizePct));
@@ -828,9 +761,8 @@
     updateGeomSummary(g);
     supRelayout ??= bindSupContentLayout(
       document.querySelector(".sup-preview-fig"),
-      document.querySelector(".sup-preview-side"),
-      $("sup-preview-trim"),
-      PREVIEW_LAYOUT
+      document.querySelector(".sup-preview-content"),
+      $("sup-preview-trim")
     );
     supRelayout();
   }
@@ -863,9 +795,15 @@
     badge.classList.toggle("hidden", !off);
     badge.textContent = off ? "\u89D2\u8272\u5DF2\u5173\u95ED \xB7 \u4F11\u606F\u7A97\u53E3\u4E0D\u4F1A\u663E\u793A\u7ACB\u7ED8" : "";
     $("sup-preview-line").textContent = supPreview ? stage === 2 ? supPreview.lines.command || supPreview.lines.urge : supPreview.lines.urge : "\u65E0\u6CD5\u8BFB\u53D6\u7ACB\u7ED8\u6587\u4EF6";
-    const previewLine = $("sup-preview-line");
-    if (supPreview?.name) previewLine.dataset.speaker = supPreview.name;
-    else delete previewLine.dataset.speaker;
+    // 说话人由对话框左上角的名字牌承载（与休息窗口的 dialog-name 同款），不再挂在台词上
+    const previewName = $("sup-preview-name");
+    if (supPreview?.name) {
+      previewName.textContent = supPreview.name;
+      previewName.classList.remove("hidden");
+    } else {
+      previewName.textContent = "";
+      previewName.classList.add("hidden");
+    }
     if (supPreview) {
       const img = $("sup-preview-img");
       img.src = supPreview.image;
@@ -4654,7 +4592,7 @@
       renderSupervisorPreview(curSupStage === 1 ? 2 : 1);
     }, 5e3);
     $("sup-enabled").addEventListener("change", () => renderSupervisorPreview(curSupStage));
-    // 虚拟角色卡的「预览」：与立绘库右键菜单的预览同款行为——autoSave 后带当前选中角色的
+    // 督休专员卡的「预览」：与立绘库右键菜单的预览同款行为——autoSave 后带当前选中角色的
     // forceKey 弹真实预览窗（不弹窗时 PreviewBreak 兜底走默认角色）
     $("sup-break-preview").addEventListener("click", async () => {
       autoSave();

@@ -119,7 +119,7 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) 
 	if msgs := a.pickMessage("takeout", TAKEOUT_NAME); len(msgs) > 0 {
 		info.Message = msgs[0]
 	}
-	// 虚拟角色：与休息窗口同一条构建路径；外卖窗口的角色第一段台词 = 本提醒的提醒内容。
+	// 督休专员：与休息窗口同一条构建路径；外卖窗口的角色第一段台词 = 本提醒的提醒内容。
 	// 第二阶段**不换台词**：命令台词清空，渲染层 applyStage 的 `command || stage1` 沿用第一段。
 	if sup := a.buildSupervisorSession(preview, ""); sup != nil {
 		sup.Lines.Command = ""
