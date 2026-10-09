@@ -256,17 +256,17 @@ body.has-supervisor .figure {
 body.has-supervisor .gaze { justify-content: flex-start; }
 body.has-supervisor .figure img { max-width: 60vw; }
 
-/* 对话框：底部悬浮面板——与窗口边缘留出呼吸间距（不贴边），四角圆角 +
-   全周细描边 + 内侧高光，与休息窗口同款质感。内容保持文档流
+/* 对话框：底部横贯全宽，左/右/底三边与窗口重叠、左上右上直角（不设圆角），
+   只露一条加粗提亮的顶边勾勒轮廓，与休息窗口同款。内容保持文档流
    （徽标 → 台词 → 时间 → 按钮），红包区由脚本/CSS 绝对定位到框外立绘右缘。
    入场动画 tk-in 的末帧不写 transform，回落到这里的 transform: none
-   （见上方 keyframes 的说明）。内缩量被 layoutSupDialog 的摆位公式以
+   （见上方 keyframes 的说明）。贴边/内缩量被 layoutSupDialog 的摆位公式以
    实测 rect 消化，改这里不用同步 JS。 */
 body.has-supervisor .content {
   position: fixed;
-  left: 1.6vw;
-  right: 1.6vw;
-  bottom: 1.8vh;
+  left: 0;
+  right: 0;
+  bottom: 0;
   top: auto;
   transform: none;
   width: auto;
@@ -276,12 +276,9 @@ body.has-supervisor .content {
   min-height: 21vh;
   padding: 2.6em 40px 16px 30px;
   background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 18px;
-  box-shadow:
-    0 22px 48px rgba(0, 0, 0, 0.45),
-    0 4px 14px rgba(0, 0, 0, 0.3),
-    inset 0 1px 0 rgba(255, 255, 255, 0.09);
+  border-top: 2px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.38);
+  border-radius: 0;
 }
 
 /* 名字标签：对话框左上角凸出（经典 VN 名字牌，与休息窗口同款） */
@@ -306,10 +303,10 @@ body.has-supervisor .content {
   border-color: rgba(255, 130, 130, 0.7);
 }
 
-/* 对话框第二阶段：红色告警底（描边随底色一起转红，与休息窗口同款） */
+/* 对话框第二阶段：红色告警底（顶边描边随底色一起转红，与休息窗口同款） */
 #app[data-stage='2'] .content {
   background: linear-gradient(180deg, rgba(66, 5, 5, 0.62), rgba(40, 0, 0, 0.86));
-  border-color: rgba(255, 96, 96, 0.55);
+  border-top-color: rgba(255, 110, 110, 0.8);
 }
 
 /* block 布局后 flex 的 gap 失效，框内各块改用 margin 排距 */
@@ -318,7 +315,7 @@ body.has-supervisor .tk-clock { margin-top: 12px; }
 body.has-supervisor .tk-actions { margin-top: 14px; }
 
 /* 支付红包区：浮到立绘可见右缘的右侧（left/bottom 由脚本写入 inline style，
-   bar 同款含对话框内缩换算）。bottom 以对话框底边为基准，挂到对话框顶边的上方。 */
+   bar 同款含对话框坐标换算）。bottom 以对话框底边为基准，挂到对话框顶边的上方。 */
 body.has-supervisor .tk-redpacket {
   position: absolute;
   left: 62vw;

@@ -372,15 +372,19 @@ def main():
             vpw = b.get("viewportW") or 0
             vph = b.get("viewportH") or 0
             if vpw:
-                # 对话框与窗口边缘留出呼吸间距（不贴边）：左右有内缩、左右对称、底部离窗底有空隙
-                check((ci.get("rectLeft") or 0) >= 4 and (ci.get("rectRight") or 0) <= vpw - 4,
-                      "%s提醒窗口：对话框左右与窗口边缘有间距（不贴边）" % label,
-                      "left=%s right=%s vpw=%s" % (ci.get("rectLeft"), ci.get("rectRight"), vpw))
-                check(abs((ci.get("rectW") or 0) - (vpw - 2 * (ci.get("rectLeft") or 0))) <= 2,
-                      "%s提醒窗口：对话框左右内缩对称（宽度 == 视口宽 - 2*左距）" % label,
-                      "w=%s vpw=%s left=%s" % (ci.get("rectW"), vpw, ci.get("rectLeft")))
-                check((ci.get("rectBottom") or vph) <= vph - 4,
-                      "%s提醒窗口：对话框底部与窗口边缘有间距（不贴底）" % label,
+                # 对话框与窗口重叠（贴边）：左右贴死窗口两侧且对称、底部贴死窗底
+                # （rectLeft 可能为 0，不能用 or 兜底——0 是 falsy，会被误判）
+                rl = ci.get("rectLeft")
+                rr = ci.get("rectRight")
+                check(rl is not None and rl <= 1 and rr is not None and rr >= vpw - 1,
+                      "%s提醒窗口：对话框左右与窗口重叠（贴边）" % label,
+                      "left=%s right=%s vpw=%s" % (rl, rr, vpw))
+                if rl is not None:
+                    check(abs((ci.get("rectW") or 0) - (vpw - 2 * rl)) <= 2,
+                          "%s提醒窗口：对话框左右对称（宽度 == 视口宽 - 2*左距）" % label,
+                          "w=%s vpw=%s left=%s" % (ci.get("rectW"), vpw, rl))
+                check((ci.get("rectBottom") or 0) >= vph - 1,
+                      "%s提醒窗口：对话框底部与窗口重叠（贴底）" % label,
                       "bottom=%s vph=%s" % (ci.get("rectBottom"), vph))
             bi = b.get("barInline") or {}
             check(bool(bi.get("left")) and bool(bi.get("bottom")),
@@ -391,7 +395,7 @@ def main():
                 cx = (ri.get("rectLeft", 0) + ri.get("rectRight", 0)) / 2
                 cy = (ri.get("rectTop", 0) + ri.get("rectBottom", 0)) / 2
                 want_cx = sm.get("midX")
-                # 框顶 y（距窗顶）= 框底边 y - 框高（实测，含内缩），
+                # 框顶 y（距窗顶）= 框底边 y - 框高（实测），
                 # 环中心 = 「窗口上边缘(0) 与 框顶」的中点 = 框顶 / 2
                 want_cy = ((ci.get("rectBottom") or 0) - (ci.get("rectH") or 0)) / 2
                 check(abs(cx - want_cx) <= 3,
@@ -507,7 +511,7 @@ def main():
                     rcy = (rp.get("rectTop", 0) + rp.get("rectBottom", 0)) / 2
                     tk_cr = tk.get("contentRect") or {}
                     want_rcx = tksm.get("midX")
-                    # 框顶 y = 框底边 y - 框高（实测，含内缩），红包中心 = 框顶与窗顶的中点
+                    # 框顶 y = 框底边 y - 框高（实测），红包中心 = 框顶与窗顶的中点
                     want_rcy = ((tk_cr.get("bottom") or 0) - (tk_cr.get("h") or 0)) / 2
                     check(abs(rcx - want_rcx) <= 3,
                           "外卖窗口：红包中心 == 立绘右缘与窗口右缘的中间",

@@ -2341,10 +2341,11 @@
     const figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
     const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
     // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位。
-    // 对话框（.content）与窗口边缘有内缩间距，红包区（.tk-redpacket）的包含块
-    // 就是它——所以摆位全部用实测 rect 换算，不假设贴边。两个锚点中点：
+    // 对话框（.content）与窗口边缘的偏移由 CSS 决定（当前贴边为 0），红包区
+    // （.tk-redpacket）的包含块就是它——所以摆位全部用实测 rect 换算，不假设贴边。
+    // 两个锚点中点：
     //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
-    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2（框顶实测，内缩自动跟随）
+    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2（框顶实测，偏移自动跟随）
     // 红包中心对准交点（left/bottom 写 inline）。红包开关关闭时它整块 hidden，
     // 照常落位无副作用（display:none 不渲染）。
     const floatEl = content.querySelector(".tk-redpacket");

@@ -286,8 +286,9 @@
   // 与休息窗口的 layoutSupDialog 同一套规则（见 break.js）：锚点中点
   //   水平 midX = (立绘可见右缘 + 容器右缘) / 2
   //   垂直 midY = (对话框上边缘 + 容器上边缘) / 2（框顶实测，内缩自动跟随）。
-  // 对话框（.sup-preview-content）与预览面板边缘有内缩间距，摆位用实测 rect
-  // 换算。预览里没有倒计时环（.bar 不存在），环分支保留与 break.js 同构。
+  // 对话框（.sup-preview-content）与预览面板边缘的偏移由 CSS 决定（当前贴边
+  // 为 0），摆位用实测 rect 换算。预览里没有倒计时环（.bar 不存在），环分支
+  // 保留与 break.js 同构。
   var CD_EDGE = 10;
   function layoutSupDialog(figure, content, measure) {
     const container = figure?.parentElement ?? null;

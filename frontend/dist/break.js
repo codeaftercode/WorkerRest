@@ -252,10 +252,10 @@
     const figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
     const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
     // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位。
-    // 对话框（.content）与窗口边缘有内缩间距，bar 的包含块就是它——所以摆位
-    // 全部用实测 rect 换算，不假设贴边。两个锚点中点：
+    // 对话框（.content）与窗口边缘的偏移由 CSS 决定（当前贴边为 0），bar 的
+    // 包含块就是它——所以摆位全部用实测 rect 换算，不假设贴边。两个锚点中点：
     //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
-    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2（框顶实测，内缩自动跟随）
+    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2（框顶实测，偏移自动跟随）
     // bar 是 column flex（环在上、skip 在下），环中心距 bar 底 = ringH/2 + skip 占位，
     // 所以用 ring-wrap 的高度反推 bottom，让环中心（而非 bar 中心）落在 midY 上。
     const bar = content.querySelector(".bar");
