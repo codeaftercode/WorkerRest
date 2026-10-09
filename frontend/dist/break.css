@@ -219,8 +219,9 @@ body.has-supervisor .content {
   border-top-color: rgba(255, 96, 96, 0.62);
 }
 
-/* 倒计时环：浮到立绘可见右缘的右侧（left/bottom 由脚本写入 inline style）。
-   bottom 以对话框底边为基准 = 窗口底，挂到对话框顶边的上方。 */
+/* 倒计时环：浮到「立绘可见右缘~窗口右缘」「对话框顶~窗口顶」两个中点的
+   交点上（环中心对准，left/bottom 由脚本写入 inline style）。
+   「提前结束」在 bar 内跟随环居中下沉，环摆到哪它跟到哪。 */
 body.has-supervisor .bar {
   position: absolute;
   left: 62vw;
@@ -230,20 +231,12 @@ body.has-supervisor .bar {
   width: max-content;
 }
 
-/* 「提前结束」：有角色时沉到对话框右下角 */
-body.has-supervisor .skip-link {
-  position: absolute;
-  right: 34px;
-  bottom: 14px;
-}
-
 /* 竖屏窗口（高 > 宽）：立绘占宽比例大，环与名字标签收小一档 */
 @media (max-aspect-ratio: 1/1) {
   body.has-supervisor .ring-wrap { width: 64px; height: 64px; }
   body.has-supervisor .countdown { font-size: 20px; }
   body.has-supervisor .dialog-name { left: 16px; }
   body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
-  body.has-supervisor .skip-link { right: 16px; bottom: 10px; }
 }
 
 /* 第一阶段（劝说）：轻微凑近、对比略增。
@@ -344,14 +337,6 @@ body:not(.has-supervisor) .bar {
   position: absolute;
   left: 0;
   right: 0;
-  /* skip-link 已从 bar 内移到 content 末尾（有角色版式把它沉到对话框右下），
-     这里让出它原来的位置：环上移一个 skip 的占位高度 */
-  bottom: calc(6vh + 32px);
-}
-body:not(.has-supervisor) .skip-link {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   bottom: 6vh;
 }
 /* 角色不在场时台词气泡一律不出现（角色关闭 ⇒ 只说提醒内容，不出气泡）。
@@ -364,7 +349,8 @@ body:not(.has-supervisor) .supervisor-line { display: none !important; }
   align-items: center;
   gap: 12px;
 }
-body.has-supervisor .bar { flex-direction: row; gap: 20px; }
+/* 环内跟随的「提前结束」与倒计时环垂直排列、水平居中；
+   有角色版的绝对定位/间距覆盖见上面「游戏对话画面」段 */
 
 .ring-wrap { position: relative; width: 180px; height: 180px; }
 body.has-supervisor .ring-wrap { width: 84px; height: 84px; }

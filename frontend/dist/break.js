@@ -209,11 +209,10 @@
 
   // renderer/supervisorLayout.ts —— 游戏对话画面版式
   // .content 已是底部全宽对话框（CSS 定版），这里只负责把倒计时环浮到
-  // 立绘可见右缘的右侧：水平 = 立绘可见右缘 + 间距（钳住不出窗口），
-  // 垂直 = 对话框顶边上方一点。摆位结果写入 supMetrics 供探针断言。
-  var CD_GAP = 24;
+  // 「立绘可见右缘~窗口右缘」与「对话框上边缘~窗口上边缘」两个中点的交点上
+  // （环中心对准；「提前结束」在 bar 内跟随环居中下沉）。摆位结果写入
+  // supMetrics 供探针断言。
   var CD_EDGE = 10;
-  var CD_LIFT = 14;
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
@@ -254,14 +253,31 @@
     const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
     // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位；
     // 唯一要挪的是倒计时环（.bar 的包含块是 .content，其左缘=窗口左缘，
-    // 所以 left 直接用窗口坐标）。对话框底边=窗口底，bottom 以它为基准。
+    // 所以 left 直接用窗口坐标）。两个锚点中点：
+    //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
+    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2，对话框顶边 = 窗高 - 对话框高
+    // bar 是 column flex（环在上、skip 在下），环中心距 bar 底 = ringH/2 + skip 占位，
+    // 所以用 ring-wrap 的高度反推 bottom，让环中心（而非 bar 中心）落在 midY 上。
     const bar = content.querySelector(".bar");
     const boxH = content.getBoundingClientRect().height;
-    let cdX = figRight + CD_GAP;
-    let cdBottom = boxH + CD_LIFT;
+    const midX = (figRight + cRect.width) / 2;
+    const midY = (cRect.height - boxH) / 2;
+    let cdX = midX;
+    let cdBottom = cRect.height - midY;
     if (bar) {
+      const ringWrap = bar.querySelector(".ring-wrap");
       const barW = bar.offsetWidth || 84;
-      cdX = clamp(cdX, CD_EDGE, Math.max(CD_EDGE, cRect.width - barW - CD_EDGE));
+      const ringH = (ringWrap && ringWrap.offsetHeight) || 84;
+      const barH = bar.offsetHeight || ringH;
+      // bar 是 column flex：环在上，「提前结束」挂在环下（占 barH - ringH 的高度）。
+      // 要让环中心（而非 bar 中心）落在 midY 上，bottom 得先把 skip 的占位扣掉。
+      const tailH = Math.max(0, barH - ringH);
+      cdX = clamp(midX - barW / 2, CD_EDGE, Math.max(CD_EDGE, cRect.width - barW - CD_EDGE));
+      cdBottom = clamp(
+        cRect.height - midY - ringH / 2 - tailH,
+        CD_EDGE,
+        Math.max(CD_EDGE, cRect.height - barH - CD_EDGE)
+      );
       bar.style.left = `${Math.round(cdX)}px`;
       bar.style.bottom = `${Math.round(cdBottom)}px`;
       bar.style.right = "auto";
@@ -273,6 +289,8 @@
       figTop: Math.round(figTop),
       cdX: Math.round(cdX),
       cdBottom: Math.round(cdBottom),
+      midX: Math.round(midX),
+      midY: Math.round(midY),
       src: measureEl === measure ? "trim" : "figure"
     });
   }

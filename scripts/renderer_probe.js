@@ -167,11 +167,16 @@ const PROBE_BREAK = `(function () {
   }
   var contentRect = content ? content.getBoundingClientRect() : null;
   var barRect = bar ? bar.getBoundingClientRect() : null;
+  var ringWrap = document.querySelector('.bar .ring-wrap');
+  var ringRect = ringWrap ? ringWrap.getBoundingClientRect() : null;
+  var skipEl = document.getElementById('skip-link');
+  var skipRect = skipEl ? skipEl.getBoundingClientRect() : null;
   return {
     shim: window.__WR_SHIM || null,
     hasSupervisor: document.body.classList.contains('has-supervisor'),
     hasSup: document.body.classList.contains('has-supervisor'),
     viewportW: window.innerWidth,
+    viewportH: window.innerHeight,
     figureHidden: document.getElementById('figure').classList.contains('hidden'),
     figureSrcPrefix: img ? String(img.src).slice(0, 22) : null,
     figureNatural: img ? (img.naturalWidth + 'x' + img.naturalHeight) : null,
@@ -193,6 +198,15 @@ const PROBE_BREAK = `(function () {
     barInline: bar ? {
       left: bar.style.left, bottom: bar.style.bottom,
       rectLeft: Math.round(barRect.left), rectBottom: Math.round(barRect.bottom),
+    } : null,
+    ringInline: ringWrap ? {
+      rectLeft: Math.round(ringRect.left), rectTop: Math.round(ringRect.top),
+      rectRight: Math.round(ringRect.right), rectBottom: Math.round(ringRect.bottom),
+    } : null,
+    skipInline: skipEl ? {
+      shown: !skipEl.classList.contains('hidden'),
+      rectLeft: Math.round(skipRect.left), rectTop: Math.round(skipRect.top),
+      rectRight: Math.round(skipRect.right), rectBottom: Math.round(skipRect.bottom),
     } : null,
     errors: window.__WR_ERRORS || []
   };
@@ -286,9 +300,13 @@ const PROBE_TAKEOUT = `(async function () {
     skipBtn: txt('tk-skip'),
     postponeBtn: txt('tk-postpone'),
     hasSupervisor: document.body.classList.contains('has-supervisor'),
+    stage: (document.getElementById('app') || {}).dataset ? document.getElementById('app').dataset.stage : null,
+    viewportW: window.innerWidth,
+    viewportH: window.innerHeight,
     figureShown: !document.getElementById('figure').classList.contains('hidden'),
     speaker: line ? (line.dataset.speaker || null) : null,
     lineText: line ? line.textContent : null,
+    lineShown: line ? !line.classList.contains('hidden') : null,
     dialogName: (function () { var n = document.getElementById('dialog-name'); return n ? n.textContent : null; })(),
     dialogNameShown: (function () { var n = document.getElementById('dialog-name'); return n ? !n.classList.contains('hidden') : false; })(),
     supMetrics: (function () {
@@ -296,10 +314,17 @@ const PROBE_TAKEOUT = `(async function () {
       if (!c || !c.dataset.supMetrics) return null;
       try { return JSON.parse(c.dataset.supMetrics); } catch (e) { return { err: String(e) }; }
     })(),
+    contentRectH: (function () {
+      var c = document.querySelector('.content');
+      return c ? Math.round(c.getBoundingClientRect().height) : null;
+    })(),
     redpacketInline: (function () {
       var rp = document.getElementById('redpacket');
       if (!rp) return null;
-      return { left: rp.style.left, bottom: rp.style.bottom, shown: !rp.classList.contains('hidden') };
+      var r = rp.getBoundingClientRect();
+      return { left: rp.style.left, bottom: rp.style.bottom, shown: !rp.classList.contains('hidden'),
+               rectLeft: Math.round(r.left), rectTop: Math.round(r.top),
+               rectRight: Math.round(r.right), rectBottom: Math.round(r.bottom) };
     })(),
     accent: cs.getPropertyValue('--accent').trim(),
     rounded: (document.getElementById('app') || {}).dataset ? document.getElementById('app').dataset.rounded : null,

@@ -373,7 +373,8 @@ body.has-supervisor .supervisor-line {
 }
 body.has-supervisor .supervisor-line::after { display: none; }
 body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
-/* 第二阶段（检测到仍在操作键鼠）：整句转红色告警 */
+/* 外卖窗口的角色没有二阶段（脚本恒定 data-stage="1"），下面的告警样式
+   保留只为兜底——万一哪天状态被外部置成 2，台词/对话框/立绘仍有告警形。 */
 #app[data-stage='2'] .supervisor-line {
   color: #ffe9e9;
 }

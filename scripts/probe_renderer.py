@@ -353,8 +353,9 @@ def main():
 
             # ---- 休息督导版式：游戏对话画面（底部全宽对话框），是 supervisorLayout 的核心 ----
             # 同一个会话，只换窗口尺寸（横 1100x720 / 竖 760x980），两档都应进入对话框
-            # 版式：supMetrics.mode == "dialog"、名字标签亮出、倒计时环被脚本摆到
-            # 立绘可见右缘的右侧、对话框横贯全宽。
+            # 版式：supMetrics.mode == "dialog"、名字标签亮出、倒计时环中心落在
+            # 「立绘右缘~窗口右缘」「对话框顶~窗口顶」两个中点的交点上、
+            # 「提前结束」在环下方与环中心对齐、对话框横贯全宽。
             sm = b.get("supMetrics") or {}
             check(sm.get("mode") == "dialog",
                   "%s提醒窗口：版式是游戏对话画面（supMetrics.mode == dialog）" % label, sm.get("mode"))
@@ -379,6 +380,29 @@ def main():
             check(bool(bi.get("left")) and bool(bi.get("bottom")),
                   "%s提醒窗口：倒计时环被 inline 摆位（left/bottom 已写入）" % label,
                   "%r / %r" % (bi.get("left"), bi.get("bottom")))
+            ri = b.get("ringInline") or {}
+            if ri.get("rectLeft") is not None and sm.get("midX") is not None and ci.get("rectH"):
+                cx = (ri.get("rectLeft", 0) + ri.get("rectRight", 0)) / 2
+                cy = (ri.get("rectTop", 0) + ri.get("rectBottom", 0)) / 2
+                vph = b.get("viewportH") or 0
+                want_cx = sm.get("midX")
+                want_cy = (vph - ci.get("rectH", 0)) / 2
+                check(abs(cx - want_cx) <= 3,
+                      "%s提醒窗口：环中心 == 立绘右缘与窗口右缘的中间" % label,
+                      "%s vs %s" % (round(cx), want_cx))
+                check(abs(cy - want_cy) <= 3,
+                      "%s提醒窗口：环中心 == 对话框顶与窗口顶的中间" % label,
+                      "%s vs %s" % (round(cy), round(want_cy)))
+            sk = b.get("skipInline") or {}
+            if sk.get("shown") and ri.get("rectBottom") is not None:
+                check(sk.get("rectTop", 0) >= ri.get("rectBottom", 0) - 2,
+                      "%s提醒窗口：「提前结束」在倒计时环的下方" % label,
+                      "skip_top=%s ring_bottom=%s" % (sk.get("rectTop"), ri.get("rectBottom")))
+                skip_cx = (sk.get("rectLeft", 0) + sk.get("rectRight", 0)) / 2
+                ring_cx = (ri.get("rectLeft", 0) + ri.get("rectRight", 0)) / 2
+                check(abs(skip_cx - ring_cx) <= 3,
+                      "%s提醒窗口：「提前结束」与环中心水平对齐" % label,
+                      "%s vs %s" % (round(skip_cx), round(ring_cx)))
             if bi.get("rectBottom") is not None and ci.get("rectBottom") is not None:
                 check(bi.get("rectBottom") <= ci.get("rectBottom"),
                       "%s提醒窗口：倒计时环挂在对话框上方（不压台词）" % label,
@@ -450,11 +474,18 @@ def main():
         if want_color:
             check(str(tk.get("accent") or "").lower() == want_color.lower(),
                   "外卖窗口：--accent == 配置外观色", "%s vs %s" % (tk.get("accent"), want_color))
-        # 有角色时：外卖窗口同样进入游戏对话画面版式（对话框 + 红包浮动到立绘右侧）
+        # 有角色时：外卖窗口同样进入游戏对话画面版式；角色没有二阶段、
+        # 台词恒为外卖提醒文字；红包中心落在两个锚点中点的交点上
         tksm = tk.get("supMetrics") or {}
         if tk.get("hasSupervisor"):
             check(tksm.get("mode") == "dialog",
                   "外卖窗口：版式是游戏对话画面（supMetrics.mode == dialog）", tksm.get("mode"))
+            check(tk.get("stage") == "1",
+                  "外卖窗口：角色没有二阶段（data-stage 恒为 1）", tk.get("stage"))
+            if info.get("message"):
+                check(tk.get("lineText") == info.get("message") and tk.get("lineShown") is True,
+                      "外卖窗口：台词 == 外卖提醒文字（不显示角色自己的台词）",
+                      "%r vs %r" % (tk.get("lineText"), info.get("message")))
             if want_role:
                 check(tk.get("dialogName") == want_role and tk.get("dialogNameShown") is True,
                       "外卖窗口：名字标签亮在对话框左上角",
@@ -462,7 +493,20 @@ def main():
             rp = tk.get("redpacketInline") or {}
             if tk.get("redpacketShown"):
                 check(bool(rp.get("left")) and bool(rp.get("bottom")),
-                      "外卖窗口：红包区被 inline 摆位（浮到立绘右缘）", "%r / %r" % (rp.get("left"), rp.get("bottom")))
+                      "外卖窗口：红包区被 inline 摆位（中心对准两个中点的交点）",
+                      "%r / %r" % (rp.get("left"), rp.get("bottom")))
+                if rp.get("rectLeft") is not None and tksm.get("midX") is not None and tk.get("contentRectH"):
+                    rcx = (rp.get("rectLeft", 0) + rp.get("rectRight", 0)) / 2
+                    rcy = (rp.get("rectTop", 0) + rp.get("rectBottom", 0)) / 2
+                    tk_vph = tk.get("viewportH") or 0
+                    want_rcx = tksm.get("midX")
+                    want_rcy = (tk_vph - tk.get("contentRectH", 0)) / 2
+                    check(abs(rcx - want_rcx) <= 3,
+                          "外卖窗口：红包中心 == 立绘右缘与窗口右缘的中间",
+                          "%s vs %s" % (round(rcx), want_rcx))
+                    check(abs(rcy - want_rcy) <= 3,
+                          "外卖窗口：红包中心 == 对话框顶与窗口顶的中间",
+                          "%s vs %s" % (round(rcy), round(want_rcy)))
         # 有角色时红包/提醒内容/台词链路照常；无角色时也不该有 JS 错误
         check(not (tk.get("errors") or []), "外卖窗口：页面无 JS 错误", (tk.get("errors") or [])[:2])
         check(not (tk.get("consoleErrors") or []), "外卖窗口：页面无控制台错误",

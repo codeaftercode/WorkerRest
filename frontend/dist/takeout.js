@@ -2217,10 +2217,11 @@
     }, { once: true });
   }
 
-  // renderer/supervisorStage.ts
+  // renderer/supervisorStage.ts（外卖窗口版）
+  // 与休息窗口同源，但**没有二阶段**：外卖提醒不玩「凑近命令」——角色台词
+  // 恒为外卖提醒文字（stage1Text），不显示角色自己的劝说/命令台词；
+  // 检测到活动只向其他窗口广播升级（supActivity），本窗口不升级。
   var GEOM_FALLBACK = { sizePct: 72, posXPct: 4, posYPct: 0, flip: false };
-  var ESCALATE_WEIGHT = 3;
-  var RELAX_MS = 6e3;
   function setupSupervisor(sup, stage1Text) {
     const app = document.getElementById("app");
     const figure = document.getElementById("figure");
@@ -2229,7 +2230,6 @@
     const line = document.getElementById("supervisor-line");
     document.body.classList.add("has-supervisor");
     figure.classList.remove("hidden");
-    line.classList.remove("hidden");
     if (sup.name) line.dataset.speaker = sup.name;
     else delete line.dataset.speaker;
     // 游戏对话画面：名字挂在对话框左上角的凸出标签上（.dialog-name）
@@ -2253,43 +2253,26 @@
     img.src = sup.image;
     applyFigureTrim(document.getElementById("figure-trim"), img, flip);
     const supApi = window.api;
-    const stage1 = stage1Text || sup.lines.urge;
-    let stage = 1;
-    let weight = 0;
-    let relaxTimer;
-    const applyStage = (next) => {
-      if (next === stage) return;
-      stage = next;
-      app.dataset.stage = String(next);
-      line.textContent = next === 2 ? sup.lines.command || stage1 : stage1;
-    };
+    // 台词 = 外卖提醒文字（不回退角色台词；没配提醒文字就不显示台词）
+    const stage1 = stage1Text || "";
     app.dataset.stage = "1";
     line.textContent = stage1;
-    const relax = () => {
-      window.clearTimeout(relaxTimer);
-      relaxTimer = window.setTimeout(() => {
-        weight = 0;
-        applyStage(1);
-      }, RELAX_MS);
-    };
-    const noteActivity = (w, broadcast) => {
-      weight = Math.min(weight + w, 12);
-      if (weight >= ESCALATE_WEIGHT) applyStage(2);
-      relax();
-      if (broadcast) supApi?.supActivity?.();
+    if (!stage1) line.classList.add("hidden");
+    else line.classList.remove("hidden");
+    const broadcast = () => {
+      supApi?.supActivity?.();
     };
     let lastMove = 0;
     window.addEventListener("mousemove", () => {
       const now = performance.now();
       if (now - lastMove < 500) return;
       lastMove = now;
-      noteActivity(1, true);
+      broadcast();
     });
-    window.addEventListener("mousedown", () => noteActivity(3, true), { passive: true });
-    window.addEventListener("keydown", () => noteActivity(3, true), { passive: true });
-    window.addEventListener("wheel", () => noteActivity(3, true), { passive: true });
-    window.addEventListener("touchstart", () => noteActivity(3, true), { passive: true });
-    supApi?.onSupActivity?.(() => noteActivity(3, false));
+    window.addEventListener("mousedown", broadcast, { passive: true });
+    window.addEventListener("keydown", broadcast, { passive: true });
+    window.addEventListener("wheel", broadcast, { passive: true });
+    window.addEventListener("touchstart", broadcast, { passive: true });
     if (!sup.gaze) return;
     gaze.style.transformOrigin = "50% 100%";
     let targetNX = 0;
@@ -2316,11 +2299,9 @@
 
   // renderer/supervisorLayout.ts —— 游戏对话画面版式（与 break.js 同一套）
   // .content 已是底部全宽对话框（CSS 定版），这里只负责把支付红包区浮到
-  // 立绘可见右缘的右侧：水平 = 立绘可见右缘 + 间距（钳住不出窗口），
-  // 垂直 = 对话框顶边上方一点。摆位结果写入 supMetrics 供探针断言。
-  var CD_GAP = 24;
+  // 「立绘可见右缘~窗口右缘」与「对话框上边缘~窗口上边缘」两个中点的交点上
+  // （红包中心对准）。摆位结果写入 supMetrics 供探针断言。
   var CD_EDGE = 10;
-  var CD_LIFT = 14;
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
@@ -2361,15 +2342,26 @@
     const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
     // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位；
     // 唯一要挪的是支付红包区（.tk-redpacket 的包含块是 .content，其左缘=窗口左缘，
-    // 所以 left 直接用窗口坐标）。对话框底边=窗口底，bottom 以它为基准。
-    // 红包开关关闭时它整块 hidden，照常落位无副作用（display:none 不渲染）。
+    // 所以 left 直接用窗口坐标）。两个锚点中点：
+    //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
+    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2，对话框顶边 = 窗高 - 对话框高
+    // 红包中心对准交点（left/bottom 写 inline）。红包开关关闭时它整块 hidden，
+    // 照常落位无副作用（display:none 不渲染）。
     const floatEl = content.querySelector(".tk-redpacket");
     const boxH = content.getBoundingClientRect().height;
-    let cdX = figRight + CD_GAP;
-    let cdBottom = boxH + CD_LIFT;
+    const midX = (figRight + cRect.width) / 2;
+    const midY = (cRect.height - boxH) / 2;
+    let cdX = midX;
+    let cdBottom = cRect.height - midY;
     if (floatEl) {
-      const floatW = floatEl.offsetWidth || 200;
-      cdX = clamp(cdX, CD_EDGE, Math.max(CD_EDGE, cRect.width - floatW - CD_EDGE));
+      const floatW = floatEl.offsetWidth || 240;
+      const floatH = floatEl.offsetHeight || 108;
+      cdX = clamp(midX - floatW / 2, CD_EDGE, Math.max(CD_EDGE, cRect.width - floatW - CD_EDGE));
+      cdBottom = clamp(
+        cRect.height - midY - floatH / 2,
+        CD_EDGE,
+        Math.max(CD_EDGE, cRect.height - floatH - CD_EDGE)
+      );
       floatEl.style.left = `${Math.round(cdX)}px`;
       floatEl.style.bottom = `${Math.round(cdBottom)}px`;
       floatEl.style.right = "auto";
@@ -2381,6 +2373,8 @@
       figTop: Math.round(figTop),
       cdX: Math.round(cdX),
       cdBottom: Math.round(cdBottom),
+      midX: Math.round(midX),
+      midY: Math.round(midY),
       src: measureEl === measure ? "trim" : "figure"
     });
   }
@@ -2428,15 +2422,9 @@
       msgEl.textContent = info.message;
       msgEl.classList.remove("hidden");
     }
-    if (info.supervisor) {
-      msgEl.classList.add("hidden");
-      setupSupervisor(info.supervisor, info.message);
-      bindSupContentLayout(
-        document.getElementById("figure"),
-        document.querySelector(".content"),
-        document.getElementById("figure-trim")
-      );
-    }
+    // 红包显隐要先于摆位：layoutSupDialog 量红包的 offsetWidth/Height 定中心，
+    // 隐藏状态下量到 0 会走 fallback（位置偏差）。红包显隐不改变 content 尺寸
+    // （absolute 脱离文档流），ResizeObserver 不会补触发，顺序必须摆对。
     if (info.redPacket) {
       el("redpacket").classList.remove("hidden");
       const data = info.redPacketData;
@@ -2449,6 +2437,15 @@
           el("rp-text").textContent = "\u652F\u4ED8\u7EA2\u5305 \xB7 \u4E8C\u7EF4\u7801\u751F\u6210\u5931\u8D25";
         });
       }
+    }
+    if (info.supervisor) {
+      msgEl.classList.add("hidden");
+      setupSupervisor(info.supervisor, info.message);
+      bindSupContentLayout(
+        document.getElementById("figure"),
+        document.querySelector(".content"),
+        document.getElementById("figure-trim")
+      );
     }
     const leadEl = el("tk-lead");
     const clock = el("tk-clock");
