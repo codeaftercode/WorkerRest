@@ -53,6 +53,13 @@ func main() {
 		Frameless:        true,
 		URL:              "/settings.html?win=settings",
 		BackgroundColour: application.NewRGBA(0xf5, 0xf6, 0xfa, 0xff),
+		// NonClientRegionSupport 开启 WebView2 原生的非客户区命中测试，让页面里的
+		// `-webkit-app-region: drag`（及其标准写法 `app-region: drag`）元素被系统识别为
+		// 标题栏：拖动它即可移动窗口、双击放大/还原，无需前端 JS 拖动逻辑。这是 Wails v3
+		// 为无边框自定义标题栏提供的机制（见 webview_window_options.go 的注释）。
+		Windows: application.WindowsWindow{
+			NonClientRegionSupport: true,
+		},
 		// 窗口身份经 URL query 下发（?win=settings）。⚠️ 别依赖下面的 JS 字段：Wails v3
 		// 在 Windows 上只对内嵌 HTML 注入 JS、对 URL 加载的页面不注入，故这里仅作占位。
 		JS: `window.__WR_WIN = "settings";`,

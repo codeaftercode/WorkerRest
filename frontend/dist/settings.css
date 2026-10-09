@@ -50,7 +50,10 @@ body {
 }
 .tb-icon { width: 20px; height: 20px; border-radius: 6px; pointer-events: none; }
 .tb-title { font-size: 13px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
-.tb-drag { flex: 1; align-self: stretch; -webkit-app-region: drag; }
+/* 标题栏可拖拽区：Wails v3 已为设置窗口开启 NonClientRegionSupport，WebView2 原生
+   把 app-region: drag 元素识别为系统标题栏（拖动移动、双击放大/还原）。标准写法
+   app-region 与 -webkit- 前缀各写一份，覆盖不同 WebView2 版本。 */
+.tb-drag { flex: 1; align-self: stretch; -webkit-app-region: drag; app-region: drag; }
 
 /* 窗口控制按钮成组：gap:0 + 不给标题栏右内边距 —— 这样三颗按钮彼此紧挨、最右边那颗
    正好贴住窗口右上角，悬停高亮块连成一片。（以前按钮是标题栏的直接子元素，外层
