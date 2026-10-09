@@ -10,7 +10,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/harry1453/go-common-file-dialog/cfd"
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
@@ -235,7 +234,7 @@ func (a *App) PickSupervisorImage() map[string]any {
 		log.Printf("[role] 无头 / server 模式无法弹选图对话框，返回取消")
 		return nil
 	}
-	r := showOpenDialog("选择虚拟角色立绘", []cfd.FileFilter{
+	r := showOpenDialog(a.app.Dialog, "选择虚拟角色立绘", []application.FileFilter{
 		{DisplayName: "图片", Pattern: "*.png;*.jpg;*.jpeg;*.webp;*.gif"},
 	})
 	if r.canceled {
@@ -275,7 +274,7 @@ func (a *App) ExportSettings() bool {
 		log.Printf("[settings] 无头 / server 模式无法弹另存为对话框，返回失败")
 		return false
 	}
-	r := showSaveDialog("导出全部配置", "worker-rest-settings.json", []cfd.FileFilter{
+	r := showSaveDialog(a.app.Dialog, "导出全部配置", "worker-rest-settings.json", []application.FileFilter{
 		{DisplayName: "JSON", Pattern: "*.json"},
 	})
 	if r.canceled {
@@ -309,7 +308,7 @@ func (a *App) ImportSettings() bool {
 		log.Printf("[settings] 无头 / server 模式无法弹打开对话框，返回失败")
 		return false
 	}
-	r := showOpenDialog("导入配置", []cfd.FileFilter{
+	r := showOpenDialog(a.app.Dialog, "导入配置", []application.FileFilter{
 		{DisplayName: "JSON", Pattern: "*.json"},
 	})
 	if r.canceled {
@@ -383,7 +382,7 @@ func (a *App) AddMusicSound() map[string]any {
 		log.Printf("[sound] 无头 / server 模式无法弹选文件对话框，返回取消")
 		return map[string]any{"canceled": true}
 	}
-	r := showOpenMultiDialog("添加音乐", []cfd.FileFilter{
+	r := showOpenMultiDialog(a.app.Dialog, "添加音乐", []application.FileFilter{
 		{DisplayName: "音频", Pattern: audioFilterPattern()},
 	})
 	if r.canceled {
@@ -436,7 +435,7 @@ func (a *App) PickAppExe() map[string]any {
 		log.Printf("[appPause] 无头 / server 模式无法弹选文件对话框，返回取消")
 		return nil
 	}
-	r := showOpenDialog("选择应用程序", []cfd.FileFilter{
+	r := showOpenDialog(a.app.Dialog, "选择应用程序", []application.FileFilter{
 		{DisplayName: "程序", Pattern: "*.exe"},
 	})
 	if r.canceled {
