@@ -278,7 +278,15 @@ body.has-supervisor .content {
   background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
   border-top: 2px solid rgba(255, 255, 255, 0.4);
   box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.38);
+  /* 底部两角默认直角（全屏 data-rounded='0' 时窗口本身没有圆角） */
   border-radius: 0;
+}
+
+/* 非全屏（data-rounded='1'）时窗口是 --app-radius 的圆角矩形，但 .content 是
+   position:fixed、不受 #app 的 overflow 裁剪——贴边后底部两角必须自己圆出与
+   窗口一致的圆角，否则会在窗口圆角处戳出直角色块。顶部两角保持直角。 */
+#app[data-rounded='1'] .content {
+  border-radius: 0 0 var(--app-radius) var(--app-radius);
 }
 
 /* 名字标签：对话框左上角凸出（经典 VN 名字牌，与休息窗口同款） */

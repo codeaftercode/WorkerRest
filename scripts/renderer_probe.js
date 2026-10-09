@@ -189,12 +189,16 @@ const PROBE_BREAK = `(function () {
     accent: cs.getPropertyValue('--accent').trim(),
     opacityVar: cs.getPropertyValue('--app-opacity').trim(),
     rounded: app ? app.dataset.rounded : null,
+    appBlRadius: app ? getComputedStyle(app).borderBottomLeftRadius : null,
+    appBrRadius: app ? getComputedStyle(app).borderBottomRightRadius : null,
     badgeHidden: document.getElementById('preview-badge').classList.contains('hidden'),
     supMetrics: supMetrics,
     contentInline: content ? {
       rectW: Math.round(contentRect.width), rectH: Math.round(contentRect.height),
       rectLeft: Math.round(contentRect.left), rectRight: Math.round(contentRect.right),
       rectBottom: Math.round(contentRect.bottom),
+      blRadius: getComputedStyle(content).borderBottomLeftRadius,
+      brRadius: getComputedStyle(content).borderBottomRightRadius,
     } : null,
     barInline: bar ? {
       left: bar.style.left, bottom: bar.style.bottom,
@@ -319,7 +323,17 @@ const PROBE_TAKEOUT = `(async function () {
       var c = document.querySelector('.content');
       if (!c) return null;
       var r = c.getBoundingClientRect();
-      return { h: Math.round(r.height), left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom) };
+      var ccs = getComputedStyle(c);
+      return { h: Math.round(r.height), left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom),
+               blRadius: ccs.borderBottomLeftRadius, brRadius: ccs.borderBottomRightRadius };
+    })(),
+    appBlRadius: (function () {
+      var a = document.getElementById('app');
+      return a ? getComputedStyle(a).borderBottomLeftRadius : null;
+    })(),
+    appBrRadius: (function () {
+      var a = document.getElementById('app');
+      return a ? getComputedStyle(a).borderBottomRightRadius : null;
     })(),
     redpacketInline: (function () {
       var rp = document.getElementById('redpacket');

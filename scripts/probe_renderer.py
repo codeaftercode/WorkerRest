@@ -386,6 +386,12 @@ def main():
                 check((ci.get("rectBottom") or 0) >= vph - 1,
                       "%s提醒窗口：对话框底部与窗口重叠（贴底）" % label,
                       "bottom=%s vph=%s" % (ci.get("rectBottom"), vph))
+                # 对话框是 fixed、不受 #app 的 overflow 裁剪：贴边后底部两角必须
+                # 自己圆出与窗口一致的圆角（全屏时双方都是 0px 直角，同样相等）
+                check(ci.get("blRadius") == b.get("appBlRadius") and ci.get("brRadius") == b.get("appBrRadius"),
+                      "%s提醒窗口：对话框底部两角圆角 == 窗口圆角" % label,
+                      "content=%s/%s app=%s/%s" % (ci.get("blRadius"), ci.get("brRadius"),
+                                                   b.get("appBlRadius"), b.get("appBrRadius")))
             bi = b.get("barInline") or {}
             check(bool(bi.get("left")) and bool(bi.get("bottom")),
                   "%s提醒窗口：倒计时环被 inline 摆位（left/bottom 已写入）" % label,
@@ -502,6 +508,14 @@ def main():
                       "外卖窗口：名字标签亮在对话框左上角",
                       "%r / %s" % (tk.get("dialogName"), tk.get("dialogNameShown")))
             rp = tk.get("redpacketInline") or {}
+            if tk.get("contentRect"):
+                # 对话框是 fixed、不受 #app 的 overflow 裁剪：贴边后底部两角必须
+                # 自己圆出与窗口一致的圆角（全屏时双方都是 0px 直角，同样相等）
+                tk_cr = tk.get("contentRect")
+                check(tk_cr.get("blRadius") == tk.get("appBlRadius") and tk_cr.get("brRadius") == tk.get("appBrRadius"),
+                      "外卖窗口：对话框底部两角圆角 == 窗口圆角",
+                      "content=%s/%s app=%s/%s" % (tk_cr.get("blRadius"), tk_cr.get("brRadius"),
+                                                   tk.get("appBlRadius"), tk.get("appBrRadius")))
             if tk.get("redpacketShown"):
                 check(bool(rp.get("left")) and bool(rp.get("bottom")),
                       "外卖窗口：红包区被 inline 摆位（中心对准两个中点的交点）",
