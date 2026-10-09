@@ -622,8 +622,13 @@ func (a *App) ShowSettingsWindow() {
 	}
 }
 
-// CloseWindow 渲染层「关窗」入口（休息窗口的预览点任意处 / 设置窗口的关闭按钮）
+// CloseWindow 渲染层「关窗」入口（休息窗口的预览点任意处 / 设置窗口的关闭按钮）。
+// 外卖窗口是多窗口、存 a.takeoutWins（不在 a.wins），要单独走 closeTakeoutWindows。
 func (a *App) CloseWindow(win string) {
+	if win == "takeout" {
+		a.closeTakeoutWindows()
+		return
+	}
 	a.mu.Lock()
 	w := a.wins[win]
 	delete(a.wins, win)
@@ -699,8 +704,11 @@ func (a *App) Action(win, name string) error {
 			}
 		}
 	case "winClose":
+		// 关闭 = 隐藏到托盘（不是销毁）：托盘「设置…」/ 双击要能重新唤起。
+		// Wails 的 Window.Close() 会销毁窗口并从注册表移除，之后 GetByName 拿不到、
+		// ShowSettingsWindow 就无法再显示 —— 所以这里用 Hide 保留窗口对象。
 		if w := a.settingsWindow(); w != nil {
-			w.Close()
+			w.Hide()
 		}
 	default:
 		log.Printf("[action] 设置窗口未实现的动作 %q", name)

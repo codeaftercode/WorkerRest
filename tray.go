@@ -21,8 +21,12 @@ func (a *App) startTray() {
 	}
 	tray := a.app.SystemTray.New()
 	tray.SetIcon(trayIcon)
-	// 单击 = 打开设置（与 tray.ts 的 tray.on('click', openSettings) 一致）
+	// 单击 / 双击都打开设置（与 tray.ts 的 tray.on('click', openSettings) 一致；
+	// Windows 托盘习惯是双击，但单击也不拦着 —— 两种都接到显示设置窗口）
 	tray.OnClick(func() {
+		a.ShowSettingsWindow()
+	})
+	tray.OnDoubleClick(func() {
 		a.ShowSettingsWindow()
 	})
 	tray.OnRightClick(func() {

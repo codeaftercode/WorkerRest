@@ -54,9 +54,9 @@ func main() {
 		BackgroundColour: application.NewRGBA(0xf5, 0xf6, 0xfa, 0xff),
 		// 注入窗口身份：shim.js 用它决定调哪个绑定方法、上报哪个窗口名
 		JS: `window.__WR_WIN = "settings";`,
-		Windows: application.WindowsWindow{
-			DisableFramelessWindowDecorations: true,
-		},
+		// 注意：这里**不**设 DisableFramelessWindowDecorations —— 设置窗口是普通无边框窗口，
+		// 需要 Win11 的 DWM 系统级圆角（与阴影）。那个字段置 true 会把「无边框装饰」一起关掉，
+		// 圆角也跟着没了（只对透明自定义形状的休息窗口才需要）。
 	})
 	// 最大化状态要由主进程推给页面（自绘标题栏的图标不能靠渲染层自己数，见 wireSettingsWindow）
 	backend.wireSettingsWindow(win)

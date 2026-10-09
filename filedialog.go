@@ -2,10 +2,10 @@ package main
 
 import (
 	"log"
-	"runtime"
 
 	"github.com/harry1453/go-common-file-dialog/cfd"
 	"github.com/harry1453/go-common-file-dialog/cfdutil"
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // 原生文件对话框：Electron `dialog.showOpenDialog / showSaveDialog` 的对应物。
@@ -73,20 +73,22 @@ func showSaveDialog(title, defaultName string, filters []cfd.FileFilter) pickFil
 	})
 }
 
-// runDialog 在锁定的 OS 线程上执行一次对话框调用。
+// runDialog 在 Wails 的主线程（STA）上执行一次对话框调用。
 //
-// 为什么要自己起 goroutine + LockOSThread：Wails 的绑定方法跑在它自己的 goroutine 上，
-// 直接调用会把 COM 初始化散到任意线程。这里把「初始化 + Show + 取结果 + Release」整段
-// 钉死在同一线程，符合 STA 语义，也避免「CoInitialize 的线程和 Show 的线程不一致」导致
-// 对话框起不来或结果取不到。
+// 为什么是主线程而不是 goroutine + LockOSThread：Wails v3 的 WebView2 在包 init 时
+// 已经 `runtime.LockOSThread()` + `CoInitializeEx(APARTMENTTHREADED)`（见 wails 的
+// internal/webview2/pkg/edge/corewebview2.go），主线程就是 STA。IFileOpenDialog 是
+// STA 对象，必须在 STA 线程、且带消息泵的线程上调用。
+//
+// 之前用 goroutine + LockOSThread 另起线程再 CoInitializeEx(STA) 的做法有两个隐患：
+//  1. 那个线程没有消息泵，模态对话框的某些 COM 回调（缩略图 / 预览 / 事件）会失败；
+//  2. cfd 库的 initialize()「只 CoInitialize 不 CoUninitialize」，反复弹对话框会污染
+//     线程的 COM 状态，真机 GUI 下表现为对话框一弹就崩溃退出。
+//
+// 用 application.InvokeSyncWithResult 把调用派发到主线程并等结果，既在正确的 STA 上
+// 执行，又自带 panic 兜底（不会因对话框库 panic 而把整个进程带崩）。
 func runDialog(fn func() pickFileResult) (r pickFileResult) {
-	done := make(chan pickFileResult, 1)
-	go func() {
-		runtime.LockOSThread()
-		defer runtime.UnlockOSThread()
-		done <- fn()
-	}()
-	return <-done
+	return application.InvokeSyncWithResult(fn)
 }
 
 // resultOf 把单文件对话框的结果归一化：取消返回 canceled，其余原样。
