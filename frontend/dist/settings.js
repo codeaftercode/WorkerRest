@@ -792,6 +792,9 @@
     box.dataset.stage = String(stage);
     box.style.setProperty("--accent", S.appearance.color);
     const off = !S.supervisor.enabled;
+    // 顶层「启用」开关：未启用时整块隐藏立绘与对话框（CSS 据 data-enabled 隐藏），
+    // 只留背景 + 中央关闭提示，避免「无立绘却挂着对话框」的错位观感
+    box.dataset.enabled = off ? "0" : "1";
     const badge = $("sup-preview-badge");
     badge.classList.toggle("hidden", !off);
     badge.textContent = off ? "\u89D2\u8272\u5DF2\u5173\u95ED \xB7 \u4F11\u606F\u7A97\u53E3\u4E0D\u4F1A\u663E\u793A\u7ACB\u7ED8" : "";
@@ -4504,9 +4507,9 @@
     });
     $("cp-reset").addEventListener("click", resetAccentColor);
   }
-  function autoSave() {
+  async function autoSave() {
     collectForm();
-    void window.api.saveSettings(S);
+    await window.api.saveSettings(S);
     if (supEditKey) persistRole(supEditKey);
     applyTheme();
     if (supPreview !== null || document.getElementById("sup-preview")) renderSupervisorPreview(curSupStage);
@@ -4592,11 +4595,15 @@
     setInterval(() => {
       renderSupervisorPreview(curSupStage === 1 ? 2 : 1);
     }, 5e3);
-    $("sup-enabled").addEventListener("change", () => renderSupervisorPreview(curSupStage));
-    // 督休专员卡的「预览」：与立绘库右键菜单的预览同款行为——autoSave 后带当前选中角色的
-    // forceKey 弹真实预览窗（不弹窗时 PreviewBreak 兜底走默认角色）
+    $("sup-enabled").addEventListener("change", () => {
+      // 实时同步表单态，避免依赖 saveSettings 的落盘时机——勾选/取消立刻反映到预览
+      S.supervisor.enabled = $("sup-enabled").checked;
+      renderSupervisorPreview(curSupStage);
+    });
+    // 督休专员卡的「预览」：先等配置落盘（含「启用」勾选），再弹真实预览窗——
+    // 这样预览窗能如实反映当前「启用」状态（Go 侧总开关现在始终生效）
     $("sup-break-preview").addEventListener("click", async () => {
-      autoSave();
+      await autoSave();
       await window.api.previewBreak("short", supEditKey);
     });
     for (const id of ["sup-size", "sup-posx", "sup-posy"]) {

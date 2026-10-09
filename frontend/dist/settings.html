@@ -331,9 +331,11 @@
                  左上角凸出名字牌，台词裸排在框里（样式见 settings.css 的预览段） -->
             <div class="sup-preview-content">
               <div class="dialog-name sup-preview-name hidden" id="sup-preview-name"></div>
-              <div class="sup-preview-badge hidden" id="sup-preview-badge"></div>
               <div class="sup-preview-line" id="sup-preview-line">加载中…</div>
             </div>
+            <!-- 关闭提示：督休专员未启用时作为预览面板中央的占位提示（与立绘/对话框互斥显示），
+                 故意放在 content 之外，这样隐藏对话框时提示仍可见 -->
+            <div class="sup-preview-badge hidden" id="sup-preview-badge"></div>
           </div>
           <!-- 「预览」按钮已收进角色磁贴的右键菜单（按菜单所属角色预览） -->
           <!-- 立绘列表：所有角色（内置 + 自定义）都可改名、可禁用、可删除。

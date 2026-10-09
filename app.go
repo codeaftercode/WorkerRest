@@ -268,8 +268,13 @@ func (a *App) buildSupervisorSession(force bool, forceKey string) *SupStageInfo 
 
 // buildSupervisorSessionWith 同上，但允许传入一份**未落盘**的督导配置覆盖：
 // 设置页调整角色选择后立刻要预览，此时配置还在表单里、没保存到磁盘。
+//
+// 顶层「督休专员-启用」开关**始终**生效：预览窗与真实休息一视同仁——未启用时
+// 一律不显示立绘与对话框（设置页点「预览」也应如实反映这个勾选状态）。
+// force 现在只用于**绕过单个角色的启用**（预览某个已停用的角色时仍要能看到效果），
+// 不再绕过顶层总开关。
 func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, forceKey string) *SupStageInfo {
-	if !force && !cfg.Enabled {
+	if !cfg.Enabled {
 		return nil
 	}
 	all := scanRoles(a.rolesRoot)
@@ -346,7 +351,8 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 // （对应 Electron 的 supervisor:preview → buildSupervisorSession(settings, true, key)）。
 //
 // sup 是设置页表单里**当前**的督导配置（可能还没落盘），null 时用磁盘上的配置。
-// 与弹窗预览的区别：force=true 无视「已启用」开关，forceKey 指定要预览的角色。
+// 与弹窗预览的区别：同样尊重顶层「启用」开关（未启用返回 nil，页面据此隐藏立绘与对话框），
+// 但 force=true 仍可绕过单个角色的启用（预览某个已停用的角色），forceKey 指定要预览的角色。
 func (a *App) SupervisorPreview(sup map[string]any, key string) *SupStageInfo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -769,8 +775,9 @@ func (a *App) SupActivity(win string) {
 	a.app.Event.Emit("sup:active")
 }
 
-// PreviewBreak 弹一次预览：force=true 忽略显示开关（设置页要能看到已停用角色的效果），
-// forceKey 指定角色（空 = 按配置选）。预览窗口带「预览模式」角标、点任意处关闭，
+// PreviewBreak 弹一次预览：顶层「督休专员-启用」开关仍生效（未启用时预览窗直接不显示立绘，
+// 与设置页勾选状态一致）；forceKey 指定角色（空 = 按配置选），可绕过单个角色的启用
+// 以预览已停用的角色。预览窗口带「预览模式」角标、点任意处关闭，
 // 且不影响真实倒计时与统计——与 Electron 版 break:preview 同语义。
 //
 // 预览**完全不进调度器**：不消费 occurrence、不改 phase、不占会话（与 Electron 一致，
