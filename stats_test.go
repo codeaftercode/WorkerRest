@@ -674,9 +674,9 @@ func TestStatsFileForConfig(t *testing.T) {
 	if got, want := statsFileForConfig(portable), filepath.Join("C:", "app", "data", "stats.json"); got != want {
 		t.Fatalf("便携形态落点 = %q，应为 %q", got, want)
 	}
-	// 非便携：与配置文件同目录
-	roaming := filepath.Join("C:", "Users", "x", "AppData", "Roaming", "WorkerRest", "settings.json")
-	if got, want := statsFileForConfig(roaming), filepath.Join(filepath.Dir(roaming), "stats.json"); got != want {
-		t.Fatalf("非便携落点 = %q，应为 %q", got, want)
+	// 非 config 目录形态：与配置文件同目录
+	loose := filepath.Join("C:", "somewhere", "else", "settings.json")
+	if got, want := statsFileForConfig(loose), filepath.Join("C:", "somewhere", "else", "stats.json"); got != want {
+		t.Fatalf("非 config 形态落点 = %q，应为 %q", got, want)
 	}
 }

@@ -57,13 +57,10 @@ def check(ok, label, detail=""):
 
 
 def find_real_settings():
-    """与 smoke_server.py 同顺序地找真实 settings.json"""
-    appdata = os.environ.get("APPDATA") or ""
-    for name in ("吃饼人也敢休息？", "打工人休息提醒", "WorkerRest", "com.lwb.workerrest"):
-        p = os.path.join(appdata, name, "settings.json")
-        if os.path.exists(p):
-            return p
-    return None
+    """与 smoke_server.py 同口径：唯一候选 = 运行目录的 config/settings.json
+    （不再检查 %APPDATA%）。只用于隔离与指纹对拍。"""
+    p = os.path.join(ROOT, "config", "settings.json")
+    return p if os.path.exists(p) else None
 
 
 def digest(path):
@@ -102,6 +99,12 @@ def main():
     iso = os.path.join(ISO, "settings.json")
     if real:
         shutil.copyfile(real, iso)
+    elif not os.path.exists(iso):
+        # 本机还没有真实配置（新落点 config/settings.json 尚未生成）：拿出厂默认打底，
+        # 探针在任何机器上都要能自给自足地验提前提示窗与提示音链路
+        default_cfg = os.path.join(ROOT, "default_settings.json")
+        if os.path.exists(default_cfg):
+            shutil.copyfile(default_cfg, iso)
     # 观察窗口内要让两件事都真的发生：
     #   ① 提前提示窗弹出来 —— 短休息「8 秒一次、提前 8 秒提示」，`nextAt - notifyBeforeMs <= now`
     #      立刻成立，启动后调度器第一跳（500ms）就进 pre 阶段；

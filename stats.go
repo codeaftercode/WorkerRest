@@ -1189,7 +1189,8 @@ func statsFileForConfig(cfgPath string) string {
 //     这一步保证「冒烟永远碰不到用户的真实统计文件」，不必依赖调用方记得设置。
 //     刻意**优先于**便携推导：测试目录名恰好叫 config 时也不会跑到别处去；
 //  3. 按当前配置文件的路径推导（见 statsFileForConfig）；
-//  4. 还没找到配置文件时，按候选路径的最后一项（= 系统配置目录形态）推导，与 sound.go 同口径。
+//  4. 还没找到配置文件时，按候选路径（= 唯一的 <运行目录>/config/settings.json）推导，
+//     与 sound.go 同口径。
 func (a *App) appStatsFile() string {
 	if p := strings.TrimSpace(os.Getenv("WR_STATS_PATH")); p != "" {
 		return p

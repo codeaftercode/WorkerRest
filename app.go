@@ -98,6 +98,8 @@ func NewApp(app *application.App) *App {
 	a.rolesRoot = filepath.Join(a.resourcesRoot(), "roles")
 	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
 	resourcesRootHintFn = a.resourcesRoot
+	// 内置提示音随包目录：<resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）
+	builtinSoundDirFn = func() string { return filepath.Join(a.resourcesRoot(), "sounds") }
 	a.cfg = loadSettings(a.resourcesRoot())
 	// 旧版「角色数据存 settings.json」→ 角色目录 role.json：一次性迁移，迁移了就当场落盘
 	// （对应 electron/main.ts 的 `if (migrateLegacyRoles(settings)) saveSettings(settings)`）。

@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/fs"
 	"log"
 	"math/rand"
 	"net/http"
@@ -25,12 +24,12 @@ import (
 // 音频分两类，来源与交付方式都不同：
 //
 //	内置提示音（四个 wav，short/long × start/end）—— 相对文件名。
-//	  Electron 从 app.getAppPath()/assets/sounds 读；Go 版把它们一并放进前端资源目录
-//	  （scripts/sync_frontend.py 同步，随之 embed 进二进制，不依赖 exe 旁的 assets/），
-//	  所以 URL 就是资源服务的 /sounds/xxx.wav，不需要额外路由。
+//	  不再 embed 进二进制：打包时随包放在 exe 旁的 sounds/（make_portable.py 预置），
+//	  开发态是模块根的 sounds/。播放 URL 是 /sounds/xxx.wav，由 soundMiddleware 从
+//	  随包目录磁盘交付（见 serveBuiltinSound）。
 //	用户导入的音乐 —— 绝对路径，副本放在**配置目录旁的 sounds/**（见 customSoundDir）。
-//	  这些文件在用户目录里，不在 embed 的前端资源里，所以走本文件自带的一条只读路由
-//	  /__sound/?p=…（见 soundMiddleware）。
+//	  这些文件与随包目录无关，走本文件自带的一条只读路由 /__sound/?p=…（见
+//	  soundMiddleware）。
 //
 // 那条路由**只服务白名单内的文件**（音频目录下的副本，或当前配置音乐列表里点名的绝对
 // 路径），其余一律 403。它是本机回环上的一个 HTTP 端点，绝不做任意文件读取服务。
@@ -53,9 +52,10 @@ const (
 	// soundURLPrefix 自定义音资源路由前缀（见 soundMiddleware）；带 query 参数 p
 	soundURLPrefix = "/__sound/"
 
-	// builtinSoundFSDir 内置提示音在 embed 前端资源里的目录（由 sync_frontend.py 同步）
-	builtinSoundFSDir = "frontend/dist/sounds"
-	// builtinSoundURLDir 内置提示音对外的 URL 前缀（资源服务按前端资源根交付）
+	// builtinSoundRelDir 内置提示音的随包目录（相对 resourcesRoot：打包态 exe 旁、
+	// 开发态模块根）。文件本身**不再 embed**，由打包脚本预置进便携包。
+	builtinSoundRelDir = "sounds"
+	// builtinSoundURLDir 内置提示音对外的 URL 前缀（soundMiddleware 按随包目录磁盘交付）
 	builtinSoundURLDir = "/sounds/"
 
 	// soundHostWindowName 播放宿主窗口名（Wails 按名字交付 / 查找窗口）
@@ -72,6 +72,21 @@ var soundMimeByExt = map[string]string{
 	"wav": "audio/wav", "mp3": "audio/mpeg", "ogg": "audio/ogg", "oga": "audio/ogg",
 	"m4a": "audio/mp4", "aac": "audio/aac", "flac": "audio/flac",
 	"opus": "audio/ogg", "webm": "audio/webm",
+}
+
+// ---------- 内置音目录 ----------
+
+// builtinSoundDirFn 内置提示音随包目录的注入点：App 启动时注入
+// <resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）；单测可指到临时目录。
+// 与 settings.go 的 resourcesRootHintFn 同一套路 —— 避免包级函数反向依赖 App。
+var builtinSoundDirFn func() string
+
+// builtinSoundDir 内置提示音目录；未注入时兜底相对路径（单测的 cwd 就是模块根）
+func builtinSoundDir() string {
+	if builtinSoundDirFn != nil {
+		return builtinSoundDirFn()
+	}
+	return builtinSoundRelDir
 }
 
 // ---------- 配置视图 ----------
@@ -157,14 +172,16 @@ func soundExtSupported(name string) bool {
 	return false
 }
 
-// builtinSoundExists 内置提示音在不在随包资源里（走 embed FS，不碰磁盘）
+// builtinSoundExists 内置提示音在不在随包 sounds/ 目录里（磁盘判定）。
+// 文件名只取最后一段再拼进目录，杜绝 ../ 这类路径穿越；空文件视为不存在
+// （与 soundFileUsable 同口径 —— 播一个 0 字节的 wav 只会静默失败）。
 func builtinSoundExists(name string) bool {
 	name = filepath.Base(name)
 	if !soundExtSupported(name) {
 		return false
 	}
-	_, err := fs.Stat(assets, builtinSoundFSDir+"/"+name)
-	return err == nil
+	st, err := os.Stat(filepath.Join(builtinSoundDir(), name))
+	return err == nil && st.Mode().IsRegular() && st.Size() > 0
 }
 
 // soundFileUsable 这个文件现在能不能播：内置看随包资源，自定义看磁盘上是不是常规文件
@@ -247,8 +264,8 @@ func (a *App) soundPickNext(cfg SoundCfg, rnd func(n int) int) string {
 //
 // Electron 版是 userDataPath('sounds', 'sounds', false)：非便携 = <userData>/sounds，
 // 便携 = <运行目录>/sounds/sounds（category 与 rel 同名，结果多一层）。
-// Go 版**统一成「配置文件所在目录旁的 sounds/」**：非便携形态下与 Electron 完全一致
-// （%APPDATA%\<软件名>\sounds），便携形态下则是 <运行目录>/config/sounds。
+// Go 版**统一成「配置文件所在目录旁的 sounds/」**：也就是 <运行目录>/config/sounds
+// （配置在 config/settings.json），数据与程序同目录。
 // 这处差异的可见影响只有「便携老用户的旧副本删不掉」（播放不受影响 —— 配置里存的是
 // 绝对路径），已记进 README 的已知差异。
 func (a *App) customSoundDir() string {
@@ -258,7 +275,7 @@ func (a *App) customSoundDir() string {
 			return filepath.Join(filepath.Dir(p), "sounds")
 		}
 	}
-	// 还没有配置文件：按候选路径的最后一项（= 系统配置目录形态）推导
+	// 还没有配置文件：按候选路径（= 唯一的 <运行目录>/config/settings.json）推导
 	cands := settingsCandidates(a.resourcesRoot())
 	if len(cands) == 0 {
 		return ""
@@ -338,17 +355,52 @@ func (a *App) deleteMusicSound(file string) bool {
 
 // ---------- 本地音频资源路由 ----------
 
-// soundMiddleware 拦截 /__sound/ 前缀的请求，其余交给默认的资源服务。
+// soundMiddleware 拦两类音频请求，其余交给默认的资源服务：
+//   - /sounds/xxx.wav：内置提示音（随包 sounds/ 目录，磁盘交付，见 serveBuiltinSound）；
+//   - /__sound/?p=…：用户导入的音乐副本（白名单校验，见 allowedSoundPath）。
+//
 // 挂法见 main.go 的 Assets.Middleware —— 它注入在 Wails 内部中间件之前，所以这里
 // 一定能先看到请求。
 func (a *App) soundMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if !strings.HasPrefix(r.URL.Path, soundURLPrefix) {
+		switch {
+		case strings.HasPrefix(r.URL.Path, builtinSoundURLDir):
+			a.serveBuiltinSound(w, r)
+		case strings.HasPrefix(r.URL.Path, soundURLPrefix):
+			a.serveSoundFile(w, r)
+		default:
 			next.ServeHTTP(w, r)
-			return
 		}
-		a.serveSoundFile(w, r)
 	})
+}
+
+// serveBuiltinSound 交付一个内置提示音（随包 sounds/ 目录）。
+// 白名单：文件名只认路径最后一段 + 音频扩展名 + 文件确实在随包目录里，其余 404 ——
+// 它和 /__sound/ 一样是本机回环上的 HTTP 端点，不做任意文件读取服务。
+func (a *App) serveBuiltinSound(w http.ResponseWriter, r *http.Request) {
+	// net/http 的 URL.Path 已是解码后的路径（%2F 会还原成 /），再取一次 Base 兜住穿越
+	name := filepath.Base(strings.TrimPrefix(r.URL.Path, builtinSoundURLDir))
+	if !soundExtSupported(name) {
+		http.NotFound(w, r)
+		return
+	}
+	abs := filepath.Join(builtinSoundDir(), name)
+	f, err := os.Open(abs)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	defer f.Close()
+	st, err := f.Stat()
+	if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
+		http.NotFound(w, r)
+		return
+	}
+	if ct := soundMimeByExt[strings.ToLower(strings.TrimPrefix(filepath.Ext(abs), "."))]; ct != "" {
+		w.Header().Set("Content-Type", ct)
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	http.ServeContent(w, r, name, st.ModTime(), f)
 }
 
 // allowedSoundPath 白名单校验：只放行「音频目录下的文件」与「当前配置音乐列表里点名的

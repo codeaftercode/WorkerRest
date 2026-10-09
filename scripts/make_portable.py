@@ -2,15 +2,18 @@
 # -*- coding: utf-8 -*-
 """Go 版便携目录打包脚本。
 
-把构建好的发布版 exe 与 roles/ 角色目录组装成对外发布的便携目录并打成 zip：
+把构建好的发布版 exe 与随包资源组装成对外发布的便携目录并打成 zip：
 
     release/WorkerRest-<版本>-portable.zip
 
-与 Electron 版 make_portable.mjs 对齐的分工：
-  - Go 单二进制 + embed 前端资源，没有 asar / koffi / marker 这些概念，因此组装
-    结构只有两样：chibingren.exe + roles/（22 MB 内置角色模板）。
-  - 运行时会在 exe 同目录落下 config/、sounds/、stats.json 等数据（见 app.go 的
-    resourcesRoot：打包态取 exe 旁，便携优先），组装发布目录时一律清掉这些残留。
+组装结构：
+  - chibingren.exe + roles/（22 MB 内置角色模板）；
+  - 预置三件套（运行数据随包分发，首跑直接在预置文件上继续写）：
+      sounds/               四个内置提示音（源文件在模块根 sounds/，不再 embed 进二进制）
+      config/settings.json  出厂默认配置（与 go:embed 的 default_settings.json 同一
+                            份文件，天然零漂移；installId 是空串，首跑自动补生成并回写）
+      data/stats.json       空统计表（与 stats.go 空表落盘格式一致）
+  - 运行时残留（exe 同目录跑过一次后留下的 config/data/sounds 等）组装前一律清掉。
 
 版本号：优先取 -ldflags 注入的 main.appVersion（脚本会读 app.go 里的默认值兜底），
 与二进制保持一致 —— 避免「zip 名字写 1.0.0、exe 里报 1.0.0」之外的分裂。
@@ -34,12 +37,17 @@ import zipfile
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
 ROLES_SRC = os.path.join(ROOT, "roles")  # 角色目录随 Go 工程一起（模块根下）
+SOUNDS_SRC = os.path.join(ROOT, "sounds")  # 内置提示音源文件（打包预置进便携包）
+DEFAULT_SETTINGS_SRC = os.path.join(ROOT, "default_settings.json")  # 出厂默认（go:embed 同一份）
 EXE_NAME = "chibingren.exe"
 EXE_SRC = os.path.join(ROOT, "build", "bin", EXE_NAME)
 TEMP = os.environ.get("TEMP", ROOT)
 
 # 运行产物目录：便携目录跑过一次后会留下这些，组装发布目录时清掉
 RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json"]
+
+# 空统计表预置内容：与 stats.go marshalLocked 的空表落盘格式一致（缩进 2 空格）
+EMPTY_STATS_JSON = '{\n  "_customNames": {}\n}\n'
 
 # 交付目录默认 release/（项目内；被 IDE/杀软锁住时用 --out 重定向）
 DEFAULT_OUT = os.path.join(ROOT, "release")
@@ -76,7 +84,7 @@ def build_exe(version: str) -> bool:
 
 
 def assemble(dest: str, version: str) -> bool:
-    """把 exe + roles/ 组装进 dest（可分发便携目录）。"""
+    """把 exe + roles/ + 预置三件套组装进 dest（可分发便携目录）。"""
     if os.path.exists(dest):
         shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest, exist_ok=True)
@@ -89,6 +97,15 @@ def assemble(dest: str, version: str) -> bool:
             shutil.rmtree(p, ignore_errors=True)
         elif os.path.exists(p):
             os.remove(p)
+    # 预置三件套：sounds/（内置提示音）、config/settings.json（出厂默认）、
+    # data/stats.json（空统计表）。首跑直接在预置文件上继续写（installId 由
+    # Go 侧 ensureInstallID 补生成并回写）。
+    shutil.copytree(SOUNDS_SRC, os.path.join(dest, "sounds"))
+    os.makedirs(os.path.join(dest, "config"), exist_ok=True)
+    shutil.copy2(DEFAULT_SETTINGS_SRC, os.path.join(dest, "config", "settings.json"))
+    os.makedirs(os.path.join(dest, "data"), exist_ok=True)
+    with open(os.path.join(dest, "data", "stats.json"), "w", encoding="utf-8", newline="\n") as f:
+        f.write(EMPTY_STATS_JSON)
     return True
 
 
@@ -109,7 +126,7 @@ def zip_dir(zip_path: str, src_dir: str) -> bool:
 
 
 def verify_zip(zip_path: str, top: str) -> bool:
-    """校验 zip 内容：条目数 + exe/roles 关键文件在正确位置（带顶层目录前缀）。"""
+    """校验 zip 内容：条目数 + exe/roles/预置三件套在正确位置（带顶层目录前缀）。"""
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             names = zf.namelist()
@@ -121,10 +138,15 @@ def verify_zip(zip_path: str, top: str) -> bool:
     has_roles = any(n.startswith(f"{top}/roles/") for n in names)
     has_role_json = any(n.endswith("/role.json") for n in names)
     n_roles = sum(1 for n in names if n.startswith(f"{top}/roles/") and n.endswith(".png"))
-    ok = test is None and has_exe and has_roles and has_role_json
+    # 预置三件套：四个内置提示音 + 出厂默认配置 + 空统计表
+    n_sounds = sum(1 for n in names if n.startswith(f"{top}/sounds/") and n.endswith(".wav"))
+    has_cfg = f"{top}/config/settings.json" in names
+    has_stats = f"{top}/data/stats.json" in names
+    ok = test is None and has_exe and has_roles and has_role_json and n_sounds == 4 and has_cfg and has_stats
     print(
         f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} roles={has_roles}"
-        f" role_json={has_role_json} png={n_roles} crc={test is None}"
+        f" role_json={has_role_json} png={n_roles} sounds={n_sounds} cfg={has_cfg}"
+        f" stats={has_stats} crc={test is None}"
     )
     if not ok:
         print(f"[make-portable] FAIL: zip 内容不完整（crc 异常项={test}）")
@@ -166,6 +188,9 @@ def main() -> int:
     checks = [
         ("exe", os.path.join(dest, EXE_NAME)),
         ("虚拟角色目录", os.path.join(dest, "roles", "supervisor_default", "role.json")),
+        ("预置 sounds/", os.path.join(dest, "sounds", "short_start.wav")),
+        ("预置 config/settings.json", os.path.join(dest, "config", "settings.json")),
+        ("预置 data/stats.json", os.path.join(dest, "data", "stats.json")),
     ]
     ok = True
     for name, p in checks:

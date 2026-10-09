@@ -106,15 +106,30 @@ func TestSoundExtSupported(t *testing.T) {
 	}
 }
 
-// 四个内置提示音必须真的在随包资源里 —— 它们是「默认配置的 singleId 指向的那一条」，
+// injectBuiltinSoundDir 把内置音目录指到 dir，测试结束后恢复原注入点
+func injectBuiltinSoundDir(t *testing.T, dir string) {
+	t.Helper()
+	old := builtinSoundDirFn
+	builtinSoundDirFn = func() string { return dir }
+	t.Cleanup(func() { builtinSoundDirFn = old })
+}
+
+// 四个内置提示音必须真的能被判为可用 —— 它们是「默认配置的 singleId 指向的那一条」，
 // 少一个就会出现「用户什么都没动，休息时却没声音」这种查不出来的问题。
+// 判定逻辑在临时目录上验（不依赖仓库布局）；真实源文件在不在仓库里由
+// TestBuiltinSoundSourceFilesOnDisk 单独验。
 func TestBuiltinSoundsPresent(t *testing.T) {
 	if len(builtinMusic) != 4 {
 		t.Fatalf("内置提示音应有 4 条，得到 %d", len(builtinMusic))
 	}
+	dir := t.TempDir()
+	injectBuiltinSoundDir(t, dir)
+	for _, b := range builtinMusic {
+		writeSoundFile(t, filepath.Join(dir, b.file), 64)
+	}
 	for _, b := range builtinMusic {
 		if !builtinSoundExists(b.file) {
-			t.Errorf("内置提示音 %s 不在 embed 资源里（%s/%s）", b.file, builtinSoundFSDir, b.file)
+			t.Errorf("内置提示音 %s 不在随包目录里（%s/%s）", b.file, dir, b.file)
 		}
 		url := builtinSoundURL(b.file)
 		if url != builtinSoundURLDir+b.file {
@@ -124,12 +139,28 @@ func TestBuiltinSoundsPresent(t *testing.T) {
 	if builtinSoundExists("nope.wav") {
 		t.Error("不存在的内置音不该被判为可用")
 	}
+	// 空文件与「同扩展名的目录」也不算可用
+	writeSoundFile(t, filepath.Join(dir, "empty.wav"), 0)
+	if builtinSoundExists("empty.wav") {
+		t.Error("0 字节的内置音不该被判为可用")
+	}
 	// 路径穿越与非法扩展名都必须在扩展名那一关就被挡掉
 	if builtinSoundExists("../settings.json") {
 		t.Error("非音频扩展名不该通过")
 	}
 	if builtinSoundExists("../../../etc/passwd") {
 		t.Error("非音频扩展名不该通过")
+	}
+}
+
+// 仓库里的内置音源文件四个都在 —— 打包预置的源头（make_portable.py 从这里拷），
+// 缺一个打出来的便携包就没声音。默认兜底目录就是相对 cwd 的 sounds/（单测 cwd = 模块根）。
+func TestBuiltinSoundSourceFilesOnDisk(t *testing.T) {
+	for _, b := range builtinMusic {
+		st, err := os.Stat(filepath.Join(builtinSoundRelDir, filepath.Base(b.file)))
+		if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
+			t.Errorf("源文件缺失或为空：%s/%s", builtinSoundRelDir, b.file)
+		}
 	}
 }
 
@@ -386,6 +417,65 @@ func TestSoundMiddleware(t *testing.T) {
 	h.ServeHTTP(recOther, other)
 	if recOther.Code != http.StatusNoContent || recOther.Body.String() != "next" {
 		t.Errorf("非声音路径应转交下一个 handler，得到 %d / %q", recOther.Code, recOther.Body.String())
+	}
+}
+
+// ---------- 内置音资源路由 ----------
+
+// /sounds/ 路由从随包目录磁盘交付：白名单内 200 + 原文内容；
+// 不存在 / 非音频 / 穿越一律 404，且绝不落到下一个 handler（默认资源服务）上
+func TestServeBuiltinSound(t *testing.T) {
+	dir := t.TempDir()
+	injectBuiltinSoundDir(t, dir)
+	body := writeSoundFile(t, filepath.Join(dir, "short_start.wav"), 64)
+	want := readFileString(t, body)
+
+	a, _ := newSoundApp(t, `{}`)
+	h := a.soundMiddleware(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("内置音请求不该落到下一个 handler")
+	}))
+
+	req := httptest.NewRequest(http.MethodGet, "/sounds/short_start.wav", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("内置音请求应 200，得到 %d", rec.Code)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "audio/wav" {
+		t.Errorf("Content-Type 应为 audio/wav，得到 %q", ct)
+	}
+	if rec.Body.String() != want {
+		t.Errorf("响应体应与文件内容一致（%d vs %d 字节）", rec.Body.Len(), len(want))
+	}
+
+	// 不存在 / 非音频扩展名 / 空名：404（都在 /sounds/ 前缀内，middleware 自己消化）
+	for _, bad := range []string{"/sounds/nope.wav", "/sounds/readme.txt", "/sounds/"} {
+		req := httptest.NewRequest(http.MethodGet, bad, nil)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != http.StatusNotFound {
+			t.Errorf("%s 应 404，得到 %d", bad, rec.Code)
+		}
+	}
+
+	// 无尾斜杠的 /sounds 不是内置音 URL 前缀：照常转交下一个 handler
+	reqPass := httptest.NewRequest(http.MethodGet, "/sounds", nil)
+	recPass := httptest.NewRecorder()
+	h2 := a.soundMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	h2.ServeHTTP(recPass, reqPass)
+	if recPass.Code != http.StatusNoContent {
+		t.Errorf("/sounds 应转交下一个 handler，得到 %d", recPass.Code)
+	}
+
+	// 穿越尝试：net/http 已把 %2F 解码成 /，serveBuiltinSound 取 Base 后只剩文件名，
+	// 只会落在随包目录里（且非音频扩展名先被挡掉）—— 绝不出目录
+	req = httptest.NewRequest(http.MethodGet, "/sounds/..%2F..%2Fsettings.json", nil)
+	rec = httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Errorf("穿越请求应 404，得到 %d", rec.Code)
 	}
 }
 

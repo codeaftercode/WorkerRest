@@ -30,7 +30,8 @@ go build -o build/bin/chibingren.exe -ldflags "-H windowsgui -s -w" .
 go build -tags server -o build/bin/chibingren_server.exe -ldflags "-s -w" .
 ```
 
-产物 `chibingren.exe` 约 12.3 MB（已含 embed 的前端资源、图标与四个内置提示音）。
+产物 `chibingren.exe` 约 12.3 MB（已含 embed 的前端资源与图标；四个内置提示音不再
+embed 进二进制，打包时随包放在 `sounds/` 目录，开发态是模块根的 `sounds/`）。
 
 ## 打包
 
@@ -38,7 +39,7 @@ go build -tags server -o build/bin/chibingren_server.exe -ldflags "-s -w" .
 # 便携目录打包：构建发布版 exe → 组装 exe + roles/ → 打 zip → 校验内容
 python scripts/make_portable.py
 
-# （可选）隔离环境解包首跑，验证配置落在 exe 旁、不外溢到 APPDATA
+# （可选）隔离环境解包首跑，验证预置三件套与首跑落点（不外溢到 APPDATA）
 python scripts/verify_portable.py
 ```
 
@@ -47,7 +48,7 @@ python scripts/verify_portable.py
 - 版本号默认读 `app.go` 的 `appVersion`（当前 1.0.0）；打包时通过
   `-ldflags "-X main.appVersion=<版本>"` 注入。也可 `--version <版本>` 覆盖。
 - 解压即用，无需安装。**不做 NSIS 安装器**——单二进制天然绿色，便携目录 zip 即交付形态。
-- 便携运行的数据（配置 / 统计 / 用户音频）落在 exe 旁的 `config/` 目录，跟着程序走；
+- 便携运行的数据（配置 / 统计 / 用户音频）落在 exe 旁的 `config/` 与 `data/`，跟着程序走；
   直接删掉整个目录就是完全卸载。
 
 ## 测试与验证
@@ -61,7 +62,7 @@ python scripts/probe_gui_boot.py # GUI 启动探针：16 项断言（系统能�
 
 - 三个脚本都能无头运行，报告写在 `%TEMP%`（`wr_go_smoke_report.txt` 等），退出码 0 = 全通过。
 - 冒烟 / 探针会**隔离配置**（拷真实配置进 `%TEMP%` + `WR_SETTINGS_PATH` 独占），绝不改动
-  你 `%APPDATA%` 里的真实配置。
+  运行目录里的真实配置与统计。
 
 ## 目录结构
 
@@ -70,6 +71,7 @@ python scripts/probe_gui_boot.py # GUI 启动探针：16 项断言（系统能�
   main.go                 入口：注册服务 + 主窗口（= 设置窗口）
   contract.go             前端绑定「契约表」：wiredCalls 列表 + 启动自检
   roles/                  内置角色模板（22MB 立绘，随包分发）
+  sounds/                 内置提示音源文件（四个 wav，打包时预置进便携包）
   manual/操作手册.html     随包操作手册（自包含 HTML）
   frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）
   assets/icon.ico         托盘图标（go:embed）
@@ -84,9 +86,10 @@ python scripts/probe_gui_boot.py # GUI 启动探针：16 项断言（系统能�
 
 ## 数据与配置落点
 
-- **便携形态**（exe 旁有 `config/` 可写）：配置、统计、用户音频统一落在 exe 旁的 `config/` 下。
-- **非便携**（exe 装在只读目录）：回退到 `%APPDATA%\打工人休息提醒\`（兼容历史目录名）。
-- 优先级始终是「便携优先」——先找 exe 旁的 `config/settings.json`，找不到才找 APPDATA。
+- 一律「数据与程序同目录」：配置、统计、用户音频统一落在 exe 旁的 `config/` 与 `data/` 下，
+  整目录拷贝 / 删除就是完整的迁移 / 卸载。不再检查 `%APPDATA%`（老版本的历史目录已放弃兼容）。
+- 打包交付的便携目录**自带**三件套：`sounds/`（四个内置提示音）、`config/settings.json`
+  （出厂默认，首跑补 installId）、`data/stats.json`（空统计表）——首跑直接在预置文件上继续写。
 
 ## 已知差异（与历史 Electron 版）
 

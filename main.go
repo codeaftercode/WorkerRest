@@ -18,8 +18,9 @@ var assets embed.FS
 var trayIcon []byte
 
 func main() {
-	// 用户导入的音频（音乐列表的副本）不在 embed 的前端资源里，需要一条自己的只读
-	// 路由，而它的白名单校验要读配置 —— 所以中间件转交给 backend。
+	// 音频请求不走默认资源服务（内置提示音在随包 sounds/ 目录、用户导入的音频在
+	// config/sounds/，都不在 embed 的前端资源里），需要一条自己的分发中间件，而
+	// 自定义音的白名单校验要读配置 —— 所以转交给 backend。
 	// 中间件只在 app.Run() 之后被请求触发，那时下面的 backend 早已赋值。
 	var backend *App
 	app := application.New(application.Options{

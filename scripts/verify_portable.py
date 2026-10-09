@@ -2,18 +2,20 @@
 # -*- coding: utf-8 -*-
 """便携打包产物验证：解包目录在干净环境下首次运行，数据必须落在 exe 同目录。
 
-验证的核心语义（README「数据目录双形态」里 Go 版的约定）：
-  「便携优先」——exe 旁的 config/settings.json 是第一候选，找不到才回退 %APPDATA%。
-  所以一个干净的便携目录首次启动，settings.json 必须落在 exe 旁，且绝不碰 APPDATA。
+验证的核心语义（README「数据与配置落点」里 Go 版的约定）：
+  数据与程序同目录 —— 配置/统计/音频都在 exe 旁的 config/ 与 data/，绝不碰 %APPDATA%。
+  打包交付的便携目录自带预置三件套（sounds/ + config/settings.json + data/stats.json），
+  首跑直接在预置文件上继续写（installId 补生成并回写）。
 
 做法：
   1. 把 make_portable.py 产出的便携目录**整体复制**到 %TEMP% 隔离副本（不污染 release/）；
   2. 用一个空的隔离 APPDATA 启动副本里的 exe（不带 WR_SETTINGS_PATH —— 那会跳过
-     便携优先逻辑，直接独占；这里要验的是**自然落点**）；
+     自然落点推导，直接独占；这里要验的是**自然落点**）；
   3. 观察几秒，断言：
      - 进程活着、日志无 panic；
-     - config/settings.json 落在了 exe 旁（便携优先生效）；
-     - 隔离 APPDATA 里没有落下任何 WorkerRest 相关目录（没往 APPDATA 写）。
+     - 预置三件套随包完整（sounds/ 四个 wav、config/settings.json、data/stats.json）；
+     - 首跑把 installId 补写进了 exe 旁的 config/settings.json（在预置文件上继续写）；
+     - 隔离 APPDATA 里没有落下任何 WorkerRest 相关文件（没往 APPDATA 写）。
 
 用法：python scripts/verify_portable.py [--dir <便携目录>] [--seconds 8]
   --dir 省略时默认 release/WorkerRest-1.0.0-portable/（先跑 make_portable.py）
@@ -109,17 +111,32 @@ def main():
     check(alive, "便携版进程观察期内一直活着", "rc=%s" % proc.poll())
     check("panic" not in text.lower(), "日志里没有 panic", "")
 
-    # 2. 数据落在 exe 旁（便携优先）
+    # 2. 预置三件套随包完整
+    n_wav = len([n for n in os.listdir(os.path.join(iso, "sounds"))
+                 if n.endswith(".wav")]) if os.path.isdir(os.path.join(iso, "sounds")) else 0
+    check(n_wav == 4, "预置 sounds/ 有四个内置提示音", "wav=%d" % n_wav)
+    preset_cfg = os.path.join(iso, "config", "settings.json")
+    check(os.path.isfile(preset_cfg), "预置 config/settings.json 随包存在", preset_cfg)
+    preset_stats = os.path.join(iso, "data", "stats.json")
+    check(os.path.isfile(preset_stats), "预置 data/stats.json 随包存在", preset_stats)
+    if os.path.isfile(preset_stats):
+        try:
+            sdata = json.load(open(preset_stats, encoding="utf-8"))
+            check("_customNames" in sdata, "预置统计表是合法空表结构", "")
+        except Exception as e:  # noqa: BLE001
+            check(False, "预置统计表可解析", repr(e))
+
+    # 3. 首跑在预置配置上继续写（installId 补生成并回写）
     cfg_side = os.path.join(iso, "config", "settings.json")
-    check(os.path.isfile(cfg_side), "settings.json 落在 exe 旁（便携优先生效）", cfg_side)
+    check(os.path.isfile(cfg_side), "settings.json 落在 exe 旁（数据与程序同目录）", cfg_side)
     if os.path.isfile(cfg_side):
         try:
             data = json.load(open(cfg_side, encoding="utf-8"))
-            check("installId" in data, "首次运行的 installId 已写入落点配置", "")
+            check("installId" in data and data.get("installId"), "首次运行的 installId 已写入落点配置", "")
         except Exception as e:  # noqa: BLE001
             check(False, "落点配置可解析", repr(e))
 
-    # 3. 没往 APPDATA 写**配置**（隔离 APPDATA 里不该出现任何 settings.json）。
+    # 4. 没往 APPDATA 写**配置**（隔离 APPDATA 里不该出现任何 settings.json）。
     #    注意：WebView2 会自己在 APPDATA 下建 <exe名>/EBWebView 浏览器缓存目录，
     #    那是浏览器引擎的固有行为（Electron 版同样会在 APPDATA 建缓存），
     #    与「配置数据落点」无关 —— 所以这里只查 settings.json，不查「目录为空」。
@@ -131,7 +148,7 @@ def main():
     check(not wrote_cfg, "隔离 APPDATA 里没有写入 settings.json（配置没外溢到 APPDATA）",
           "发现 settings.json" if wrote_cfg else "（干净）")
 
-    # 4. roles/ 随包完整（渲染层立绘要能读到）
+    # 5. roles/ 随包完整（渲染层立绘要能读到）
     role_json = os.path.join(iso, "roles", "supervisor_default", "role.json")
     check(os.path.isfile(role_json), "roles/ 随包完整（supervisor_default 在）", role_json)
 

@@ -89,12 +89,10 @@ def wait_up(base, proc, timeout=20.0):
 
 
 def find_real_settings():
-    appdata = os.environ.get("APPDATA") or ""
-    for name in ("吃饼人也敢休息？", "打工人休息提醒", "WorkerRest", "com.lwb.workerrest"):
-        p = os.path.join(appdata, name, "settings.json")
-        if os.path.exists(p):
-            return p
-    return None
+    """与 Go 侧 settingsCandidates 同源：唯一候选 = 运行目录的 config/settings.json
+    （不再检查 %APPDATA%）。只用于隔离与指纹对拍，找不到也不影响探针运行。"""
+    p = os.path.join(ROOT, "config", "settings.json")
+    return p if os.path.exists(p) else None
 
 
 def digest(path):

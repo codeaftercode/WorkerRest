@@ -14,9 +14,11 @@ __pycache__/
 .workbuddy/
 
 # ---- 运行时数据（便携运行会落在 exe 旁，不入库）----
+# 注意：模块根的 sounds/ 是内置提示音**源文件**（打包预置用），要入库；
+# 运行时的用户音频副本在 config/sounds/，被上面的 config/ 覆盖。
 config/
+data/
 stats.json
-sounds/
 
 # ---- 日志与临时 ----
 *.log

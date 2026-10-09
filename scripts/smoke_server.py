@@ -128,13 +128,21 @@ def read_json(path):
 
 
 def find_real_settings():
-    """找本机真实的 settings.json（与 Go 侧 settingsCandidates 同顺序的简化版）"""
-    appdata = os.environ.get("APPDATA") or ""
-    for name in ("吃饼人也敢休息？", "打工人休息提醒", "WorkerRest", "com.lwb.workerrest"):
-        p = os.path.join(appdata, name, "settings.json")
-        if os.path.exists(p):
-            return p
-    return None
+    """找本机真实的 settings.json（与 Go 侧 settingsCandidates 同源：唯一候选 =
+    运行目录的 config/settings.json，不再检查 %APPDATA%）。"""
+    p = os.path.join(ROOT, "config", "settings.json")
+    return p if os.path.exists(p) else None
+
+
+def stats_file_for_settings(cfg_path):
+    """与 Go 侧 statsFileForConfig 同口径：配置在 config/ 目录 → 上级 data/stats.json，
+    否则与配置同目录。"""
+    if not cfg_path:
+        return ""
+    d = os.path.dirname(cfg_path)
+    if os.path.basename(d).lower() == "config":
+        return os.path.join(os.path.dirname(d), "data", "stats.json")
+    return os.path.join(d, "stats.json")
 
 
 def _digest(path):
@@ -190,9 +198,9 @@ def main():
     # 直接跑在真实配置上会改写用户的数据（第一次实测就把键序动掉了），这是不可接受的。
     real_settings = find_real_settings()
     real_digest = _digest(real_settings)
-    # 统计文件与配置**同目录**（非便携形态）—— 它同样一个字节都不许被冒烟碰。
+    # 统计文件按配置落点推导（config/ → 上级 data/stats.json）—— 它同样一个字节都不许被冒烟碰。
     # 第 8 段会断言「统计落点确实在隔离目录里」，这里再留一份真实文件的指纹兜底。
-    real_stats = os.path.join(os.path.dirname(real_settings), "stats.json") if real_settings else ""
+    real_stats = stats_file_for_settings(real_settings)
     real_stats_digest = _digest(real_stats)
     shutil.rmtree(ISO, ignore_errors=True)
     os.makedirs(ISO, exist_ok=True)

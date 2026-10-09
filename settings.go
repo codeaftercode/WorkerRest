@@ -1330,8 +1330,9 @@ func mapOf(v any) map[string]any {
 // ---------- 读写 ----------
 
 // settingsCandidates 候选配置文件路径（按优先级）。
-// 便携形态优先（数据与程序同目录，整目录分发时配置跟着走），其后是各版本的
-// %APPDATA% 目录名 —— 历史上有过 productName / appId 两种落点，都认。
+// 只有一个真实落点：exe 旁的 config/settings.json —— 数据与程序同目录，整目录
+// 分发（打包 / 拷贝 / 删除）时配置跟着走。不再检查 %APPDATA%（老版本的历史目录
+// 已放弃兼容，见 README「数据落点」）。
 //
 // 环境变量 WR_SETTINGS_PATH 可**独占**指定一份配置：验证脚本用它在隔离副本上跑
 // 「保存 / 恢复默认 / 迁移」这些写路径，绝不碰用户的真实配置。
@@ -1339,13 +1340,7 @@ func settingsCandidates(resourcesRoot string) []string {
 	if p := strings.TrimSpace(os.Getenv("WR_SETTINGS_PATH")); p != "" {
 		return []string{p}
 	}
-	out := []string{filepath.Join(resourcesRoot, "config", "settings.json")}
-	if appData := os.Getenv("APPDATA"); appData != "" {
-		for _, name := range []string{"吃饼人也敢休息？", "打工人休息提醒", "WorkerRest", "com.lwb.workerrest"} {
-			out = append(out, filepath.Join(appData, name, "settings.json"))
-		}
-	}
-	return out
+	return []string{filepath.Join(resourcesRoot, "config", "settings.json")}
 }
 
 // loadSettings 读配置：找到第一份可解析的 settings.json 就用它，在出厂默认之上深合并
@@ -1404,9 +1399,8 @@ func (s *Settings) Save() error {
 		if p := strings.TrimSpace(os.Getenv("WR_SETTINGS_PATH")); p != "" {
 			target = p
 		} else {
-			// 首次运行无来源：与 loadSettings 的读取优先级一致，取便携优先候选
-			// （cands[0] = <运行目录>/config/settings.json），而不是 APPDATA 兜底。
-			// 否则便携目录第一次启动会把配置写到 APPDATA，「数据跟着程序走」失效。
+			// 首次运行无来源：与 loadSettings 的读取优先级一致，取唯一的候选
+			// （= <运行目录>/config/settings.json），数据与程序同目录。
 			cands := settingsCandidates(s.resourcesRootHint())
 			target = cands[0]
 		}
