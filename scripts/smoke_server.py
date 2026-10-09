@@ -449,12 +449,17 @@ def main():
             check(st == 200 and isinstance(st4, dict), "postpone 后仍能取到状态", str(st4)[:120])
             if isinstance(st4, dict) and pm is not None:
                 delta = int(st4.get("nextAt") or 0) - t0
-                check(abs(delta - pm) <= 3000,
-                      "postpone 把 nextAt 推到「现在 + %s 的 postponeMs」" % st3.get("nextType"),
-                      "delta=%d want=%d" % (delta, pm))
-                if pm and pm > 0:
-                    check(int(st4.get("nextAt") or 0) > int(st3.get("nextAt") or 0),
-                          "推迟后的 nextAt 晚于推迟前", "%s > %s" % (st4.get("nextAt"), st3.get("nextAt")))
+                # 全局 nextAt = min(倒计时线, 固定时刻线)，postpone 只推迟倒计时线。
+                # 若某条固定线恰落在 (t0, t0+pm] 内，重锚后的全局 next 会被它接管——
+                # 这时 nextAt ≠ now+pm 是产品合法行为（隔离副本来自真实配置，
+                # 固定线时刻会随一天中的运行时间变化），豁免之。
+                ats = {int(v) for v in (st3.get("fixedNext") or {}).values()
+                       if isinstance(v, (int, float))}
+                took_over = (int(st4.get("nextAt") or 0) in ats
+                             and any(t0 < a <= t0 + pm for a in ats))
+                check(abs(delta - pm) <= 3000 or took_over,
+                      "postpone 把 nextAt 推到「现在 + %s 的 postponeMs」（固定线接管时除外）" % st3.get("nextType"),
+                      "delta=%d want=%d ats=%s" % (delta, pm, sorted(ats)))
 
         # ④ 重置周期：长短交替计数归零
         call(base, "Action", ["settings", "resetCycle"])
@@ -577,14 +582,17 @@ def main():
                   "PreBreakAction(postpone) 把 nextAt 推到「现在 + short.postponeMs」",
                   "delta=%d want=%d" % (delta, mapi_short))
 
-        # 跳过：重排下一条、且不进入休息
+        # 跳过：重排下一条、且不进入休息。
+        # phase 只断言 != "break"：arm_prebreak 的配置（间隔 60s = 提前 60s）下，
+        # 跳过重排出的新线恰好落在提前区间边界上，调度器下一个 tick 把 phase 推成
+        # pre 是**产品合法行为**——是否已经 tick 到是 500ms 轮询相位的掷骰子。
         arm_prebreak()
         st, gs_before_skip = call(base, "GetState", [])
         before_skip = int((gs_before_skip or {}).get("nextAt") or 0)
         call(base, "PreBreakAction", ["skip"])
         st, gs_skip = call(base, "GetState", [])
         if isinstance(gs_skip, dict):
-            check(gs_skip.get("phase") == "idle", "跳过后 phase 仍是 idle（不开始休息）",
+            check(gs_skip.get("phase") != "break", "跳过不开始休息（重排线可立即进入提前区间）",
                   gs_skip.get("phase"))
             check(int(gs_skip.get("nextAt") or 0) != before_skip,
                   "跳过重排了下一条（nextAt 变了）",

@@ -70,6 +70,8 @@ func (a *App) SaveSettings(next map[string]any) bool {
 	if a.sched != nil {
 		a.sched.refreshPlan()
 	}
+	// 快捷键可能被改：线程内注销旧键 + 按新配置重注册
+	a.reloadHotkeys()
 	return true
 }
 
@@ -120,6 +122,7 @@ func (a *App) ResetSettings() map[string]any {
 	if a.sched != nil {
 		a.sched.refreshPlan()
 	}
+	a.reloadHotkeys()
 	log.Printf("[settings] 已恢复默认设置，原配置备份至 %s", backupPath)
 	return map[string]any{"ok": true, "backupPath": backupPath}
 }
@@ -405,6 +408,8 @@ func (a *App) ImportSettings() bool {
 		a.sched.refreshPlan()
 	}
 	a.refreshTray()
+	// 快捷键可能被改：线程内注销旧键 + 按新配置重注册
+	a.reloadHotkeys()
 	log.Printf("[settings] 配置已从 %s 导入", r.path)
 	return true
 }

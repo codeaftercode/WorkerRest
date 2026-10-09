@@ -77,6 +77,9 @@ type App struct {
 	dndActiveLogged   bool
 	appPauseHitLogged bool
 
+	// 全局快捷键（见 hotkeys.go）：server 模式为 nil。
+	hotkeys *HotkeyManager
+
 	// 使用统计（见 stats.go）：天记录 + 名字快照 + 防抖落盘 + 每秒工作累加。
 	// 懒建（statsStore 首次访问时建好并读盘），启动时由 startStats 起后台 goroutine。
 	stats *StatsStore
@@ -127,6 +130,8 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 		a.cfg.Break("short").Mode, a.cfg.Break("long").Mode)
 	// 系统能力：空闲 / 勿扰 / 应用占用（无头模式只做探测，不启动会改状态的监视）
 	a.startSystemWatchers()
+	// 全局快捷键：专用消息循环线程 + RegisterHotKey（server / 无头跳过，见 hotkeys.go）
+	a.startHotkeys()
 	// 使用统计：读盘 + 周期落盘 + 每秒工作累加（两条判定注入，见 statsIsBreak / statsIsIdle）
 	a.startStats()
 	a.startTray()
