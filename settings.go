@@ -91,7 +91,7 @@ type Settings struct {
 func defaultSettingsMap() map[string]any {
 	var m map[string]any
 	if err := json.Unmarshal(defaultSettingsJSON, &m); err != nil {
-		panic(fmt.Sprintf("default_settings.json 无法解析（请重新运行 scripts/gen_default_settings.mjs）: %v", err))
+		panic(fmt.Sprintf("default_settings.json 无法解析（内嵌的出厂默认坏了）: %v", err))
 	}
 	return m
 }

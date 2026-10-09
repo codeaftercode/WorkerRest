@@ -116,9 +116,6 @@
     breakCurrent: function () {
       return call("BreakCurrent", [win]);
     },
-    breakInfo: function (id) {
-      return call("BreakCurrent", [win, str(id)]);
-    },
     action: function (name) {
       return call("Action", [win, str(name)]);
     },
