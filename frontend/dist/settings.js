@@ -23,9 +23,9 @@
     };
   }
   var SUPERVISOR_SELECTIONS = [
-    { value: "fixed", label: "\u56FA\u5B9A\u663E\u793A", hint: "\u6BCF\u6B21\u63D0\u9192\u90FD\u7528\u540C\u4E00\u4E2A\u7ACB\u7ED8\uFF1B\u5728\u4E0B\u65B9\u70B9\u9009\u7ACB\u7ED8\u78C1\u8D34\u5373\u53EF\u6307\u5B9A" },
-    { value: "random", label: "\u968F\u673A\u663E\u793A", hint: "\u6BCF\u6B21\u63D0\u9192\u5728\u672A\u7981\u7528\u7684\u7ACB\u7ED8\u4E2D\u968F\u673A\u9009\u4E00\u4E2A" },
-    { value: "sequence", label: "\u987A\u5E8F\u5FAA\u73AF", hint: "\u5728\u672A\u7981\u7528\u7684\u7ACB\u7ED8\u95F4\u6309\u5217\u8868\u987A\u5E8F\u8F6E\u6362" }
+    { value: "fixed", label: "\u56FA\u5B9A\u663E\u793A", hint: "\u6BCF\u6B21\u63D0\u9192\u90FD\u7528\u540C\u4E00\u4E2A\u7ACB\u7ED8\uFF1B\u70B9\u9009\u7ACB\u7ED8\u524D\u7684\u5355\u9009\u6846\u6307\u5B9A" },
+    { value: "random", label: "\u968F\u673A\u663E\u793A", hint: "\u6BCF\u6B21\u63D0\u9192\u5728\u5DF2\u52FE\u9009\u7684\u7ACB\u7ED8\u4E2D\u968F\u673A\u9009\u4E00\u4E2A" },
+    { value: "sequence", label: "\u987A\u5E8F\u5FAA\u73AF", hint: "\u5728\u5DF2\u52FE\u9009\u7684\u7ACB\u7ED8\u95F4\u6309\u5217\u8868\u987A\u5E8F\u8F6E\u6362" }
   ];
   var WEEKDAYS = [
     { value: 1, label: "\u5468\u4E00", short: "\u4E00" },
@@ -460,10 +460,15 @@
     });
   }
   function ensureSupEditKey() {
-    if (supEditKey && ROLES.some((r) => r.key === supEditKey && r.enabled)) return;
-    const fixed = ROLES.find((r) => r.key === S.supervisor.fixedKey && r.enabled);
+    if (supEditKey && ROLES.some((r) => r.key === supEditKey)) return;
+    if (S.supervisor.selection === "fixed") {
+      // 固定模式：按 fixedKey 选（不再要求 enabled）
+      supEditKey = ROLES.find((r) => r.key === S.supervisor.fixedKey)?.key ?? ROLES[0]?.key ?? "";
+      return;
+    }
+    // 随机 / 顺序：优先已勾选立绘，否则列表第一个
     const firstEnabled = ROLES.find((r) => r.enabled);
-    supEditKey = (fixed ?? firstEnabled)?.key ?? "";
+    supEditKey = firstEnabled?.key ?? ROLES[0]?.key ?? "";
   }
   function commitGeomToRole(g) {
     const role = ROLES.find((r) => r.key === currentGeomKey());
@@ -499,18 +504,23 @@
   function selectRole(key) {
     const role = ROLES.find((r) => r.key === key);
     if (!role) return;
-    if (!role.enabled) {
-      toast("\u5DF2\u7981\u7528\u7684\u89D2\u8272\u4E0D\u80FD\u9009\u4E2D\uFF0C\u8BF7\u5148\u53F3\u952E\u9009\u62E9\u300C\u542F\u7528\u300D");
-      return;
-    }
     supEditKey = key;
-    if (S.supervisor.selection === "fixed" && S.supervisor.fixedKey !== key) {
-      S.supervisor.fixedKey = key;
+    if (S.supervisor.selection === "fixed") {
+      // 固定显示：点选即把该立绘设为固定项（单选框语义：同时取消其它选中）
+      if (S.supervisor.fixedKey !== key) {
+        S.supervisor.fixedKey = key;
+        autoSave();
+      }
+    } else {
+      // 随机 / 顺序显示：点选即切换该立绘的勾选态（复选框语义）
+      role.enabled = !role.enabled;
+      persistRole(key);
       autoSave();
     }
     fillSupervisorImageName();
     fillGeomControls(normalizeSupGeom(geomOf(supEditKey)));
     void refreshSupervisorPreview();
+    void renderRoleGallery();
   }
   async function renameRole(key) {
     const role = ROLES.find((r) => r.key === key);
@@ -546,13 +556,7 @@
     fillSupervisorImageName();
     toast(`\u5DF2\u66F4\u65B0\u300C${role.name}\u300D\u7684\u7ACB\u7ED8\u56FE\u7247`);
   }
-  function toggleRoleEnabled(key) {
-    const role = ROLES.find((r) => r.key === key);
-    if (!role) return;
-    role.enabled = !role.enabled;
-    persistRole(key);
-    void renderRoleGallery();
-  }
+  // 启用/禁用菜单项已移除：随机/顺序模式改由列表复选框直接控制 role.enabled
   async function removeRole(key) {
     const role = ROLES.find((r) => r.key === key);
     if (!role) return;
@@ -566,7 +570,7 @@
     await window.api.removeSupervisorRole(key);
     ROLES = ROLES.filter((r) => r.key !== key);
     if (S.supervisor.fixedKey === key) {
-      S.supervisor.fixedKey = ROLES.find((r) => r.enabled)?.key ?? "";
+      S.supervisor.fixedKey = ROLES[0]?.key ?? "";
     }
     ensureSupEditKey();
     fillSupervisorImageName();
@@ -614,8 +618,7 @@
     const items = [
       { act: "preview", label: "\u9884\u89C8" },
       { act: "rename", label: "\u91CD\u547D\u540D" },
-      { act: "replace", label: "\u4FEE\u6539\u7ACB\u7ED8\u56FE\u7247" },
-      { act: "toggle", label: role.enabled ? "\u7981\u7528" : "\u542F\u7528" },
+      { act: "replace", label: "\u4FEE\u6539\u56FE\u7247" },
       { act: "del", label: "\u5220\u9664", danger: true }
     ];
     for (const it of items) {
@@ -631,7 +634,6 @@
         if (it.act === "preview") void previewRoleFromMenu(key);
         else if (it.act === "rename") void renameRole(key);
         else if (it.act === "replace") void replaceRoleImage(key);
-        else if (it.act === "toggle") toggleRoleEnabled(key);
         else void removeRole(key);
       });
       menu.appendChild(b);
@@ -639,7 +641,7 @@
     if (locked) {
       const note = document.createElement("div");
       note.className = "role-menu-note";
-      note.textContent = "\u9009\u4E2D\u7684\u89D2\u8272\uFF0C\u4E0D\u53EF\u7981\u7528 / \u5220\u9664";
+      note.textContent = "\u9009\u4E2D\u7684\u89D2\u8272\uFF0C\u4E0D\u53EF\u5220\u9664";
       menu.appendChild(note);
     }
     document.body.appendChild(menu);
@@ -721,10 +723,13 @@
   async function renderRoleGallery() {
     const box = $("sup-gallery");
     box.innerHTML = "";
+    const fixedMode = S.supervisor.selection === "fixed";
     for (const r of ROLES) {
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "role-item" + (r.enabled ? "" : " off");
+      // 固定模式不按 enabled 置灰；随机/顺序下未勾选才置灰
+      const off = !fixedMode && !r.enabled;
+      btn.className = "role-item" + (off ? " off" : "");
       btn.dataset.key = r.key;
       btn.title = r.name;
       const img = document.createElement("img");
@@ -733,10 +738,17 @@
       const hint = document.createElement("span");
       hint.className = "role-hint";
       hint.textContent = "\u53F3\u952E\u64CD\u4F5C";
+      // 选择指示：固定模式=单选框（按 fixedKey），随机/顺序=复选框（按 enabled）
+      const sel = document.createElement("span");
+      sel.className = "role-sel " + (fixedMode ? "role-radio" : "role-check");
+      sel.classList.toggle("on", fixedMode ? r.key === S.supervisor.fixedKey : r.enabled);
       const cap = document.createElement("span");
       cap.className = "role-cap";
       cap.textContent = r.name;
-      btn.append(img, hint, cap);
+      const capRow = document.createElement("span");
+      capRow.className = "role-cap-row";
+      capRow.append(sel, cap);
+      btn.append(img, hint, capRow);
       btn.addEventListener("click", () => selectRole(r.key));
       btn.addEventListener("contextmenu", (e) => {
         e.preventDefault();
@@ -748,8 +760,8 @@
     const add = document.createElement("button");
     add.type = "button";
     add.className = "role-add";
-    add.title = "\u65B0\u589E\u89D2\u8272\uFF1A\u652F\u6301 PNG / JPG / WebP\uFF0C\u5EFA\u8BAE\u900F\u660E\u80CC\u666F\u7684\u7AD6\u7248\u4EBA\u7269\u56FE\uFF1B\u56FE\u7247\u4F1A\u590D\u5236\u5230\u914D\u7F6E\u76EE\u5F55\uFF0C\u539F\u6587\u4EF6\u79FB\u52A8\u6216\u5220\u9664\u540E\u4ECD\u53EF\u7528";
-    add.innerHTML = '<span class="role-add-box"><span class="role-add-plus">\uFF0B</span><span class="role-add-hint">PNG / JPG / WebP<br>\u900F\u660E\u5E95\u7AD6\u7248\u56FE</span></span><span class="role-add-cap">\u65B0\u589E\u89D2\u8272</span>';
+    add.title = "\u65B0\u589E\uFF1A\u652F\u6301 PNG / JPG / WebP\uFF0C\u5EFA\u8BAE\u900F\u660E\u80CC\u666F\u7684\u7AD6\u7248\u4EBA\u7269\u56FE\uFF1B\u56FE\u7247\u4F1A\u590D\u5236\u5230\u914D\u7F6E\u76EE\u5F55\uFF0C\u539F\u6587\u4EF6\u79FB\u52A8\u6216\u5220\u9664\u540E\u4ECD\u53EF\u7528";
+    add.innerHTML = '<span class="role-add-box"><span class="role-add-plus">\uFF0B</span><span class="role-add-hint">PNG / JPG / WebP<br>\u900F\u660E\u5E95\u7AD6\u7248\u56FE</span></span><span class="role-add-cap">\u65B0\u589E</span>';
     add.addEventListener("click", () => void addCustomRole());
     box.appendChild(add);
     $("sup-gallery-count").textContent = String(ROLES.length);
@@ -4607,6 +4619,7 @@
       S.supervisor.selection = v === "sequence" || v === "random" ? v : "fixed";
       applySelectionUI();
       autoSave();
+      void renderRoleGallery();
     });
     bindRoleMenuDismiss();
     setInterval(() => {

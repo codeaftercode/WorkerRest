@@ -428,6 +428,26 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .role-item span { font-size: 12px; color: var(--text-2); }
 .role-item.active span { color: var(--accent); }
 
+/* 列表选择指示：固定模式为单选框（按 fixedKey），随机/顺序为复选框（按 enabled）；置于名字前 */
+.role-item .role-sel {
+  width: 15px; height: 15px; flex: 0 0 auto;
+  border: 2px solid var(--text-2); background: rgba(255, 255, 255, 0.9);
+  box-sizing: border-box; position: relative;
+}
+.role-item .role-radio { border-radius: 50%; }
+.role-item .role-check { border-radius: 4px; }
+.role-item .role-sel.on { border-color: var(--accent); background: var(--accent); }
+.role-item .role-radio.on::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #fff;
+}
+.role-item .role-check.on::after {
+  content: ""; position: absolute; left: 4px; top: 1px;
+  width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.role-cap-row { display: flex; align-items: center; gap: 5px; width: 100%; }
+.role-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
 /* 悬停提示浮层：磁贴边框外上方提示「右键操作」——深色实底胶囊 + 白字 + 白描边，
    明暗两套主题下都醒目；禁用磁贴同样式（提示不受置灰影响）。尺寸克制，不遮挡立绘。 */
 .role-hint {
@@ -442,7 +462,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .role-item:hover .role-hint,
 .role-item:focus-within .role-hint { opacity: 1; }
 
-/* 角色右键菜单：固定定位小面板（重命名 / 禁用启用 / 删除），点别处或 Esc 收起 */
+/* 角色右键菜单：固定定位小面板（重命名 / 修改图片 / 删除），点别处或 Esc 收起 */
 #sup-role-menu {
   position: fixed; z-index: 90; min-width: 96px; padding: 4px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
@@ -456,7 +476,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .role-menu-item:hover { background: var(--accent); color: #fff; }
 .role-menu-item.danger:hover { background: var(--danger); }
-/* 固定角色：禁用/删除两项置灰不可点 */
+/* 固定角色：删除置灰不可点 */
 .role-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
 .role-menu-item:disabled:hover { background: none; color: inherit; }
 .role-menu-note {
@@ -464,8 +484,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   padding: 4px 10px 2px; white-space: nowrap;
 }
 
-/* 禁用的角色：整块变灰、名字划线；不能被选中（点它只提示），右键可启用 */
-.role-item.off { cursor: not-allowed; }
+/* 禁用的角色（随机/顺序下未勾选）：整块变灰、名字划线；点它切换勾选态，右键可删除 */
+.role-item.off { cursor: pointer; }
 .role-item.off img { filter: grayscale(1); opacity: 0.45; }
 .role-item.off .role-cap { text-decoration: line-through; }
 
