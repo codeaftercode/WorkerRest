@@ -2232,6 +2232,17 @@
     line.classList.remove("hidden");
     if (sup.name) line.dataset.speaker = sup.name;
     else delete line.dataset.speaker;
+    // 游戏对话画面：名字挂在对话框左上角的凸出标签上（.dialog-name）
+    const nameEl = document.getElementById("dialog-name");
+    if (nameEl) {
+      if (sup.name) {
+        nameEl.textContent = sup.name;
+        nameEl.classList.remove("hidden");
+      } else {
+        nameEl.textContent = "";
+        nameEl.classList.add("hidden");
+      }
+    }
     const g = sup.geom ?? GEOM_FALLBACK;
     const flip = g.flip === true;
     document.body.classList.toggle("sup-flip", flip);
@@ -2303,11 +2314,13 @@
     requestAnimationFrame(frame);
   }
 
-  // renderer/supervisorLayout.ts
-  var DEFAULTS = { gap: 28, maxWidth: 520, minWidth: 224, ratio: 0.72 };
-  var PORTRAIT_RATIO = 1.02;
-  var TAIL_INSET = 22;
-  var BUBBLE = ".supervisor-line, .sup-preview-line";
+  // renderer/supervisorLayout.ts —— 游戏对话画面版式（与 break.js 同一套）
+  // .content 已是底部全宽对话框（CSS 定版），这里只负责把支付红包区浮到
+  // 立绘可见右缘的右侧：水平 = 立绘可见右缘 + 间距（钳住不出窗口），
+  // 垂直 = 对话框顶边上方一点。摆位结果写入 supMetrics 供探针断言。
+  var CD_GAP = 24;
+  var CD_EDGE = 10;
+  var CD_LIFT = 14;
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
@@ -2336,128 +2349,43 @@
     const h = box.height * trimFactor(figure);
     return h > 0 ? box.bottom - h : fallback;
   }
-  function figureCenterX(measureEl, fallback) {
-    const img = measureEl.querySelector("img");
-    const r = img?.getBoundingClientRect();
-    const raw = img?.dataset.trim;
-    if (!r || r.width <= 0) return fallback;
-    if (!raw) return r.left + r.width / 2;
-    try {
-      const t = JSON.parse(raw);
-      const l = typeof t.left === "number" ? t.left : 0;
-      const rr = typeof t.right === "number" ? t.right : 0;
-      return r.left + r.width * (1 + l - rr) / 2;
-    } catch {
-      return r.left + r.width / 2;
-    }
-  }
-  function layoutSupContent(figure, content, measure, opts = {}) {
+  function layoutSupDialog(figure, content, measure) {
     const container = figure?.parentElement ?? null;
     if (!container || !figure || !content) return;
-    const o = { ...DEFAULTS, ...opts };
     const cRect = container.getBoundingClientRect();
     if (cRect.width <= 0) return;
     const measureEl = pickMeasure(figure, measure);
-    const gap = o.gap ?? 0;
-    const mode = cRect.height > cRect.width * PORTRAIT_RATIO ? "top" : "side";
-    if (container.dataset.supLayout !== mode) container.dataset.supLayout = mode;
-    const bubble = content.querySelector(BUBBLE);
-    let figLeft = 0;
-    let figRight = 0;
-    let figTop = 0;
-    let width = 0;
-    let tailX = 0;
-    if (mode === "top") {
-      width = Math.max(0, Math.round(cRect.width - gap * 2));
-      content.style.left = `${Math.round(gap)}px`;
-      content.style.width = `${width}px`;
-      content.style.transform = "none";
-      content.style.top = "auto";
-      content.style.bottom = `${Math.round(gap)}px`;
-      if (figure.style.maxHeight === "") {
-        figure.dataset.supNatural = String(Math.round(figure.getBoundingClientRect().height));
-      }
-      const natural = Number(figure.dataset.supNatural) || Math.round(cRect.height);
-      figure.style.removeProperty("max-height");
-      let boxH = figure.getBoundingClientRect().height;
-      for (let i = 0; i < 3 && boxH > 1; i++) {
-        const head = figureTop(figure, 0) - cRect.top;
-        const need = content.offsetHeight + gap * 2;
-        if (head >= need || need >= cRect.height) break;
-        boxH = Math.max(1, Math.round(boxH * ((cRect.height - need) / Math.max(1, cRect.height - head))));
-        figure.style.maxHeight = `${Math.min(boxH, natural)}px`;
-      }
-      const fRect = measureEl.getBoundingClientRect();
-      figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
-      figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
-      figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
-      content.style.bottom = `${Math.round(cRect.height - figTop + gap)}px`;
-      if (content.offsetHeight > Math.max(0, figTop - gap * 2)) {
-        content.style.top = `${Math.round(gap)}px`;
-        content.style.bottom = "auto";
-      }
-      const center = figureCenterX(measureEl, (figLeft + figRight) / 2);
-      tailX = center;
-      const bRect0 = bubble?.getBoundingClientRect();
-      if (bubble && bRect0 && bRect0.width > 0) {
-        bubble.style.transform = "none";
-        const bRect = bubble.getBoundingClientRect();
-        const cr = content.getBoundingClientRect();
-        const dx = clamp(
-          center - (bRect.left + bRect.width / 2),
-          cr.left - bRect.left,
-          cr.right - bRect.right
-        );
-        bubble.style.transform = Math.abs(dx) >= 0.5 ? `translateX(${Math.round(dx)}px)` : "none";
-        const x = clamp(
-          center - (bRect.left + dx),
-          Math.min(TAIL_INSET, bRect.width / 2),
-          Math.max(bRect.width - TAIL_INSET, bRect.width / 2)
-        );
-        tailX = x;
-        bubble.style.setProperty("--tail-x", `${Math.round(x)}px`);
-      }
-    } else {
-      const fRect = measureEl.getBoundingClientRect();
-      figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
-      figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
-      figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
-      const band = cRect.width - figRight;
-      const avail = Math.max(0, band - gap * 2);
-      width = Math.min(o.maxWidth ?? Infinity, avail * (o.ratio ?? 1));
-      if (width < (o.minWidth ?? 0)) width = Math.min(o.minWidth ?? 0, avail);
-      width = Math.max(0, Math.round(width));
-      const cs = getComputedStyle(content);
-      const padX = (parseFloat(cs.paddingLeft) || 0) + (parseFloat(cs.paddingRight) || 0);
-      content.style.width = `${width + padX}px`;
-      content.style.left = `${Math.round(figRight + band / 2 - width / 2)}px`;
-      const contentH = content.offsetHeight;
-      const floor = contentH / 2 + 8;
-      const desired = Math.max(cRect.height / 3, (cRect.height / 3 + figTop) / 2);
-      const cap = Math.max(cRect.height / 3, figTop - contentH / 2 - gap);
-      const centerY = Math.max(Math.min(desired, cap), floor);
-      content.style.top = `${Math.round(centerY)}px`;
-      content.style.bottom = "";
-      content.style.removeProperty("transform");
-      figure.style.removeProperty("max-height");
-      delete figure.dataset.supNatural;
-      bubble?.style.removeProperty("--tail-x");
-      bubble?.style.removeProperty("transform");
+    const fRect = measureEl.getBoundingClientRect();
+    const figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
+    const figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
+    const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
+    // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位；
+    // 唯一要挪的是支付红包区（.tk-redpacket 的包含块是 .content，其左缘=窗口左缘，
+    // 所以 left 直接用窗口坐标）。对话框底边=窗口底，bottom 以它为基准。
+    // 红包开关关闭时它整块 hidden，照常落位无副作用（display:none 不渲染）。
+    const floatEl = content.querySelector(".tk-redpacket");
+    const boxH = content.getBoundingClientRect().height;
+    let cdX = figRight + CD_GAP;
+    let cdBottom = boxH + CD_LIFT;
+    if (floatEl) {
+      const floatW = floatEl.offsetWidth || 200;
+      cdX = clamp(cdX, CD_EDGE, Math.max(CD_EDGE, cRect.width - floatW - CD_EDGE));
+      floatEl.style.left = `${Math.round(cdX)}px`;
+      floatEl.style.bottom = `${Math.round(cdBottom)}px`;
+      floatEl.style.right = "auto";
     }
-    content.style.right = "auto";
     content.dataset.supMetrics = JSON.stringify({
-      mode,
+      mode: "dialog",
       figLeft: Math.round(figLeft),
       figRight: Math.round(figRight),
       figTop: Math.round(figTop),
-      width,
-      tailX: Math.round(tailX),
-      top: mode === "side" ? Math.round(parseFloat(content.style.top) || 0) : void 0,
+      cdX: Math.round(cdX),
+      cdBottom: Math.round(cdBottom),
       src: measureEl === measure ? "trim" : "figure"
     });
   }
-  function bindSupContentLayout(figure, content, measure, opts = {}) {
-    const relayout = () => layoutSupContent(figure, content, measure, opts);
+  function bindSupContentLayout(figure, content, measure) {
+    const relayout = () => layoutSupDialog(figure, content, measure);
     if (!figure || !content) return relayout;
     relayout();
     const container = figure.parentElement;
@@ -2506,8 +2434,7 @@
       bindSupContentLayout(
         document.getElementById("figure"),
         document.querySelector(".content"),
-        document.getElementById("figure-trim"),
-        { gap: 28, maxWidth: 560, minWidth: 240, ratio: 0.72 }
+        document.getElementById("figure-trim")
       );
     }
     if (info.redPacket) {

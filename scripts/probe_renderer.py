@@ -351,26 +351,38 @@ def main():
                       "%s提醒窗口：--accent == 配置外观色" % label, "%s vs %s" % (b.get("accent"), want_color))
             check(b.get("badgeHidden") is True, "%s提醒窗口：真实休息不带预览角标（preview=false）" % label, b.get("badgeHidden"))
 
-            # ---- 休息督导版式：横屏 side / 竖屏 top，是 supervisorLayout.ts 的核心 ----
-            # 同一个会话，只换窗口尺寸（横 1100x720 / 竖 760x980），layoutSupContent 应据此
-            # 切出两套版式并把结果写进 .stage 的 data-sup-layout 与 .content 的 data-sup-metrics。
-            want_layout = "side" if key == "breakWide" else "top"
-            check(b.get("supLayout") == want_layout,
-                  "%s提醒窗口：版式判定为 %s（data-sup-layout）" % (label, want_layout),
-                  b.get("supLayout"))
+            # ---- 休息督导版式：游戏对话画面（底部全宽对话框），是 supervisorLayout 的核心 ----
+            # 同一个会话，只换窗口尺寸（横 1100x720 / 竖 760x980），两档都应进入对话框
+            # 版式：supMetrics.mode == "dialog"、名字标签亮出、倒计时环被脚本摆到
+            # 立绘可见右缘的右侧、对话框横贯全宽。
             sm = b.get("supMetrics") or {}
-            check(sm.get("mode") == want_layout,
-                  "%s提醒窗口：supMetrics.mode == %s" % (label, want_layout), sm.get("mode"))
+            check(sm.get("mode") == "dialog",
+                  "%s提醒窗口：版式是游戏对话画面（supMetrics.mode == dialog）" % label, sm.get("mode"))
             check(isinstance(sm.get("figLeft"), int) and isinstance(sm.get("figRight"), int),
                   "%s提醒窗口：supMetrics 记录了立绘左右缘（量的是补偿层）" % label,
                   "%r / %r" % (sm.get("figLeft"), sm.get("figRight")))
+            check(isinstance(sm.get("cdX"), int) and sm.get("cdX", 0) > 0,
+                  "%s提醒窗口：倒计时环的水平锚点已算出（cdX）" % label, sm.get("cdX"))
+            if want_role:
+                check(b.get("dialogName") == want_role and b.get("dialogNameShown") is True,
+                      "%s提醒窗口：名字标签亮在对话框左上角" % label,
+                      "%r / %s" % (b.get("dialogName"), b.get("dialogNameShown")))
             ci = b.get("contentInline") or {}
-            check(ci.get("width"), "%s提醒窗口：内容列宽度被 inline 写死（版式摆位生效）" % label, ci.get("width"))
             check((ci.get("rectW") or 0) > 0 and (ci.get("rectH") or 0) > 0,
-                  "%s提醒窗口：内容列有实际占位" % label, "%sx%s" % (ci.get("rectW"), ci.get("rectH")))
-            if key == "breakTall":
-                # 竖屏：尾巴锚点变量 --tail-x 应已写入（尖朝下指向角色可见中心）
-                check(sm.get("tailX") is not None, "竖屏提醒窗口：尾巴锚点已算出（tailX）", sm.get("tailX"))
+                  "%s提醒窗口：对话框有实际占位" % label, "%sx%s" % (ci.get("rectW"), ci.get("rectH")))
+            vpw = b.get("viewportW") or 0
+            if vpw:
+                check(abs((ci.get("rectW") or 0) - vpw) <= 2,
+                      "%s提醒窗口：对话框横贯全宽（宽度 == 视口宽）" % label,
+                      "%s vs %s" % (ci.get("rectW"), vpw))
+            bi = b.get("barInline") or {}
+            check(bool(bi.get("left")) and bool(bi.get("bottom")),
+                  "%s提醒窗口：倒计时环被 inline 摆位（left/bottom 已写入）" % label,
+                  "%r / %r" % (bi.get("left"), bi.get("bottom")))
+            if bi.get("rectBottom") is not None and ci.get("rectBottom") is not None:
+                check(bi.get("rectBottom") <= ci.get("rectBottom"),
+                      "%s提醒窗口：倒计时环挂在对话框上方（不压台词）" % label,
+                      "%s vs %s" % (bi.get("rectBottom"), ci.get("rectBottom")))
             check(not (b.get("errors") or []), "%s提醒窗口：页面无 JS 错误" % label, b.get("errors"))
 
         # ---- 提前提示窗（右下角小窗）----
@@ -438,6 +450,19 @@ def main():
         if want_color:
             check(str(tk.get("accent") or "").lower() == want_color.lower(),
                   "外卖窗口：--accent == 配置外观色", "%s vs %s" % (tk.get("accent"), want_color))
+        # 有角色时：外卖窗口同样进入游戏对话画面版式（对话框 + 红包浮动到立绘右侧）
+        tksm = tk.get("supMetrics") or {}
+        if tk.get("hasSupervisor"):
+            check(tksm.get("mode") == "dialog",
+                  "外卖窗口：版式是游戏对话画面（supMetrics.mode == dialog）", tksm.get("mode"))
+            if want_role:
+                check(tk.get("dialogName") == want_role and tk.get("dialogNameShown") is True,
+                      "外卖窗口：名字标签亮在对话框左上角",
+                      "%r / %s" % (tk.get("dialogName"), tk.get("dialogNameShown")))
+            rp = tk.get("redpacketInline") or {}
+            if tk.get("redpacketShown"):
+                check(bool(rp.get("left")) and bool(rp.get("bottom")),
+                      "外卖窗口：红包区被 inline 摆位（浮到立绘右缘）", "%r / %r" % (rp.get("left"), rp.get("bottom")))
         # 有角色时红包/提醒内容/台词链路照常；无角色时也不该有 JS 错误
         check(not (tk.get("errors") or []), "外卖窗口：页面无 JS 错误", (tk.get("errors") or [])[:2])
         check(not (tk.get("consoleErrors") or []), "外卖窗口：页面无控制台错误",

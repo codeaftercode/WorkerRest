@@ -20,7 +20,12 @@
         </div>
       </div>
     </div>
+    <!-- 有角色时 .content 变身「游戏对话画面」的底部全宽对话框（与休息窗口同款）：
+         名字标签在左上角凸出，台词大字、状态徽标/时间/按钮排进框内；
+         支付红包区脱离文档流浮到立绘可见右缘的右侧（位置由脚本写入）。
+         无角色时维持原版式：内容列居中。 -->
     <div class="content">
+      <div class="dialog-name hidden" id="dialog-name"></div>
       <!-- 状态徽标：提前通知（还差几分钟）与"这是第几次推迟" -->
       <div class="tk-badges" id="tk-badges">
         <span class="tk-badge hidden" id="tk-lead">提前提醒</span>

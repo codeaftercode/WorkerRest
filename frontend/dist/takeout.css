@@ -68,9 +68,9 @@ html, body {
   animation: tk-in 0.42s cubic-bezier(0.22, 0.9, 0.24, 1) both;
 }
 /* 入场动画的末帧**不要写 transform**：keyframe 动画优先级高于普通声明，
-   写死 `transform: none` 会把 has-supervisor 下的 `translateY(-50%)` 一起盖掉，
-   有虚拟角色时内容列会整体掉到窗口中线以下（实测偏 253px）。末帧省略该属性后，
-   它会回落到元素自身的值——无角色时仍是 none，有角色时仍是 -50%。 */
+   写死 `transform: none` 会把元素自身的 transform 一起盖掉——有虚拟角色时
+   对话框（fixed 底部）由 CSS 直接定 transform: none，无角色时是 none，
+   末帧省略该属性后两种版式都回落到自身值，动画期间平移/缩放照常播。 */
 @keyframes tk-in {
   from { opacity: 0; transform: translateY(14px) scale(0.97); }
   to { opacity: 1; }
@@ -236,8 +236,13 @@ body.sup-flip .mirror { transform: scaleX(-1); }
   transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
 }
 
-/* 有角色时的版式：立绘锚定左下（贴底、左侧留出间距），内容列整体右移 */
+/* ---------------- 有角色时的版式：游戏对话画面（与休息窗口同款） ----------------
+   底部横贯全宽的对话框 + 左上角凸出的名字标签；立绘站在对话框的左上方
+   （geom 三滑条照常控制，z 在对话框之下——贴底时下半身被对话框遮住）；
+   支付红包区浮在立绘可见右缘的右侧（水平位置由脚本量出写入 inline style）。 */
+
 body.has-supervisor .figure {
+  /* 位置与尺寸由设置页下发（百分比制）：--fig-x 距窗口左侧、--fig-y 距窗口底边、--fig-size 立绘高度 */
   position: absolute;
   left: calc(var(--fig-x, 4) * 1vw);
   bottom: calc(var(--fig-y, 0) * 1vh);
@@ -245,22 +250,86 @@ body.has-supervisor .figure {
   min-height: 0;
   max-height: none;
   justify-content: flex-start;
+  /* 压在对话框之下：立绘贴底时下半身被对话框遮住（游戏对话画面的站位） */
+  z-index: 7;
 }
 body.has-supervisor .gaze { justify-content: flex-start; }
 body.has-supervisor .figure img { max-width: 60vw; }
 
+/* 对话框：底部横贯全宽。内容保持文档流（徽标 → 台词 → 时间 → 按钮），
+   红包区由脚本/CSS 绝对定位到框外立绘右缘。入场动画 tk-in 的末帧不写
+   transform，回落到这里的 transform: none（见上方 keyframes 的说明）。 */
 body.has-supervisor .content {
-  position: absolute;
-  right: 4vw;
-  /* 与休息窗口同锚点：垂直中心落在窗口的**上三分之一**处，把下半屏让给贴底的立绘 */
-  top: 33.333%;
-  transform: translateY(-50%);
-  width: min(560px, 46vw);
-  gap: 12px;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  transform: none;
+  width: auto;
+  z-index: 9;
+  display: block;
+  text-align: left;
+  min-height: 21vh;
+  padding: 2.6em 40px 16px 30px;
+  background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.38);
+  border-radius: 22px 22px 0 0;
 }
-/* 角色不在场时台词气泡一律不出现（角色关闭 ⇒ 只说提醒内容，不出气泡）；
+
+/* 名字标签：对话框左上角凸出（经典 VN 名字牌，与休息窗口同款） */
+.dialog-name {
+  position: absolute;
+  top: 0;
+  left: 26px;
+  transform: translateY(-55%);
+  padding: 5px 20px 6px;
+  background: var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 9px;
+  font-size: clamp(14px, 1.9vh, 20px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+#app[data-stage='2'] .dialog-name {
+  background: #b83232;
+  border-color: rgba(255, 130, 130, 0.7);
+}
+
+/* 对话框第二阶段：红色告警底（与休息窗口同款） */
+#app[data-stage='2'] .content {
+  background: linear-gradient(180deg, rgba(66, 5, 5, 0.62), rgba(40, 0, 0, 0.86));
+  border-top-color: rgba(255, 96, 96, 0.62);
+}
+
+/* block 布局后 flex 的 gap 失效，框内各块改用 margin 排距 */
+body.has-supervisor .tk-badges { margin-bottom: 12px; }
+body.has-supervisor .tk-clock { margin-top: 12px; }
+body.has-supervisor .tk-actions { margin-top: 14px; }
+
+/* 支付红包区：浮到立绘可见右缘的右侧（left/bottom 由脚本写入 inline style）。
+   bottom 以对话框底边为基准 = 窗口底，挂到对话框顶边的上方。 */
+body.has-supervisor .tk-redpacket {
+  position: absolute;
+  left: 62vw;
+  bottom: 110%;
+  width: max-content;
+}
+
+/* 角色不在场时台词一律不出现（角色关闭 ⇒ 只说提醒内容，不出台词）；
    提醒内容（.tk-msg）本身就在内容列正中，无需另摆版式 */
 body:not(.has-supervisor) .supervisor-line { display: none !important; }
+
+/* 竖屏窗口（高 > 宽）：立绘占宽比例大，红包区与名字标签收小一档 */
+@media (max-aspect-ratio: 1/1) {
+  body.has-supervisor .rp-qr { width: 64px; height: 64px; }
+  body.has-supervisor .dialog-name { left: 16px; }
+  body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
+}
 
 /* 第一阶段：轻微凑近；第二阶段：明显凑近、红色轮廓光、持续脉动。
    凑近只允许「贴底放大/拉伸」（img 的 transform-origin 已是 50% 100%）——
@@ -278,91 +347,35 @@ body:not(.has-supervisor) .supervisor-line { display: none !important; }
   50% { transform: scale(1.095) scaleY(1.025); }
 }
 
-/* 台词气泡：与休息窗口同款（形状/尾巴/说话人/左侧竖条），只按本窗口的字号收一号。
-   气泡造型的说明写在 break.css，两处要一起改。 */
+/* 台词：对话框内的大字对白（与休息窗口同款）。名字已由左上角的
+   .dialog-name 标签承载，气泡时代的尾巴/边框/内嵌说话人行全部退役——
+   游戏对话画面的台词就是裸排在框里的。data-speaker 仍由脚本写入
+   （探针/调试用），不再生成内容。 */
 .supervisor-line {
   position: relative;
-  /* 字号随窗口高度自适应：2.1vh 在 992px 高的窗口 ≈ 21px（原固定 19px 略偏小，
-     与立绘的比例失衡）；小窗口钳到 15px 下限、超大窗口钳到 23px 上限。
-     内边距/说话人行用 em，随字号一起缩放。 */
-  font-size: clamp(15px, 2.1vh, 23px);
+  /* 字号随窗口高度自适应（与休息窗口同档）：2.9vh 在 992px 高的窗口 ≈ 29px。
+     小窗口钳到 18px 下限，超大窗口钳到 31px 上限。 */
+  font-size: clamp(18px, 2.9vh, 31px);
   font-weight: 700;
   line-height: 1.5;
   text-align: left;
   max-width: 100%;
-  padding: 0.58em 1.05em 0.68em 1.16em;
-  border-radius: 6px 14px 14px 4px;
-  background: rgba(9, 13, 24, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-left: 3px solid var(--accent);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-  transition: border-color 0.4s ease, background 0.4s ease, color 0.4s ease;
+  transition: color 0.4s ease;
 }
-/* 尾巴：贴气泡左下、指向立绘（background:inherit 让它随气泡一起变色） */
-.supervisor-line::after {
-  content: '';
-  position: absolute;
-  left: -14px;
-  bottom: 12px;
-  width: 12px;
-  height: 17px;
-  background: inherit;
-  clip-path: polygon(100% 0, 100% 100%, 0 50%);
-}
-/* 说话人：气泡内第一行（没有名字时这一行不出现） */
-.supervisor-line[data-speaker]::before {
-  content: attr(data-speaker);
-  display: block;
-  font-size: 0.68em;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  line-height: 1.4;
-  margin-bottom: 0.16em;
-  opacity: 0.8;
-}
-/* ⚠️ 第一阶段只改三边，别用 border-color 简写——那会把左侧背景颜色竖条一起改掉 */
-#app[data-stage='1'] .supervisor-line {
-  border-top-color: rgba(255, 255, 255, 0.3);
-  border-right-color: rgba(255, 255, 255, 0.3);
-  border-bottom-color: rgba(255, 255, 255, 0.3);
-}
-#app[data-stage='2'] .supervisor-line {
-  border-color: rgba(255, 96, 96, 0.78);
-  background: rgba(58, 0, 0, 0.52);
-  color: #ffe9e9;
-}
-
-/* ---------------- 竖屏版式：内容列移到角色上方、占据整个宽度 ---------------- */
-/* 与休息窗口同一套规则（判定与摆位见 renderer/supervisorLayout.ts）：容器高 > 宽时脚本给
-   容器写 data-sup-layout="top"，位置/宽度/尾巴锚点进 inline style，这里只解除横向锚定
-   并把气泡换成就近的"指向下方"造型。 */
-body.has-supervisor [data-sup-layout='top'] .content {
-  right: auto;
-  top: auto;
-  transform: none;
-  /* 横向版式给内容列留了 48px 左右内边距（气泡不贴窗口边），竖屏下宽度已由脚本按
-     「窗口宽 - 2×gap」定死，再叠一层内边距气泡就只有 2/3 窗口宽了 ⇒ 归零，气泡真正整宽 */
+/* 有角色时（对话框内）台词就是裸文本；无角色时这条规则不生效（本就不显示） */
+body.has-supervisor .supervisor-line {
+  background: none;
+  border: none;
+  box-shadow: none;
   padding: 0;
-  /* 竖屏窗口窄而高，内容列整宽后行数变少，间距收紧，给角色头顶留出空间 */
-  gap: 10px;
+  border-radius: 0;
 }
-body.has-supervisor [data-sup-layout='top'] .supervisor-line {
-  /* 气泡按文字收紧（fit-content），水平对准角色中心（脚本平移，与休息窗口同规则） */
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 auto;
-  border-radius: 14px 14px 5px 5px;
-}
-body.has-supervisor [data-sup-layout='top'] .supervisor-line::after {
-  left: var(--tail-x, 50%);
-  right: auto;
-  top: auto;
-  bottom: -11px;
-  width: 16px;
-  height: 11px;
-  transform: translateX(-50%);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
+body.has-supervisor .supervisor-line::after { display: none; }
+body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
+/* 第二阶段（检测到仍在操作键鼠）：整句转红色告警 */
+#app[data-stage='2'] .supervisor-line {
+  color: #ffe9e9;
 }
 
 /* 暗角随阶段收紧：第二阶段转红色告警（比休息窗口浅，保留"提醒"而非"压迫"的语气） */

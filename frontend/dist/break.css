@@ -142,7 +142,11 @@ body.sup-flip .mirror { transform: scaleX(-1); }
   transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
 }
 
-/* ---------------- 有角色时的版式：立绘锚定左下，文字在右侧 ---------------- */
+/* ---------------- 有角色时的版式：游戏对话画面 ----------------
+   参考常见游戏的对话画面：底部横贯全宽的对话框 + 左上角凸出的名字标签；
+   立绘站在对话框的左上方（geom 三滑条照常控制，z 在对话框之下——贴底时
+   下半身被对话框遮住，正是游戏里的经典站位）；倒计时环浮在立绘可见右缘
+   的右侧（水平位置由脚本量出写入 inline style）。 */
 
 body.has-supervisor .stage { position: absolute; inset: 0; }
 
@@ -156,23 +160,90 @@ body.has-supervisor .figure {
   min-height: 0;
   max-height: none;
   justify-content: flex-start;
+  /* 压在对话框之下：立绘贴底时下半身被对话框遮住（游戏对话画面的站位） */
+  z-index: 7;
 }
 body.has-supervisor .gaze { justify-content: flex-start; }
 body.has-supervisor .figure img {
-  /* 立绘只占左半屏，右侧留给台词与倒计时；60vw 只是极端窄窗口下的溢出保险 */
   max-width: 60vw;
   transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
 }
 
+/* 对话框：底部横贯全宽。内容保持文档流（台词 → 提醒内容），环与「提前结束」
+   由脚本/CSS 绝对定位到框内框外的锚点。 */
 body.has-supervisor .content {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  top: auto;
+  transform: none;
+  width: auto;
+  z-index: 9;
+  display: block;
+  text-align: left;
+  min-height: 21vh;
+  padding: 2.6em 40px 16px 30px;
+  background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
+  border-top: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.38);
+  border-radius: 22px 22px 0 0;
+}
+
+/* 名字标签：对话框左上角凸出（经典 VN 名字牌） */
+.dialog-name {
   position: absolute;
-  right: 5vw;
-  /* 垂直锚点 = 窗口的**上三分之一**处（不是正中）：立绘贴底占了下半屏，
-     台词放在上三分之一，视线先落在角色的话上，再往下看到倒计时。 */
-  top: 33.333%;
-  transform: translateY(-50%);
-  width: min(520px, 44vw);
-  gap: 20px;
+  top: 0;
+  left: 26px;
+  transform: translateY(-55%);
+  padding: 5px 20px 6px;
+  background: var(--accent);
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 9px;
+  font-size: clamp(14px, 1.9vh, 20px);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.35;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+/* 第二阶段（命令）：名字标签随对话框一起转红色告警 */
+#app[data-stage='2'] .dialog-name {
+  background: #b83232;
+  border-color: rgba(255, 130, 130, 0.7);
+}
+
+/* 对话框第二阶段：红色告警底 */
+#app[data-stage='2'] .content {
+  background: linear-gradient(180deg, rgba(66, 5, 5, 0.62), rgba(40, 0, 0, 0.86));
+  border-top-color: rgba(255, 96, 96, 0.62);
+}
+
+/* 倒计时环：浮到立绘可见右缘的右侧（left/bottom 由脚本写入 inline style）。
+   bottom 以对话框底边为基准 = 窗口底，挂到对话框顶边的上方。 */
+body.has-supervisor .bar {
+  position: absolute;
+  left: 62vw;
+  bottom: 110%;
+  flex-direction: column;
+  gap: 8px;
+  width: max-content;
+}
+
+/* 「提前结束」：有角色时沉到对话框右下角 */
+body.has-supervisor .skip-link {
+  position: absolute;
+  right: 34px;
+  bottom: 14px;
+}
+
+/* 竖屏窗口（高 > 宽）：立绘占宽比例大，环与名字标签收小一档 */
+@media (max-aspect-ratio: 1/1) {
+  body.has-supervisor .ring-wrap { width: 64px; height: 64px; }
+  body.has-supervisor .countdown { font-size: 20px; }
+  body.has-supervisor .dialog-name { left: 16px; }
+  body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
+  body.has-supervisor .skip-link { right: 16px; bottom: 10px; }
 }
 
 /* 第一阶段（劝说）：轻微凑近、对比略增。
@@ -192,109 +263,34 @@ body.has-supervisor .content {
   50% { transform: scale(1.095) scaleY(1.025); }
 }
 
-/* 台词气泡：让这句话一眼看出是"虚拟角色说的"——三个识别特征：
-   ① 对话气泡形状：左下角收窄 + 一个指向立绘的小尾巴；
-   ② 左侧一条背景颜色竖条（引用感），第二阶段整条转红；
-   ③ 气泡内第一行的说话人名字（data-speaker 由 supervisorStage.ts 写入）。
-   名字用 ::before + attr() 生成：伪元素内容不进 DOM 文本，冒烟读
-   line.textContent 时拿到的仍然只有台词本身。 */
+/* 台词：对话框内的大字对白。名字已由左上角的 .dialog-name 标签承载，
+   气泡时代的尾巴/边框/内嵌说话人行全部退役——游戏对话画面的台词就是
+   裸排在框里的。data-speaker 仍由脚本写入（探针/调试用），不再生成内容。 */
 .supervisor-line {
   position: relative;
-  /* 字号随窗口高度自适应（vh = 窗口高的 1%）：2.8vh 在 992px 高的窗口 ≈ 28px（原固定值）。
-     小窗口（如 480px 高）按比例该是 13px——太小没法读，钳到 18px 下限；
-     超大窗口钳到 30px 上限，防止气泡摊得过大。内边距/说话人行用 em，随字号一起缩放。 */
-  font-size: clamp(18px, 2.8vh, 30px);
+  /* 字号随窗口高度自适应（vh = 窗口高的 1%）：2.9vh 在 992px 高的窗口 ≈ 29px。
+     小窗口钳到 18px 下限，超大窗口钳到 31px 上限。 */
+  font-size: clamp(18px, 2.9vh, 31px);
   font-weight: 700;
   line-height: 1.5;
   text-align: left;
   max-width: 100%;
-  padding: 0.46em 0.86em 0.54em 0.93em;
-  border-radius: 6px 16px 16px 4px;
-  background: rgba(9, 13, 24, 0.62);
-  border: 1px solid rgba(255, 255, 255, 0.16);
-  border-left: 3px solid var(--accent);
-  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.36), inset 0 1px 0 rgba(255, 255, 255, 0.07);
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
-  transition: border-color 0.4s ease, background 0.4s ease, color 0.4s ease;
+  transition: color 0.4s ease;
 }
-/* 尾巴：贴气泡左下、指向立绘。background:inherit 让它随气泡一起变色
-   （第二阶段气泡转红，尾巴自动跟上）。left:-14px = 让右缘刚好接住气泡外左缘
-   （绝对定位的包含块是 padding box，要减掉 3px 的左侧竖条）。 */
-.supervisor-line::after {
-  content: '';
-  position: absolute;
-  left: -14px;
-  bottom: 14px;
-  width: 12px;
-  height: 18px;
-  background: inherit;
-  clip-path: polygon(100% 0, 100% 100%, 0 50%);
+/* 有角色时（对话框内）台词就是裸文本；无角色时这条规则不生效（本就不显示） */
+body.has-supervisor .supervisor-line {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
 }
-/* 说话人：气泡内第一行。没有名字时 script 会摘掉 data-speaker，这一行随之消失 */
-.supervisor-line[data-speaker]::before {
-  content: attr(data-speaker);
-  display: block;
-  font-size: 0.5em;
-  font-weight: 600;
-  letter-spacing: 0.07em;
-  line-height: 1.4;
-  margin-bottom: 0.15em;
-  opacity: 0.8;
-}
-/* 第一阶段：描边略亮。⚠️ 只改三边——用 border-color 简写会把左侧背景颜色竖条一起改掉 */
-#app[data-stage='1'] .supervisor-line {
-  border-top-color: rgba(255, 255, 255, 0.3);
-  border-right-color: rgba(255, 255, 255, 0.3);
-  border-bottom-color: rgba(255, 255, 255, 0.3);
-}
-/* 第二阶段：整条转红色告警（含左侧竖条与尾巴） */
+body.has-supervisor .supervisor-line::after { display: none; }
+body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
+/* 第二阶段（命令）：整句转红色告警 */
 #app[data-stage='2'] .supervisor-line {
-  border-color: rgba(255, 96, 96, 0.78);
-  background: rgba(58, 0, 0, 0.52);
   color: #ffe9e9;
-}
-
-/* ---------------- 竖屏版式：内容列移到角色上方、占据整个宽度 ---------------- */
-/* 容器高 > 宽时（竖屏显示器 / 竖向窗口）supervisorLayout.ts 会给容器写上
-   data-sup-layout="top"，位置、宽度、垂直偏移与尾巴锚点都由脚本写进 inline style；
-   这里只负责解除横向版式的水平锚定与垂直居中偏移（inline 已覆盖，规则留着兜底），
-   并把气泡换成就近的"指向下方"造型。尾巴水平位置 = --tail-x（脚本按角色可见中心算，
-   夹在气泡内）。
-   ⚠️ 选择器必须带上 body.has-supervisor：竖屏规则要盖过上面的横向版式规则
-   （body.has-supervisor .content 等），只写 [data-sup-layout='top'] 优先级不够。 */
-body.has-supervisor [data-sup-layout='top'] .content {
-  right: auto;
-  top: auto;
-  transform: none;
-  /* 整宽后行数变少，间距收紧一点，把角色头顶的空间让出来 */
-  gap: 14px;
-}
-body.has-supervisor [data-sup-layout='top'] .supervisor-line {
-  /* 气泡按文字收紧（fit-content）：原先整宽，短句时气泡里右半边全是空白。
-     水平位置由脚本微调——在内容列内整体平移、让尾巴正对角色可见中心，
-     CSS 只负责默认居中兜底 */
-  width: fit-content;
-  max-width: 100%;
-  margin: 0 auto;
-  /* 竖屏窗口窄，整宽气泡行数少，字号与内边距收一档（2.4vh ≈ 原固定 24px） */
-  font-size: clamp(16px, 2.4vh, 26px);
-  padding: 0.46em 0.83em 0.54em 0.92em;
-  /* 收窄的角换到下方（尾巴那一侧） */
-  border-radius: 16px 16px 6px 6px;
-}
-/* 竖屏上方空间有限，倒计时环与动作行同步收小 */
-body.has-supervisor [data-sup-layout='top'] .bar { gap: 14px; }
-body.has-supervisor [data-sup-layout='top'] .ring-wrap { width: 68px; height: 68px; }
-body.has-supervisor [data-sup-layout='top'] .countdown { font-size: 22px; }
-body.has-supervisor [data-sup-layout='top'] .supervisor-line::after {
-  left: var(--tail-x, 50%);
-  right: auto;
-  top: auto;
-  bottom: -12px;
-  width: 18px;
-  height: 12px;
-  transform: translateX(-50%);
-  clip-path: polygon(0 0, 100% 0, 50% 100%);
 }
 
 /* ---------------- 提醒内容与倒计时 ---------------- */
@@ -348,6 +344,14 @@ body:not(.has-supervisor) .bar {
   position: absolute;
   left: 0;
   right: 0;
+  /* skip-link 已从 bar 内移到 content 末尾（有角色版式把它沉到对话框右下），
+     这里让出它原来的位置：环上移一个 skip 的占位高度 */
+  bottom: calc(6vh + 32px);
+}
+body:not(.has-supervisor) .skip-link {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   bottom: 6vh;
 }
 /* 角色不在场时台词气泡一律不出现（角色关闭 ⇒ 只说提醒内容，不出气泡）。

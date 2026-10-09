@@ -155,37 +155,44 @@ const PROBE_BREAK = `(function () {
   var cs = getComputedStyle(document.documentElement);
   var line = document.getElementById('supervisor-line');
   var img = document.getElementById('figure-img');
-  // 休息督导版式：layoutSupContent 把判定结果写进 .stage 的 data-sup-layout（side/top），
-  // 度量写进 .content 的 data-sup-metrics。这里把两者都采回来，证明版式真的摆了位，
-  // 而不是「有立绘但没排内容列」。
-  var stage = document.querySelector('.stage');
+  // 休息督导版式（游戏对话画面）：layoutSupDialog 把倒计时环的摆位写进 .bar 的
+  // inline style，度量写进 .content 的 data-sup-metrics。这里把两者都采回来，
+  // 证明版式真的摆了位，而不是「有立绘但没排对话框」。
   var content = document.querySelector('.content');
+  var nameEl = document.getElementById('dialog-name');
+  var bar = document.getElementById('bar');
   var supMetrics = null;
   if (content && content.dataset.supMetrics) {
     try { supMetrics = JSON.parse(content.dataset.supMetrics); } catch (e) { supMetrics = { err: String(e) }; }
   }
   var contentRect = content ? content.getBoundingClientRect() : null;
+  var barRect = bar ? bar.getBoundingClientRect() : null;
   return {
     shim: window.__WR_SHIM || null,
     hasSupervisor: document.body.classList.contains('has-supervisor'),
     hasSup: document.body.classList.contains('has-supervisor'),
+    viewportW: window.innerWidth,
     figureHidden: document.getElementById('figure').classList.contains('hidden'),
     figureSrcPrefix: img ? String(img.src).slice(0, 22) : null,
     figureNatural: img ? (img.naturalWidth + 'x' + img.naturalHeight) : null,
     speaker: line ? (line.dataset.speaker || null) : null,
     lineText: line ? line.textContent : null,
     lineVisible: line ? !line.classList.contains('hidden') : false,
+    dialogName: nameEl ? nameEl.textContent : null,
+    dialogNameShown: nameEl ? !nameEl.classList.contains('hidden') : false,
     countdown: document.getElementById('countdown') ? document.getElementById('countdown').textContent : null,
     accent: cs.getPropertyValue('--accent').trim(),
     opacityVar: cs.getPropertyValue('--app-opacity').trim(),
     rounded: app ? app.dataset.rounded : null,
     badgeHidden: document.getElementById('preview-badge').classList.contains('hidden'),
-    supLayout: stage ? (stage.dataset.supLayout || null) : null,
     supMetrics: supMetrics,
     contentInline: content ? {
-      left: content.style.left, width: content.style.width, top: content.style.top,
-      bottom: content.style.bottom, transform: content.style.transform,
       rectW: Math.round(contentRect.width), rectH: Math.round(contentRect.height),
+      rectBottom: Math.round(contentRect.bottom),
+    } : null,
+    barInline: bar ? {
+      left: bar.style.left, bottom: bar.style.bottom,
+      rectLeft: Math.round(barRect.left), rectBottom: Math.round(barRect.bottom),
     } : null,
     errors: window.__WR_ERRORS || []
   };
@@ -282,6 +289,18 @@ const PROBE_TAKEOUT = `(async function () {
     figureShown: !document.getElementById('figure').classList.contains('hidden'),
     speaker: line ? (line.dataset.speaker || null) : null,
     lineText: line ? line.textContent : null,
+    dialogName: (function () { var n = document.getElementById('dialog-name'); return n ? n.textContent : null; })(),
+    dialogNameShown: (function () { var n = document.getElementById('dialog-name'); return n ? !n.classList.contains('hidden') : false; })(),
+    supMetrics: (function () {
+      var c = document.querySelector('.content');
+      if (!c || !c.dataset.supMetrics) return null;
+      try { return JSON.parse(c.dataset.supMetrics); } catch (e) { return { err: String(e) }; }
+    })(),
+    redpacketInline: (function () {
+      var rp = document.getElementById('redpacket');
+      if (!rp) return null;
+      return { left: rp.style.left, bottom: rp.style.bottom, shown: !rp.classList.contains('hidden') };
+    })(),
     accent: cs.getPropertyValue('--accent').trim(),
     rounded: (document.getElementById('app') || {}).dataset ? document.getElementById('app').dataset.rounded : null,
     errors: window.__WR_ERRORS || []
