@@ -50,9 +50,10 @@ func main() {
 		MinWidth:         860,
 		MinHeight:        600,
 		Frameless:        true,
-		URL:              "/settings.html",
+		URL:              "/settings.html?win=settings",
 		BackgroundColour: application.NewRGBA(0xf5, 0xf6, 0xfa, 0xff),
-		// 注入窗口身份：shim.js 用它决定调哪个绑定方法、上报哪个窗口名
+		// 窗口身份经 URL query 下发（?win=settings）。⚠️ 别依赖下面的 JS 字段：Wails v3
+		// 在 Windows 上只对内嵌 HTML 注入 JS、对 URL 加载的页面不注入，故这里仅作占位。
 		JS: `window.__WR_WIN = "settings";`,
 		// 注意：这里**不**设 DisableFramelessWindowDecorations —— 设置窗口是普通无边框窗口，
 		// 需要 Win11 的 DWM 系统级圆角（与阴影）。那个字段置 true 会把「无边框装饰」一起关掉，

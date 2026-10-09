@@ -586,10 +586,10 @@ func (a *App) ShowBreakWindow(kind string) {
 		Frameless:        true,
 		AlwaysOnTop:      a.cfgSnapshot().AppearanceCfg().AlwaysOnTop,
 		DisableResize:    true,
-		URL:              "/break.html",
+		URL:              "/break.html?win=break",
 		BackgroundType:   application.BackgroundTypeTranslucent,
 		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
-		// 注入窗口身份：shim.js 用它决定调哪个绑定方法、上报哪个窗口名
+		// 窗口身份经 URL 的 ?win=break 下发；JS 字段对 URL 页面不生效（仅占位）
 		JS: `window.__WR_WIN = "break";`,
 		// 无边框窗口在 Windows 上会留一圈原生装饰（阴影/描边），与 Electron 版一致地关掉
 		Windows: application.WindowsWindow{

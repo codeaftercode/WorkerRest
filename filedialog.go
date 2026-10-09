@@ -79,13 +79,20 @@ func resultOf(p string, err error) pickFileResult {
 	return pickFileResult{path: p}
 }
 
-// isCancelError 用户点「取消」在 IFileDialog 里是 ERROR_CANCELLED，不是真错误。
+// isCancelError 判断错误是不是「用户点了取消」——取消不是真错误，调用方据此静默返回。
+//
+// 两个来源：
+//  1. IFileDialog 直接回报 HRESULT ERROR_CANCELLED（0x800704C7，走 *ole.OleError）；
+//  2. Wails vendored 的 cfd 库在取消时返回 sentinel error「cancelled by user」
+//     （internal 包无法 import，只能按消息匹配）。实际当前主要走第 2 条：vendored 库的
+//     hresultToError 把 HRESULT 当 uintptr 比较 `hr < 0`（无符号类型恒为 false），取消的
+//     HRESULT 被吞掉，最后在 GetResult 里以 ErrorCancelled 冒出来。
 func isCancelError(err error) bool {
 	var oe *ole.OleError
 	if errors.As(err, &oe) {
 		return oe.Code() == hResultCancelled
 	}
-	return false
+	return err != nil && err.Error() == "cancelled by user"
 }
 
 // dialogAvailable 当前环境能不能弹对话框：只有非无头、非 server 模式才有原生窗口。

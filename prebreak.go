@@ -123,7 +123,7 @@ func preBreakURL(info PreBreakInfo) string {
 	if info.Custom {
 		flag = "1"
 	}
-	return "/prebreak.html?custom=" + flag + "&tail=" + url.QueryEscape(info.CountdownTail)
+	return "/prebreak.html?custom=" + flag + "&tail=" + url.QueryEscape(info.CountdownTail) + "&win=prebreak"
 }
 
 // preBreakWindowName 窗口名：Wails 按名字交付窗口，清理时也按它查
@@ -158,7 +158,7 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 		URL:              preBreakURL(info),
 		BackgroundType:   application.BackgroundTypeTranslucent,
 		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
-		// 注入窗口身份：shim.js 用它决定调哪个绑定方法、上报哪个窗口名
+		// 窗口身份经 preBreakURL 的 ?win=prebreak 下发；JS 字段对 URL 页面不生效（仅占位）
 		JS: `window.__WR_WIN = "prebreak";`,
 		Windows: application.WindowsWindow{
 			// 无边框窗口在 Windows 上会留一圈原生装饰（阴影 / 描边），与 Electron 版一致地关掉

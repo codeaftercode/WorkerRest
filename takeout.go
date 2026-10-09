@@ -281,10 +281,11 @@ func (a *App) showTakeoutWindows(slot TimeSlot, preview bool, postponedCount int
 			Frameless:        true,
 			AlwaysOnTop:      ap.AlwaysOnTop,
 			DisableResize:    true,
-			URL:              "/takeout.html",
+			URL:              "/takeout.html?win=takeout",
 			BackgroundType:   application.BackgroundTypeTranslucent,
 			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
-			JS:               `window.__WR_WIN = "takeout";`,
+			// 窗口身份经 URL 的 ?win=takeout 下发；JS 字段对 URL 页面不生效（仅占位）
+			JS: `window.__WR_WIN = "takeout";`,
 			Windows: application.WindowsWindow{
 				DisableFramelessWindowDecorations: true,
 				HiddenOnTaskbar:                   true,

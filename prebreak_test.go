@@ -135,17 +135,20 @@ func TestPreBreakBoundsSecondScreen(t *testing.T) {
 
 // 地址里带版式：渲染层第一帧就按它铺，否则会先画内置版式再跳一次（窗口高度按版式给）
 func TestPreBreakURL(t *testing.T) {
+	const winSuffix = "&win=prebreak"
 	builtin := preBreakURL(PreBreakInfo{Custom: false, CountdownTail: builtinPreBreakTail})
-	if builtin != "/prebreak.html?custom=0&tail="+url.QueryEscape(builtinPreBreakTail) {
+	if builtin != "/prebreak.html?custom=0&tail="+url.QueryEscape(builtinPreBreakTail)+winSuffix {
 		t.Fatalf("内置版式地址不对：%q", builtin)
 	}
+	const prefix = "/prebreak.html?custom=1&tail="
 	custom := preBreakURL(PreBreakInfo{Custom: true, CountdownTail: " 秒显示喝水提醒"})
-	if len(custom) < len("/prebreak.html?custom=1&tail=") ||
-		custom[:len("/prebreak.html?custom=1&tail=")] != "/prebreak.html?custom=1&tail=" {
+	if len(custom) < len(prefix)+len(winSuffix) ||
+		custom[:len(prefix)] != prefix ||
+		custom[len(custom)-len(winSuffix):] != winSuffix {
 		t.Fatalf("自定义版式地址不对：%q", custom)
 	}
-	// 后缀里有中文与空格：必须能原样解回来（渲染层用 URLSearchParams 读它）
-	back, err := url.QueryUnescape(custom[len("/prebreak.html?custom=1&tail="):])
+	// tail 里有中文与空格：必须能原样解回来（渲染层用 URLSearchParams 读它）
+	back, err := url.QueryUnescape(custom[len(prefix) : len(custom)-len(winSuffix)])
 	if err != nil {
 		t.Fatalf("地址里的 tail 解不开：%v", err)
 	}

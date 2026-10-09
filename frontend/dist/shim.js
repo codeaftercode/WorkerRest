@@ -13,7 +13,10 @@
  * 它不是运行时推断出来的，而是写死的——所以 Go 侧有契约测试（contract_test.go）
  * 与启动自检：契约里有、Go 侧没有的方法名会被点名，避免这里静默失效。
  *
- * 窗口身份由 Go 端注入的 window.__WR_WIN 决定（不依赖 URL query 的传递行为）。
+ * 窗口身份的判定顺序：window.__WR_WIN → URL 的 ?win= → "settings"。
+ * ⚠️ 实际生效的是 URL query：Wails v3 在 Windows 上只对内嵌 HTML 注入 WebviewWindowOptions.JS、
+ *   对 URL 加载的页面不注入，所以 Go 侧各窗口都靠 URL 带 ?win= 下发身份（window.__WR_WIN
+ *   这条优先级仍在，但当前 beta.28 对 URL 页面不生效）。
  * 事件：Go 端 app.Event.Emit(name, data) -> Events.On(name, ev => cb(ev.data))。
  *
  * ⚠️ 参数类型：Wails 会校验 Go 方法的参数类型，所以**不能把 null/undefined 直接传
