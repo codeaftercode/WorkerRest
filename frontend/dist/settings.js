@@ -526,10 +526,10 @@
     const role = ROLES.find((r) => r.key === key);
     if (!role) return;
     const input = await promptDialog({
-      title: "\u91CD\u547D\u540D\u89D2\u8272",
-      desc: "\u89D2\u8272\u540D\u4F1A\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u3001\u53F0\u8BCD\u6C14\u6CE1\u7684\u8BF4\u8BDD\u4EBA\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\u3002",
+      title: "\u91CD\u547D\u540D",
+      desc: "\u540D\u79F0\u4F1A\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u3001\u53F0\u8BCD\u6C14\u6CE1\u7684\u8BF4\u8BDD\u4EBA\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\u3002",
       value: role.name,
-      placeholder: "\u89D2\u8272\u540D",
+      placeholder: "\u540D\u79F0",
       okText: "\u786E\u5B9A"
     });
     if (input === null) return;
@@ -577,15 +577,15 @@
     autoSave();
     await refreshSupervisorPreview();
     await renderRoleGallery();
-    toast("\u5DF2\u5220\u9664\u89D2\u8272");
+    toast("\u5DF2\u5220\u9664");
   }
   async function addCustomRole() {
     const picked = await window.api.pickSupervisorImage();
     if (!picked) return;
-    const base = picked.name.trim() || "\u81EA\u5B9A\u4E49\u89D2\u8272";
+    const base = picked.name.trim() || "\u81EA\u5B9A\u4E49\u7ACB\u7ED8";
     const input = await promptDialog({
-      title: "\u547D\u540D\u89D2\u8272",
-      desc: "\u7ED9\u8FD9\u4E2A\u89D2\u8272\u8D77\u4E00\u4E2A\u540D\u5B57\uFF08\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\uFF09\u3002",
+      title: "\u547D\u540D",
+      desc: "\u7ED9\u8FD9\u4E2A\u7ACB\u7ED8\u8D77\u4E00\u4E2A\u540D\u5B57\uFF08\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\uFF09\u3002",
       value: base,
       placeholder: "\u4F8B\u5982\uFF1A\u6211\u7684\u4E0A\u53F8",
       okText: "\u6DFB\u52A0"
@@ -603,7 +603,7 @@
     autoSave();
     await refreshSupervisorPreview();
     await renderRoleGallery();
-    toast(`\u5DF2\u6DFB\u52A0\u89D2\u8272\u300C${name}\u300D`);
+    toast(`\u5DF2\u6DFB\u52A0\u300C${name}\u300D`);
   }
   function closeRoleMenu() {
     document.getElementById("sup-role-menu")?.remove();
