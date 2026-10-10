@@ -477,17 +477,9 @@
     return true;
   }
   function applySelectionUI() {
-    const sel = $("sup-selection");
-    if (!sel.options.length) {
-      for (const m of SUPERVISOR_SELECTIONS) {
-        const opt = document.createElement("option");
-        opt.value = m.value;
-        opt.textContent = m.label;
-        opt.title = m.hint;
-        sel.appendChild(opt);
-      }
-    }
-    sel.value = S.supervisor.selection;
+    const btn = $("sup-selection-btn");
+    if (!btn) return;
+    applyModeIcon(btn, S.supervisor.selection ?? "fixed");
   }
   function fillSupervisorImageName() {
     const name = currentRoleName();
@@ -1059,6 +1051,24 @@
     const ico = btn.querySelector(".snd-mode-ico");
     if (ico) ico.innerHTML = info.icon;
   }
+  // 提醒内容 / 立绘的「显示方式」图标按钮：复用声音卡三态图标（固定显示↔单曲循环、
+  // 随机显示↔随机播放、顺序循环↔顺序循环），但标签改为提醒语境；点击循环切换。
+  var DISPLAY_MODE = {
+    fixed: { label: "固定显示", icon: SND_MODE.single.icon },
+    random: { label: "随机显示", icon: SND_MODE.random.icon },
+    sequence: { label: "顺序循环", icon: SND_MODE.sequence.icon }
+  };
+  var DISPLAY_MODE_NEXT = { fixed: "random", random: "sequence", sequence: "fixed" };
+  function applyModeIcon(btn, mode) {
+    if (!btn) return;
+    if (!DISPLAY_MODE[mode]) mode = "fixed";
+    const info = DISPLAY_MODE[mode];
+    btn.dataset.mode = mode;
+    btn.setAttribute("aria-label", "显示方式：" + info.label);
+    btn.title = info.label;
+    const ico = btn.querySelector(".snd-mode-ico");
+    if (ico) ico.innerHTML = info.icon;
+  }
   var pad22 = (n) => String(n).padStart(2, "0");
   function dayDiffOf(at) {
     const d = new Date(at);
@@ -1610,9 +1620,10 @@
     if (!panel) return;
     const list = panel.querySelector(".msg-list");
     const cfg = msgCfgOf(target);
-    const orderSel = target === "sup" ? document.getElementById("sup-msg-order") : panel.parentElement?.querySelector(".msg-order");
-    if (orderSel) orderSel.value = cfg?.order ?? "fixed";
-    const fixedMode = cfg?.order === "fixed";
+    const order = cfg?.order ?? "fixed";
+    const fixedMode = order === "fixed";
+    const modeBtn = panel.querySelector(".snd-mode-btn");
+    if (modeBtn) applyModeIcon(modeBtn, order);
     list.innerHTML = "";
     if (!cfg) {
       const d = document.createElement("div");
@@ -1741,15 +1752,19 @@
       panel.classList.toggle("open");
       panel.querySelector(".msg-body").classList.toggle("hidden");
     });
-    const orderSel = target === "sup" ? document.getElementById("sup-msg-order") : panel.parentElement?.querySelector(".msg-order");
-    orderSel?.addEventListener("change", () => {
-      const cfg = msgCfgOf(target);
-      if (!cfg) return;
-      const v = orderSel.value;
-      cfg.order = v === "random" || v === "sequence" ? v : "fixed";
-      renderMsgList(target);
-      autoSave();
-    });
+    const modeBtn = panel.querySelector(".snd-mode-btn");
+    if (modeBtn) {
+      modeBtn.addEventListener("click", () => {
+        const cfg = msgCfgOf(target);
+        if (!cfg) return;
+        const cur = modeBtn.dataset.mode || cfg.order || "fixed";
+        const next = DISPLAY_MODE_NEXT[cur] || "fixed";
+        cfg.order = next;
+        applyModeIcon(modeBtn, next);
+        renderMsgList(target);
+        autoSave();
+      });
+    }
     panel.querySelector(".msg-add").addEventListener("click", () => {
       msgBatchTarget = target;
       $("batch-title").textContent = `\u6279\u91CF\u65B0\u589E\u63D0\u9192\u5185\u5BB9\uFF08${msgTargetLabel(target)}\uFF09`;
@@ -4648,13 +4663,16 @@
     });
     setupGalleryPanel();
     void renderRoleGallery();
-    $("sup-selection").addEventListener("change", () => {
-      const v = $("sup-selection").value;
-      S.supervisor.selection = v === "sequence" || v === "random" ? v : "fixed";
-      applySelectionUI();
+    const supSelBtn = $("sup-selection-btn");
+    supSelBtn.addEventListener("click", () => {
+      const cur = supSelBtn.dataset.mode || S.supervisor.selection || "fixed";
+      const next = DISPLAY_MODE_NEXT[cur] || "fixed";
+      S.supervisor.selection = next;
+      applyModeIcon(supSelBtn, next);
       autoSave();
       void renderRoleGallery();
     });
+    $("sup-gallery-add").addEventListener("click", () => void addCustomRole());
     bindRoleMenuDismiss();
     setInterval(() => {
       renderSupervisorPreview(curSupStage === 1 ? 2 : 1);

@@ -182,9 +182,6 @@
           <div class="row field"><label>时长（秒）</label><input type="number" id="short-duration" min="5" max="600" /></div>
           <div class="row field"><label>提前通知（秒）</label><input type="number" id="short-notify" min="0" max="300" /></div>
           <div class="row field"><label>可推迟（分钟）</label><input type="number" id="short-postpone" min="1" max="60" /></div>
-          <div class="row field msg-order-row"><label>提醒内容显示方式</label>
-            <select class="msg-order"><option value="fixed">固定显示</option><option value="random">随机显示</option><option value="sequence">顺序循环</option></select>
-          </div>
           <!-- 提醒时间列表：固定时间方式的时刻表，默认折叠（与提醒内容面板同一套外观；
                行不可拖动、无单选框，只有行首的启停勾选框）。「＋」新增放标题行右侧 -->
           <div class="slot-fixed" data-break="short">
@@ -199,7 +196,10 @@
           <div class="msg-panel" data-kind="short">
             <div class="msg-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
-              <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+              <div class="snd-music-actions">
+                <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
+                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+              </div>
             </div>
             <div class="msg-body hidden">
               <div class="msg-list"></div>
@@ -227,9 +227,6 @@
             <label>每 N 次短休息后 1 次长休息<span class="q-mark" title="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
             <input type="number" id="longEveryNShort" min="1" max="20" />
           </div>
-          <div class="row field msg-order-row"><label>提醒内容显示方式</label>
-            <select class="msg-order"><option value="fixed">固定显示</option><option value="random">随机显示</option><option value="sequence">顺序循环</option></select>
-          </div>
           <div class="slot-fixed" data-break="long">
             <div class="slot-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
@@ -242,7 +239,10 @@
           <div class="msg-panel" data-kind="long">
             <div class="msg-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
-              <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+              <div class="snd-music-actions">
+                <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
+                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+              </div>
             </div>
             <div class="msg-body hidden">
               <div class="msg-list"></div>
@@ -264,9 +264,6 @@
           <div class="row check"><label class="switch-row"><input type="checkbox" id="tk-redpacket" /> 显示外卖优惠券</label></div>
           <div class="row field"><label>提前通知（分钟）</label><input type="number" id="tk-lead" min="0" max="120" /></div>
           <div class="row field"><label>可推迟（分钟）</label><input type="number" id="tk-postpone" min="1" max="120" /></div>
-          <div class="row field msg-order-row"><label>提醒内容显示方式</label>
-            <select class="msg-order"><option value="fixed">固定显示</option><option value="random">随机显示</option><option value="sequence">顺序循环</option></select>
-          </div>
           <div class="slot-fixed">
             <div class="slot-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
@@ -279,7 +276,10 @@
           <div class="msg-panel" data-kind="takeout">
             <div class="msg-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
-              <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+              <div class="snd-music-actions">
+                <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
+                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+              </div>
             </div>
             <div class="msg-body hidden">
               <div class="msg-list"></div>
@@ -302,17 +302,6 @@
             <label class="switch-row"><input type="checkbox" id="sup-enabled" />启用</label>
             <!-- id 不能叫 sup-preview：那是下方常驻立绘预览面板的 id，重名会砸掉它 -->
             <button class="btn ghost" id="sup-break-preview" title="预览督休专员">预览</button>
-          </div>
-          <!-- 立绘显示方式：固定显示 / 随机显示 / 顺序循环。固定显示不另设下拉——
-               点选下方立绘磁贴即固定为该立绘（选项与提示文案由脚本按类型常量填充） -->
-          <div class="row field">
-            <label for="sup-selection">立绘显示方式</label>
-            <select id="sup-selection"></select>
-          </div>
-          <!-- 提醒内容显示方式（第二段台词的取词方式）：从下方「提醒内容」面板处上移到
-               「立绘显示方式」下方；下拉在另一张卡里，接线按 id 取（见 setupMsgPanel） -->
-          <div class="row field msg-order-row" id="sup-msg-order-row"><label>提醒内容显示方式</label>
-            <select class="msg-order" id="sup-msg-order"><option value="fixed">固定显示</option><option value="random">随机显示</option><option value="sequence">顺序循环</option></select>
           </div>
         </div>
         <div class="card">
@@ -340,6 +329,10 @@
           <div class="fold-panel gallery-panel open" id="sup-gallery-panel">
             <div class="msg-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span><span class="toggle-label">立绘列表（<span id="sup-gallery-count">0</span>）</span></button>
+              <div class="snd-music-actions">
+                <button type="button" class="snd-mode-btn" id="sup-selection-btn" aria-label="立绘显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
+                <button type="button" class="msg-add" id="sup-gallery-add" title="新增立绘（支持 PNG / JPG / WebP）">＋</button>
+              </div>
             </div>
             <div class="gallery-body" id="sup-gallery-body">
               <div class="role-gallery" id="sup-gallery"></div>
@@ -365,11 +358,14 @@
             </div>
           </details>
           <!-- 提醒内容面板（第二段台词）：按当前立绘（含自定义图）分别保存，交互与提醒的提醒内容相同。
-               默认折叠，点开才显示列表；显示方式下拉已上移到「立绘显示方式」下方（#sup-msg-order） -->
+               默认折叠，点开才显示列表；显示方式图标按钮已移到本面板标题行右侧、「＋」左侧 -->
           <div class="msg-panel" data-kind="sup">
             <div class="msg-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span><span class="toggle-label">提醒内容（<span id="sup-msg-role">—</span>）</span></button>
-              <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+              <div class="snd-music-actions">
+                <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
+                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+              </div>
             </div>
             <div class="msg-body hidden">
               <div class="msg-list"></div>
