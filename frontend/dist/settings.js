@@ -1787,18 +1787,21 @@
     const phaseVal = st.paused ? `${phaseText}\uFF08\u5DF2\u6682\u505C${st.pauseReasons.length ? "\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001") : ""}\uFF09` : phaseText;
     const now = st.paused ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("\u63D0\u9192") ? `\u4E0B\u6B21${name}` : `\u4E0B\u6B21${name}\u63D0\u9192`;
+    const todayOnly = (at) => dayDiffOf(at) > 0 ? "\u4ECA\u65E5\u5DF2\u65E0\u63D0\u9192" : fmtRemain(Math.max(0, at - now));
+    // 今日是否还有「自定义提醒」的下一次触发：时间线里存在自定义提醒项（type 以 cb- 开头）即算。
+    const hasCustomToday = (st.timeline ?? []).some((it) => (it.type || "").startsWith(CUSTOM_BREAK_PREFIX));
+    const otherCell = hasCustomToday && st.other
+      ? [otherKey(st.other.name), todayOnly(st.other.at)]
+      : null;
     const cells = [["\u72B6\u6001", phaseVal]];
     if (st.phase === "break") {
       cells.push(["\u6B63\u5728\u4F11\u606F", fmtRemain(Math.max(0, st.breakEndsAt - now))]);
-      cells.push(["\u4E0B\u6B21\u63D0\u9192", "\u2014"]);
+      if (otherCell) cells.push(["\u4E0B\u6B21\u63D0\u9192", "\u2014"]);
     } else {
-      const todayOnly = (at) => dayDiffOf(at) > 0 ? "\u4ECA\u65E5\u5DF2\u65E0\u63D0\u9192" : fmtRemain(Math.max(0, at - now));
       cells.push(
         st.rest ? [`\u4E0B\u6B21${st.rest.name}`, todayOnly(st.rest.at)] : ["\u4E0B\u6B21\u4F11\u606F\u63D0\u9192", "\u672A\u5B89\u6392"]
       );
-      cells.push(
-        st.other ? [otherKey(st.other.name), todayOnly(st.other.at)] : ["\u4E0B\u6B21\u63D0\u9192", "\u672A\u5B89\u6392"]
-      );
+      if (otherCell) cells.push(otherCell);
     }
     $("data-status").innerHTML = cells.map(([k, v]) => `<div class="status-cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
     updateTakeoutSummary();
