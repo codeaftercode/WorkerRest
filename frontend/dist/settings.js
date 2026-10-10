@@ -4,7 +4,7 @@
   var SUP_GEOM_DEFAULT = { sizePct: 72, posXPct: 4, posYPct: 0, flip: false };
   var SUP_GEOM_LIMITS = {
     sizePct: [20, 100],
-    // 距左上限 30%：再往右立绘会挤掉右侧台词的位置（右侧内容要摆在「角色右边缘 ↔ 窗口右边缘」中间）
+    // 距左上限 30%：再往右立绘会挤掉右侧台词的位置（右侧内容要摆在「督休专员右边缘 ↔ 窗口右边缘」中间）
     posXPct: [0, 30],
     posYPct: [0, 40]
   };
@@ -549,7 +549,7 @@
     // 换图后缩略图要重读，否则磁贴仍显示旧图
     ROLES = await window.api.listSupervisorRoles();
     if (supEditKey === key) {
-      // 换的是当前编辑角色：预览要重读（Go 侧会按新立绘重新组装会话）
+      // 换的是当前编辑督休专员：预览要重读（Go 侧会按新立绘重新组装会话）
       await refreshSupervisorPreview();
     }
     await renderRoleGallery();
@@ -561,9 +561,9 @@
     const role = ROLES.find((r) => r.key === key);
     if (!role) return;
     const ok = await confirmDialog({
-      title: "\u5220\u9664\u89D2\u8272",
-      desc: `\u786E\u5B9A\u5220\u9664\u89D2\u8272\u300C${role.name}\u300D\uFF1F`,
-      detail: "\u4F1A\u8FDE\u540C\u89D2\u8272\u76EE\u5F55\uFF08\u914D\u7F6E\u3001\u7ACB\u7ED8\u3001\u9884\u89C8\u56FE\uFF09\u4E00\u5E76\u5220\u9664\uFF0C\u4E14\u65E0\u6CD5\u6062\u590D\u3002",
+      title: "\u5220\u9664",
+      desc: `\u786E\u5B9A\u5220\u9664\u300C${role.name}\u300D\uFF1F`,
+      detail: "\u4F1A\u8FDE\u540C\u76EE\u5F55\uFF08\u914D\u7F6E\u3001\u7ACB\u7ED8\u3001\u9884\u89C8\u56FE\uFF09\u4E00\u5E76\u5220\u9664\uFF0C\u4E14\u65E0\u6CD5\u6062\u590D\u3002",
       okText: "\u5220\u9664"
     });
     if (!ok) return;
