@@ -367,12 +367,12 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    展开后列表体固定高度（默认 = 两行磁贴，由脚本按实测行高写入），溢出出纵向滚动条；
    底部拖柄上下拖动调高度（记 localStorage，下次打开保持）。折叠时体与拖柄一并隐藏。 */
 .gallery-body {
-  padding: 4px 12px 12px; border-top: 1px solid var(--border);
+  padding: 0 12px 12px; border-top: 1px solid var(--border);
   overflow-y: auto; overscroll-behavior: contain;
 }
 /* 磁贴悬停的「右键操作」提示画在磁贴边框外上方：给网格顶部留出提示高度，
-   避免首行磁贴的提示被滚动容器裁掉 */
-.gallery-body .role-gallery { padding-top: 30px; }
+   避免首行磁贴的提示被滚动容器裁掉（收窄至 24px，首行紧贴头部） */
+.gallery-body .role-gallery { padding-top: 24px; }
 .gallery-panel:not(.open) .gallery-body,
 .gallery-panel:not(.open) .gallery-resize { display: none; }
 .gallery-resize {
@@ -445,18 +445,18 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
-.role-cap-row { display: flex; align-items: center; gap: 5px; width: 100%; }
+.role-cap-row { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; }
 .role-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 /* 悬停提示浮层：磁贴边框外上方提示「右键操作」——深色实底胶囊 + 白字 + 白描边，
    明暗两套主题下都醒目；禁用磁贴同样式（提示不受置灰影响）。尺寸克制，不遮挡立绘。 */
 .role-hint {
-  position: absolute; bottom: calc(100% + 5px); left: 50%; transform: translateX(-50%);
-  padding: 3px 10px; border-radius: 999px;
+  position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
+  padding: 2px 8px; border-radius: 999px;
   background: rgba(20, 20, 20, 0.9); color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.4);
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-  font-size: 12px; font-weight: 500; letter-spacing: 1px; line-height: 1.5; white-space: nowrap;
+  font-size: 11px; font-weight: 500; letter-spacing: 1px; line-height: 1.4; white-space: nowrap;
   opacity: 0; transition: opacity 0.12s ease; pointer-events: none;
 }
 .role-item:hover .role-hint,
@@ -476,18 +476,6 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .role-menu-item:hover { background: var(--accent); color: #fff; }
 .role-menu-item.danger:hover { background: var(--danger); }
-/* 固定角色：删除置灰不可点 */
-.role-menu-item:disabled { opacity: 0.45; cursor: not-allowed; }
-.role-menu-item:disabled:hover { background: none; color: inherit; }
-.role-menu-note {
-  font-size: 11px; line-height: 1.4; color: var(--text-2);
-  padding: 4px 10px 2px; white-space: nowrap;
-}
-
-/* 禁用的角色（随机/顺序下未勾选）：整块变灰、名字划线；点它切换勾选态，右键可删除 */
-.role-item.off { cursor: pointer; }
-.role-item.off img { filter: grayscale(1); opacity: 0.45; }
-.role-item.off .role-cap { text-decoration: line-through; }
 
 /* 末尾「＋」磁贴：导入自定义立绘。骨架与 .role-item 一致（同网格、同内边距、
    图案区同为 92px 高），使「＋」占位与立绘磁贴等大；提示文字画在图案区上。 */

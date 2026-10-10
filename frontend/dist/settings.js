@@ -612,7 +612,6 @@
     closeRoleMenu();
     const role = ROLES.find((r) => r.key === key);
     if (!role) return;
-    const locked = key === supEditKey;
     const menu = document.createElement("div");
     menu.id = "sup-role-menu";
     const items = [
@@ -627,9 +626,7 @@
       b.className = "role-menu-item" + (it.danger ? " danger" : "");
       b.dataset.act = it.act;
       b.textContent = it.label;
-      b.disabled = locked && it.act !== "rename" && it.act !== "preview" && it.act !== "replace";
       b.addEventListener("click", () => {
-        if (b.disabled) return;
         closeRoleMenu();
         if (it.act === "preview") void previewRoleFromMenu(key);
         else if (it.act === "rename") void renameRole(key);
@@ -637,12 +634,6 @@
         else void removeRole(key);
       });
       menu.appendChild(b);
-    }
-    if (locked) {
-      const note = document.createElement("div");
-      note.className = "role-menu-note";
-      note.textContent = "\u9009\u4E2D\u7684\u89D2\u8272\uFF0C\u4E0D\u53EF\u5220\u9664";
-      menu.appendChild(note);
     }
     document.body.appendChild(menu);
     const rect = menu.getBoundingClientRect();
@@ -727,9 +718,8 @@
     for (const r of ROLES) {
       const btn = document.createElement("button");
       btn.type = "button";
-      // 固定模式不按 enabled 置灰；随机/顺序下未勾选才置灰
-      const off = !fixedMode && !r.enabled;
-      btn.className = "role-item" + (off ? " off" : "");
+      // 未勾选不改磁贴样式，仅复选框呈未选态
+      btn.className = "role-item";
       btn.dataset.key = r.key;
       btn.title = r.name;
       const img = document.createElement("img");
@@ -826,7 +816,7 @@
     box.dataset.enabled = off ? "0" : "1";
     const badge = $("sup-preview-badge");
     badge.classList.toggle("hidden", !off);
-    badge.textContent = off ? "\u89D2\u8272\u5DF2\u5173\u95ED \xB7 \u4F11\u606F\u7A97\u53E3\u4E0D\u4F1A\u663E\u793A\u7ACB\u7ED8" : "";
+    badge.textContent = off ? "\u529F\u80FD\u5DF2\u5173\u95ED \xB7 \u63D0\u9192\u7A97\u53E3\u4E0D\u4F1A\u663E\u793A\u7763\u4F11\u4E13\u5458" : "";
     $("sup-preview-line").textContent = supPreview ? stage === 2 ? supPreview.lines.command || supPreview.lines.urge : supPreview.lines.urge : "\u65E0\u6CD5\u8BFB\u53D6\u7ACB\u7ED8\u6587\u4EF6";
     // 说话人由对话框左上角的名字牌承载（与休息窗口的 dialog-name 同款），不再挂在台词上
     const previewName = $("sup-preview-name");
