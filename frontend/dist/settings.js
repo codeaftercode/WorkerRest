@@ -1313,6 +1313,12 @@
       setupCustomBreakCard(card, cb);
     }
   }
+  // 已被占用的提醒名称：内置（短休息/长休息/外卖提醒）+ 已有自定义提醒名称；新增时不得与之重名。
+  function reservedReminderNames() {
+    const names = ["\u77ED\u4F11\u606F", "\u957F\u4F11\u606F", "\u5916\u5356\u63D0\u9192"];
+    for (const cb of S.customBreaks ?? []) names.push(cb.name);
+    return names;
+  }
   async function addCustomBreak() {
     const input = await promptDialog({
       title: "\u65B0\u5EFA\u81EA\u5B9A\u4E49\u63D0\u9192",
@@ -1324,6 +1330,10 @@
     const name = input.trim().slice(0, 24);
     if (!name) {
       toast("\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+      return;
+    }
+    if (reservedReminderNames().includes(name)) {
+      toast(`\u63D0\u9192\u540D\u79F0\u300C${name}\u300D\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A`);
       return;
     }
     const cb = {
