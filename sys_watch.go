@@ -147,6 +147,9 @@ func (a *App) dndWatchTick() {
 
 // appPauseWatchTick 推进一次「指定应用占用」判定。
 // 每跳现读内存里的配置，所以设置页改了就即时生效，保存时不需要重建定时器。
+//
+// 忽略会话（appPauseIgnored）：自动暂停后用户手动点「恢复休息」置位，此后目标应用
+// 还在跑也不再暂停；目标应用全部退出（本轮没命中）时解除，下次再运行照常自动暂停。
 func (a *App) appPauseWatchTick() {
 	if a.sched == nil {
 		return
@@ -157,6 +160,10 @@ func (a *App) appPauseWatchTick() {
 	if r.Supported {
 		hit, matched = matchAppPause(cfg.AppPauseCfg(), r.Names)
 	}
+	if hit && a.isAppPauseIgnored() {
+		// 忽略会话中：应用还在跑就按兵不动（原因早已摘掉，也不该再加回去）
+		return
+	}
 	if hit {
 		a.sched.pause(pauseReasonAppPause)
 		if !a.appPauseHitLogged {
@@ -164,6 +171,11 @@ func (a *App) appPauseWatchTick() {
 			log.Printf("[appPause] 命中 %s，暂停提醒", strings.Join(matched, "、"))
 		}
 		return
+	}
+	// 没命中 = 目标应用都已退出：忽略会话随之自然结束
+	if a.isAppPauseIgnored() {
+		a.setAppPauseIgnored(false)
+		log.Printf("[appPause] 被忽略的目标应用已退出，忽略解除（下次运行照常自动暂停）")
 	}
 	if a.appPauseHitLogged {
 		a.appPauseHitLogged = false

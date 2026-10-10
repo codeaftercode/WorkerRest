@@ -767,6 +767,14 @@ func (s *Scheduler) isPaused() bool {
 	return s.state.Paused
 }
 
+// hasPauseReason 当前是否挂着某条暂停原因（手动恢复要区分「自动暂停」与「手动暂停」：
+// 自动暂停的恢复走临时忽略，手动暂停的恢复走常规 toggle）
+func (s *Scheduler) hasPauseReason(reason string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return containsStr(s.state.PauseReasons, reason)
+}
+
 // pausedForBusyReason 正因「用户仍在用电脑」而暂停（手动 / 勿扰 / 指定应用占用）。
 //
 // 这几种状态下不做空闲离开判定：开会、看视频、跑全屏应用时用户当然不动键鼠，

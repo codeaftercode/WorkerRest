@@ -75,11 +75,16 @@ type App struct {
 	// 系统能力（见 sys_*.go）：空闲状态机 + 三条监视链路的停止信号与「上一跳状态」。
 	// idleAway / dndActiveLogged / appPauseHitLogged 只被各自的 goroutine 读写，
 	// 提成字段是为了让单测能直接调 tick 函数；它们的值不影响任何跨链路判定。
+	// appPauseIgnored 例外：监视 goroutine 与「手动恢复」的 UI 线程都会碰，走 appPauseMu。
 	idle              *IdleState
 	sysStop           chan struct{}
 	idleAway          bool
 	dndActiveLogged   bool
 	appPauseHitLogged bool
+	// appPauseIgnored 「指定应用临时忽略」会话：自动暂停后用户手动点「恢复休息」时置位，
+	// 监视器不再因目标应用重新暂停；目标应用全部退出或用户手动暂停时解除。
+	appPauseIgnored bool
+	appPauseMu      sync.Mutex
 
 	// 全局快捷键（见 hotkeys.go）：server 模式为 nil。
 	hotkeys *HotkeyManager
@@ -806,10 +811,43 @@ func (a *App) schedSkip() {
 		a.sched.skip()
 	}
 }
+
+// schedPauseToggle 托盘 / 提示窗 / 快捷键共用的手动「暂停休息 ↔ 恢复休息」。
+//
+// 自动暂停（应用占用）生效时点「恢复休息」有个特殊语义：不是去摘一个不存在的 manual
+// 原因（那会原地 no-op，按钮像坏了），而是**临时忽略目标应用**——立即恢复，且监视器
+// 不再因这些应用重新暂停，直到应用全部退出（忽略随退出解除）或用户再次手动暂停
+// （忽略作废，回到常规判定）。下次该应用再运行时照常自动暂停。
 func (a *App) schedPauseToggle() {
-	if a.sched != nil {
-		a.sched.pauseToggle()
+	if a.sched == nil {
+		return
 	}
+	if a.sched.hasPauseReason(pauseReasonAppPause) {
+		a.setAppPauseIgnored(true)
+		a.sched.resume(pauseReasonAppPause)
+		// 若还叠着手动暂停，一并摘掉：用户点的是「恢复休息」，就该恢复到底
+		a.sched.resume("manual")
+		log.Printf("[appPause] 用户手动恢复：临时忽略目标应用，直到退出或手动暂停")
+		return
+	}
+	if !a.sched.isPaused() {
+		// 手动暂停：作废可能残留的忽略会话，回到常规自动暂停判定
+		a.setAppPauseIgnored(false)
+	}
+	a.sched.pauseToggle()
+}
+
+// setAppPauseIgnored / isAppPauseIgnored 忽略会话标志（监视 goroutine 与 UI 线程共用）
+func (a *App) setAppPauseIgnored(v bool) {
+	a.appPauseMu.Lock()
+	a.appPauseIgnored = v
+	a.appPauseMu.Unlock()
+}
+
+func (a *App) isAppPauseIgnored() bool {
+	a.appPauseMu.Lock()
+	defer a.appPauseMu.Unlock()
+	return a.appPauseIgnored
 }
 func (a *App) schedResetCycle() {
 	if a.sched != nil {

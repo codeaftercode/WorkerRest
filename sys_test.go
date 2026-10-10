@@ -327,6 +327,100 @@ func TestAppPauseWatchRealProcessHitAndRelease(t *testing.T) {
 	}
 }
 
+// appPauseCfg 拼一份「命中本测试进程」的 appPause 配置（enabledItem 控制条目开关，
+// 用来在单测里模拟目标应用退出 / 再次运行——条目关了 = 进程不在了，走的同一条
+// hit=false 路径）
+func appPauseCfg(t *testing.T, enabledItem bool) string {
+	t.Helper()
+	self, err := os.Executable()
+	if err != nil {
+		t.Skipf("取不到本进程路径：%v", err)
+	}
+	return `{"appPause":{"enabled":true,"items":[{"id":"a1","exe":` + jsonStr(filepath.Base(self)) +
+		`,"name":"","enabled":` + map[bool]string{true: "true", false: "false"}[enabledItem] + `}]},` +
+		strings.TrimPrefix(shortCountdown, "{")
+}
+
+func TestAppPauseWatchAutoResumesWhenProcessExits(t *testing.T) {
+	a, s := newWatchApp(t, appPauseCfg(t, true))
+
+	a.appPauseWatchTick()
+	if st := s.stateCopy(); !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonAppPause {
+		t.Fatalf("目标应用运行时应自动暂停，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+
+	// 进程退出（条目关掉 = hit=false）→ 下一跳必须自动恢复，无需任何手动操作
+	a.mu.Lock()
+	a.cfg = testSettings(t, appPauseCfg(t, false))
+	a.mu.Unlock()
+	a.appPauseWatchTick()
+	if st := s.stateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("目标应用退出后应自动恢复，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+}
+
+func TestAppPauseManualResumeIgnoresUntilExitOrManualPause(t *testing.T) {
+	a, s := newWatchApp(t, appPauseCfg(t, true))
+
+	// ① 自动暂停生效
+	a.appPauseWatchTick()
+	if st := s.stateCopy(); !st.Paused || st.PauseReasons[0] != pauseReasonAppPause {
+		t.Fatalf("前置：应因应用占用暂停，得到 %v", st.PauseReasons)
+	}
+
+	// ② 用户点「恢复休息」→ 立即恢复 + 进入忽略会话
+	a.schedPauseToggle()
+	if st := s.stateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("手动恢复应立即生效，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+	if !a.isAppPauseIgnored() {
+		t.Fatal("手动恢复后应进入忽略会话")
+	}
+
+	// ③ 应用还在跑：不再被自动暂停（这正是临时忽略的意义）
+	a.appPauseWatchTick()
+	a.appPauseWatchTick()
+	if st := s.stateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("忽略会话期间不该重新暂停，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+
+	// ④ 用户手动暂停 → 忽略作废，回到常规判定（应用还在跑就照常叠加应用占用）
+	a.schedPauseToggle()
+	if st := s.stateCopy(); !st.Paused {
+		t.Fatal("手动暂停应生效")
+	}
+	if a.isAppPauseIgnored() {
+		t.Fatal("手动暂停应作废忽略会话")
+	}
+	a.appPauseWatchTick()
+	st := s.stateCopy()
+	if len(st.PauseReasons) != 2 {
+		t.Fatalf("忽略作废后应用仍在跑，应叠加应用占用，得到 %v", st.PauseReasons)
+	}
+
+	// ⑤ 此时再点恢复：摘掉应用占用 + 手动暂停两条，立即恢复并再次进入忽略
+	a.schedPauseToggle()
+	if st := s.stateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("应彻底恢复，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+
+	// ⑥ 应用退出 → 忽略解除；应用再次运行 → 照常自动暂停（下个会话）
+	a.mu.Lock()
+	a.cfg = testSettings(t, appPauseCfg(t, false))
+	a.mu.Unlock()
+	a.appPauseWatchTick()
+	if a.isAppPauseIgnored() {
+		t.Fatal("应用退出后忽略应解除")
+	}
+	a.mu.Lock()
+	a.cfg = testSettings(t, appPauseCfg(t, true))
+	a.mu.Unlock()
+	a.appPauseWatchTick()
+	if st := s.stateCopy(); !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonAppPause {
+		t.Fatalf("下次应用再运行应重新自动暂停，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+}
+
 // jsonStr 把字符串编成 JSON 字面量（测试里要拼很长的路径）
 func jsonStr(s string) string {
 	b, err := json.Marshal(s)
