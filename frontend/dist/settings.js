@@ -1788,9 +1788,9 @@
     const now = st.paused ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("\u63D0\u9192") ? `\u4E0B\u6B21${name}` : `\u4E0B\u6B21${name}\u63D0\u9192`;
     const todayOnly = (at) => dayDiffOf(at) > 0 ? "\u4ECA\u65E5\u5DF2\u65E0\u63D0\u9192" : fmtRemain(Math.max(0, at - now));
-    // 今日是否还有「自定义提醒」的下一次触发：时间线里存在自定义提醒项（type 以 cb- 开头）即算。
-    const hasCustomToday = (st.timeline ?? []).some((it) => (it.type || "").startsWith(CUSTOM_BREAK_PREFIX));
-    const otherCell = hasCustomToday && st.other
+    // 「下次提醒」取外卖/自定义里最近的一次（st.other 已合并两者）；
+    // 仅当该最近提醒落在「今天」（at 在当天剩余时间）才显示，否则隐藏整格。
+    const otherCell = st.other && dayDiffOf(st.other.at) === 0
       ? [otherKey(st.other.name), todayOnly(st.other.at)]
       : null;
     const cells = [["\u72B6\u6001", phaseVal]];
