@@ -127,19 +127,17 @@
           <!-- 音乐列表：默认折叠（自建折叠面板，不走提醒内容的 .msg-panel 接线）；
                「播放方式」作为列表内第一行（全局生效的播放策略，随列表一起展开/收起） -->
           <div class="fold-panel" id="snd-music-panel">
-            <!-- 标题行：折叠开关占满 + 右侧「＋」导入（悬浮提示支持批量） -->
+            <!-- 标题行：折叠开关占满 + 右侧「播放方式」三向开关（紧贴「＋」左侧、样式明显区分）+「＋」导入 -->
             <div class="snd-music-head">
               <button type="button" class="msg-toggle" id="snd-music-toggle"><span class="msg-arrow">▸</span>音乐列表</button>
+              <div class="snd-mode-toggle" id="snd-mode" role="group" aria-label="播放方式">
+                <button type="button" class="snd-mode-opt" data-mode="single">单曲循环</button>
+                <button type="button" class="snd-mode-opt" data-mode="random">随机播放</button>
+                <button type="button" class="snd-mode-opt" data-mode="sequence">顺序循环</button>
+              </div>
               <button type="button" class="snd-music-add" id="snd-music-add" title="导入音频文件（支持批量导入）">＋</button>
             </div>
             <div class="msg-body hidden" id="snd-music-body">
-              <div class="snd-mode-row">
-                <div class="snd-mode-toggle" id="snd-mode" role="group" aria-label="播放方式">
-                  <button type="button" class="snd-mode-opt" data-mode="single">单曲循环</button>
-                  <button type="button" class="snd-mode-opt" data-mode="random">随机播放</button>
-                  <button type="button" class="snd-mode-opt" data-mode="sequence">顺序循环</button>
-                </div>
-              </div>
               <div id="snd-music-list"></div>
             </div>
           </div>
