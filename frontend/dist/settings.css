@@ -895,10 +895,10 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .tk-item.drop-target { border-color: var(--accent); }
 /* 声音卡音乐列表：行与行之间留一条窄缝（比提醒内容列表的 8px 略小，不显松散） */
 #snd-music-list { display: flex; flex-direction: column; gap: 5px; }
-/* 播放方式：音乐列表内的分组首行，靠右放置三向分段开关；底部细分割线把
+/* 播放方式：音乐列表内的分组首行，靠左放置三向分段开关；底部细分割线把
    「全局播放策略」与「曲目清单」分开，与列表项视觉协调（不再用下拉 + 标签） */
 .snd-mode-row {
-  display: flex; align-items: center; justify-content: flex-end;
+  display: flex; align-items: center; justify-content: flex-start;
   padding: 2px 2px 10px; margin-bottom: 10px;
   border-bottom: 1px solid var(--border);
 }
