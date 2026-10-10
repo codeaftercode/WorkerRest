@@ -133,14 +133,13 @@
               <button type="button" class="snd-music-add" id="snd-music-add" title="导入音频文件（支持批量导入）">＋</button>
             </div>
             <div class="msg-body hidden" id="snd-music-body">
-              <div class="row field"><label>播放方式</label>
-                <div class="inline">
-                  <select id="snd-mode">
-                    <option value="single">单曲循环</option>
-                    <option value="random">随机播放</option>
-                    <option value="sequence">顺序循环</option>
-                  </select>
-                </div>
+              <div class="snd-mode-row">
+                <span class="snd-mode-label">播放方式</span>
+                <select id="snd-mode">
+                  <option value="single">单曲循环</option>
+                  <option value="random">随机播放</option>
+                  <option value="sequence">顺序循环</option>
+                </select>
               </div>
               <div id="snd-music-list"></div>
             </div>
