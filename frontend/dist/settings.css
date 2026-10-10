@@ -895,23 +895,28 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .tk-item.drop-target { border-color: var(--accent); }
 /* 声音卡音乐列表：行与行之间留一条窄缝（比提醒内容列表的 8px 略小，不显松散） */
 #snd-music-list { display: flex; flex-direction: column; gap: 5px; }
-/* 播放方式：三向分段开关置于「音乐列表」标题行右侧、紧贴「＋」左侧。
-   与标题（flex:1 占满）留出间距靠右成簇，与「＋」仅小间隙相邻但靠样式明显区分。 */
-.snd-mode-toggle {
+/* 播放方式：单一图标按钮（点击循环切换 单曲 / 随机 / 顺序），与「＋」同装在一个
+   描边圆角容器里成一组，置于「音乐列表」标题行右侧。图标区分三种模式：
+   单曲循环=带「1」的循环箭头、随机播放=交叉箭头、顺序循环=循环箭头；常驻只显示
+   图标，悬浮由浏览器原生 title 显示文字名称。 */
+.snd-music-actions {
   display: inline-flex; align-items: stretch; flex: none;
   margin-left: 10px;
   border: 1px solid var(--border); border-radius: 8px;
   overflow: hidden; background: var(--panel);
 }
-.snd-mode-opt {
-  border: none; background: none; cursor: pointer; font: inherit;
-  font-size: 13px; color: var(--text-2);
-  padding: 6px 12px; line-height: 1.4;
+.snd-mode-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; border: none; background: none; cursor: pointer;
+  font: inherit; color: var(--text-2); padding: 6px;
   border-right: 1px solid var(--border);
 }
-.snd-mode-opt:last-child { border-right: none; }
-.snd-mode-opt:hover:not(.active) { background: var(--accent-weak); color: var(--text); }
-.snd-mode-opt.active { background: var(--accent); color: #fff; }
+.snd-mode-btn:hover { background: var(--accent-weak); color: var(--text); }
+.snd-mode-btn svg {
+  width: 16px; height: 16px;
+  fill: none; stroke: currentColor; stroke-width: 1.9;
+  stroke-linecap: round; stroke-linejoin: round;
+}
 /* 声音卡音乐列表：名称占满中间剩余宽度，过长省略 */
 .snd-music-name {
   flex: 1 1 0; min-width: 0;

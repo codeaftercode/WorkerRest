@@ -1030,12 +1030,34 @@
       });
     }
   }
+  /* 播放方式：三种循环策略的图标与名称。图标随当前模式切换（单曲循环=带「1」的
+     循环箭头、随机播放=交叉箭头、顺序循环=循环箭头），常驻只显示图标，悬浮由
+     title 显示文字名称；点击在三者间循环切换。 */
+  var SND_MODE = {
+    single: {
+      label: "单曲循环",
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/><path d="M11 10h1v4"/></svg>'
+    },
+    random: {
+      label: "随机播放",
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.7-1.1 1.9-1.7 3.2-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.9c1.5 0 2.9.9 3.6 2.2"/><path d="M22 18h-4.7c-1.3 0-2.5-.6-3.3-1.7l-.5-.7"/><path d="m18 14 4 4-4 4"/></svg>'
+    },
+    sequence: {
+      label: "顺序循环",
+      icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg>'
+    }
+  };
+  var SND_MODE_NEXT = { single: "random", random: "sequence", sequence: "single" };
   function setSoundModeUI(mode) {
-    const box = $("snd-mode");
-    if (!box) return;
-    box.querySelectorAll(".snd-mode-opt").forEach((b) => {
-      b.classList.toggle("active", b.dataset.mode === mode);
-    });
+    const btn = $("snd-mode");
+    if (!btn) return;
+    if (!SND_MODE[mode]) mode = "single";
+    const info = SND_MODE[mode];
+    btn.dataset.mode = mode;
+    btn.setAttribute("aria-label", "播放方式：" + info.label);
+    btn.title = info.label;
+    const ico = btn.querySelector(".snd-mode-ico");
+    if (ico) ico.innerHTML = info.icon;
   }
   var pad22 = (n) => String(n).padStart(2, "0");
   function dayDiffOf(at) {
@@ -1534,8 +1556,7 @@
     S.allScreens = $("ap-allScreens").checked;
     S.sound.enabled = $("snd-enabled").checked;
     S.sound.volume = parseFloat($("snd-volume").value);
-    const modeOpt = $("snd-mode").querySelector(".snd-mode-opt.active");
-    S.sound.mode = modeOpt ? modeOpt.dataset.mode : "single";
+    S.sound.mode = $("snd-mode").dataset.mode || "single";
     S.supervisor.enabled = $("sup-enabled").checked;
     S.takeout.enabled = $("tk-enabled").checked;
     S.takeout.leadMin = clampNum($("tk-lead"), TAKEOUT_LEAD_LIMITS[0], TAKEOUT_LEAD_LIMITS[1], TAKEOUT_LEAD_DEFAULT);
@@ -4599,13 +4620,12 @@
       const open = body.classList.toggle("hidden") === false;
       $("snd-music-panel").classList.toggle("open", open);
     });
-    $("snd-mode").querySelectorAll(".snd-mode-opt").forEach((btn) => {
-      btn.addEventListener("click", () => {
-        S.sound.mode = btn.dataset.mode;
-        setSoundModeUI(S.sound.mode);
-        renderSoundMusic();
-        autoSave();
-      });
+    $("snd-mode").addEventListener("click", () => {
+      const cur = $("snd-mode").dataset.mode || "single";
+      S.sound.mode = SND_MODE_NEXT[cur] || "single";
+      setSoundModeUI(S.sound.mode);
+      renderSoundMusic();
+      autoSave();
     });
     $("snd-music-add").addEventListener("click", async () => {
       const r = await window.api.addMusicSound();
