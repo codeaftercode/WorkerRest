@@ -123,6 +123,41 @@ func TestSchedulerReplanKeepsCountdownProgress(t *testing.T) {
 	}
 }
 
+func TestSchedulerReplanReanchorsOnIntervalChange(t *testing.T) {
+	// 改间隔要立刻按新间隔重算：未到期锚点只在间隔未变时沿用
+	s, host := newTestSched(t, shortCountdown)
+	s.replan()
+	// 等了 4 分钟后把间隔 10 分钟改成 45 分钟（模拟设置页保存 → replan）
+	s.mu.Lock()
+	s.state.NextAt -= 4 * 60_000
+	for i := range s.state.Lines {
+		s.state.Lines[i].At = s.state.NextAt
+	}
+	host.cfg = testSettings(t, `{"short":{"enabled":true,"mode":"countdown","intervalMs":2700000,"durationMs":20000,"notifyBeforeMs":10000,"postponeMs":120000,"slots":[]}}`)
+	s.mu.Unlock()
+	s.replan()
+	got := s.stateCopy()
+	want := nowMs() + 2_700_000
+	if diff := got.NextAt - want; diff < -2000 || diff > 2000 {
+		t.Fatalf("改间隔后应立刻按新间隔重算，want≈%d got=%d（差 %d）", want, got.NextAt, diff)
+	}
+
+	// 对照组：间隔没变的无关保存不得动倒计时
+	s2, _ := newTestSched(t, shortCountdown)
+	s2.replan()
+	keep := s2.stateCopy().NextAt
+	s2.mu.Lock()
+	s2.state.NextAt -= 4 * 60_000
+	for i := range s2.state.Lines {
+		s2.state.Lines[i].At = s2.state.NextAt
+	}
+	s2.mu.Unlock()
+	s2.replan()
+	if got2 := s2.stateCopy().NextAt; got2 != keep-4*60_000 {
+		t.Fatalf("间隔未变时 replan 不该重置倒计时，want=%d got=%d", keep-4*60_000, got2)
+	}
+}
+
 func TestSchedulerAllDisabledNoPlan(t *testing.T) {
 	s, _ := newTestSched(t, `{"short":{"enabled":false},"long":{"enabled":false}}`)
 	s.replan()

@@ -47,6 +47,10 @@ type Scheduler struct {
 	// replan 会把还没到点的 12:00 原样排回来——提前窗与提醒窗各再弹一次。
 	// 「跳过」同样消费当前 occurrence（固定线不消费的话，跳过等于没跳）。
 	consumed map[string]bool
+	// anchorIv 各倒计时身份当前锚点的产生间隔（ms，键 = 休息身份）：replan 沿用旧锚点
+	// 的判据之一 —— 间隔没变才沿用，改了间隔立刻按新间隔重新起算（见 countdownAnchor）。
+	// 每次 replan 按新池同步（syncAnchorIvLocked）；reanchorCountdown / resetCycle 各自维护。
+	anchorIv map[string]int64
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -68,7 +72,7 @@ func newScheduler(a *App) *Scheduler {
 
 // newSchedulerWithHost 建一个调度器（单测传假宿主，生产传 *App）
 func newSchedulerWithHost(host schedHost) *Scheduler {
-	s := &Scheduler{host: host, consumed: map[string]bool{}, stopCh: make(chan struct{})}
+	s := &Scheduler{host: host, consumed: map[string]bool{}, anchorIv: map[string]int64{}, stopCh: make(chan struct{})}
 	s.state = SchedulerState{
 		Phase:        "idle",
 		NextType:     "short",
@@ -167,6 +171,7 @@ func (s *Scheduler) resetCycle() {
 	s.state.ShortsSinceLong = 0
 	// 显式重置周期：挂起线清空，本次重排全部按当前配置重新起算（不保留旧倒计时进度）
 	s.state.Lines = []PlannedBreak{}
+	s.anchorIv = map[string]int64{}
 	s.mu.Unlock()
 	s.scheduleNext()
 }
@@ -480,6 +485,8 @@ func (s *Scheduler) reanchorCountdown() {
 		return
 	}
 	st.NextAt = at
+	// 重锚用的就是当前配置间隔：同步锚点间隔表，后续 replan 的沿用判据才成立
+	s.anchorIv[nextType] = bcfg.IntervalMs
 	// 回来时若还停在「休息前提示窗」阶段，拉回等待态：离开一趟回来不该立刻被催
 	st.Phase = "idle"
 	for i := range st.Lines {
@@ -517,26 +524,42 @@ func (s *Scheduler) advanceCounter(id string) {
 	}
 }
 
-// prevCountdownAnchors 收集挂起线里仍未到期的倒计时锚点（键 = 休息身份，同身份取最早）。
-// replan 重算时把它传回 schedulerLines / planNextBreakSplit，让还没到期的倒计时原样
-// 保留 —— 设置页任意保存触发的 replan 不再清零用户的倒计时进度（见 breakplan.go 的
-// countdownAnchor）。
-func prevCountdownAnchors(lines []PlannedBreak, now int64) map[string]int64 {
-	prev := map[string]int64{}
-	for _, l := range lines {
+// prevCountdownAnchorsLocked 收集挂起线里仍未到期的倒计时锚点（键 = 休息身份，
+// 同身份取最早），并附上产生各锚点的间隔（s.anchorIv）。replan 重算时传回
+// schedulerLines / planNextBreakSplit：未到期且间隔未变的锚点原样保留（倒计时
+// 进度跨 replan 保留），间隔已改的立刻按新间隔重新起算（见 breakplan.go 的
+// countdownAnchor）。调用方必须已持有 s.mu。
+func (s *Scheduler) prevCountdownAnchorsLocked(now int64) map[string]cdAnchor {
+	prev := map[string]cdAnchor{}
+	for _, l := range s.state.Lines {
 		if l.Source != "countdown" || l.At <= now {
 			continue
 		}
-		if old, ok := prev[l.Type]; !ok || l.At < old {
-			prev[l.Type] = l.At
+		if old, ok := prev[l.Type]; !ok || l.At < old.At {
+			prev[l.Type] = cdAnchor{At: l.At, Iv: s.anchorIv[l.Type]}
 		}
 	}
 	return prev
 }
 
+// syncAnchorIvLocked 按重算后的挂起线同步锚点间隔表：池里每条倒计时线的锚点，
+// 其产生间隔就是当前配置间隔（沿用者只在间隔未变时才会沿用，重新起算者天然是新间隔）。
+// 调用方必须已持有 s.mu。
+func (s *Scheduler) syncAnchorIvLocked(cfg *Settings) {
+	s.anchorIv = map[string]int64{}
+	for _, l := range s.state.Lines {
+		if l.Source != "countdown" {
+			continue
+		}
+		if c, ok := cfg.BreakByID(l.Type); ok {
+			s.anchorIv[l.Type] = c.IntervalMs
+		}
+	}
+}
+
 // replan 重算下一次休息（只改 state 里的字段，不发事件、不动 phase）。
-// 仍未到期的倒计时锚点原样保留：设置保存、导入等触发的重算只增删身份，
-// 不把已流逝的倒计时进度清零重计。
+// 未到期且间隔未变的倒计时锚点原样保留：设置保存、导入等触发的重算只增删身份，
+// 不把已流逝的倒计时进度清零重计；间隔改了的立刻按新间隔重新起算。
 func (s *Scheduler) replan() {
 	cfg := s.host.cfgSnapshot()
 	now := nowMs()
@@ -550,11 +573,12 @@ func (s *Scheduler) replan() {
 			delete(s.consumed, k)
 		}
 	}
-	// 上一轮仍未到期的倒计时锚点先收好（必须在覆盖 st.Lines 之前）：本轮原样沿用
-	prev := prevCountdownAnchors(st.Lines, now)
+	// 上一轮仍未到期的倒计时锚点先收好（必须在覆盖 st.Lines 之前）
+	prev := s.prevCountdownAnchorsLocked(now)
 	// 整份挂起线留给今日时间线用（state.lines）；planNextBreak 的口径就是它的首条
 	pool := schedulerLines(cfg, now, st.ShortsSinceLong, s.consumed, prev)
 	st.Lines = pool
+	s.syncAnchorIvLocked(cfg)
 	// 分组视图只给设置页状态卡用：短/长一组，外卖 + 自定义一组，互不混用。
 	// 全局 next（nextType/nextAt）语义不变，托盘不受影响。
 	s.refreshDerivedLocked(cfg, now)
@@ -576,7 +600,7 @@ func (s *Scheduler) replan() {
 // 调用方必须已持有 s.mu。倒计时锚点从当前挂起线收集：replan 里是新池（锚点已保留），
 // startBreak 消费后是旧线（刚消费那条已到期不会混入，其余身份的进度同样不被清掉）。
 func (s *Scheduler) refreshDerivedLocked(cfg *Settings, now int64) {
-	prev := prevCountdownAnchors(s.state.Lines, now)
+	prev := s.prevCountdownAnchorsLocked(now)
 	split := planNextBreakSplit(cfg, now, s.state.ShortsSinceLong, s.consumed, prev)
 	s.state.Rest = planRefOf(split.Builtin)
 	s.state.Other = planRefOf(split.Other)
@@ -720,7 +744,7 @@ func (s *Scheduler) planSummary() string {
 	now := nowMs()
 	s.mu.Lock()
 	ssL := s.state.ShortsSinceLong
-	prev := prevCountdownAnchors(s.state.Lines, now)
+	prev := s.prevCountdownAnchorsLocked(now)
 	s.mu.Unlock()
 	p, ok := planNextBreak(cfg, now, ssL, s.consumedCopy(), prev)
 	if !ok {
