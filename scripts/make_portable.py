@@ -7,7 +7,7 @@
     release/WorkerRest-<版本>-portable.zip
 
 组装结构：
-  - chibingren.exe + roles/（22 MB 内置角色模板）；
+  - chibingren.exe + roles/（22 MB 内置督休专员模板）；
   - 预置三件套（运行数据随包分发，首跑直接在预置文件上继续写）：
       sounds/               四个内置提示音（源文件在模块根 sounds/，不再 embed 进二进制）
       config/settings.json  出厂默认配置（与 go:embed 的 default_settings.json 同一
@@ -36,7 +36,7 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
-ROLES_SRC = os.path.join(ROOT, "roles")  # 角色目录随 Go 工程一起（模块根下）
+ROLES_SRC = os.path.join(ROOT, "roles")  # 督休专员目录随 Go 工程一起（模块根下）
 SOUNDS_SRC = os.path.join(ROOT, "sounds")  # 内置提示音源文件（打包预置进便携包）
 DEFAULT_SETTINGS_SRC = os.path.join(ROOT, "default_settings.json")  # 出厂默认（go:embed 同一份）
 EXE_NAME = "chibingren.exe"
@@ -110,18 +110,21 @@ def assemble(dest: str, version: str) -> bool:
 
 
 def zip_dir(zip_path: str, src_dir: str) -> bool:
-    """打 zip（含顶层目录：解压得到 WorkerRest-<版本>-portable/）。"""
+    """打 zip（含顶层目录：解压得到 WorkerRest-<版本>-portable/）。
+
+    arcname 必须显式用正斜杠拼：解压工具对 zip 条目分隔符的口径不一，
+    反斜杠条目会被当成文件名的一部分，解压后文件散落一地。
+    """
     if os.path.exists(zip_path):
         os.remove(zip_path)
     top = os.path.basename(src_dir)
-    parent = os.path.dirname(src_dir)
     print(f"[make-portable] zip -> {zip_path}")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
         for root, _dirs, files in os.walk(src_dir):
             for name in files:
                 fp = os.path.join(root, name)
-                arc = os.path.join(top, os.path.relpath(fp, src_dir))
-                zf.write(fp, arc)
+                rel = os.path.relpath(fp, src_dir).replace(os.sep, "/")
+                zf.write(fp, top + "/" + rel)
     return os.path.exists(zip_path)
 
 
@@ -142,12 +145,20 @@ def verify_zip(zip_path: str, top: str) -> bool:
     n_sounds = sum(1 for n in names if n.startswith(f"{top}/sounds/") and n.endswith(".wav"))
     has_cfg = f"{top}/config/settings.json" in names
     has_stats = f"{top}/data/stats.json" in names
-    ok = test is None and has_exe and has_roles and has_role_json and n_sounds == 4 and has_cfg and has_stats
+    # 顶层目录硬保证：每个条目都必须落在 top/ 里，且不允许出现反斜杠条目
+    # （反斜杠会被一部分解压工具当文件名的一部分，解压后文件散落一地）
+    escaped = [n for n in names if not n.startswith(top + "/") or "\\" in n]
+    ok = (
+        test is None and has_exe and has_roles and has_role_json
+        and n_sounds == 4 and has_cfg and has_stats and not escaped
+    )
     print(
         f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} roles={has_roles}"
         f" role_json={has_role_json} png={n_roles} sounds={n_sounds} cfg={has_cfg}"
-        f" stats={has_stats} crc={test is None}"
+        f" stats={has_stats} escaped={len(escaped)} crc={test is None}"
     )
+    if escaped:
+        print(f"[make-portable] FAIL: 有条目跑到顶层目录外或含反斜杠: {escaped[:5]}")
     if not ok:
         print(f"[make-portable] FAIL: zip 内容不完整（crc 异常项={test}）")
     return ok

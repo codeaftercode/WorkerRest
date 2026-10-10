@@ -1498,7 +1498,7 @@
   }
   function fillForm() {
     $("appName").value = S.appName ?? "";
-    $("tb-title").textContent = S.appName || "\u6253\u5DE5\u4EBA\u4F11\u606F\u63D0\u9192";
+    $("tb-title").textContent = S.appName || "\u5403\u997C\u4EBA\u4E5F\u6562\u4F11\u606F\uFF1F";
     document.querySelector(`input[name=theme][value="${S.theme}"]`).checked = true;
     $("idlePauseMin").value = String(Math.max(1, Math.round(S.idlePauseMin)));
     $("longEveryNShort").value = String(S.longEveryNShort);
@@ -1540,7 +1540,7 @@
   }
   function collectForm() {
     S.theme = document.querySelector("input[name=theme]:checked").value;
-    S.appName = ($("appName").value.trim() || "\u6253\u5DE5\u4EBA\u4F11\u606F\u63D0\u9192").slice(0, 30);
+    S.appName = ($("appName").value.trim() || "\u5403\u997C\u4EBA\u4E5F\u6562\u4F11\u606F\uFF1F").slice(0, 30);
     $("tb-title").textContent = S.appName;
     S.idlePauseMin = clampNum($("idlePauseMin"), 1, 120, 5);
     S.longEveryNShort = clampNum($("longEveryNShort"), 1, 20, 2);
@@ -4878,7 +4878,7 @@
     });
     $("d-quit").addEventListener("click", () => void window.api.quit());
     const info = await window.api.appInfo();
-    $("d-version").textContent = `\u6253\u5DE5\u4EBA\u4F11\u606F\u63D0\u9192 v${info.version} \xB7 ${info.electron} \xB7 \u672C\u5730\u4F18\u5148`;
+    $("d-version").textContent = `\u5403\u997C\u4EBA\u4E5F\u6562\u4F11\u606F\uFF1F v${info.version} \xB7 ${info.electron} \xB7 \u672C\u5730\u4F18\u5148`;
     const updateLine = $("d-update-status");
     const updateGo = $("d-update-go");
     const renderUpdate = (st) => {

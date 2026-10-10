@@ -26,6 +26,17 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "chibingren",
 		Description: "吃饼人也敢休息？— 休息提醒",
+		// 单例运行：第二个实例立即退出（ExitCode），第一个实例收到回调后把
+		// 设置窗口唤到前台 —— 与托盘「双击二次启动唤起窗口」同一条入口。
+		// 此前没有这层，双开会导致两份调度器抢着弹提醒窗口。
+		SingleInstance: &application.SingleInstanceOptions{
+			UniqueID: "com.chibingren.workerrest",
+			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
+				if backend != nil {
+					backend.ShowSettingsWindow()
+				}
+			},
+		},
 		Assets: application.AssetOptions{
 			Handler: application.BundledAssetFileServer(assets),
 			Middleware: func(next http.Handler) http.Handler {

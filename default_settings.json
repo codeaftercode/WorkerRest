@@ -1,5 +1,5 @@
 {
-  "appName": "打工人休息提醒",
+  "appName": "吃饼人也敢休息？",
   "short": {
     "enabled": true,
     "mode": "countdown",
@@ -34,8 +34,8 @@
     "blur": true,
     "fullscreen": false,
     "alwaysOnTop": true,
-    "widthPct": 60,
-    "heightPct": 60
+    "widthPct": 80,
+    "heightPct": 80
   },
   "allScreens": true,
   "sound": {

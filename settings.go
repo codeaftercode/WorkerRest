@@ -59,7 +59,7 @@ type AppearanceConfig struct {
 	HeightPct    float64 `json:"heightPct"`
 }
 
-// SupervisorConfig 督休专员显示开关（角色本体在 roles/<key>/role.json）
+// SupervisorConfig 督休专员显示开关（督休专员本体在 roles/<key>/role.json）
 type SupervisorConfig struct {
 	Enabled   bool   `json:"enabled"`
 	Gaze      bool   `json:"gaze"`
@@ -310,7 +310,7 @@ func mapInt(m map[string]any, key string, def int64) int64 {
 	return def
 }
 
-// SupervisorCfg 督休专员显示开关（角色本体在 roles/<key>/role.json）
+// SupervisorCfg 督休专员显示开关（督休专员本体在 roles/<key>/role.json）
 func (s *Settings) SupervisorCfg() SupervisorConfig {
 	return SupervisorConfig{
 		Enabled:   s.Flag(true, "supervisor", "enabled"),
@@ -337,8 +337,8 @@ func (s *Settings) AppearanceCfg() AppearanceConfig {
 		Blur:         s.Flag(true, "appearance", "blur"),
 		Fullscreen:   s.Flag(false, "appearance", "fullscreen"),
 		AlwaysOnTop:  s.Flag(true, "appearance", "alwaysOnTop"),
-		WidthPct:     s.Num(60, "appearance", "widthPct"),
-		HeightPct:    s.Num(60, "appearance", "heightPct"),
+		WidthPct:     s.Num(80, "appearance", "widthPct"),
+		HeightPct:    s.Num(80, "appearance", "heightPct"),
 	}
 }
 
@@ -405,6 +405,9 @@ func (s *Settings) TakeoutSlots() []TimeSlot { return normalizeTimeSlots(s.looku
 
 // AllScreens 「在所有屏幕显示提醒窗口」开关（休息窗口与外卖窗口共用同一多屏策略）
 func (s *Settings) AllScreens() bool { return s.Flag(true, "allScreens") }
+
+// StartMinimized 启动时最小化到托盘（不显示设置窗口，托盘图标在，点一下就出来）
+func (s *Settings) StartMinimized() bool { return s.Flag(false, "startMinimized") }
 
 // AppName 软件名（空串合法 = 不显示名字）。
 // 注意：这里做折叠空白 / 限长是**给 Go 逻辑与窗口标题用的**；下发给设置页的 raw
@@ -1136,7 +1139,7 @@ func cleanLegacyKeys(raw map[string]any) {
 
 // normalizeSupervisorMessages 督休专员配置归一化（与 config.ts 同义）：
 // selection 只认固定 / 顺序 / 随机；开关类字段只认布尔；视线跟随恒为 true；
-// rolesMigrated 置位后，把可能从导入配置带进来的旧角色字段直接清掉。
+// rolesMigrated 置位后，把可能从导入配置带进来的旧督休专员字段直接清掉。
 func normalizeSupervisorMessages(raw map[string]any) {
 	sup, ok := raw["supervisor"].(map[string]any)
 	if !ok {
@@ -1346,7 +1349,7 @@ func settingsCandidates(resourcesRoot string) []string {
 // loadSettings 读配置：找到第一份可解析的 settings.json 就用它，在出厂默认之上深合并
 // （缺失字段不会整体退回默认，数组整体替换），再过一遍归一化与迁移。
 //
-// 与 Electron 版 loadSettingsFrom 的差异（**已知未移植项**）：不做角色目录迁移
+// 与 Electron 版 loadSettingsFrom 的差异（**已知未移植项**）：不做督休专员目录迁移
 // （rolesMigrated 只做清理、不搬数据），见 README 的占位清单。
 func loadSettings(resourcesRoot string) *Settings {
 	base := defaultSettingsMap()

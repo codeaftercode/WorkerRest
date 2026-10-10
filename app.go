@@ -146,14 +146,19 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 	// 提示音宿主：一个隐藏的 1×1 窗口承载 <audio>（主进程自己放不了声音，见 sound.go）。
 	// 无头构建下只记日志、不建窗。
 	a.initSoundHost()
-	// 本次是开机自启动拉起来的：只起托盘，不显示设置窗口（托盘图标在，点一下就出来）。
+	// 不显示设置窗口、直接最小化到托盘的两条路径：开机自启动拉起，或用户勾选了
+	// 「启动时最小化到托盘」（此前只认自启动标志，勾选无效 —— 窗口照常弹出）。
 	// 与 Electron 版 `if (!launchedAtLogin()) openSettingsWindow(...)` 同口径。
 	// 服务的启动发生在「窗口真正被 run 起来」之前，所以这里的 Hide 不会闪一下窗口。
-	if hasAutostartFlag() {
+	if hasAutostartFlag() || a.cfg.StartMinimized() {
 		if w := a.settingsWindow(); w != nil {
 			w.Hide()
 		}
-		log.Printf("[autostart] 本次由开机自启动拉起：只起托盘，不显示设置窗口")
+		if hasAutostartFlag() {
+			log.Printf("[autostart] 本次由开机自启动拉起：只起托盘，不显示设置窗口")
+		} else {
+			log.Printf("[boot] startMinimized：只起托盘，不显示设置窗口")
+		}
 	}
 	// 启动时检查更新：按配置延时 15 秒静默查一次（失败不打扰，见 update.go）。
 	a.startAutoUpdateCheck()
@@ -311,16 +316,20 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 			picked = &pool[a.roleTurn%len(pool)]
 			a.roleTurn = (a.roleTurn + 1) % len(pool)
 		}
-	default: // fixed：取指定督休专员，取不到（或已禁用）回退第一个可用督休专员
+	default: // fixed：取指定督休专员。固定显示只看磁贴点选本身，**不看单条启用**——
+		// 复选框（role.enabled）只在随机 / 顺序模式下出现；若这里仍拿 enabled 当门槛，
+		// 随包 role.json 里 enabled=false 的督休专员就会出现「立绘列表看得到、
+		// 休息时不显示」的劈叉（设置页总开关是启用的，用户无从排查）
 		for i := range usable {
-			if usable[i].Key == cfg.FixedKey && (force || usable[i].Enabled) {
+			if usable[i].Key == cfg.FixedKey {
 				picked = &usable[i]
 				break
 			}
 		}
 		if picked == nil {
-			if pool := a.enabledRoles(usable, force); len(pool) > 0 {
-				picked = &pool[0]
+			// 指定的督休专员不存在（已删除）：兜底到第一个可用的
+			if len(usable) > 0 {
+				picked = &usable[0]
 			}
 		}
 	}
