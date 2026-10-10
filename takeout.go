@@ -119,7 +119,7 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) 
 	if msgs := a.pickMessage("takeout", TAKEOUT_NAME); len(msgs) > 0 {
 		info.Message = msgs[0]
 	}
-	// 督休专员：与休息窗口同一条构建路径；外卖窗口的角色第一段台词 = 本提醒的提醒内容。
+	// 督休专员：与休息窗口同一条构建路径；外卖窗口的督休专员第一段台词 = 本提醒的提醒内容。
 	// 第二阶段**不换台词**：命令台词清空，渲染层 applyStage 的 `command || stage1` 沿用第一段。
 	if sup := a.buildSupervisorSession(preview, ""); sup != nil {
 		sup.Lines.Command = ""
@@ -273,14 +273,16 @@ func (a *App) showTakeoutWindows(slot TimeSlot, preview bool, postponedCount int
 			y = wa.Y + (wa.Height-h)/2
 		}
 		win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
-			Title:            "外卖提醒",
-			X:                x,
-			Y:                y,
-			Width:            w,
-			Height:           h,
-			Frameless:        true,
-			AlwaysOnTop:      ap.AlwaysOnTop,
-			DisableResize:    true,
+			Title:         "外卖提醒",
+			X:             x,
+			Y:             y,
+			Width:         w,
+			Height:        h,
+			Frameless:     true,
+			AlwaysOnTop:   ap.AlwaysOnTop,
+			DisableResize: true,
+			// 不设它 X/Y 会被无视：Wails 的 InitialPosition 零值 = 整窗居中
+			InitialPosition:  application.WindowXY,
 			URL:              "/takeout.html?win=takeout",
 			BackgroundType:   application.BackgroundTypeTranslucent,
 			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
@@ -532,8 +534,7 @@ func (a *App) hasTakeoutWindowsLocked() bool {
 }
 
 func (a *App) hasBreakWindowLocked() bool {
-	w, ok := a.wins["break"]
-	return ok && w != nil
+	return len(a.breakWins) > 0
 }
 
 // supActivityWatchInfo 当前轮询状态（冒烟自检用）

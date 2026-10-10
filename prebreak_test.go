@@ -133,6 +133,41 @@ func TestPreBreakBoundsSecondScreen(t *testing.T) {
 	}
 }
 
+// 休息窗口按目标屏工作区计算：多屏下每块屏各算各的，不能用主屏尺寸（会跑到屏幕外）
+func TestBreakBoundsFor(t *testing.T) {
+	cfg := AppearanceConfig{WidthPct: 50, HeightPct: 50}
+
+	// 主屏 1920x1040（任务栏已扣除）→ 半屏居中
+	wa := application.Rect{X: 0, Y: 0, Width: 1920, Height: 1040}
+	x, y, w, h := breakBoundsFor(wa, cfg)
+	if w != 960 || h != 520 {
+		t.Fatalf("应为主屏工作区的 50%%，得到 %dx%d", w, h)
+	}
+	if x != 480 || y != 260 {
+		t.Fatalf("应在该屏工作区内居中，得到 (%d,%d)", x, y)
+	}
+
+	// 副屏（非零原点）也要相对**那块屏**居中
+	wa2 := application.Rect{X: 1920, Y: -200, Width: 2560, Height: 1400}
+	x, y, w, h = breakBoundsFor(wa2, cfg)
+	if w != 1280 || h != 700 {
+		t.Fatalf("副屏应为该屏工作区的 50%%，得到 %dx%d", w, h)
+	}
+	if x != 1920+640 || y != -200+350 {
+		t.Fatalf("副屏应相对该屏工作区居中，得到 (%d,%d)", x, y)
+	}
+
+	// 全屏：铺满工作区；最小尺寸兜底
+	if x, y, w, h = breakBoundsFor(wa, AppearanceConfig{Fullscreen: true}); x != 0 || y != 0 || w != 1920 || h != 1040 {
+		t.Fatalf("全屏应铺满工作区，得到 %dx%d @(%d,%d)", w, h, x, y)
+	}
+	small := application.Rect{X: 0, Y: 0, Width: 400, Height: 300}
+	x, y, w, h = breakBoundsFor(small, cfg)
+	if w != 320 || h != 240 {
+		t.Fatalf("过小工作区应触发最小尺寸兜底，得到 %dx%d", w, h)
+	}
+}
+
 // 地址里带版式：渲染层第一帧就按它铺，否则会先画内置版式再跳一次（窗口高度按版式给）
 func TestPreBreakURL(t *testing.T) {
 	const winSuffix = "&win=prebreak"

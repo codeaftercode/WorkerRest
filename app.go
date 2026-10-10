@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
 // Go + Wails v3 的后端。前端复用 Electron 版 renderer 的产物，只通过 shim.js 把
@@ -23,10 +24,13 @@ import (
 type App struct {
 	app *application.App
 
-	mu    sync.Mutex
-	wins  map[string]*application.WebviewWindow
-	sess  *BreakInfo
-	start time.Time
+	mu   sync.Mutex
+	wins map[string]*application.WebviewWindow
+	// breakWins 休息提醒窗口（每块目标屏一个，见 ShowBreakWindow；a.mu 保护）。
+	// 不进 wins map：wins 的键按窗口名寻址，而多屏下每块屏一个窗、同名会互相覆盖。
+	breakWins []*application.WebviewWindow
+	sess      *BreakInfo
+	start     time.Time
 
 	cfg       *Settings // 整份配置（见 settings.go 的说明；保存时会整体替换指针）
 	rolesRoot string
@@ -35,7 +39,7 @@ type App struct {
 	// 台词选取：random 用 rng（测试可固定种子），sequence 的游标按 key 记忆
 	rng      *rand.Rand
 	cursor   map[string]int
-	roleTurn int // 角色本体按顺序轮换时的游标
+	roleTurn int // 督休专员本体按顺序轮换时的游标
 
 	// 最近一次检查更新结果（内存态、不落盘；与 Electron 版 updateStatus 同语义）
 	updateStatus map[string]any
@@ -101,7 +105,7 @@ func NewApp(app *application.App) *App {
 	// 内置提示音随包目录：<resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）
 	builtinSoundDirFn = func() string { return filepath.Join(a.resourcesRoot(), "sounds") }
 	a.cfg = loadSettings(a.resourcesRoot())
-	// 旧版「角色数据存 settings.json」→ 角色目录 role.json：一次性迁移，迁移了就当场落盘
+	// 旧版「督休专员数据存 settings.json」→ 督休专员目录 role.json：一次性迁移，迁移了就当场落盘
 	// （对应 electron/main.ts 的 `if (migrateLegacyRoles(settings)) saveSettings(settings)`）。
 	// 必须在 loadSettings 之后 —— 迁移要读归一化后的 supervisor 配置，还要写 role.json。
 	if migrateLegacyRoles(a.cfg.Raw(), a.rolesRoot) {
@@ -116,7 +120,7 @@ func NewApp(app *application.App) *App {
 func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
 	ap := a.cfg.AppearanceCfg()
 	log.Printf("[boot] 启动完成 engine=go+wails3 serverMode=%v", serverMode)
-	log.Printf("[boot] 角色目录 %s（扫描到 %d 个角色）", a.rolesRoot, len(scanRoles(a.rolesRoot)))
+	log.Printf("[boot] 督休专员目录 %s（扫描到 %d 个督休专员）", a.rolesRoot, len(scanRoles(a.rolesRoot)))
 	log.Printf("[boot] 配置 %s；外观 %s %.0f%%x%.0f%%，短休息 %d ms",
 		orNone(a.cfg.Path()), ap.Color, ap.WidthPct, ap.HeightPct, a.cfg.Break("short").DurationMs)
 	// 前端契约自检：shim.js 按名字调用绑定，JS 侧拼错没有任何编译期检查，
@@ -260,18 +264,18 @@ func isDevBuild(exe string) bool {
 
 // buildSupervisorSession 组装下发给渲染层的督休专员信息：
 // 与 electron/src/supervisor.ts 的 buildSupervisorSession 同规则——按 selection
-// 从角色目录里选一个角色，随机取一条劝说台词兜底，命令台词从该角色 role.json 抽。
-// 关掉开关、没有可用角色、立绘读不出来时返回 nil，渲染层退回无角色布局。
+// 从督休专员目录里选一个督休专员，随机取一条劝说台词兜底，命令台词从该督休专员 role.json 抽。
+// 关掉开关、没有可用督休专员、立绘读不出来时返回 nil，渲染层退回无督休专员布局。
 func (a *App) buildSupervisorSession(force bool, forceKey string) *SupStageInfo {
 	return a.buildSupervisorSessionWith(a.cfg.SupervisorCfg(), force, forceKey)
 }
 
 // buildSupervisorSessionWith 同上，但允许传入一份**未落盘**的督导配置覆盖：
-// 设置页调整角色选择后立刻要预览，此时配置还在表单里、没保存到磁盘。
+// 设置页调整督休专员选择后立刻要预览，此时配置还在表单里、没保存到磁盘。
 //
 // 顶层「督休专员-启用」开关**始终**生效：预览窗与真实休息一视同仁——未启用时
 // 一律不显示立绘与对话框（设置页点「预览」也应如实反映这个勾选状态）。
-// force 现在只用于**绕过单个角色的启用**（预览某个已停用的角色时仍要能看到效果），
+// force 现在只用于**绕过单个督休专员的启用**（预览某个已停用的督休专员时仍要能看到效果），
 // 不再绕过顶层总开关。
 func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, forceKey string) *SupStageInfo {
 	if !cfg.Enabled {
@@ -291,7 +295,7 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 	var picked *Role
 	switch {
 	case forceKey != "":
-		// 预览指定的角色：无视 enabled（预览要能看到已关闭角色的效果）
+		// 预览指定的督休专员：无视 enabled（预览要能看到已关闭督休专员的效果）
 		for i := range usable {
 			if usable[i].Key == forceKey {
 				picked = &usable[i]
@@ -307,7 +311,7 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 			picked = &pool[a.roleTurn%len(pool)]
 			a.roleTurn = (a.roleTurn + 1) % len(pool)
 		}
-	default: // fixed：取指定角色，取不到（或已禁用）回退第一个可用角色
+	default: // fixed：取指定督休专员，取不到（或已禁用）回退第一个可用督休专员
 		for i := range usable {
 			if usable[i].Key == cfg.FixedKey && (force || usable[i].Enabled) {
 				picked = &usable[i]
@@ -339,9 +343,9 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 		Gaze:     cfg.Gaze,
 		Geom:     &picked.Geom,
 		Lines: SupLines{
-			// 第一段兜底：提醒内容为空时角色不至于哑口（正常由渲染层优先用提醒的提醒内容）
+			// 第一段兜底：提醒内容为空时督休专员不至于哑口（正常由渲染层优先用提醒的提醒内容）
 			Urge: pickOne(urgeLines, a.rng),
-			// 第二段（命令）：该角色 role.json 的台词池（空池返回空串，渲染层沿用第一段台词）
+			// 第二段（命令）：该督休专员 role.json 的台词池（空池返回空串，渲染层沿用第一段台词）
 			Command: pickRoleLine(picked.Messages, picked.Key, a.cursor, a.rng),
 		},
 	}
@@ -352,7 +356,7 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 //
 // sup 是设置页表单里**当前**的督导配置（可能还没落盘），null 时用磁盘上的配置。
 // 与弹窗预览的区别：同样尊重顶层「启用」开关（未启用返回 nil，页面据此隐藏立绘与对话框），
-// 但 force=true 仍可绕过单个角色的启用（预览某个已停用的角色），forceKey 指定要预览的角色。
+// 但 force=true 仍可绕过单个督休专员的启用（预览某个已停用的督休专员），forceKey 指定要预览的督休专员。
 func (a *App) SupervisorPreview(sup map[string]any, key string) *SupStageInfo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -373,7 +377,7 @@ func (a *App) SupervisorPreview(sup map[string]any, key string) *SupStageInfo {
 	return a.buildSupervisorSessionWith(cfg, true, key)
 }
 
-// enabledRoles 过滤掉已禁用角色（force=true 预览时不过滤）
+// enabledRoles 过滤掉已禁用督休专员（force=true 预览时不过滤）
 func (a *App) enabledRoles(all []Role, force bool) []Role {
 	if force {
 		return all
@@ -389,7 +393,7 @@ func (a *App) enabledRoles(all []Role, force bool) []Role {
 
 // pickMessage 选本次要显示的提醒内容（与 Electron 版 pickMessageOrName 同规则）：
 // 固定取 fixedId，顺序轮换，随机等概率；一条都没有时用提醒名称兜底，保证窗口不空。
-// 返回的切片至少 1 条——渲染层把它整块渲染，同时把第 0 条当角色第一段台词。
+// 返回的切片至少 1 条——渲染层把它整块渲染，同时把第 0 条当督休专员第一段台词。
 //
 // kind 可以是 'short' / 'long' / 'takeout'，也可以是自定义提醒的 id（各有一套自己的池）。
 func (a *App) pickMessage(kind, fallbackName string) []string {
@@ -411,7 +415,7 @@ func (a *App) pickMessage(kind, fallbackName string) []string {
 		return []string{fallbackName}
 	}
 	if rm.Order == "sequence" {
-		// 顺序游标按「类别」记忆（角色台词用同一张表的另一个键，互不干扰）
+		// 顺序游标按「类别」记忆（督休专员台词用同一张表的另一个键，互不干扰）
 		key := "msg-" + kind
 		cur := a.cursor[key] % len(pool)
 		a.cursor[key] = (cur + 1) % len(pool)
@@ -473,12 +477,12 @@ func (a *App) showBreakSession(kind string, preview bool, forceKey string) strin
 // 播一次提示音（对应 Electron 的 break-end → playConfiguredSound）。
 func (a *App) closeBreakWindows() {
 	a.mu.Lock()
-	w := a.wins["break"]
-	delete(a.wins, "break")
+	ws := a.breakWins
+	a.breakWins = nil
 	info := a.sess
 	a.sess = nil
 	a.mu.Unlock()
-	if w != nil {
+	for _, w := range ws {
 		w.Close()
 	}
 	a.playConfiguredSound()
@@ -547,21 +551,17 @@ func (a *App) takeoutFiredSnapshot() map[string]bool {
 
 // ---------- 窗口 ----------
 
-// breakWindowBounds 提醒窗口的位置与大小：与 Electron 版 breakWindow.ts 同规则——
-// 主显示器工作区的 widthPct × heightPct，居中；全屏时铺满工作区。
-func (a *App) breakWindowBounds() (x, y, w, h int) {
-	x, y, w, h = 60, 60, 720, 520
-	cfg := a.cfgSnapshot().AppearanceCfg()
-	if sc := a.app.Screen.GetPrimary(); sc != nil {
-		wa := sc.WorkArea
-		if cfg.Fullscreen {
-			return wa.X, wa.Y, wa.Width, wa.Height
-		}
-		w = int(float64(wa.Width) * cfg.WidthPct / 100)
-		h = int(float64(wa.Height) * cfg.HeightPct / 100)
-		x = wa.X + (wa.Width-w)/2
-		y = wa.Y + (wa.Height-h)/2
+// breakBoundsFor 提醒窗口在**指定显示器**工作区上的位置与大小：与 Electron 版
+// breakWindow.ts 同规则——该屏工作区的 widthPct × heightPct，居中；全屏时铺满工作区。
+// 纯函数，多屏下对每块目标屏各算一次（单测直接验）。
+func breakBoundsFor(wa application.Rect, cfg AppearanceConfig) (x, y, w, h int) {
+	if cfg.Fullscreen {
+		return wa.X, wa.Y, wa.Width, wa.Height
 	}
+	w = int(float64(wa.Width) * cfg.WidthPct / 100)
+	h = int(float64(wa.Height) * cfg.HeightPct / 100)
+	x = wa.X + (wa.Width-w)/2
+	y = wa.Y + (wa.Height-h)/2
 	if w < 320 {
 		w = 320
 	}
@@ -574,16 +574,22 @@ func (a *App) breakWindowBounds() (x, y, w, h int) {
 // ShowBreakWindow 弹出休息提醒窗口（托盘 / 设置页按钮 / 调度器都走这里）。
 // 无头（-tags server）构建下没有原生窗口，跳过创建——会话数据仍然构建，
 // 因此无头构建可以完整验证「绑定 → 会话 JSON」这条链路。
+//
+// 多屏：按「在所有屏幕显示提醒窗口」开关对每块目标屏各建一个窗（与外卖窗口同策略，
+// 见 targetDisplays）。已有窗口在场时只唤起不重建。
 func (a *App) ShowBreakWindow(kind string) {
 	if serverMode {
 		log.Printf("[win] server 模式无原生窗口，跳过创建 break 窗口（会话已就绪）")
 		return
 	}
 	a.mu.Lock()
-	if w, ok := a.wins["break"]; ok && w != nil {
+	if len(a.breakWins) > 0 {
+		ws := a.breakWins
 		a.mu.Unlock()
-		w.Show()
-		w.Focus()
+		for _, w := range ws {
+			w.Show()
+			w.Focus()
+		}
 		return
 	}
 	a.mu.Unlock()
@@ -596,30 +602,59 @@ func (a *App) ShowBreakWindow(kind string) {
 		supFlag = "1"
 	}
 
-	x, y, w, h := a.breakWindowBounds()
-	win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:             "break",
-		Title:            "休息一下",
-		X:                x,
-		Y:                y,
-		Width:            w,
-		Height:           h,
-		Frameless:        true,
-		AlwaysOnTop:      a.cfgSnapshot().AppearanceCfg().AlwaysOnTop,
-		DisableResize:    true,
-		URL:              "/break.html?win=break&sup=" + supFlag,
-		BackgroundType:   application.BackgroundTypeTranslucent,
-		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
-		// 窗口身份经 URL 的 ?win=break 下发；JS 字段对 URL 页面不生效（仅占位）
-		JS: `window.__WR_WIN = "break";`,
-		// 无边框窗口在 Windows 上会留一圈原生装饰（阴影/描边），与 Electron 版一致地关掉
-		Windows: application.WindowsWindow{
-			DisableFramelessWindowDecorations: true,
-		},
-	})
+	ap := a.cfgSnapshot().AppearanceCfg()
+	var wins []*application.WebviewWindow
+	for _, display := range a.targetDisplays() {
+		x, y, w, h := breakBoundsFor(display.WorkArea, ap)
+		win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
+			Title:         "休息一下",
+			X:             x,
+			Y:             y,
+			Width:         w,
+			Height:        h,
+			Frameless:     true,
+			AlwaysOnTop:   ap.AlwaysOnTop,
+			DisableResize: true,
+			// 不设它 X/Y 会被无视：Wails 的 InitialPosition 零值 = 整窗居中
+			InitialPosition:  application.WindowXY,
+			URL:              "/break.html?win=break&sup=" + supFlag,
+			BackgroundType:   application.BackgroundTypeTranslucent,
+			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+			// 窗口身份经 URL 的 ?win=break 下发；JS 字段对 URL 页面不生效（仅占位）
+			JS: `window.__WR_WIN = "break";`,
+			// 无边框窗口在 Windows 上会留一圈原生装饰（阴影/描边），与 Electron 版一致地关掉
+			Windows: application.WindowsWindow{
+				DisableFramelessWindowDecorations: true,
+			},
+		})
+		// 窗口被系统 / 用户直接关掉（Alt+F4）时清掉引用：跨 tick 拿着已销毁的窗口
+		// 访问会抛错，且会让「已有窗口在场」的判断永久为真
+		win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
+			a.removeBreakWindow(win)
+		})
+		wins = append(wins, win)
+	}
 
 	a.mu.Lock()
-	a.wins["break"] = win
+	a.breakWins = wins
+	a.mu.Unlock()
+}
+
+// removeBreakWindow 单个休息窗口被直接关掉（Alt+F4）时从切片摘除；
+// 全部摘光时清掉会话（与「最后一个窗口被关闭」语义对齐）。
+func (a *App) removeBreakWindow(w *application.WebviewWindow) {
+	a.mu.Lock()
+	ws := a.breakWins
+	for i, x := range ws {
+		if x == w {
+			a.breakWins = append(ws[:i], ws[i+1:]...)
+			break
+		}
+	}
+	gone := len(a.breakWins) == 0
+	if gone {
+		a.sess = nil
+	}
 	a.mu.Unlock()
 }
 
@@ -644,18 +679,27 @@ func (a *App) ShowSettingsWindow() {
 }
 
 // CloseWindow 渲染层「关窗」入口（休息窗口的预览点任意处 / 设置窗口的关闭按钮）。
-// 外卖窗口是多窗口、存 a.takeoutWins（不在 a.wins），要单独走 closeTakeoutWindows。
+// 休息窗口是多窗口（每块目标屏一个，存 a.breakWins），点任意一个预览窗整组关掉；
+// 外卖窗口同理走 closeTakeoutWindows。
 func (a *App) CloseWindow(win string) {
 	if win == "takeout" {
 		a.closeTakeoutWindows()
 		return
 	}
+	if win == "break" {
+		a.mu.Lock()
+		ws := a.breakWins
+		a.breakWins = nil
+		a.sess = nil
+		a.mu.Unlock()
+		for _, w := range ws {
+			w.Close()
+		}
+		return
+	}
 	a.mu.Lock()
 	w := a.wins[win]
 	delete(a.wins, win)
-	if win == "break" {
-		a.sess = nil
-	}
 	a.mu.Unlock()
 	if w != nil {
 		w.Close()
@@ -776,8 +820,8 @@ func (a *App) SupActivity(win string) {
 }
 
 // PreviewBreak 弹一次预览：顶层「督休专员-启用」开关仍生效（未启用时预览窗直接不显示立绘，
-// 与设置页勾选状态一致）；forceKey 指定角色（空 = 按配置选），可绕过单个角色的启用
-// 以预览已停用的角色。预览窗口带「预览模式」角标、点任意处关闭，
+// 与设置页勾选状态一致）；forceKey 指定督休专员（空 = 按配置选），可绕过单个督休专员的启用
+// 以预览已停用的督休专员。预览窗口带「预览模式」角标、点任意处关闭，
 // 且不影响真实倒计时与统计——与 Electron 版 break:preview 同语义。
 //
 // 预览**完全不进调度器**：不消费 occurrence、不改 phase、不占会话（与 Electron 一致，
@@ -854,7 +898,7 @@ func (a *App) AppInfo() map[string]any {
 	}
 }
 
-// ListRoles 角色目录扫描结果（预览图为 data URL，设置页角色列表用）
+// ListRoles 督休专员目录扫描结果（预览图为 data URL，设置页督休专员列表用）
 func (a *App) ListRoles() []Role {
 	return scanRoles(a.rolesRoot)
 }

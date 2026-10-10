@@ -146,15 +146,18 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 		x, y, w, h = preBreakBounds(sc.WorkArea, info.Custom)
 	}
 	win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
-		Name:             preBreakWindowName,
-		Title:            "即将休息",
-		X:                x,
-		Y:                y,
-		Width:            w,
-		Height:           h,
-		Frameless:        true,
-		AlwaysOnTop:      true,
-		DisableResize:    true,
+		Name:          preBreakWindowName,
+		Title:         "即将休息",
+		X:             x,
+		Y:             y,
+		Width:         w,
+		Height:        h,
+		Frameless:     true,
+		AlwaysOnTop:   true,
+		DisableResize: true,
+		// 不设它 X/Y 会被无视：Wails 的 InitialPosition 零值 = 整窗居中，
+		// 这就是此前提前提示窗跑到屏幕正中的根因
+		InitialPosition:  application.WindowXY,
 		URL:              preBreakURL(info),
 		BackgroundType:   application.BackgroundTypeTranslucent,
 		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
