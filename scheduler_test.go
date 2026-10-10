@@ -158,6 +158,51 @@ func TestSchedulerReplanReanchorsOnIntervalChange(t *testing.T) {
 	}
 }
 
+func TestSchedulerModeSwitchToFixedWithoutSlotsDropsReminder(t *testing.T) {
+	// 倒计时切固定时间且没有任何时刻：应立刻按「没有这条提醒」重算——
+	// 挂起线 / 下次休息 / 分组视图 / 今日时间线都不再出现按倒计时算出来的旧时刻
+	s, host := newTestSched(t, shortCountdown)
+	s.replan()
+	if s.stateCopy().NextAt == 0 {
+		t.Fatal("前置：应已安排短休息")
+	}
+	host.cfg = testSettings(t, `{"short":{"enabled":true,"mode":"fixed","durationMs":20000,"slots":[]},"long":{"enabled":false}}`)
+	s.refreshPlan()
+
+	st := s.stateCopy()
+	if st.NextAt != 0 || st.NextSource != nil {
+		t.Fatalf("切到无时刻的固定模式后不该再有安排，nextAt=%d source=%v", st.NextAt, st.NextSource)
+	}
+	if len(st.Lines) != 0 {
+		t.Fatalf("挂起线应为空，得到 %+v", st.Lines)
+	}
+	if st.Rest != nil {
+		t.Fatalf("分组视图 rest 应为 nil，得到 %+v", st.Rest)
+	}
+	sr := s.stateForRenderer()
+	if len(sr.Timeline) != 0 {
+		t.Fatalf("今日时间线应为空，得到 %+v", sr.Timeline)
+	}
+
+	// 自定义提醒同理
+	s3, host3 := newTestSched(t, `{"short":{"enabled":false},"long":{"enabled":false},
+		"customBreaks":[{"id":"cb-1","name":"喝水提醒","config":{"enabled":true,"mode":"countdown","intervalMs":600000,"durationMs":15000}}]}`)
+	s3.replan()
+	if s3.stateCopy().NextAt == 0 {
+		t.Fatal("前置：自定义提醒应已安排")
+	}
+	host3.cfg = testSettings(t, `{"short":{"enabled":false},"long":{"enabled":false},
+		"customBreaks":[{"id":"cb-1","name":"喝水提醒","config":{"enabled":true,"mode":"fixed","durationMs":15000,"slots":[]}}]}`)
+	s3.refreshPlan()
+	st3 := s3.stateCopy()
+	if st3.NextAt != 0 || len(st3.Lines) != 0 || st3.Other != nil {
+		t.Fatalf("自定义提醒切固定无时刻后应全部消失，nextAt=%d lines=%+v other=%+v", st3.NextAt, st3.Lines, st3.Other)
+	}
+	if sr3 := s3.stateForRenderer(); len(sr3.Timeline) != 0 {
+		t.Fatalf("今日时间线应为空，得到 %+v", sr3.Timeline)
+	}
+}
+
 func TestSchedulerAllDisabledNoPlan(t *testing.T) {
 	s, _ := newTestSched(t, `{"short":{"enabled":false},"long":{"enabled":false}}`)
 	s.replan()

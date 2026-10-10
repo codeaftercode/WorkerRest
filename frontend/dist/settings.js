@@ -1309,6 +1309,11 @@
   }
   function setupCustomBreakCard(card, cb) {
     const id = cb.id;
+    // 「新增」出的卡片插在 bindAutoSave 之后，全局绑定扫不到它：卡内全部
+    // input/select 在这里显式补绑。漏绑的后果是触发方式/间隔/时长等改动不落盘、
+    // 调度器不重算 ——「倒计时切固定时间且无时刻」后下次提醒与今日时间线
+    // 仍显示按倒计时算出的旧时刻（bug 实测来源）。
+    for (const el of card.querySelectorAll("input, select")) bindAutoSaveEl(el);
     $(`${id}-mode`).addEventListener("change", () => {
       const c = breakCfg(id);
       if (!c) return;
@@ -4592,8 +4597,15 @@
   function bindAutoSave() {
     for (const el of document.querySelectorAll(".tab input, .tab select")) {
       if (el.closest("#tab-stats")) continue;
-      el.addEventListener("change", autoSave);
+      bindAutoSaveEl(el);
     }
+  }
+  // 单个控件补绑自动保存；dataset 标记防重复绑定（动态创建的卡片会和这里的
+  // 全量扫描先后碰到同一批控件）。change 而非 input：与设置页其余保存口径一致。
+  function bindAutoSaveEl(el) {
+    if (el.dataset.wrAutosave) return;
+    el.dataset.wrAutosave = "1";
+    el.addEventListener("change", autoSave);
   }
   async function init() {
     S = await window.api.getSettings();
