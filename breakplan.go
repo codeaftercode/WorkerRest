@@ -611,9 +611,14 @@ func filterConsumed(pool []PlannedBreak, skip map[string]bool) []PlannedBreak {
 // schedulerLines 调度器的全部挂起线（不含外卖——外卖窗口独立于休息调度）：
 // 固定时刻线各取下一跳、内置短/长共用倒计时线、每条自定义提醒各一条倒计时线，
 // 已消费的 occurrence 已剔除，按时刻升序。
-func schedulerLines(s *Settings, now int64, shortsSinceLong int, skip map[string]bool) []PlannedBreak {
+//
+// prev 是上一轮挂起的倒计时锚点（键 = 休息身份，见 Scheduler 的 prevCountdownAnchors）：
+// 仍未到期且未被消费的锚点原样沿用——设置页任意保存都会触发 replan，此前每一次
+// replan 都把倒计时按 now+interval 重新起算，用户已流逝的进度被无声清零。
+func schedulerLines(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]int64) []PlannedBreak {
 	lines := fixedLines(s, now)
 	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
+		cd.At = countdownAnchor(prev, cd.Type, now, skip, cd.At)
 		lines = append(lines, cd)
 	}
 	// 自定义提醒：每条各一条倒计时线（内置的短/长已由上面那条线统一代表）
@@ -621,18 +626,30 @@ func schedulerLines(s *Settings, now int64, shortsSinceLong int, skip map[string
 		if !c.Config.Enabled || c.Config.Mode != "countdown" {
 			continue
 		}
-		lines = append(lines, PlannedBreak{
+		l := PlannedBreak{
 			Type: c.ID, Name: c.Name, At: now + c.Config.IntervalMs, Source: "countdown",
-		})
+		}
+		l.At = countdownAnchor(prev, l.Type, now, skip, l.At)
+		lines = append(lines, l)
 	}
 	pool := filterConsumed(lines, skip)
 	sortPlans(pool)
 	return pool
 }
 
+// countdownAnchor 倒计时线的锚点：上一轮同身份的锚点仍未到期且未被消费时原样沿用
+// （倒计时进度跨 replan 保留，改间隔也从下一周期生效），否则按当前配置从 now 重新起算。
+// 到期、被跳过/立即休息（已消费）或该身份被删除后，自然回落到 fresh。
+func countdownAnchor(prev map[string]int64, typ string, now int64, skip map[string]bool, fresh int64) int64 {
+	if old, ok := prev[typ]; ok && old > now && !skip[occurrenceKey(typ, old)] {
+		return old
+	}
+	return fresh
+}
+
 // planNextBreak 算出下一次该休息的时刻；全部关闭 / 固定模式下没有启用条目时返回 false
-func planNextBreak(s *Settings, now int64, shortsSinceLong int, skip map[string]bool) (PlannedBreak, bool) {
-	pool := schedulerLines(s, now, shortsSinceLong, skip)
+func planNextBreak(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]int64) (PlannedBreak, bool) {
+	pool := schedulerLines(s, now, shortsSinceLong, skip, prev)
 	if len(pool) == 0 {
 		return PlannedBreak{}, false
 	}
@@ -684,18 +701,21 @@ func takeoutLine(s *Settings, now int64) (PlannedBreak, bool) {
 // 外卖 + 自定义提醒一组（「下次XX提醒」），两边互不混用。
 // 全局 next（planNextBreak）不含外卖 —— 外卖窗口独立于休息调度；分组视图把它算进
 // other 只是为了让状态卡能显示「下次外卖提醒还有多久」。
-func planNextBreakSplit(s *Settings, now int64, shortsSinceLong int, skip map[string]bool) PlanSplit {
+func planNextBreakSplit(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]int64) PlanSplit {
 	lines := fixedLines(s, now)
 	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
+		cd.At = countdownAnchor(prev, cd.Type, now, skip, cd.At)
 		lines = append(lines, cd)
 	}
 	for _, c := range s.CustomBreakList() {
 		if !c.Config.Enabled || c.Config.Mode != "countdown" {
 			continue
 		}
-		lines = append(lines, PlannedBreak{
+		l := PlannedBreak{
 			Type: c.ID, Name: c.Name, At: now + c.Config.IntervalMs, Source: "countdown",
-		})
+		}
+		l.At = countdownAnchor(prev, l.Type, now, skip, l.At)
+		lines = append(lines, l)
 	}
 	if tk, ok := takeoutLine(s, now); ok {
 		lines = append(lines, tk)

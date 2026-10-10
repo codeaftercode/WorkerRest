@@ -91,9 +91,9 @@ func TestDumpPlanForParity(t *testing.T) {
 		s := &Settings{raw: sc.Settings}
 		skip := setOfStrings(sc.Skip)
 
-		lines := schedulerLines(s, sc.Now, sc.SS, skip)
-		plan, ok := planNextBreak(s, sc.Now, sc.SS, skip)
-		split := planNextBreakSplit(s, sc.Now, sc.SS, skip)
+		lines := schedulerLines(s, sc.Now, sc.SS, skip, nil)
+		plan, ok := planNextBreak(s, sc.Now, sc.SS, skip, nil)
+		split := planNextBreakSplit(s, sc.Now, sc.SS, skip, nil)
 		fx := fixedNextMap(s, sc.Now, skip)
 		// 与 main.ts 的 stateForRenderer 同口径：shifts 用 fixedNext（参考侧覆盖过就用它的）、
 		// 挂起线用 lines（参考侧额外塞进来的残留线也一并接上）。

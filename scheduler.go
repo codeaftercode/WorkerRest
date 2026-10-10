@@ -165,6 +165,8 @@ func (s *Scheduler) resetCycle() {
 	}
 	s.mu.Lock()
 	s.state.ShortsSinceLong = 0
+	// 显式重置周期：挂起线清空，本次重排全部按当前配置重新起算（不保留旧倒计时进度）
+	s.state.Lines = []PlannedBreak{}
 	s.mu.Unlock()
 	s.scheduleNext()
 }
@@ -515,7 +517,26 @@ func (s *Scheduler) advanceCounter(id string) {
 	}
 }
 
-// replan 重算下一次休息（只改 state 里的字段，不发事件、不动 phase）
+// prevCountdownAnchors 收集挂起线里仍未到期的倒计时锚点（键 = 休息身份，同身份取最早）。
+// replan 重算时把它传回 schedulerLines / planNextBreakSplit，让还没到期的倒计时原样
+// 保留 —— 设置页任意保存触发的 replan 不再清零用户的倒计时进度（见 breakplan.go 的
+// countdownAnchor）。
+func prevCountdownAnchors(lines []PlannedBreak, now int64) map[string]int64 {
+	prev := map[string]int64{}
+	for _, l := range lines {
+		if l.Source != "countdown" || l.At <= now {
+			continue
+		}
+		if old, ok := prev[l.Type]; !ok || l.At < old {
+			prev[l.Type] = l.At
+		}
+	}
+	return prev
+}
+
+// replan 重算下一次休息（只改 state 里的字段，不发事件、不动 phase）。
+// 仍未到期的倒计时锚点原样保留：设置保存、导入等触发的重算只增删身份，
+// 不把已流逝的倒计时进度清零重计。
 func (s *Scheduler) replan() {
 	cfg := s.host.cfgSnapshot()
 	now := nowMs()
@@ -529,8 +550,10 @@ func (s *Scheduler) replan() {
 			delete(s.consumed, k)
 		}
 	}
+	// 上一轮仍未到期的倒计时锚点先收好（必须在覆盖 st.Lines 之前）：本轮原样沿用
+	prev := prevCountdownAnchors(st.Lines, now)
 	// 整份挂起线留给今日时间线用（state.lines）；planNextBreak 的口径就是它的首条
-	pool := schedulerLines(cfg, now, st.ShortsSinceLong, s.consumed)
+	pool := schedulerLines(cfg, now, st.ShortsSinceLong, s.consumed, prev)
 	st.Lines = pool
 	// 分组视图只给设置页状态卡用：短/长一组，外卖 + 自定义一组，互不混用。
 	// 全局 next（nextType/nextAt）语义不变，托盘不受影响。
@@ -550,9 +573,11 @@ func (s *Scheduler) replan() {
 }
 
 // refreshDerivedLocked 刷新状态卡用的派生视图（分组最近一条 + 各固定线「下次」时刻表）。
-// 调用方必须已持有 s.mu。
+// 调用方必须已持有 s.mu。倒计时锚点从当前挂起线收集：replan 里是新池（锚点已保留），
+// startBreak 消费后是旧线（刚消费那条已到期不会混入，其余身份的进度同样不被清掉）。
 func (s *Scheduler) refreshDerivedLocked(cfg *Settings, now int64) {
-	split := planNextBreakSplit(cfg, now, s.state.ShortsSinceLong, s.consumed)
+	prev := prevCountdownAnchors(s.state.Lines, now)
+	split := planNextBreakSplit(cfg, now, s.state.ShortsSinceLong, s.consumed, prev)
 	s.state.Rest = planRefOf(split.Builtin)
 	s.state.Other = planRefOf(split.Other)
 	s.state.FixedNext = fixedNextMap(cfg, now, s.consumed)
@@ -692,10 +717,12 @@ func (s *Scheduler) stateForRenderer() SchedulerState {
 // planSummary 日志用的计划摘要
 func (s *Scheduler) planSummary() string {
 	cfg := s.host.cfgSnapshot()
+	now := nowMs()
 	s.mu.Lock()
 	ssL := s.state.ShortsSinceLong
+	prev := prevCountdownAnchors(s.state.Lines, now)
 	s.mu.Unlock()
-	p, ok := planNextBreak(cfg, nowMs(), ssL, s.consumedCopy())
+	p, ok := planNextBreak(cfg, now, ssL, s.consumedCopy(), prev)
 	if !ok {
 		return describePlan(nil)
 	}

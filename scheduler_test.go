@@ -89,6 +89,40 @@ func TestSchedulerReplanCountdown(t *testing.T) {
 	}
 }
 
+func TestSchedulerReplanKeepsCountdownProgress(t *testing.T) {
+	// 设置页任意保存都会触发 refreshPlan → replan：未到期的倒计时不得被
+	// 重置回满间隔（用户已流逝的进度要保留），跳过/到期后才重新起算。
+	s, _ := newTestSched(t, shortCountdown)
+	s.replan()
+	first := s.stateCopy().NextAt
+
+	// 模拟时间流逝：用户已等了 4 分钟（像暂停恢复那样整体平移）
+	s.mu.Lock()
+	s.state.NextAt -= 4 * 60_000
+	for i := range s.state.Lines {
+		s.state.Lines[i].At = s.state.NextAt
+	}
+	s.mu.Unlock()
+
+	s.replan()
+	got := s.stateCopy()
+	want := first - 4*60_000
+	if got.NextAt != want {
+		t.Fatalf("replan 不该重置未到期的倒计时（应保留已流逝的 4 分钟），want=%d got=%d", want, got.NextAt)
+	}
+	if len(got.Lines) != 1 || got.Lines[0].At != got.NextAt {
+		t.Fatalf("挂起线应同步，得到 %+v", got.Lines)
+	}
+
+	// 跳过：该 occurrence 已消费，倒计时必须从头计时（不能沿用旧锚点）
+	s.skip()
+	got2 := s.stateCopy()
+	want2 := nowMs() + 600_000
+	if diff := got2.NextAt - want2; diff < -2000 || diff > 2000 {
+		t.Fatalf("跳过后倒计时应重新起算，want≈%d got=%d（差 %d）", want2, got2.NextAt, diff)
+	}
+}
+
 func TestSchedulerAllDisabledNoPlan(t *testing.T) {
 	s, _ := newTestSched(t, `{"short":{"enabled":false},"long":{"enabled":false}}`)
 	s.replan()
