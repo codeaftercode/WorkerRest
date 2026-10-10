@@ -896,19 +896,19 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 声音卡音乐列表：行与行之间留一条窄缝（比提醒内容列表的 8px 略小，不显松散） */
 #snd-music-list { display: flex; flex-direction: column; gap: 5px; }
 /* 播放方式：单一图标按钮（点击循环切换 单曲 / 随机 / 顺序），与「＋」并排紧贴于
-   「音乐列表」标题行右侧。两者都不带外框、直角、透明底，hover 浅底，与标题栏的
-   「▸音乐列表」「＋」按钮同一套观感（不设描边圆角容器）。图标按钮与「＋」等宽
-   （同 padding:0 14px），两者间以 1px 分隔线明显区分。图标区分三种模式：
-   单曲循环=带「1」的循环箭头、随机播放=交叉箭头、顺序循环=循环箭头；常驻只显示
-   图标，悬浮由浏览器原生 title 显示文字名称。 */
+   「音乐列表」标题行右侧，且紧贴标题、与左侧不再留空隙。两者都不带外框、直角、
+   透明底，hover 浅底，与标题栏的「▸音乐列表」「＋」按钮同一套观感。图标按钮与
+   「＋」等宽（同 padding:0 14px），左右各一条 1px 竖线与「＋」明显区分。图标区分
+   三种模式：单曲循环=带「1」的循环箭头、随机播放=交叉箭头、顺序循环=循环箭头；
+   常驻只显示图标，悬浮由浏览器原生 title 显示文字名称。 */
 .snd-music-actions {
   display: inline-flex; align-items: stretch; flex: none;
-  margin-left: 10px;
 }
 .snd-mode-btn {
   display: inline-flex; align-items: center; justify-content: center;
   border: none; background: transparent; cursor: pointer;
   font: inherit; color: var(--text-2); padding: 0 14px;
+  border-left: 1px solid var(--border);
   border-right: 1px solid var(--border);
 }
 .snd-mode-btn:hover { background: var(--accent-weak); color: var(--text); }
