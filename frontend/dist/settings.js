@@ -721,7 +721,6 @@
       // 未勾选不改磁贴样式，仅复选框呈未选态
       btn.className = "role-item";
       btn.dataset.key = r.key;
-      btn.title = r.name;
       const img = document.createElement("img");
       if (r.thumb) img.src = r.thumb;
       img.alt = r.name;
