@@ -895,16 +895,28 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .tk-item.drop-target { border-color: var(--accent); }
 /* 声音卡音乐列表：行与行之间留一条窄缝（比提醒内容列表的 8px 略小，不显松散） */
 #snd-music-list { display: flex; flex-direction: column; gap: 5px; }
-/* 播放方式：作为音乐列表内的分组首行，与下方列表协调——左小标签 + 右下拉，
-   底部细分割线把「全局播放策略」和「曲目清单」清晰分开；不再用 180px 标签列网格，
-   避免与列表项的视觉语言冲突 */
+/* 播放方式：音乐列表内的分组首行，靠右放置三向分段开关；底部细分割线把
+   「全局播放策略」与「曲目清单」分开，与列表项视觉协调（不再用下拉 + 标签） */
 .snd-mode-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  display: flex; align-items: center; justify-content: flex-end;
   padding: 2px 2px 10px; margin-bottom: 10px;
   border-bottom: 1px solid var(--border);
 }
-.snd-mode-label { font-size: 13px; color: var(--text-2); flex-shrink: 0; }
-.snd-mode-row select { width: 160px; }
+/* 三向分段开关：等宽三段，选中段填充主色；未选中为面板底 + 灰字 */
+.snd-mode-toggle {
+  display: inline-flex; align-items: stretch;
+  border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; background: var(--panel);
+}
+.snd-mode-opt {
+  border: none; background: none; cursor: pointer; font: inherit;
+  font-size: 13px; color: var(--text-2);
+  padding: 6px 12px; line-height: 1.4;
+  border-right: 1px solid var(--border);
+}
+.snd-mode-opt:last-child { border-right: none; }
+.snd-mode-opt:hover:not(.active) { background: var(--accent-weak); color: var(--text); }
+.snd-mode-opt.active { background: var(--accent); color: #fff; }
 /* 声音卡音乐列表：名称占满中间剩余宽度，过长省略 */
 .snd-music-name {
   flex: 1 1 0; min-width: 0;

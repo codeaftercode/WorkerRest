@@ -134,12 +134,11 @@
             </div>
             <div class="msg-body hidden" id="snd-music-body">
               <div class="snd-mode-row">
-                <span class="snd-mode-label">播放方式</span>
-                <select id="snd-mode">
-                  <option value="single">单曲循环</option>
-                  <option value="random">随机播放</option>
-                  <option value="sequence">顺序循环</option>
-                </select>
+                <div class="snd-mode-toggle" id="snd-mode" role="group" aria-label="播放方式">
+                  <button type="button" class="snd-mode-opt" data-mode="single">单曲循环</button>
+                  <button type="button" class="snd-mode-opt" data-mode="random">随机播放</button>
+                  <button type="button" class="snd-mode-opt" data-mode="sequence">顺序循环</button>
+                </div>
               </div>
               <div id="snd-music-list"></div>
             </div>

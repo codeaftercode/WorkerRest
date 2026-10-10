@@ -1030,6 +1030,13 @@
       });
     }
   }
+  function setSoundModeUI(mode) {
+    const box = $("snd-mode");
+    if (!box) return;
+    box.querySelectorAll(".snd-mode-opt").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === mode);
+    });
+  }
   var pad22 = (n) => String(n).padStart(2, "0");
   function dayDiffOf(at) {
     const d = new Date(at);
@@ -1478,7 +1485,7 @@
     $("snd-enabled").checked = S.sound.enabled;
     $("snd-volume").value = String(S.sound.volume);
     $("snd-volume-val").textContent = `${Math.round(S.sound.volume * 100)}%`;
-    $("snd-mode").value = S.sound.mode ?? "single";
+    setSoundModeUI(S.sound.mode ?? "single");
     renderSoundMusic();
     $("sup-enabled").checked = S.supervisor.enabled;
     applySelectionUI();
@@ -1527,7 +1534,8 @@
     S.allScreens = $("ap-allScreens").checked;
     S.sound.enabled = $("snd-enabled").checked;
     S.sound.volume = parseFloat($("snd-volume").value);
-    S.sound.mode = $("snd-mode").value;
+    const modeOpt = $("snd-mode").querySelector(".snd-mode-opt.active");
+    S.sound.mode = modeOpt ? modeOpt.dataset.mode : "single";
     S.supervisor.enabled = $("sup-enabled").checked;
     S.takeout.enabled = $("tk-enabled").checked;
     S.takeout.leadMin = clampNum($("tk-lead"), TAKEOUT_LEAD_LIMITS[0], TAKEOUT_LEAD_LIMITS[1], TAKEOUT_LEAD_DEFAULT);
@@ -4591,9 +4599,13 @@
       const open = body.classList.toggle("hidden") === false;
       $("snd-music-panel").classList.toggle("open", open);
     });
-    $("snd-mode").addEventListener("change", () => {
-      S.sound.mode = $("snd-mode").value;
-      renderSoundMusic();
+    $("snd-mode").querySelectorAll(".snd-mode-opt").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        S.sound.mode = btn.dataset.mode;
+        setSoundModeUI(S.sound.mode);
+        renderSoundMusic();
+        autoSave();
+      });
     });
     $("snd-music-add").addEventListener("click", async () => {
       const r = await window.api.addMusicSound();
