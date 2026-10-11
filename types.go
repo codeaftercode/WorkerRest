@@ -2,7 +2,7 @@ package main
 
 // 会话与状态的数据结构：字段名/JSON 形状必须与现有渲染层（renderer/break.ts、
 // takeout.ts、supervisorStage.ts）期望的结构**逐字对齐**——渲染层代码原样复用，
-// 只把 window.api 的实现从 Electron IPC 换成 Wails 绑定（见 frontend/dist/shim.js）。
+// 只把 window.api 的实现从 上一版 IPC 换成 Wails 绑定（见 frontend/dist/shim.js）。
 
 // Appearance 提醒窗口外观（颜色 / 透明度 / 模糊 / 全屏）
 type Appearance struct {
@@ -27,7 +27,7 @@ type SupLines struct {
 }
 
 // SupStageInfo 督休专员在提醒窗口里的出场信息。
-// 字段与 electron/src/supervisor.ts 的 SupervisorSessionInfo 逐字对齐 ——
+// 字段与 历史源码/supervisor.ts 的 SupervisorSessionInfo 逐字对齐 ——
 // 设置页的预览面板直接读它（supPreview.geom / supPreview.lines.urge / .command），
 // 少一个字段就是「Cannot read properties of undefined」把预览打断。
 type SupStageInfo struct {
@@ -52,7 +52,7 @@ type BreakInfo struct {
 	Supervisor *SupStageInfo `json:"supervisor"`
 }
 
-// TakeoutInfo 外卖提醒会话（与 electron/src/types.ts 的 TakeoutSessionInfo 逐字对齐）。
+// TakeoutInfo 外卖提醒会话（与 历史源码/types.ts 的 TakeoutSessionInfo 逐字对齐）。
 // 渲染层 takeout.ts 读 id / at / hour / minute / firedAt / preview / meal / leadMin /
 // postponeMin / postponedCount / message / appearance / supervisor / redPacket / redPacketData；
 // slot 额外保留给主进程「推迟」记账（takeout:action 按 cur.slot 重弹），渲染层不读也无妨。

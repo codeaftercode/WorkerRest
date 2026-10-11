@@ -9,18 +9,18 @@ import (
 	"strings"
 )
 
-// 角色目录迁移：把旧版「角色数据存 settings.json」一次性搬进角色目录 role.json。
-// 逐字对应 electron/src/supervisor.ts 的 migrateLegacyRoles（见那处的完整注释）。
+// 督休专员目录迁移：把旧版「督休专员数据存 settings.json」一次性搬进督休专员目录 role.json。
+// 逐字对应 历史源码/supervisor.ts 的 migrateLegacyRoles（见那处的完整注释）。
 //
-// 与 Electron 版的一个有意差异：Go 侧的角色目录是**单一落点**（rolesRoot 就是
+// 与 上一版的一个有意差异：Go 侧的督休专员目录是**单一落点**（rolesRoot 就是
 // 数据目录，没有「随包模板 → %APPDATA%/roles」的 ensureRolesDir 分离），所以迁移
 // 直接写进 rolesRoot 本身。模板目录里的 role.json 自带默认配置，迁移用旧数据覆盖它。
 
 // migrateLegacyRoles 执行一次性迁移，返回是否发生了迁移（调用方据此落盘）。
 //
-// raw = 整份配置的 map（含 supervisor 子对象）；rolesRoot = 角色目录落点。
-// 迁移内容：内置角色的名称/启用/几何/台词覆盖模板 role.json（旧列表里没有的内置角色
-// 连目录一起删，不回补）、自定义角色按旧 key 建目录并搬图、fixedKey 键名重映射、
+// raw = 整份配置的 map（含 supervisor 子对象）；rolesRoot = 督休专员目录落点。
+// 迁移内容：内置督休专员的名称/启用/几何/台词覆盖模板 role.json（旧列表里没有的内置督休专员
+// 连目录一起删，不回补）、自定义督休专员按旧 key 建目录并搬图、fixedKey 键名重映射、
 // 迁完删掉 supervisor 里的全部旧键并置 rolesMigrated=true。
 func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 	sup, ok := raw["supervisor"].(map[string]any)
@@ -30,9 +30,9 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 	if sup["rolesMigrated"] == true {
 		return false
 	}
-	// 全新安装（或已是角色目录版配置）：settings 里没有任何旧版遗留键。
-	// 必须在这里短路 —— 否则下面会把「旧配置里没有这个内置角色」误判成「用户删过」，
-	// 首次启动就把模板里刚就位的内置角色目录全部删光。
+	// 全新安装（或已是督休专员目录版配置）：settings 里没有任何旧版遗留键。
+	// 必须在这里短路 —— 否则下面会把「旧配置里没有这个内置督休专员」误判成「用户删过」，
+	// 首次启动就把模板里刚就位的内置督休专员目录全部删光。
 	hasLegacy := false
 	for _, k := range []string{"roles", "geom", "messagesByRole", "image", "builtin", "customs"} {
 		if _, exists := sup[k]; exists {
@@ -42,7 +42,7 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 	}
 	if !hasLegacy {
 		sup["rolesMigrated"] = true
-		log.Printf("[supervisor] 无旧版角色配置（全新安装），跳过迁移")
+		log.Printf("[supervisor] 无旧版督休专员配置（全新安装），跳过迁移")
 		return true
 	}
 
@@ -74,7 +74,7 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 	}
 	migratedNames := []string{}
 
-	// ① 内置角色：模板 role.json 就位 → 覆盖用户数据；被用户删过 → 目录一并删除
+	// ① 内置督休专员：模板 role.json 就位 → 覆盖用户数据；被用户删过 → 目录一并删除
 	for _, e := range entries {
 		if !isBuiltinRole(e.Key) {
 			continue
@@ -85,7 +85,7 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 		}
 		if !legacyPresent[legacyKey] {
 			if removeRoleDir(rolesRoot, e.Key) {
-				log.Printf("[supervisor] 迁移：内置角色 %s 在旧配置中已被删除，目录一并移除", e.Key)
+				log.Printf("[supervisor] 迁移：内置督休专员 %s 在旧配置中已被删除，目录一并移除", e.Key)
 			}
 			continue
 		}
@@ -117,7 +117,7 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 		}
 	}
 
-	// ② 自定义角色：按旧 key 建目录，把配置目录里的图片副本搬进来
+	// ② 自定义督休专员：按旧 key 建目录，把配置目录里的图片副本搬进来
 	for _, r := range oldRoles {
 		key, _ := r["key"].(string)
 		path, _ := r["path"].(string)
@@ -135,23 +135,23 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 			name = key
 		}
 		// createRoleDir 内部按 sha1 摘要算目录 key（= custom-<摘要>），与旧 key 的语义一致：
-		// 旧版自定义角色的 key 就是图片内容摘要，所以正常情况下两者相同；图片若被改过，
-		// 摘要会变、目录 key 跟着变，这时以**摘要目录**为准（与 Electron 一致 —— 只 warn，
+		// 旧版自定义督休专员的 key 就是图片内容摘要，所以正常情况下两者相同；图片若被改过，
+		// 摘要会变、目录 key 跟着变，这时以**摘要目录**为准（与上一版 一致 —— 只 warn，
 		// 不把目录改回旧 key）。
 		created := createRoleDir(rolesRoot, name, path)
 		if created == "" {
-			continue // 图片读不进 / 超 20MB / 建目录失败：跳过这个角色
+			continue // 图片读不进 / 超 20MB / 建目录失败：跳过这个督休专员
 		}
 		targetKey := created
 		if created != key {
-			log.Printf("[supervisor] 迁移：自定义角色摘要键不一致 old=%s new=%s", key, created)
+			log.Printf("[supervisor] 迁移：自定义督休专员摘要键不一致 old=%s new=%s", key, created)
 		}
 		if cfg, ok := readRoleFile(rolesRoot, targetKey); ok {
 			geom := asMap(oldGeom[key])
 			msgs := asMap(oldMsgs[key])
 			cfg.Name = strings.TrimSpace(name)
 			if cfg.Name == "" {
-				cfg.Name = "自定义角色"
+				cfg.Name = "自定义督休专员"
 			}
 			cfg.Enabled = r["enabled"] != false
 			if len(geom) > 0 {
@@ -179,12 +179,12 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 	for _, k := range []string{"roles", "geom", "messagesByRole", "rolesSeeded", "image", "builtin", "customs"} {
 		delete(sup, k)
 	}
-	log.Printf("[supervisor] 角色数据迁移完成：%d 个角色写入 role.json（fixedKey=%s，settings.json 旧键已清除）",
+	log.Printf("[supervisor] 督休专员数据迁移完成：%d 个督休专员写入 role.json（fixedKey=%s，settings.json 旧键已清除）",
 		len(migratedNames), fixedKey)
 	return true
 }
 
-// isBuiltinRole 是否内置角色（按清单 key）
+// isBuiltinRole 是否内置督休专员（按清单 key）
 func isBuiltinRole(key string) bool {
 	for _, m := range builtinRoleMeta {
 		if m.key == key {
@@ -214,7 +214,7 @@ func hasRoleKey(roles []Role, key string) bool {
 	return false
 }
 
-// firstEnabledRole 第一个启用的角色 key，全禁用时取第一个；空返回空串
+// firstEnabledRole 第一个启用的督休专员 key，全禁用时取第一个；空返回空串
 func firstEnabledRole(roles []Role) string {
 	for _, r := range roles {
 		if r.Enabled {
@@ -227,10 +227,10 @@ func firstEnabledRole(roles []Role) string {
 	return ""
 }
 
-// createRoleDir 新建自定义角色目录：把本地图片复制成 figure + preview，算 sha1 摘要做 key。
-// 对应 supervisor.ts 的 createRoleDir。与 Electron 的差异：preview 直接复制原图（Go 侧
+// createRoleDir 新建自定义督休专员目录：把本地图片复制成 figure + preview，算 sha1 摘要做 key。
+// 对应 supervisor.ts 的 createRoleDir。与 上一版的差异：preview 直接复制原图（Go 侧
 // 没有 nativeImage 缩图，原生选图 + 生成缩略图是占位项），所以 preview 用与 figure 相同的扩展名。
-// 返回新角色目录的 key（目录已存在时返回既有 key）。
+// 返回新督休专员目录的 key（目录已存在时返回既有 key）。
 func createRoleDir(rolesRoot, name, src string) string {
 	st, err := os.Stat(src)
 	if err != nil || !st.Mode().IsRegular() || st.Size() > 20*1024*1024 {
@@ -268,7 +268,7 @@ func createRoleDir(rolesRoot, name, src string) string {
 		Messages: RoleMessages{Order: "random", Items: genericCommandItems()},
 	}
 	if cfg.Name == "" {
-		cfg.Name = "自定义角色"
+		cfg.Name = "自定义督休专员"
 	}
 	if err := writeRoleFile(rolesRoot, key, cfg); err != nil {
 		return ""
@@ -276,7 +276,7 @@ func createRoleDir(rolesRoot, name, src string) string {
 	return key
 }
 
-// genericCommandItems 新建自定义角色时的命令台词种子（通用命令库）。
+// genericCommandItems 新建自定义督休专员时的命令台词种子（通用命令库）。
 // 对应 supervisor.ts 的 genericCommandItems（Go 侧没有内置专属台词库，统一用通用命令）。
 func genericCommandItems() []RoleMessageItem {
 	lines := []string{

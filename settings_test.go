@@ -9,10 +9,10 @@ import (
 
 // 归一化的快速回归。
 //
-// 为什么还需要它（已经有 scripts/verify_settings_parity.py 与 Electron 对拍）：
+// 为什么还需要它（已经有 scripts/verify_settings_parity.py 与上一版 对拍）：
 // 那个对拍要起 node + 无头服务，跑一轮十几秒；这里是纯函数、毫秒级，`go test` 顺手就跑了。
 // 两边分工：**这里拦住「规则写错了」**（老配置迁移、越界夹紧、种子条目），
-// **对拍拦住「与 Electron 不一致」**（包括这里没想到的规则）。
+// **对拍拦住「与上一版 不一致」**（包括这里没想到的规则）。
 // 真实的老配置样本见 verify_settings_parity.py 的 legacy_fixture / rich_fixture。
 
 func TestNormalizeLoadLegacyMigration(t *testing.T) {
@@ -69,7 +69,7 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 		t.Errorf("非布尔的 startMinimized 应回退 false，得到 %v", raw["startMinimized"])
 	}
 
-	// appName 归一化**不发生在加载路径**（Electron 也不做），原样保留
+	// appName 归一化**不发生在加载路径**（上一版 也不做），原样保留
 	if got := raw["appName"]; got != "  老  配置  " {
 		t.Errorf("加载路径不应改写 appName，得到 %q", got)
 	}

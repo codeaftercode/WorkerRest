@@ -1,6 +1,6 @@
 "use strict";
 (() => {
-  // electron/src/types.ts
+  // 历史源码/types.ts
   var SUP_GEOM_DEFAULT = { sizePct: 72, posXPct: 4, posYPct: 0, flip: false };
   var SUP_GEOM_LIMITS = {
     sizePct: [20, 100],
@@ -131,7 +131,7 @@
     }
   }
 
-  // electron/src/fixedTime.ts
+  // 历史源码/fixedTime.ts
   var pad2 = (n) => String(n).padStart(2, "0");
   function slotTimeText(slot) {
     return `${pad2(slot.hour)}:${pad2(slot.minute)}`;
@@ -2848,7 +2848,7 @@
     return `\u4F11\u606F\u62A5\u8868_${ul}_${fp.s}_${fp.e}.${ext}`;
   }
   // 报表导出统一走「另存为」对话框：blob 转 base64 交给 Go 侧 ExportReport，
-  // 由用户选择存储路径（Electron 时代的 a.download 落点不可控，Wails 下也不可靠）。
+  // 由用户选择存储路径（上一版时代的 a.download 落点不可控，Wails 下也不可靠）。
   // 取消静默、失败 toast、成功 toast 落盘路径。
   async function saveExportFile(name, blob) {
     const b64 = await new Promise((res) => {
@@ -4847,21 +4847,6 @@
     });
     applyTitlebarMaximized(await window.api.windowMaximized());
     window.api.onWindowMaximized((max) => applyTitlebarMaximized(max));
-    $("d-export").addEventListener("click", () => {
-      void window.api.exportSettings();
-    });
-    $("d-import").addEventListener("click", async () => {
-      const ok = await window.api.importSettings();
-      if (ok) {
-        toast("\u914D\u7F6E\u5DF2\u5BFC\u5165");
-        S = await window.api.getSettings();
-        fillForm();
-        renderAllMsgLists();
-        renderTakeoutList();
-        await refreshSupervisorPreview();
-      } else toast("\u5BFC\u5165\u5931\u8D25\u6216\u5DF2\u53D6\u6D88");
-    });
-    $("d-openpath").addEventListener("click", () => void window.api.openSettingsPath());
     $("d-clearstats").addEventListener("click", () => {
       void (async () => {
         const ok = await confirmDialog({

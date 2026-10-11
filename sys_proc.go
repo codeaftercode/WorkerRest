@@ -8,14 +8,14 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// 系统进程枚举（Windows）—— electron/src/appProcess.ts 的 Go 版。
+// 系统进程枚举（Windows）—— 历史源码/appProcess.ts 的 Go 版。
 //
 // 用 kernel32 的 Toolhelp32 API：CreateToolhelp32Snapshot + Process32FirstW/NextW。
 // 相比起子进程跑 `tasklist` / `wmic`，这里没有 GBK 编码问题（宽字符直接读），
 // 也不用担心 Windows 11 24H2 起 `wmic` 已被移除；而且**不启动任何子进程**，
-// 在限制子进程的安全策略下同样能跑（Electron 版走 koffi 也是同一个理由）。
+// 在限制子进程的安全策略下同样能跑（上一版走 koffi 也是同一个理由）。
 //
-// x/sys/windows 已经把结构体与对齐处理好（Electron 版要拿 568/564 两个候选 dwSize
+// x/sys/windows 已经把结构体与对齐处理好（上一版要拿 568/564 两个候选 dwSize
 // 去试错，Go 侧 `unsafe.Sizeof` 直接就是对的），所以这里没有那段试错逻辑。
 //
 // 调用失败一律降级为 supported=false，绝不抛错 —— 应用自动暂停只是锦上添花的功能。

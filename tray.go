@@ -8,7 +8,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 系统托盘：替代 Electron 版的 tray.ts。v3 内置 SystemTray（v2 需第三方库）。
+// 系统托盘：替代 上一版的 tray.ts。v3 内置 SystemTray（v2 需第三方库）。
 //
 // 菜单结构与 tray.ts 的 buildMenu 逐项对齐：状态行（禁用）→ 立即休息 / 提前结束 →
 // 重置休息周期 → 暂停 / 恢复 → 设置… → 开机自启动（勾选框）→ 退出。
@@ -55,7 +55,7 @@ func (a *App) startTray() {
 		a.ShowSettingsWindow()
 	})
 	// 与设置页的「开机自启动」共用同一份 settings.autostart：勾哪儿都改配置 + 改注册表，
-	// 并把结果广播回设置页（Electron 版 toggleAutostartNow 的三件事）。
+	// 并把结果广播回设置页（上一版 toggleAutostartNow 的三件事）。
 	auto := menu.AddCheckbox("开机自启动", a.cfgSnapshot().Autostart())
 	auto.OnClick(func(_ *application.Context) {
 		a.toggleAutostart()
@@ -102,7 +102,7 @@ func (a *App) toggleAutostart() {
 	log.Printf("[tray] 开机自启动 → %v", now)
 }
 
-// refreshTray 按当前调度状态刷新托盘提示与菜单文案（对应 Electron 的 trayUI.refresh）
+// refreshTray 按当前调度状态刷新托盘提示与菜单文案（对应 上一版的 trayUI.refresh）
 func (a *App) refreshTray() {
 	a.mu.Lock()
 	tray, status, action, pause := a.tray, a.trayStatus, a.trayAction, a.trayPause

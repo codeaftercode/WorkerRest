@@ -14,7 +14,7 @@
 断言分三层：
   1. 静态资源可服务（/、/break.html、/wails/runtime.js）；
   2. 契约里每个「已接通」的绑定都能按名解析（不允许 "unknown bound method name"）；
-  3. 会话数据与**真实配置/角色目录**逐项对齐（时长、提醒内容、外观、角色名与几何）。
+  3. 会话数据与**真实配置/督休专员目录**逐项对齐（时长、提醒内容、外观、督休专员名与几何）。
 
 用法：python scripts/smoke_server.py [--port 29731] [--keep]
 退出码 0 = 全部通过；非 0 = 有失败项（会逐条打印）。
@@ -51,7 +51,7 @@ try:
 except Exception:
     pass
 
-# 内置角色的固定出场顺序（与 electron/src/supervisor.ts 的 BUILTIN_ROLE_META 同源）
+# 内置督休专员的固定出场顺序（与 历史源码/supervisor.ts 的 BUILTIN_ROLE_META 同源）
 BUILTIN_ROLE_ORDER = [
     "supervisor_default", "role_instructor", "role_executive", "role_mentor",
     "role_doctor", "role_coach", "role_warden", "role_shopkeeper", "role_ai",
@@ -274,7 +274,7 @@ def main():
             else:
                 check(not unknown, "绑定 %s 已注册（用错误参数探测，不真的执行）" % name, "status=%s %s" % (st, text[:160]))
 
-        # ---- 3. 数据与真实配置 / 角色目录对齐 ----
+        # ---- 3. 数据与真实配置 / 督休专员目录对齐 ----
         st, sid = call(base, "StartBreak", ["short"])
         check(st == 200 and isinstance(sid, str) and sid.startswith("short-"), "StartBreak 返回会话 id", "status=%s %s" % (st, sid))
 
@@ -312,7 +312,7 @@ def main():
         if isinstance(sup, dict):
             img = sup.get("image") or ""
             check(img.startswith("data:image/") and len(img) > 5000, "立绘以 data URL 下发", "prefix=%s len=%d" % (img[:22], len(img)))
-            check(bool(sup.get("name")), "角色有显示名", sup.get("name"))
+            check(bool(sup.get("name")), "督休专员有显示名", sup.get("name"))
             lines = sup.get("lines") or {}
             check(bool(lines.get("urge")), "第一段劝说台词非空", lines.get("urge"))
             check(bool(lines.get("command")), "第二段命令台词非空（来自 role.json 台词池）", lines.get("command"))
@@ -320,45 +320,45 @@ def main():
             check(all(k in geom for k in ("sizePct", "posXPct", "posYPct")),
                   "几何字段齐全（sizePct/posXPct/posYPct）", geom)
 
-            # 与真实配置里固定的那个角色目录对齐
+            # 与真实配置里固定的那个督休专员目录对齐
             fixed = (cfg.get("supervisor") or {}).get("fixedKey") if cfg else None
             if fixed:
                 rp = os.path.join(ROOT, "roles", fixed, "role.json")
                 if os.path.isfile(rp):
                     rc = read_json(rp)
                     check(sup.get("name") == rc.get("name"),
-                          "角色名 == roles/%s/role.json name" % fixed,
+                          "督休专员名 == roles/%s/role.json name" % fixed,
                           "%s vs %s" % (sup.get("name"), rc.get("name")))
                     rg = rc.get("geom") or {}
                     check(geom.get("sizePct") == rg.get("sizePct") and geom.get("posXPct") == rg.get("posXPct"),
-                          "角色几何 == roles/%s/role.json geom" % fixed,
+                          "督休专员几何 == roles/%s/role.json geom" % fixed,
                           "%s vs %s" % (geom, rg))
                     cmds = [i.get("text") for i in ((rc.get("messages") or {}).get("items") or []) if i.get("enabled")]
                     check(lines.get("command") in cmds,
-                          "命令台词取自该角色 role.json 的启用条目",
+                          "命令台词取自该督休专员 role.json 的启用条目",
                           repr(lines.get("command")))
                 else:
-                    print("   （角色 %s 的 role.json 不存在，跳过角色对齐）" % fixed)
+                    print("   （督休专员 %s 的 role.json 不存在，跳过督休专员对齐）" % fixed)
 
         # ---- ListRoles / AppInfo / GetState ----
         st, roles = call(base, "ListRoles", [])
-        check(st == 200 and isinstance(roles, list) and len(roles) > 0, "ListRoles 返回角色目录扫描结果",
+        check(st == 200 and isinstance(roles, list) and len(roles) > 0, "ListRoles 返回督休专员目录扫描结果",
               "status=%s n=%s" % (st, len(roles) if isinstance(roles, list) else roles))
         if isinstance(roles, list) and roles:
             keys = [r.get("key") for r in roles]
             check(all(r.get("thumb", "").startswith("data:image/") for r in roles),
-                  "每个角色都带缩略图 data URL（字段名 thumb，与设置页一致）", keys)
+                  "每个督休专员都带缩略图 data URL（字段名 thumb，与设置页一致）", keys)
             # 顺序 = BUILTIN_ROLE_META 的内置清单顺序（立绘库磁贴与顺序轮换的出场次序）；
-            # 不是目录名字典序 —— 这里与其后追加的自定义角色拼起来校验前缀
+            # 不是目录名字典序 —— 这里与其后追加的自定义督休专员拼起来校验前缀
             check(keys[:len(BUILTIN_ROLE_ORDER)] == BUILTIN_ROLE_ORDER,
-                  "内置角色按 BUILTIN_ROLE_META 的顺序在前", keys)
+                  "内置督休专员按 BUILTIN_ROLE_META 的顺序在前", keys)
             check(all(r.get("geom", {}).get("sizePct") for r in roles),
-                  "每个角色都带完整 geom（尺寸/位置滑条要用）", keys[:2])
+                  "每个督休专员都带完整 geom（尺寸/位置滑条要用）", keys[:2])
             check(all(isinstance(r.get("messages", {}).get("items"), list) for r in roles),
-                  "每个角色都带 messages（设置页台词面板要用）", keys[:2])
+                  "每个督休专员都带 messages（设置页台词面板要用）", keys[:2])
             if cfg:
                 fixed = (cfg.get("supervisor") or {}).get("fixedKey")
-                check(fixed in keys, "配置里固定的角色 %s 在扫描结果中" % fixed, keys)
+                check(fixed in keys, "配置里固定的督休专员 %s 在扫描结果中" % fixed, keys)
 
         st, info = call(base, "AppInfo", [])
         check(st == 200 and isinstance(info, dict) and info.get("engine") == "go+wails3",
@@ -506,7 +506,7 @@ def main():
 
             auto = probe.get("autostart") or {}
             check(isinstance(auto, dict) and auto.get("valueName") == "com.lwb.workerrest",
-                  "自启动值名与 Electron 版一致（怕留注册表孤儿项）", auto.get("valueName"))
+                  "自启动值名与上一版一致（怕留注册表孤儿项）", auto.get("valueName"))
             check(isinstance(auto.get("exists"), bool) and isinstance(auto.get("wanted"), bool),
                   "自启动读回 {exists, wanted} 两个布尔", auto)
 
@@ -826,10 +826,6 @@ def main():
         st, r = call(base, "AddMusicSound", [], window="settings")
         check(st == 200 and isinstance(r, dict) and r.get("canceled") is True,
               "AddMusicSound 无头返回 {canceled:true}", r)
-        st, ok = call(base, "ExportSettings", [], window="settings")
-        check(st == 200 and ok is False, "ExportSettings 无头返回 false", ok)
-        st, ok = call(base, "ImportSettings", [], window="settings")
-        check(st == 200 and ok is False, "ImportSettings 无头返回 false", ok)
         # 更新检查：无头不发网络，返回确定性 error 形状（status + current + message 齐全）
         st, up = call(base, "CheckUpdate", [], window="settings")
         check(st == 200 and isinstance(up, dict) and up.get("status") == "error"

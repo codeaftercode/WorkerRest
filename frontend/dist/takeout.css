@@ -69,7 +69,7 @@ html, body {
 }
 /* 入场动画的末帧**不要写 transform**：keyframe 动画优先级高于普通声明，
    写死 `transform: none` 会把元素自身的 transform 一起盖掉——有督休专员时
-   对话框（fixed 底部）由 CSS 直接定 transform: none，无角色时是 none，
+   对话框（fixed 底部）由 CSS 直接定 transform: none，无督休专员时是 none，
    末帧省略该属性后两种版式都回落到自身值，动画期间平移/缩放照常播。 */
 @keyframes tk-in {
   from { opacity: 0; transform: translateY(14px) scale(0.97); }
@@ -236,7 +236,7 @@ body.sup-flip .mirror { transform: scaleX(-1); }
   transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
 }
 
-/* ---------------- 有角色时的版式：游戏对话画面（与休息窗口同款） ----------------
+/* ---------------- 有督休专员时的版式：游戏对话画面（与休息窗口同款） ----------------
    底部横贯全宽的对话框 + 左上角凸出的名字标签；立绘站在对话框的左上方
    （geom 三滑条照常控制，z 在对话框之下——贴底时下半身被对话框遮住）；
    支付红包区浮在立绘可见右缘的右侧（水平位置由脚本量出写入 inline style）。 */
@@ -284,7 +284,7 @@ body.has-supervisor .content {
 
 /* 非全屏（data-rounded='1'）时窗口是 --app-radius 的圆角矩形，但 .content 是
    position:fixed、不受 #app 的 overflow 裁剪——贴边后底部两角必须自己圆出与
-   窗口一致的圆角，否则会在窗口圆角处戳出直角色块。顶部两角保持直角。 */
+   窗口一致的圆角，否则会在窗口圆角处戳出直督休专员块。顶部两角保持直角。 */
 #app[data-rounded='1'] .content {
   border-radius: 0 0 var(--app-radius) var(--app-radius);
 }
@@ -331,7 +331,7 @@ body.has-supervisor .tk-redpacket {
   width: max-content;
 }
 
-/* 角色不在场时台词一律不出现（角色关闭 ⇒ 只说提醒内容，不出台词）；
+/* 督休专员不在场时台词一律不出现（督休专员关闭 ⇒ 只说提醒内容，不出台词）；
    提醒内容（.tk-msg）本身就在内容列正中，无需另摆版式 */
 body:not(.has-supervisor) .supervisor-line { display: none !important; }
 
@@ -374,7 +374,7 @@ body:not(.has-supervisor) .supervisor-line { display: none !important; }
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
   transition: color 0.4s ease;
 }
-/* 有角色时（对话框内）台词就是裸文本；无角色时这条规则不生效（本就不显示） */
+/* 有督休专员时（对话框内）台词就是裸文本；无督休专员时这条规则不生效（本就不显示） */
 body.has-supervisor .supervisor-line {
   background: none;
   border: none;
@@ -384,7 +384,7 @@ body.has-supervisor .supervisor-line {
 }
 body.has-supervisor .supervisor-line::after { display: none; }
 body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
-/* 外卖窗口的角色没有二阶段（脚本恒定 data-stage="1"），下面的告警样式
+/* 外卖窗口的督休专员没有二阶段（脚本恒定 data-stage="1"），下面的告警样式
    保留只为兜底——万一哪天状态被外部置成 2，台词/对话框/立绘仍有告警形。 */
 #app[data-stage='2'] .supervisor-line {
   color: #ffe9e9;

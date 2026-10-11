@@ -10,14 +10,14 @@ import (
 )
 
 // 外卖提醒：按固定时刻弹出（不做倒计时），显示逻辑与休息窗口一致（同一套外观配置、
-// 多屏策略、透明与圆角），区别只在内容。对应 electron/main.ts 的「外卖提醒」段 +
-// electron/src/windows/takeoutWindow.ts + raise.ts + displays.ts + reminderSync.ts。
+// 多屏策略、透明与圆角），区别只在内容。对应 历史源码/main.ts 的「外卖提醒」段 +
+// 历史源码/windows/takeoutWindow.ts + raise.ts + displays.ts + reminderSync.ts。
 //
-// 与 Electron 版的两处**有意差异**（见 README「已知差异」）：
-//   ① z-order：Electron 用 moveTop() 在同层（screen-saver）内「谁后抬谁在上」把外卖压到
+// 与 上一版的两处**有意差异**（见 README「已知差异」）：
+//   ① z-order：上一版 用 moveTop() 在同层（screen-saver）内「谁后抬谁在上」把外卖压到
 //      休息窗口之上；Wails v3 没有暴露 z-order 抬升 API，这里降级成 SetAlwaysOnTop(true) +
 //      Focus() 近似（抬升簿记 raiseState 仍保留，供诊断 / 冒烟断言）。
-//   ② 系统级键鼠轮询：Electron 有 powerMonitor.getSystemIdleTime() 可降级秒级；Go 侧只有
+//   ② 系统级键鼠轮询：上一版有 powerMonitor.getSystemIdleTime() 可降级秒级；Go 侧只有
 //      user32!GetLastInputInfo 一个来源，读不到 tick 时整段不启动（不假装有活动）。
 
 const (
@@ -128,7 +128,7 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) 
 	return info
 }
 
-// takeoutID 生成本次外卖会话 id（对应 Electron 的 `${Date.now()}-${random36}`；Go 侧用 UUID 同样唯一）
+// takeoutID 生成本次外卖会话 id（对应 上一版的 `${Date.now()}-${random36}`；Go 侧用 UUID 同样唯一）
 func takeoutID() string {
 	return newUUID()
 }
@@ -189,7 +189,7 @@ func (a *App) checkTakeoutReminders() {
 	}
 }
 
-// startTakeoutWatcher 启动外卖每秒检查（对应 Electron 的 startTakeoutWatcher）
+// startTakeoutWatcher 启动外卖每秒检查（对应 上一版的 startTakeoutWatcher）
 func (a *App) startTakeoutWatcher() {
 	a.takeoutStop = make(chan struct{})
 	ch := a.takeoutStop
@@ -221,7 +221,7 @@ func (a *App) stopTakeoutWatcher() {
 // ---------- 窗口（对应 takeoutWindow.ts + displays.ts） ----------
 
 // targetDisplays 按「在所有屏幕显示提醒窗口」开关选出要显示的显示器（休息窗口与外卖
-// 窗口共用同一策略）。取消勾选 ⇒ 只在当前活动的屏幕（光标所在屏）上显示。
+// 窗口共用同一策略）。取消勾选 ⇒ 只在主屏幕显示（Wails v3 无获取光标所在屏的 API，以主屏兜底）。
 func (a *App) targetDisplays() []*application.Screen {
 	cfg := a.cfgSnapshot()
 	all := a.app.Screen.GetAll()
@@ -441,7 +441,7 @@ type supWatchInfo struct {
 // ensureSupActivityWatch 启动系统级键鼠活动轮询（已在跑则忽略）。有提醒窗口在场时调用。
 // 用户在**任意应用**里敲了键或动了鼠标 → 广播 sup:active（与窗口焦点无关）。
 //
-// 与 Electron 的差异：只有 GetLastInputInfo 一个来源，读不到 tick 时整段不启动。
+// 与 上一版的差异：只有 GetLastInputInfo 一个来源，读不到 tick 时整段不启动。
 func (a *App) ensureSupActivityWatch() {
 	a.mu.Lock()
 	if a.supWatchStop != nil {

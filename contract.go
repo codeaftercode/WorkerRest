@@ -19,7 +19,7 @@ import (
 
 // wiredCalls 已接通的绑定：前端真的会调、Go 侧有实现。
 // 「已接通」= 名字与签名对得上、调用不会断；所有方法都已是真实现（含文件选择框 /
-// 导入导出 / 检查更新，见 bindings_settings.go / filedialog.go / update.go）。
+// 导出报表 / 检查更新，见 bindings_settings.go / filedialog.go / update.go）。
 var wiredCalls = []string{
 	// ---- 休息窗口 ----
 	"BreakCurrent",
@@ -39,9 +39,8 @@ var wiredCalls = []string{
 	"SaveSettings",
 	"ResetSettings",
 	"BuiltinMsgDefaults",
-	"OpenSettingsPath",
 
-	// ---- 角色目录 ----
+	// ---- 督休专员目录 ----
 	"ListRoles",
 	"SaveRole",
 	"RemoveRole",
@@ -55,9 +54,7 @@ var wiredCalls = []string{
 	"CheckUpdate",
 	"OpenManual",
 	"OpenExternal",
-	"ExportSettings",
 	"ExportReport",
-	"ImportSettings",
 
 	// ---- 统计 ----
 	"GetStats",

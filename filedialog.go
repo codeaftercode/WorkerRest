@@ -8,7 +8,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 原生文件对话框：Electron `dialog.showOpenDialog / showSaveDialog` 的对应物。
+// 原生文件对话框：上一版 `dialog.showOpenDialog / showSaveDialog` 的对应物。
 //
 // 用 Wails v3 内置的 app.Dialog（OpenFile / SaveFile），而不是自己 import 公开版
 // go-common-file-dialog。原因：公开版 v1.2.0 的 COM 调用用 `syscall.Syscall`，Go 1.23+
@@ -28,7 +28,7 @@ type pickFileResult struct {
 	err      error
 }
 
-// showOpenDialog 打开单文件对话框（对应 Electron dialog.showOpenDialog 的 openFile）。
+// showOpenDialog 打开单文件对话框（对应 上一版 dialog.showOpenDialog 的 openFile）。
 func showOpenDialog(dm *application.DialogManager, title string, filters []application.FileFilter) pickFileResult {
 	d := dm.OpenFile().SetTitle(title)
 	for _, f := range filters {
@@ -38,7 +38,7 @@ func showOpenDialog(dm *application.DialogManager, title string, filters []appli
 	return resultOf(p, err)
 }
 
-// showOpenMultiDialog 打开多文件对话框（对应 Electron 的 openFile + multiSelections）。
+// showOpenMultiDialog 打开多文件对话框（对应 上一版的 openFile + multiSelections）。
 func showOpenMultiDialog(dm *application.DialogManager, title string, filters []application.FileFilter) pickFileResult {
 	d := dm.OpenFile().SetTitle(title)
 	for _, f := range filters {
@@ -54,7 +54,7 @@ func showOpenMultiDialog(dm *application.DialogManager, title string, filters []
 	return pickFileResult{paths: ps}
 }
 
-// showSaveDialog 另存为对话框（对应 Electron dialog.showSaveDialog）。
+// showSaveDialog 另存为对话框（对应 上一版 dialog.showSaveDialog）。
 func showSaveDialog(dm *application.DialogManager, title, defaultName string, filters []application.FileFilter) pickFileResult {
 	d := dm.SaveFile()
 	d.SetOptions(&application.SaveFileDialogOptions{Title: title, Filename: defaultName})

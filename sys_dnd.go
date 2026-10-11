@@ -6,11 +6,11 @@ import (
 	"unsafe"
 )
 
-// 系统勿扰（Do Not Disturb / 专注助手）检测 —— electron/src/dnd.ts 的 Go 版。
+// 系统勿扰（Do Not Disturb / 专注助手）检测 —— 历史源码/dnd.ts 的 Go 版。
 //
 // Windows 的文档化 API 是 shell32!SHQueryUserNotificationState，覆盖 Win10 专注助手
 // （仅优先 / 仅闹钟）、Win11 勿扰、演示模式等系统级「不希望被打扰」状态。
-// Electron 版用 koffi 调用；Go 不需要任何外部依赖，直接用 syscall 调 DLL，
+// 上一版用 koffi 调用；Go 不需要任何外部依赖，直接用 syscall 调 DLL，
 // 也就没有「打包遗漏原生模块 → 整体降级」这条失败路径了。
 //
 // 本项目只做 Windows（Wails v3 的目标平台），所以 dnd.ts 里的 Linux（gsettings）与

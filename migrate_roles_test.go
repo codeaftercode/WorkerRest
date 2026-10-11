@@ -7,12 +7,12 @@ import (
 	"testing"
 )
 
-// 角色目录迁移的纯函数回归（毫秒级）。与 Electron 的 migrateLegacyRoles 逐条对应，
-// 分工同 settings_test.go：这里拦「规则写错」，与 Electron 的逐字段对拍交给
+// 督休专员目录迁移的纯函数回归（毫秒级）。与 上一版的 migrateLegacyRoles 逐条对应，
+// 分工同 settings_test.go：这里拦「规则写错」，与 上一版的逐字段对拍交给
 // verify_settings_parity.py（或将来新增的 verify_roles_parity）。
 
 // seedBuiltinRoles 在 rolesRoot 下铺一份最小模板：只放 role_coach 与 role_ai 两个
-// 内置角色（各带一份可解析的 role.json），模拟「模板目录已就位」。
+// 内置督休专员（各带一份可解析的 role.json），模拟「模板目录已就位」。
 func seedBuiltinRoles(t *testing.T, root string) {
 	t.Helper()
 	for _, key := range []string{"role_coach", "role_ai"} {
@@ -64,7 +64,7 @@ func TestMigrateLegacyRolesFreshInstall(t *testing.T) {
 	if sup["rolesMigrated"] != true {
 		t.Fatal("应置 rolesMigrated=true")
 	}
-	// 内置目录没被删（短路保护：不能把「旧配置没这角色」误判成「用户删过」）
+	// 内置目录没被删（短路保护：不能把「旧配置没这督休专员」误判成「用户删过」）
 	for _, key := range []string{"role_coach", "role_ai"} {
 		if !isRegularFile(filepath.Join(root, key, "role.json")) {
 			t.Fatalf("全新安装不该删内置目录 %s", key)
@@ -92,7 +92,7 @@ func TestMigrateLegacyRolesAlreadyMigrated(t *testing.T) {
 	}
 }
 
-// TestMigrateLegacyRolesBuiltinOverride 内置角色：旧数据覆盖模板 role.json
+// TestMigrateLegacyRolesBuiltinOverride 内置督休专员：旧数据覆盖模板 role.json
 func TestMigrateLegacyRolesBuiltinOverride(t *testing.T) {
 	root := t.TempDir()
 	seedBuiltinRoles(t, root)
@@ -143,7 +143,7 @@ func TestMigrateLegacyRolesBuiltinOverride(t *testing.T) {
 	}
 }
 
-// TestMigrateLegacyRolesBuiltinDeleted 旧配置里没有的内置角色 → 连目录一起删
+// TestMigrateLegacyRolesBuiltinDeleted 旧配置里没有的内置督休专员 → 连目录一起删
 func TestMigrateLegacyRolesBuiltinDeleted(t *testing.T) {
 	root := t.TempDir()
 	seedBuiltinRoles(t, root)
@@ -166,7 +166,7 @@ func TestMigrateLegacyRolesBuiltinDeleted(t *testing.T) {
 	}
 }
 
-// TestMigrateLegacyRolesCustomRole 自定义角色：按旧 key 建目录搬图
+// TestMigrateLegacyRolesCustomRole 自定义督休专员：按旧 key 建目录搬图
 func TestMigrateLegacyRolesCustomRole(t *testing.T) {
 	root := t.TempDir()
 	seedBuiltinRoles(t, root)
@@ -178,7 +178,7 @@ func TestMigrateLegacyRolesCustomRole(t *testing.T) {
 	raw := map[string]any{
 		"supervisor": map[string]any{
 			"roles": []any{
-				map[string]any{"key": "custom-abcdef1234", "name": "我的角色", "enabled": true, "path": imgPath},
+				map[string]any{"key": "custom-abcdef1234", "name": "我的督休专员", "enabled": true, "path": imgPath},
 			},
 			"fixedKey": "custom-abcdef1234",
 		},
@@ -187,14 +187,14 @@ func TestMigrateLegacyRolesCustomRole(t *testing.T) {
 		t.Fatal("应发生迁移")
 	}
 	// createRoleDir 按 sha1 摘要算 key（custom-6820e4f877 = sha1("fake-png-bytes") 前 10 位），
-	// 与旧 key 不同（旧 key 只是「是否已存在」的参考，落点以摘要目录为准，对齐 Electron）。
+	// 与旧 key 不同（旧 key 只是「是否已存在」的参考，落点以摘要目录为准，对齐 上一版）。
 	dir := filepath.Join(root, "custom-6820e4f877")
 	if !isRegularFile(filepath.Join(dir, "role.json")) {
-		t.Fatal("自定义角色目录应建立在摘要 key 下")
+		t.Fatal("自定义督休专员目录应建立在摘要 key 下")
 	}
 	cfg := readRoleJSON(t, root, "custom-6820e4f877")
-	if cfg["name"] != "我的角色" {
-		t.Fatalf("自定义角色名字应保留: %q", cfg["name"])
+	if cfg["name"] != "我的督休专员" {
+		t.Fatalf("自定义督休专员名字应保留: %q", cfg["name"])
 	}
 }
 
@@ -229,7 +229,7 @@ func TestMigrateLegacyRolesFixedKeyRemap(t *testing.T) {
 	}
 }
 
-// TestMigrateLegacyRolesFixedKeyInvalid fixedKey 指向不存在的角色 → 兜底到第一个启用的
+// TestMigrateLegacyRolesFixedKeyInvalid fixedKey 指向不存在的督休专员 → 兜底到第一个启用的
 func TestMigrateLegacyRolesFixedKeyInvalid(t *testing.T) {
 	root := t.TempDir()
 	seedBuiltinRoles(t, root)
@@ -239,7 +239,7 @@ func TestMigrateLegacyRolesFixedKeyInvalid(t *testing.T) {
 				map[string]any{"key": "role_coach.png", "name": "体能教练", "enabled": true},
 				map[string]any{"key": "role_ai", "name": "赛博监考官", "enabled": true},
 			},
-			// 指向一个迁移后不存在的角色
+			// 指向一个迁移后不存在的督休专员
 			"fixedKey": "role_mentor",
 		},
 	}
@@ -248,9 +248,9 @@ func TestMigrateLegacyRolesFixedKeyInvalid(t *testing.T) {
 	}
 	sup := raw["supervisor"].(map[string]any)
 	fixed := sup["fixedKey"].(string)
-	// role_mentor 不存在（也没在旧 roles 里），兜底到第一个启用的内置角色（role_coach，清单序）
+	// role_mentor 不存在（也没在旧 roles 里），兜底到第一个启用的内置督休专员（role_coach，清单序）
 	if fixed != "role_coach" {
-		t.Fatalf("fixedKey 失效应兜底到第一个启用角色 role_coach: %q", fixed)
+		t.Fatalf("fixedKey 失效应兜底到第一个启用督休专员 role_coach: %q", fixed)
 	}
 }
 

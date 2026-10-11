@@ -7,7 +7,7 @@ import (
 )
 
 // 系统能力监视器：空闲 / 勿扰 / 应用占用 —— 三条链路都汇聚到调度器的
-// 「暂停提醒 / 恢复提醒」，与 electron/main.ts 的 startIdleWatcher / startDndWatcher /
+// 「暂停提醒 / 恢复提醒」，与 历史源码/main.ts 的 startIdleWatcher / startDndWatcher /
 // startAppPauseWatcher 逐条对齐。
 //
 // 判定逻辑本身抽在别处（decideIdleStep / GetDndStatus / matchAppPause），这里只负责
@@ -21,8 +21,8 @@ const (
 	appPauseWatchMs = 4000
 )
 
-// 暂停原因键。idle 用英文键（Electron 侧就是 'idle'，types.ts 的 pauseReasonText 认它）；
-// 勿扰与应用占用在 Electron 侧本来就是中文键，中文键在原样返回的映射里天然可读，保持一致。
+// 暂停原因键。idle 用英文键（上一版侧就是 'idle'，types.ts 的 pauseReasonText 认它）；
+// 勿扰与应用占用在 上一版侧本来就是中文键，中文键在原样返回的映射里天然可读，保持一致。
 const (
 	pauseReasonIdle     = "idle"
 	pauseReasonDnd      = "勿扰"
@@ -33,7 +33,7 @@ const (
 //
 // **无头（server）模式不启动会改调度器状态的三条链路**：冒烟机上系统始终空闲（无人操作），
 // 空闲监视每秒就会把调度器重新挂起，后面所有「到点触发 / 推迟重弹」的自检都会随机踩空。
-// 与 Electron 版 `if (!SMOKE) { startIdleWatcher() }` 是同一个理由、同一个口径。
+// 与 上一版 `if (!SMOKE) { startIdleWatcher() }` 是同一个理由、同一个口径。
 //
 // 空闲**采样**本身照旧启动（只读、不改任何状态），这样无头模式下也能断言探测能力可用。
 func (a *App) startSystemWatchers() {
@@ -53,7 +53,7 @@ func (a *App) startSystemWatchers() {
 		return
 	}
 	a.sysStop = make(chan struct{})
-	// 空闲：不立刻判一次（先攒够采样），其余两条与 Electron 一样启动即判一次
+	// 空闲：不立刻判一次（先攒够采样），其余两条与上一版 一样启动即判一次
 	go a.watchLoop("空闲", idleSampleMs, false, func() { a.idleAway = a.idleWatchTick(a.idleAway) })
 	go a.watchLoop("勿扰", dndWatchMs, true, a.dndWatchTick)
 	go a.watchLoop("应用占用", appPauseWatchMs, true, a.appPauseWatchTick)
@@ -70,7 +70,7 @@ func (a *App) stopSystemWatchers() {
 	}
 }
 
-// watchLoop 通用轮询骨架：`immediate` 为真时先立刻判一次再进入定时（Electron 的
+// watchLoop 通用轮询骨架：`immediate` 为真时先立刻判一次再进入定时（上一版的
 // `void tick()` + `setInterval(tick, …)` 就是这个形状）。
 func (a *App) watchLoop(name string, intervalMs int, immediate bool, fn func()) {
 	if immediate {
@@ -121,7 +121,7 @@ func (a *App) idleWatchTick(away bool) bool {
 
 // dndWatchTick 推进一次系统勿扰判定。
 //
-// 与 Electron 版有一处**刻意不同**：那边每一跳（3 秒）都打一条 `[dnd] active: …`，
+// 与 上一版有一处**刻意不同**：那边每一跳（3 秒）都打一条 `[dnd] active: …`，
 // 勿扰开着的时候日志会被刷满；这里只在「进入 / 退出勿扰暂停」的那一次打日志。
 // 判定与暂停行为完全一致。
 func (a *App) dndWatchTick() {

@@ -8,8 +8,8 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 前端资源：直接复用 Electron 版 renderer 的产物（HTML/CSS/JS 原样，由
-// scripts/sync_frontend.py 同步），只外加一层 shim.js 把 window.api 适配到 Go 绑定。
+// 前端资源：frontend/dist 由渲染层构建流程产出（HTML/CSS/JS），shim.js 把
+// window.api 适配到 Go 绑定，使 上一版 renderer 在不改业务代码的前提下直接复用。
 //
 //go:embed all:frontend/dist
 var assets embed.FS
@@ -51,7 +51,7 @@ func main() {
 	backend = NewApp(app)
 	app.RegisterService(application.NewService(backend))
 
-	// 主窗口就是设置窗口：路由 /settings.html 是 Electron 版 renderer 的产物副本
+	// 主窗口就是设置窗口：路由 /settings.html 是 上一版 renderer 的产物副本
 	//（980×700 / 最小 860×600 / 无边框，与 windows/settingsWindow.ts 同参数）。
 	// 路由 / 另有一个 Go 版诊断页（index.html），用来手点一次提醒、看环境信息。
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{

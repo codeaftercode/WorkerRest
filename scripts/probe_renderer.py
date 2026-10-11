@@ -36,7 +36,7 @@ LOG = os.path.join(TEMP, "wr_go_probe_server.log")
 # 隔离副本：探针也绝不能碰用户的真实配置（加载路径会回写 installId / 预置条目）
 ISO = os.path.join(TEMP, "wr_probe_iso")
 
-# 内置角色的固定出场顺序（与 electron/src/supervisor.ts 的 BUILTIN_ROLE_META 同源）。
+# 内置督休专员的固定出场顺序（与 历史源码/supervisor.ts 的 BUILTIN_ROLE_META 同源）。
 # 画廊磁贴顺序与「顺序轮换」都按它来 —— 写成按目录名字典序就是回归。
 BUILTIN_ROLE_ORDER = ",".join((
     "supervisor_default", "role_instructor", "role_executive", "role_mentor",
@@ -219,19 +219,19 @@ def main():
         check(not (stg.get("errs") or []), "设置页无未捕获 JS 异常", (stg.get("errs") or [])[:2])
         check((stg.get("navCount") or 0) >= 6, "侧栏页签渲染出来（>=6 个）", stg.get("navCount"))
         check((stg.get("tabCount") or 0) >= 6, "各页签内容区都在 DOM 里", stg.get("tabCount"))
-        check((stg.get("supGallery") or 0) == 9, "督休专员画廊渲染出 9 个角色（ListRoles → DOM）",
+        check((stg.get("supGallery") or 0) == 9, "督休专员画廊渲染出 9 个督休专员（ListRoles → DOM）",
               stg.get("supGallery"))
-        check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个「新建角色」磁贴",
+        check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个「新建督休专员」磁贴",
               stg.get("supGalleryAdd"))
         check(str(stg.get("supGalleryNames") or "") == BUILTIN_ROLE_ORDER,
               "画廊顺序 == BUILTIN_ROLE_META 的内置顺序（顺序轮换的出场次序）",
               stg.get("supGalleryNames"))
         check((stg.get("supMsgItems") or 0) >= 1,
-              "角色台词面板渲染出条目（ListRoles 真的下发了 messages）",
+              "督休专员台词面板渲染出条目（ListRoles 真的下发了 messages）",
               "items=%s empty=%s" % (stg.get("supMsgItems"), stg.get("supMsgEmpty")))
-        check(stg.get("supMsgRole") == want_role, "台词面板标题 == 当前角色名",
+        check(stg.get("supMsgRole") == want_role, "台词面板标题 == 当前督休专员名",
               "%s vs %s" % (stg.get("supMsgRole"), want_role))
-        check("Wails" in str(stg.get("dVersion") or ""), "版本卡显示 Go 引擎（不再是 Electron）",
+        check("Wails" in str(stg.get("dVersion") or ""), "版本卡显示 Go 引擎（不再含旧版标识）",
               stg.get("dVersion"))
 
         # 关键值 vs 配置文件（类型对齐：输入框是字符串，配置里可能是数字）
@@ -304,13 +304,13 @@ def main():
         # ---- 主窗口（调试控制台） ----
         idx = m.get("index") or {}
         check(idx.get("shim") == "go", "页面确认跑在 Go 后端上（window.__WR_SHIM=go）", idx.get("shim"))
-        check(idx.get("roles") == 9, "主窗口渲染出 9 个角色磁贴（ListRoles → DOM）", idx.get("roles"))
+        check(idx.get("roles") == 9, "主窗口渲染出 9 个督休专员磁贴（ListRoles → DOM）", idx.get("roles"))
         check(idx.get("rolesLoaded") == idx.get("roles") and idx.get("roles"),
-              "全部角色预览图以 data URL 成功装载", "%s/%s" % (idx.get("rolesLoaded"), idx.get("roles")))
-        check((idx.get("optCount") or 0) == (idx.get("roles") or 0) + 1, "角色下拉选项 = 角色数 + 1 个默认项", idx.get("optCount"))
+              "全部督休专员预览图以 data URL 成功装载", "%s/%s" % (idx.get("rolesLoaded"), idx.get("roles")))
+        check((idx.get("optCount") or 0) == (idx.get("roles") or 0) + 1, "督休专员下拉选项 = 督休专员数 + 1 个默认项", idx.get("optCount"))
         envtxt = " ".join(idx.get("env") or [])
         check("go+wails3" in envtxt, "环境卡片显示引擎 go+wails3", (idx.get("env") or [])[:2])
-        check("roles" in envtxt or "角色" in envtxt, "环境卡片显示角色目录", envtxt[:80])
+        check("roles" in envtxt or "督休专员" in envtxt, "环境卡片显示督休专员目录", envtxt[:80])
 
         # ---- 会话 ----
         sid = m.get("sessionId") or ""
@@ -332,7 +332,7 @@ def main():
             check(nw > 100 and nh > 100, "%s提醒窗口：立绘真的解码成功（浏览器解出像素尺寸）" % label, nat)
             check(b.get("lineVisible") is True, "%s提醒窗口：台词气泡可见" % label, b.get("lineVisible"))
             if want_role:
-                check(b.get("speaker") == want_role, "%s提醒窗口：说话人 == 配置固定角色的名字" % label,
+                check(b.get("speaker") == want_role, "%s提醒窗口：说话人 == 配置固定督休专员的名字" % label,
                       "%s vs %s" % (b.get("speaker"), want_role))
             if want_msg:
                 check(b.get("lineText") == want_msg, "%s提醒窗口：气泡文字 == 配置里的提醒内容" % label,
@@ -491,17 +491,17 @@ def main():
         if want_color:
             check(str(tk.get("accent") or "").lower() == want_color.lower(),
                   "外卖窗口：--accent == 配置外观色", "%s vs %s" % (tk.get("accent"), want_color))
-        # 有角色时：外卖窗口同样进入游戏对话画面版式；角色没有二阶段、
+        # 有督休专员时：外卖窗口同样进入游戏对话画面版式；督休专员没有二阶段、
         # 台词恒为外卖提醒文字；红包中心落在两个锚点中点的交点上
         tksm = tk.get("supMetrics") or {}
         if tk.get("hasSupervisor"):
             check(tksm.get("mode") == "dialog",
                   "外卖窗口：版式是游戏对话画面（supMetrics.mode == dialog）", tksm.get("mode"))
             check(tk.get("stage") == "1",
-                  "外卖窗口：角色没有二阶段（data-stage 恒为 1）", tk.get("stage"))
+                  "外卖窗口：督休专员没有二阶段（data-stage 恒为 1）", tk.get("stage"))
             if info.get("message"):
                 check(tk.get("lineText") == info.get("message") and tk.get("lineShown") is True,
-                      "外卖窗口：台词 == 外卖提醒文字（不显示角色自己的台词）",
+                      "外卖窗口：台词 == 外卖提醒文字（不显示督休专员自己的台词）",
                       "%r vs %r" % (tk.get("lineText"), info.get("message")))
             if want_role:
                 check(tk.get("dialogName") == want_role and tk.get("dialogNameShown") is True,
@@ -533,7 +533,7 @@ def main():
                     check(abs(rcy - want_rcy) <= 3,
                           "外卖窗口：红包中心 == 对话框顶与窗口顶的中间",
                           "%s vs %s" % (round(rcy), round(want_rcy)))
-        # 有角色时红包/提醒内容/台词链路照常；无角色时也不该有 JS 错误
+        # 有督休专员时红包/提醒内容/台词链路照常；无督休专员时也不该有 JS 错误
         check(not (tk.get("errors") or []), "外卖窗口：页面无 JS 错误", (tk.get("errors") or [])[:2])
         check(not (tk.get("consoleErrors") or []), "外卖窗口：页面无控制台错误",
               (tk.get("consoleErrors") or [])[:2])

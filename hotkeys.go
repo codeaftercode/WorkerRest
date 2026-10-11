@@ -9,7 +9,7 @@ import (
 	"unsafe"
 )
 
-// 全局快捷键（对应 Electron 版 globalShortcut）：推迟 / 提前结束 / 暂停恢复 / 跳到下次休息。
+// 全局快捷键（对应 上一版 globalShortcut）：推迟 / 提前结束 / 暂停恢复 / 跳到下次休息。
 //
 // Wails v3 没有全局快捷键能力，直接用 Win32：
 //   - user32!RegisterHotKey(NULL, id, mods, vk) 注册**线程级**热键（hwnd=NULL 时

@@ -15,9 +15,9 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 )
 
-// 提示音：electron/src/sound.ts 的对应物。
+// 提示音：历史源码/sound.ts 的对应物。
 //
-// 为什么要有「播放宿主窗口」：主进程自己放不了声音。Electron 版开一个 1×1 的隐藏
+// 为什么要有「播放宿主窗口」：主进程自己放不了声音。上一版开一个 1×1 的隐藏
 // BrowserWindow 承载 <audio>；这里同理 —— Wails 的隐藏窗口加载 sound.html，
 // 播放时向它 ExecJS 一句 `new Audio(url).play()`。
 //
@@ -34,7 +34,7 @@ import (
 // 那条路由**只服务白名单内的文件**（音频目录下的副本，或当前配置音乐列表里点名的绝对
 // 路径），其余一律 403。它是本机回环上的一个 HTTP 端点，绝不做任意文件读取服务。
 //
-// 与 Electron 逐条对齐的三处：
+// 与上一版 逐条对齐的三处：
 //
 // 一、选曲口径「单曲循环与启停无关」：single 模式播 singleId 指向的那一条（条目被停用
 // 也照样播，被删 / 文件不可用 = 静音）；random / sequence 只在**启用且文件存在**的条目
@@ -262,7 +262,7 @@ func (a *App) soundPickNext(cfg SoundCfg, rnd func(n int) int) string {
 
 // customSoundDir 用户导入音频的副本目录。
 //
-// Electron 版是 userDataPath('sounds', 'sounds', false)：非便携 = <userData>/sounds，
+// 上一版是 userDataPath('sounds', 'sounds', false)：非便携 = <userData>/sounds，
 // 便携 = <运行目录>/sounds/sounds（category 与 rel 同名，结果多一层）。
 // Go 版**统一成「配置文件所在目录旁的 sounds/」**：也就是 <运行目录>/config/sounds
 // （配置在 config/settings.json），数据与程序同目录。

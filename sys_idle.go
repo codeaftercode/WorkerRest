@@ -8,7 +8,7 @@ import (
 	"unsafe"
 )
 
-// 空闲状态机（软件侧维护的「连续无输入时长 L」）—— electron/src/idleState.ts 的移植。
+// 空闲状态机（软件侧维护的「连续无输入时长 L」）—— 历史源码/idleState.ts 的移植。
 //
 // 为什么不直接问系统「空闲多少秒」：产品的口径是「休息窗口关闭后空闲从 0 重新计算」，
 // 而系统的输入计时器不会因为软件关掉一个窗口就归零。所以这里自己维护：
@@ -97,7 +97,7 @@ func NewIdleState() *IdleState {
 }
 
 // Start 启动采样。与 idleState.ts 的 startIdleState 同义，但**多一步探测**：
-// 读不到 tick（user32 调用失败）时保持未启动状态并返回 false —— Electron 那边还有
+// 读不到 tick（user32 调用失败）时保持未启动状态并返回 false —— 上一版 那边还有
 // `powerMonitor.getSystemIdleTime()` 可以退化成秒级，Go 侧没有第二来源，
 // 假装有活动会让 L 一路变大、把用户误判成离开，所以这里选择明确地「不启用」。
 func (s *IdleState) Start() bool {

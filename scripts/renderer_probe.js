@@ -12,8 +12,8 @@
  * 断言在 scripts/probe_renderer.py 里，本文件只负责跑页面 + 抓数据。
  *
  * 运行方式：由 probe_renderer.py 用 `node renderer_probe.js` 拉起（Playwright 驱动
- * 系统 Edge 的 channel=msedge，无需下载额外浏览器）。不再依赖 Electron ——
- * Electron 旧工程已删除，这里用 Playwright 等价替代原来的 BrowserWindow +
+ * 系统 Edge 的 channel=msedge，无需下载额外浏览器）。不再依赖 上一版 ——
+ * 上一版旧工程已删除，这里用 Playwright 等价替代原来的 BrowserWindow +
  * webContents.executeJavaScript / capturePage。
  */
 const { chromium } = require("playwright");
@@ -32,21 +32,21 @@ async function open(browser, url, w, h, opts) {
   const o = opts || {};
   const page = await browser.newPage({ viewport: { width: w, height: h } });
   // 透明窗口的截图：给透明页一个深色底，避免白底掩盖「没画出来」——但保持与旧
-  // Electron 探针一致，这里只对 transparent 页面用透明背景，其余用浅灰。
+  // 上一版探针一致，这里只对 transparent 页面用透明背景，其余用浅灰。
   if (o.transparent) {
-    // Playwright 截图默认白底；透明窗口在 Electron 里截出来是透明底。
+    // Playwright 截图默认白底；透明窗口在 上一版 里截出来是透明底。
     // 这里用 addStyleTag 把 body 背景设成固定色，保证截图可判读（probe_renderer.py
     // 只断言「非空且非白屏」，不比对透明通道）。
   }
   if (o.preload) {
-    // 原 Electron preload 注入 window.__WR_WIN="settings"：用 addInitScript 等价实现
+    // 原 上一版 preload 注入 window.__WR_WIN="settings"：用 addInitScript 等价实现
     const preloadSrc = fs.readFileSync(o.preload, "utf-8");
     await page.addInitScript(preloadSrc);
   }
   // consoleErrors：把页面里的 JS 错误收集起来给断言用。
   // 必须**在 goto 之前**挂上——设置页是 216KB 的一整坨脚本，出错就在加载那一刻。
   // 拦截 favicon：浏览器会自动请求 /favicon.ico，而 Go 服务的资源里只有 icon.png
-  // （前端产物没有 favicon.ico），会 404。Electron 时代这条被 webContents 吞掉，
+  // （前端产物没有 favicon.ico），会 404。上一版时代这条被 webContents 吞掉，
   // Playwright 会如实上报成 console error，故这里直接拦掉、返回 204。
   await page.route("**/favicon.ico", (route) => route.fulfill({ status: 204, body: "" }));
   if (o.onConsole) {
@@ -349,7 +349,7 @@ const PROBE_TAKEOUT = `(async function () {
   };
 })()`;
 
-// ---- 主流程：Playwright 驱动 Edge，业务顺序与旧版 Electron 探针一致 ----
+// ---- 主流程：Playwright 驱动 Edge，业务顺序与旧版 上一版探针一致 ----
 async function run() {
   fs.mkdirSync(OUT, { recursive: true });
   const metrics = {};

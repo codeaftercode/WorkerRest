@@ -10,9 +10,9 @@ import (
 	"strings"
 )
 
-// 角色目录读取：语义与 electron/src/supervisor.ts 的 role.json 完全对齐——
-// 一个角色 = roles/<key>/ 一个子目录，内含 role.json + 立绘 + 预览图。
-// 用户在该目录里增删子目录即增删角色，重启即生效（本阶段先做到「扫描 + 读取」，
+// 督休专员目录读取：语义与 历史源码/supervisor.ts 的 role.json 完全对齐——
+// 一个督休专员 = roles/<key>/ 一个子目录，内含 role.json + 立绘 + 预览图。
+// 用户在该目录里增删子目录即增删督休专员，重启即生效（本阶段先做到「扫描 + 读取」，
 // 增删改留到设置页迁移那一阶段）。
 
 // RoleMessageItem 一条台词（命令阶段），id 沿用内置前缀规则
@@ -22,14 +22,14 @@ type RoleMessageItem struct {
 	Enabled bool   `json:"enabled"`
 }
 
-// RoleMessages 角色的命令台词池（order: random | sequence | fixed）
+// RoleMessages 督休专员的命令台词池（order: random | sequence | fixed）
 type RoleMessages struct {
 	Order   string            `json:"order"`
 	FixedID string            `json:"fixedId,omitempty"`
 	Items   []RoleMessageItem `json:"items"`
 }
 
-// RoleFile role.json 的磁盘结构（字段名与 Electron 版逐字一致，两侧可互相识别）
+// RoleFile role.json 的磁盘结构（字段名与 上一版逐字一致，两侧可互相识别）
 type RoleFile struct {
 	Name     string       `json:"name"`
 	Enabled  bool         `json:"enabled"`
@@ -39,9 +39,9 @@ type RoleFile struct {
 	Messages RoleMessages `json:"messages"`
 }
 
-// builtinRoleMeta 内置角色的固定顺序与兜底名字（与 electron/src/supervisor.ts 的
+// builtinRoleMeta 内置督休专员的固定顺序与兜底名字（与 历史源码/supervisor.ts 的
 // BUILTIN_ROLE_META 逐字一致）。顺序**不是**按目录名排的 —— 它就是「立绘库磁贴」与
-// 「顺序轮换」的出场次序，改成字典序会让内置角色的出场顺序与 Electron 版不同。
+// 「顺序轮换」的出场次序，改成字典序会让内置督休专员的出场顺序与 上一版不同。
 var builtinRoleMeta = []struct{ key, name string }{
 	{"supervisor_default", "眼镜主管"},
 	{"role_instructor", "魔鬼教官"},
@@ -61,12 +61,12 @@ func roleFallbackName(key string) string {
 			return m.name
 		}
 	}
-	return "自定义角色"
+	return "自定义督休专员"
 }
 
 // isImageName 图片文件名合法性（与 supervisor.ts 的 isImageName 同口径）：
 // 只要名字合法就先用着，文件在不在由调用方另外判断——「名字非法」与「文件缺失」
-// 是两件事，Electron 用前者决定要不要回落到 figure.png。
+// 是两件事，上一版 用前者决定要不要回落到 figure.png。
 func isImageName(name string) bool {
 	if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") {
 		return false
@@ -113,7 +113,7 @@ func normalizeRoleMessages(m map[string]any) RoleMessages {
 // normalizeRoleFile 把 role.json 的原始 map 归一化（对应 supervisor.ts 的
 // normalizeRoleFile）。**必须从原始 map 取 geom**，不能从反序列化后的结构体取：
 // 结构体里「字段缺失」与「显式 0」长得一样，而 0 对 sizePct 是非法值（会被夹成 20%）、
-// 对 posXPct/posYPct 却合法 —— 混了就会把「没写过 geom」的角色算成缩到 20%。
+// 对 posXPct/posYPct 却合法 —— 混了就会把「没写过 geom」的督休专员算成缩到 20%。
 func normalizeRoleFile(raw map[string]any) RoleFile {
 	name := strings.TrimSpace(jsStr(raw["name"]))
 	out := RoleFile{
@@ -140,7 +140,7 @@ func asMap(v any) map[string]any {
 	return map[string]any{}
 }
 
-// Role 扫描结果 = electron/src/supervisor.ts 里 listRoleViews() 的输出
+// Role 扫描结果 = 历史源码/supervisor.ts 里 listRoleViews() 的输出
 // （{key, thumb, ...cfg}），字段名逐字对齐 —— 设置页直接读这些字段：
 //   - thumb    → 立绘库磁贴的缩略图（data URL），少了它就是一片碎图；
 //   - geom     → 尺寸/位置滑条的当前值；
@@ -160,7 +160,7 @@ type Role struct {
 }
 
 // 内置劝说台词库：第一段台词的兜底（正常情况下第一段说的就是提醒配置的提醒内容，
-// 只有提醒内容为空时才会用到它）。与 electron/src/supervisor.ts 的 URGE_LINES 同源。
+// 只有提醒内容为空时才会用到它）。与 历史源码/supervisor.ts 的 URGE_LINES 同源。
 var urgeLines = []string{
 	"休息时间到了，先把视线从屏幕上移开。",
 	"我在看着你呢——去休息吧。",
@@ -178,8 +178,8 @@ var imageExtMIME = map[string]string{
 	".gif":  "image/gif",
 }
 
-// validRoleKey 目录名合法性：与 Electron 版 isValidRoleKey 同口径
-// （拒绝空、隐藏目录、路径分隔符与 .. —— 角色 key 会拼进文件路径）
+// validRoleKey 目录名合法性：与 上一版 isValidRoleKey 同口径
+// （拒绝空、隐藏目录、路径分隔符与 .. —— 督休专员 key 会拼进文件路径）
 func validRoleKey(key string) bool {
 	if key == "" || len(key) > 128 {
 		return false
@@ -193,11 +193,11 @@ func validRoleKey(key string) bool {
 	return true
 }
 
-// scanRoles 扫描角色目录。读不到 role.json 的子目录跳过（可能正在写入）；
-// 立绘缺失的角色**仍然列出**（figurePath 为空）——与 Electron 版一致：要被设置页看到
+// scanRoles 扫描督休专员目录。读不到 role.json 的子目录跳过（可能正在写入）；
+// 立绘缺失的督休专员**仍然列出**（figurePath 为空）——与 上一版一致：要被设置页看到
 // 才能改名 / 删除 / 换图，不能凭空消失。
 //
-// 顺序：内置角色按 BUILTIN_ROLE_META 的清单顺序在前，其余（自定义 / 用户手放）按目录名
+// 顺序：内置督休专员按 BUILTIN_ROLE_META 的清单顺序在前，其余（自定义 / 用户手放）按目录名
 // 跟在后面。这个顺序就是立绘库磁贴与「顺序轮换」的出场次序。
 func scanRoles(root string) []Role {
 	entries, err := os.ReadDir(root)
@@ -282,8 +282,8 @@ func toDataURL(file string) string {
 	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(b)
 }
 
-// pickRoleLine 从角色的台词池里选 1 条（与 Electron 版 pickRoleLine 同规则）：
-// fixed 取指定条目（与启停无关）；sequence 在启用条目间轮换（游标按角色记忆）；
+// pickRoleLine 从督休专员的台词池里选 1 条（与 上一版 pickRoleLine 同规则）：
+// fixed 取指定条目（与启停无关）；sequence 在启用条目间轮换（游标按督休专员记忆）；
 // random 等概率抽启用条目。取不到返回空串——由渲染层沿用第一段台词。
 func pickRoleLine(cfg RoleMessages, key string, seq map[string]int, rng *rand.Rand) string {
 	if cfg.Order == "fixed" {

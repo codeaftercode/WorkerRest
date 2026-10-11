@@ -11,7 +11,7 @@ import (
 // 分工（与外部对拍互补，别搞混）：
 //   - 这里拦「规则写错」：消费记账、暂停冻结平移、休息总时长封顶、跨天截断……
 //     毫秒级跑完，改完代码先跑它。
-//   - scripts/verify_plan_parity.py 拦「与 Electron 不一致」：拿 Electron 自己的
+//   - scripts/verify_plan_parity.py 拦「与上一版 不一致」：拿 上一版自己的
 //     breakPlan.ts 当黄金参考逐字段对拍 27 个场景。
 // 两者都过才算这一层真的对。
 

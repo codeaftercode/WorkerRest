@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-// 检查更新：electron/main.ts 的 checkForUpdate 对应物。
+// 检查更新：历史源码/main.ts 的 checkForUpdate 对应物。
 //
-// 更新源是 GitHub Releases（与 Electron 版同一个仓库 `lwb/worker-rest`），走公开的
+// 更新源是 GitHub Releases（与 上一版同一个仓库 `lwb/worker-rest`），走公开的
 // `api.github.com/repos/.../releases/latest`，用 net/http 实现，**零额外依赖**。
 // 结果统一写进 a.updateStatus 并推给打开着的设置页（update:status-changed 事件），
 // 失败如实回报、不伪装成「已是最新」。
@@ -19,7 +19,7 @@ import (
 const (
 	updateRepoAPI  = "https://api.github.com/repos/lwb/worker-rest/releases/latest"
 	updateRepoPage = "https://github.com/lwb/worker-rest/releases/latest"
-	// updateTimeout 单次检查的超时（与 Electron 版 6 秒 AbortController 同义）
+	// updateTimeout 单次检查的超时（与 上一版 6 秒 AbortController 同义）
 	updateTimeout = 6 * time.Second
 )
 
@@ -76,7 +76,7 @@ func (a *App) CheckUpdate() map[string]any {
 }
 
 // checkForUpdate 请求更新源比对版本。latest 严格大于 current 才算有新版。
-// 与 Electron 版同口径：v 前缀 / 缺段都容忍，三段式比较。
+// 与 上一版同口径：v 前缀 / 缺段都容忍，三段式比较。
 func (a *App) checkForUpdate() updateCheckResult {
 	current := appVersion
 	client := &http.Client{Timeout: updateTimeout}
@@ -148,7 +148,7 @@ func parseVersion(v string) []int {
 }
 
 // startAutoUpdateCheck 启动时按「启动时检查更新」配置决定要不要静默检查一次。
-// 失败不打扰用户（结果仍会推给设置页，由它显示）；与 Electron 的
+// 失败不打扰用户（结果仍会推给设置页，由它显示）；与 上一版的
 // `if (settings.checkUpdateOnStart) setTimeout(checkForUpdate(false), 15s)` 同义，
 // 这里延时 15 秒，避免和启动阶段的其它初始化抢网络。
 func (a *App) startAutoUpdateCheck() {

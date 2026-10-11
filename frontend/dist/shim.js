@@ -1,5 +1,5 @@
 /**
- * Wails v3 适配层：把渲染层依赖的 window.api（Electron 预加载脚本的形状）
+ * Wails v3 适配层：把渲染层依赖的 window.api（上一版 预加载脚本的形状）
  * 映射到 Wails 的 Go 绑定。渲染层代码（settings.js / break.js / takeout.js /
  * prebreak.js）一行不改，只在这里换实现。
  *
@@ -63,7 +63,7 @@
       });
   }
 
-  /** 事件订阅：回调只拿到 data，与 Electron 版的 ipcRenderer.on 形状一致 */
+  /** 事件订阅：回调只拿到 data，与 上一版的 ipcRenderer.on 形状一致 */
   function on(name, cb) {
     runtime().then(function (rt) {
       if (!rt) return;
@@ -102,18 +102,9 @@
     builtinMsgDefaults: function () {
       return call("BuiltinMsgDefaults");
     },
-    openSettingsPath: function () {
-      return call("OpenSettingsPath");
-    },
-    exportSettings: function () {
-      return call("ExportSettings");
-    },
     // 报表导出（CSV / PNG）：name=默认文件名，b64=内容 base64；Go 侧弹另存为对话框写盘
     exportReport: function (name, b64) {
       return call("ExportReport", [str(name), str(b64)]);
-    },
-    importSettings: function () {
-      return call("ImportSettings");
     },
     resetSettings: function () {
       return call("ResetSettings");
@@ -158,7 +149,7 @@
       return call("PreBreakAction", [str(a)]);
     },
 
-    // ---- 角色目录 ----
+    // ---- 督休专员目录 ----
     listSupervisorRoles: function () {
       return call("ListRoles");
     },
@@ -255,6 +246,12 @@
       on("update:status-changed", cb);
     },
   };
+
+  // 桌面应用：全局禁用浏览器默认右键菜单。
+  // 立绘磁贴的自定义右键菜单（settings.js）已自行 stopPropagation，不会冒泡到此处，不受影响。
+  document.addEventListener("contextmenu", function (e) {
+    e.preventDefault();
+  });
 
   // 冒烟/排查用标记：确认 shim 已生效（同时也是「这页跑在 Go 后端上」的判据）
   window.__WR_SHIM = "go";

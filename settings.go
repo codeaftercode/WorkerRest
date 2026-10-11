@@ -23,11 +23,11 @@ import (
 //   raw（整份 map） = deepMerge(出厂默认, 磁盘内容)
 // 用访问器读出 Go 需要的那几个，其余照原样活着。
 //
-// 出厂默认不手写，而是从 electron/src/types.ts 的 defaultSettings() 生成
+// 出厂默认不手写，而是从 历史源码/types.ts 的 defaultSettings() 生成
 // （scripts/gen_default_settings.mjs，可 --check 检测漂移）—— 手抄过一次就抄错了
 // appName 与 short.postponeMs 两个值，这类失配必须靠生成来杜绝。
 //
-// 归一化（本文件下半部分）逐条对应 electron/src/config.ts 的
+// 归一化（本文件下半部分）逐条对应 历史源码/config.ts 的
 // loadSettingsFrom / settings:save / settings:import 三条路径。**顺序不能动**：
 // 迁移必须在归一化之前（否则旧键会被当成非法值处理），预置条目种入必须在
 // reminderMessages 重建之后。对拍脚本 scripts/verify_settings_parity.py 是最快的回归手段。
@@ -411,7 +411,7 @@ func (s *Settings) StartMinimized() bool { return s.Flag(false, "startMinimized"
 
 // AppName 软件名（空串合法 = 不显示名字）。
 // 注意：这里做折叠空白 / 限长是**给 Go 逻辑与窗口标题用的**；下发给设置页的 raw
-// 保持磁盘原样（Electron 的 loadSettingsFrom 不归一化 appName，值为准）。
+// 保持磁盘原样（上一版的 loadSettingsFrom 不归一化 appName，值为准）。
 func (s *Settings) AppName() string { return normalizeAppName(s.Str("", "appName")) }
 
 // Autostart 开机自启动开关
@@ -555,7 +555,7 @@ func strOf(v any) string {
 }
 
 // jsStr 复刻 JS 的 String(v)：null/undefined → ""，数字不带多余小数，布尔转字面量。
-// 配置里的字段可能被手改成品类不符的值，Electron 侧大量用 String(x ?? ”) 兜住，
+// 配置里的字段可能被手改成品类不符的值，上一版侧大量用 String(x ?? ”) 兜住，
 // 这里必须同口径，否则会出现「老配置里 name 是数字」这类边角差异。
 func jsStr(v any) string {
 	switch t := v.(type) {
@@ -1262,7 +1262,7 @@ func seedPresetEntries(raw map[string]any) bool {
 }
 
 // ensureInstallID 安装标识：首次运行生成一枚并持久化，之后读回原值、永不改变。
-// 返回本次是否**新生成**了它（与 Electron 的 installIdCreated 同义，决定要不要落盘）。
+// 返回本次是否**新生成**了它（与 上一版的 installIdCreated 同义，决定要不要落盘）。
 func ensureInstallID(raw map[string]any) bool {
 	if s, ok := raw["installId"].(string); ok && strings.TrimSpace(s) != "" {
 		return false
@@ -1273,7 +1273,7 @@ func ensureInstallID(raw map[string]any) bool {
 
 // normalizeLoad 加载路径的归一化，**顺序逐条对应 config.ts 的 loadSettingsFrom**。
 //
-// 返回值刻意与 Electron 的 LoadedSettings 对齐：只有「补生成了 installId」或
+// 返回值刻意与 上一版的 LoadedSettings 对齐：只有「补生成了 installId」或
 // 「种入了预置条目」这两件事需要立刻落盘。其余归一化结果（旧键清理 / 越界夹紧）
 // **不主动回写** —— 每次启动都改写用户配置会把键序和格式一起动掉，而且在
 // 「验证脚本误指真实配置」时会留下副作用；这些清理结果会在用户下一次保存时一并落盘。
@@ -1349,8 +1349,9 @@ func settingsCandidates(resourcesRoot string) []string {
 // loadSettings 读配置：找到第一份可解析的 settings.json 就用它，在出厂默认之上深合并
 // （缺失字段不会整体退回默认，数组整体替换），再过一遍归一化与迁移。
 //
-// 与 Electron 版 loadSettingsFrom 的差异（**已知未移植项**）：不做督休专员目录迁移
-// （rolesMigrated 只做清理、不搬数据），见 README 的占位清单。
+// 与 上一版 loadSettingsFrom 的差异：督休专员目录迁移不在本函数内做（上一版 把迁移
+// 塞进了 loadSettingsFrom），而是由 migrate_roles.go 在 App 启动时统一处理（一次性的 sha1
+// 摘要目录迁移 + 旧 key 清理），见该文件与 README「督休专员」。
 func loadSettings(resourcesRoot string) *Settings {
 	base := defaultSettingsMap()
 	for _, p := range settingsCandidates(resourcesRoot) {
@@ -1369,7 +1370,7 @@ func loadSettings(resourcesRoot string) *Settings {
 		}
 		installIDCreated, presetSeeded := normalizeLoad(merged)
 		s := &Settings{raw: merged, path: p}
-		// 只有「补生成 installId」或「种入预置条目」才回写（与 Electron 的
+		// 只有「补生成 installId」或「种入预置条目」才回写（与 上一版的
 		// firstRun||installIdCreated||presetSeeded 同口径）
 		if installIDCreated || presetSeeded {
 			if err := s.Save(); err != nil {
@@ -1381,7 +1382,7 @@ func loadSettings(resourcesRoot string) *Settings {
 		return s
 	}
 	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（补 installId、
-	// 种入预置条目），并落盘 —— 与 Electron 的 firstRun 分支一致
+	// 种入预置条目），并落盘 —— 与 上一版的 firstRun 分支一致
 	fresh := defaultSettingsMap()
 	installIDCreated, presetSeeded := normalizeLoad(fresh)
 	s := &Settings{raw: fresh, path: ""}

@@ -7,12 +7,12 @@ import (
 	"time"
 )
 
-// 休息计划层：electron/src/breakPlan.ts + fixedTime.ts + types.ts 的纯函数逐条移植。
+// 休息计划层：历史源码/breakPlan.ts + fixedTime.ts + types.ts 的纯函数逐条移植。
 //
 // 这一层刻意**不持有任何状态、不碰 App**：喂进「一份配置 + 一个基准时刻 + 已消费集合」
 // 就吐出「下一次该什么时候休息」。好处有两个：
 //   - 它是整个调度器的口径来源，纯粹才能被 scripts/verify_plan_parity.py 拿去
-//     与 Electron 自己的 breakPlan.ts 逐字段对拍（移植漏规则的错不报错，只能对拍出来）；
+//     与上一版 自己的 breakPlan.ts 逐字段对拍（移植漏规则的错不报错，只能对拍出来）；
 //   - 时间基准一律用**绝对毫秒时间戳**（JS 用 Date.now()，Go 用 UnixMilli），
 //     两边都靠本地时区解释「几点几分」，不跨时区搬运。
 //
@@ -54,7 +54,7 @@ type PlanSplit struct {
 
 // TimelineItem 今日提醒时间线的一项
 //
-// Paused 是**指针**：Electron 只给倒计时线的项写 paused 键（固定线没有这个键），
+// Paused 是**指针**：上一版 只给倒计时线的项写 paused 键（固定线没有这个键），
 // 用 *bool + omitempty 才能连「键在不在」都对上。
 type TimelineItem struct {
 	Key    string `json:"key"`
@@ -74,7 +74,7 @@ type TakeoutPostponed struct {
 
 // SchedulerState 调度器状态快照。
 // 字段集**必须完整**：设置页的 renderStatus() 一上来就读 paused / pauseReasons.length /
-// phase，缺一个就在 init 里抛错、整页停摆（见 electron/src/types.ts 的 SchedulerState）。
+// phase，缺一个就在 init 里抛错、整页停摆（见 历史源码/types.ts 的 SchedulerState）。
 type SchedulerState struct {
 	Phase string `json:"phase"` // idle | pre | break
 	// NextType 下一次休息的身份（'short' | 'long' | 自定义 id）

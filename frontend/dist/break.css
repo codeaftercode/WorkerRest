@@ -146,7 +146,7 @@ body.sup-flip .mirror { transform: scaleX(-1); }
   transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
 }
 
-/* ---------------- 有角色时的版式：游戏对话画面 ----------------
+/* ---------------- 有督休专员时的版式：游戏对话画面 ----------------
    参考常见游戏的对话画面：底部悬浮对话框（与窗口边缘留距、四角圆角）+
    左上角凸出的名字标签；立绘站在对话框的左上方（geom 三滑条照常控制，
    z 在对话框之下——贴底时下半身被对话框遮住，正是游戏里的经典站位）；
@@ -199,7 +199,7 @@ body.has-supervisor .content {
 
 /* 非全屏（data-rounded='1'）时窗口是 --app-radius 的圆角矩形，但 .content 是
    position:fixed、不受 #app 的 overflow 裁剪——贴边后底部两角必须自己圆出与
-   窗口一致的圆角，否则会在窗口圆角处戳出直角色块。顶部两角保持直角。 */
+   窗口一致的圆角，否则会在窗口圆角处戳出直督休专员块。顶部两角保持直角。 */
 #app[data-rounded='1'] .content {
   border-radius: 0 0 var(--app-radius) var(--app-radius);
 }
@@ -286,7 +286,7 @@ body.has-supervisor .bar {
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
   transition: color 0.4s ease;
 }
-/* 有角色时（对话框内）台词就是裸文本；无角色时这条规则不生效（本就不显示） */
+/* 有督休专员时（对话框内）台词就是裸文本；无督休专员时这条规则不生效（本就不显示） */
 body.has-supervisor .supervisor-line {
   background: none;
   border: none;
@@ -314,7 +314,7 @@ body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
 }
 .messages p { margin: 2px 0; }
 
-/* 有督休专员时：角色是主视觉，提醒内容退为次要说明 */
+/* 有督休专员时：督休专员是主视觉，提醒内容退为次要说明 */
 body.has-supervisor .messages {
   font-size: 15px;
   font-weight: 400;
@@ -325,7 +325,7 @@ body.has-supervisor .messages {
 }
 
 /* 无督休专员时的版式：提醒内容独占窗口正中，倒计时环与「提前结束」沉到下方。
-   角色不在场时窗口里只剩这一句话，摆在屏幕中间最容易被看到——原来的自动高度流式
+   督休专员不在场时窗口里只剩这一句话，摆在屏幕中间最容易被看到——原来的自动高度流式
    居中会让它落在中间偏上（下面还压着 180px 的倒计时环）。 */
 /* ⚠️ .stage 自己也是 positioned（见上面 .stage/.messages/.bar 的 position: relative），
    不把它撑满窗口的话，.content 的包含块会是一个高度为 0 的 .stage —— 那样
@@ -354,7 +354,7 @@ body:not(.has-supervisor) .bar {
   right: 0;
   bottom: 6vh;
 }
-/* 角色不在场时台词气泡一律不出现（角色关闭 ⇒ 只说提醒内容，不出气泡）。
+/* 督休专员不在场时台词气泡一律不出现（督休专员关闭 ⇒ 只说提醒内容，不出气泡）。
    这里是硬兜底：即使哪天有分支误把气泡摘掉 hidden，屏幕上也不会冒出气泡。 */
 body:not(.has-supervisor) .supervisor-line { display: none !important; }
 
@@ -365,7 +365,7 @@ body:not(.has-supervisor) .supervisor-line { display: none !important; }
   gap: 12px;
 }
 /* 环内跟随的「提前结束」与倒计时环垂直排列、水平居中；
-   有角色版的绝对定位/间距覆盖见上面「游戏对话画面」段 */
+   有督休专员版的绝对定位/间距覆盖见上面「游戏对话画面」段 */
 
 .ring-wrap { position: relative; width: 180px; height: 180px; }
 body.has-supervisor .ring-wrap { width: 84px; height: 84px; }

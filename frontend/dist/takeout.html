@@ -20,10 +20,10 @@
         </div>
       </div>
     </div>
-    <!-- 有角色时 .content 变身「游戏对话画面」的底部全宽对话框（与休息窗口同款）：
+    <!-- 有督休专员时 .content 变身「游戏对话画面」的底部全宽对话框（与休息窗口同款）：
          名字标签在左上角凸出，台词大字、状态徽标/时间/按钮排进框内；
          支付红包区脱离文档流浮到立绘可见右缘的右侧（位置由脚本写入）。
-         无角色时维持原版式：内容列居中。 -->
+         无督休专员时维持原版式：内容列居中。 -->
     <div class="content">
       <div class="dialog-name hidden" id="dialog-name"></div>
       <!-- 状态徽标：提前通知（还差几分钟）与"这是第几次推迟" -->
@@ -33,14 +33,14 @@
       </div>
       <!-- 提醒内容：外卖提醒自己的那一套配置，每次弹窗随机/顺序取 1 条；未配置则整块隐藏 -->
       <div class="tk-msg hidden" id="tk-msg"></div>
-      <!-- 督休专员的台词气泡：有角色时提醒内容改由角色"说"出（第一段），这里随之显示 -->
+      <!-- 督休专员的台词气泡：有督休专员时提醒内容改由督休专员"说"出（第一段），这里随之显示 -->
       <div class="supervisor-line hidden" id="supervisor-line"></div>
       <!-- 支付红包：开关打开即显示该区域；二维码指向本机专属领取地址，手机扫码打开 -->
       <div class="tk-redpacket hidden" id="redpacket">
         <canvas class="rp-qr hidden" id="rp-qr" width="88" height="88"></canvas>
         <div class="rp-info">
           <span class="rp-icon">&#129511;</span>
-          <span class="rp-text" id="rp-text">支付红包 · 暂未接入（后续版本提供）</span>
+          <span class="rp-text" id="rp-text">外卖红包 · 手机扫码领取</span>
         </div>
       </div>
       <div class="tk-clock">当前时间 <span id="tk-clock">--:--:--</span></div>

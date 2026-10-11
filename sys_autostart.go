@@ -9,9 +9,9 @@ import (
 	"golang.org/x/sys/windows/registry"
 )
 
-// 开机自启动的注册表读写（Windows）—— electron/src/autostart.ts 的 Go 版。
+// 开机自启动的注册表读写（Windows）—— 历史源码/autostart.ts 的 Go 版。
 //
-// Electron 版走 `reg.exe` 子进程是因为它拿不到别的手段；Go 有
+// 上一版走 `reg.exe` 子进程是因为它拿不到别的手段；Go 有
 // golang.org/x/sys/windows/registry，**直接读写键值**，于是：
 //   · 不启动子进程（限制子进程的安全策略下照样能跑）；
 //   · 没有「reg.exe 输出按 OEM 代码页（GBK）编码」的乱码问题（那边要 TextDecoder('gbk') 转码）；
@@ -28,15 +28,15 @@ import (
 //
 // 返回值统一为「是否成功 + 说明」，由调用方决定要不要打日志，绝不抛错影响主程序。
 
-// runValueName HKCU Run 键里的值名 —— 与 Electron 版的 RUN_VALUE_NAME 保持一致
+// runValueName HKCU Run 键里的值名 —— 与 上一版的 RUN_VALUE_NAME 保持一致
 // （即 app.setAppUserModelId 用的那个）。
 //
-// ⚠️ 两个版本必须用同一个值名：Electron 版与 Go 版会先后在同一台机器上跑过，
+// ⚠️ 两个版本必须用同一个值名：上一版与 Go 版会先后在同一台机器上跑过，
 // 值名不一致就会在注册表里留下孤儿项，「任务管理器 → 启动」里会显示两个条目。
 const runValueName = "com.lwb.workerrest"
 
 // autostartFlag 注册 Run 键时带在命令行末尾的参数，启动时据此判断「这次是开机自启动拉起来的」，
-// 从而只起托盘、不弹设置窗口。与 Electron 版的 AUTOSTART_FLAG 同名同义。
+// 从而只起托盘、不弹设置窗口。与 上一版的 AUTOSTART_FLAG 同名同义。
 const autostartFlag = "--autostart"
 
 // 键路径写成变量（不是常量）：单测要把它们换成临时键做真实读写往返，
@@ -172,7 +172,7 @@ func BuildRunCommandLine(exePath string, args []string) string {
 
 // AutostartTarget 开机自启动该指向哪个可执行文件、带什么参数。
 //
-// 与 Electron 版最大的差异：那边要处理 packaging 形态带来的路径陷阱
+// 与 上一版最大的差异：那边要处理 packaging 形态带来的路径陷阱
 // （portable 目标的 `process.execPath` 指向 `%TEMP%\<随机>` 解包目录，写进 Run 键
 // 就是一条几分钟后就失效的死路径，必须改用 `PORTABLE_EXECUTABLE_FILE`）。
 // Go 版**没有这个坑**：便携形态就是 exe 本身在用户目录里，`os.Executable()` 恒为真实路径。

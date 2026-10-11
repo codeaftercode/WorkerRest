@@ -13,7 +13,7 @@ import (
 
 // 系统能力（空闲 / 勿扰 / 进程 / 自启动）的回归。
 //
-// 这一层与 Electron 侧没有对拍脚本 —— 那边是 koffi 调 DLL + reg.exe 子进程，两边
+// 这一层与 上一版侧没有对拍脚本 —— 那边是 koffi 调 DLL + reg.exe 子进程，两边
 // 没有可比较的中间产物。所以：
 //   - **纯逻辑**（空闲状态机、空闲判定、命令行拼装）在这里逐条钉死；
 //   - **系统调用**（进程枚举、GetLastInputInfo、勿扰查询）在本机真跑，断言的是
@@ -570,7 +570,7 @@ func TestAutostartRegistryRoundTrip(t *testing.T) {
 	}
 }
 
-func TestAutostartValueNameMatchesElectron(t *testing.T) {
+func TestAutostartValueNameMatchesPrevVersion(t *testing.T) {
 	// 两个版本必须用同一个值名，否则注册表里会留下孤儿项、任务管理器显示两个条目
 	if runValueName != "com.lwb.workerrest" {
 		t.Fatalf("值名应为 com.lwb.workerrest，得到 %q", runValueName)

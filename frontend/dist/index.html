@@ -79,8 +79,8 @@
         <button class="ghost" id="long">弹长休息</button>
       </div>
       <div class="row" style="margin-top:12px">
-        <select id="rolePick"><option value="">（按配置选角色）</option></select>
-        <button class="ghost" id="preview">预览该角色</button>
+        <select id="rolePick"><option value="">（按配置选督休专员）</option></select>
+        <button class="ghost" id="preview">预览该督休专员</button>
       </div>
       <div class="row" style="margin-top:12px">
         <button class="ghost" id="quit">退出程序</button>
@@ -90,9 +90,9 @@
   </div>
 
   <div class="card" style="margin-top:16px">
-    <h2>督休专员（角色目录扫描）</h2>
+    <h2>督休专员（督休专员目录扫描）</h2>
     <div class="roles" id="roles"></div>
-    <div class="hint">角色即目录：在软件运行目录的 <code>roles/</code> 下增删子目录即可增删角色，重启后自动跟上。</div>
+    <div class="hint">督休专员即目录：在软件运行目录的 <code>roles/</code> 下增删子目录即可增删督休专员，重启后自动跟上。</div>
   </div>
 
   <script src="./shim.js"></script>
@@ -106,8 +106,8 @@
       var rows = [
         ['引擎', (info && info.engine) || 'go+wails3'],
         ['版本', (info && info.version) || '—'],
-        ['角色数', info ? info.roles : '—'],
-        ['角色目录', state && state.rolesRoot],
+        ['督休专员数', info ? info.roles : '—'],
+        ['督休专员目录', state && state.rolesRoot],
         ['配置文件', state && state.settings],
         ['运行模式', state ? (state.serverMode ? '无头服务（-tags server）' : '图形界面') : '—'],
       ];
@@ -120,7 +120,7 @@
       var box = document.getElementById('roles');
       var pick = document.getElementById('rolePick');
       if (!list || !list.length) {
-        box.innerHTML = '<div class="hint">没有扫描到角色目录</div>';
+        box.innerHTML = '<div class="hint">没有扫描到督休专员目录</div>';
         return;
       }
       box.innerHTML = '';
@@ -166,7 +166,7 @@
       });
       document.getElementById('preview').addEventListener('click', async function () {
         var key = document.getElementById('rolePick').value;
-        if (!key) { log('先在左侧选一个角色'); return; }
+        if (!key) { log('先在左侧选一个督休专员'); return; }
         var ok = await window.api.previewSupervisor(null, key);
         log(ok ? '已用「' + key + '」预览' : '预览失败：' + key);
       });

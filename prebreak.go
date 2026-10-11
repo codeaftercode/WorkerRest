@@ -10,12 +10,12 @@ import (
 )
 
 // 休息前提示弹窗（右下角那个带倒计时与动作按钮的小窗）：
-// electron/src/windows/preBreakWindow.ts 的对应物。
+// 历史源码/windows/preBreakWindow.ts 的对应物。
 //
 // 为什么不用系统通知：Windows 的通知带不了按钮，而这里需要「立即休息 / 推迟休息 /
 // 跳过休息 / 暂停计时」四个动作，所以是自绘窗口。
 //
-// 与 Electron 版逐条对齐的三处，都是踩过才知道要这么写的：
+// 与 上一版逐条对齐的三处，都是踩过才知道要这么写的：
 //
 // 一、版式随 URL query 带过去（custom / tail），渲染层第一帧就按它铺。否则会先画一遍
 // 内置版式（四个按钮 + 两行说明），等 500ms 轮询回来才切成自定义版式，而**窗口高度是
@@ -27,7 +27,7 @@ import (
 // 三、位置固定在主显示器工作区右下角，避免遮住屏幕中央正在工作的内容。
 //
 // 内容（标题 / 版式 / 倒计时后缀）由主进程**在弹窗打开时算一次**并记住：窗口里每 500ms
-// 轮询 PreBreakState 拿的是同一份，中途计划漂移不会让标题跟着变（与 Electron 的
+// 轮询 PreBreakState 拿的是同一份，中途计划漂移不会让标题跟着变（与 上一版的
 // preBreakInfo() 同口径）。名称只有这一份，渲染层不自己拼。
 
 // PreBreakInfo 与「哪一种提醒」绑定的弹窗内容
@@ -49,7 +49,7 @@ const builtinPreBreakTitle = "您已连续工作较长时间，建议您短暂�
 const builtinPreBreakTail = " 秒进入休息"
 
 // 标题与倒计时后缀的纯函数 preBreakTitle / preBreakCountdownTail 在计划层迁移时就搬进了
-// breakplan.go（对应 electron/src/types.ts 的同名函数），这里直接复用，不再重复定义。
+// breakplan.go（对应 历史源码/types.ts 的同名函数），这里直接复用，不再重复定义。
 
 // preBreakInfoOfType 按休息身份算弹窗内容。kind 是内置身份（short / long）时走内置版式，
 // 其余按自定义提醒的名字生成（自定义提醒的 id 前缀是 cb-，见 normalizeCustomBreaks）。
@@ -86,7 +86,7 @@ func (a *App) currentPreBreakInfo() PreBreakInfo {
 }
 
 // rememberPreBreakInfo 算一次弹窗内容并记下 —— 窗口内每 500ms 轮询读的就是这份，
-// 所以中途计划漂移不会让标题 / 倒计时后缀跟着变（与 Electron 的模块级 info 同口径）。
+// 所以中途计划漂移不会让标题 / 倒计时后缀跟着变（与 上一版的模块级 info 同口径）。
 func (a *App) rememberPreBreakInfo(kind string) PreBreakInfo {
 	info := a.preBreakInfoOfType(kind)
 	a.mu.Lock()
@@ -95,7 +95,7 @@ func (a *App) rememberPreBreakInfo(kind string) PreBreakInfo {
 	return info
 }
 
-// 窗口尺寸：宽固定 400（与 Electron 同值）；高按版式两档，见文件头说明。
+// 窗口尺寸：宽固定 400（与上一版 同值）；高按版式两档，见文件头说明。
 const (
 	preBreakWidth     = 400
 	preBreakHeightDef = 240 // 内置版式：标题 + 倒计时 + 两行说明 + 四个按钮
@@ -164,9 +164,9 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 		// 窗口身份经 preBreakURL 的 ?win=prebreak 下发；JS 字段对 URL 页面不生效（仅占位）
 		JS: `window.__WR_WIN = "prebreak";`,
 		Windows: application.WindowsWindow{
-			// 无边框窗口在 Windows 上会留一圈原生装饰（阴影 / 描边），与 Electron 版一致地关掉
+			// 无边框窗口在 Windows 上会留一圈原生装饰（阴影 / 描边），与 上一版一致地关掉
 			DisableFramelessWindowDecorations: true,
-			// 与 Electron 的 skipTaskbar 同义：小窗不进任务栏
+			// 与 上一版的 skipTaskbar 同义：小窗不进任务栏
 			HiddenOnTaskbar: true,
 		},
 	})
@@ -199,7 +199,7 @@ func (a *App) closePreBreakWindow() {
 // ---------- 绑定给渲染层的接口 ----------
 
 // PreBreakState 提前提示窗的状态（渲染层每 500ms 轮询一次刷新倒计时）。
-// 字段集与 electron/main.ts 的 'prebreak:state' 处理器逐字对齐：
+// 字段集与 历史源码/main.ts 的 'prebreak:state' 处理器逐字对齐：
 // 渲染层直接读 st.paused / st.title / st.custom / st.countdownTail / st.remainMs，
 // 少一个字段不会报错，只会静默显示错内容 —— 所以这里不裁字段。
 func (a *App) PreBreakState() map[string]any {
@@ -220,7 +220,7 @@ func (a *App) PreBreakState() map[string]any {
 	}
 }
 
-// PreBreakAction 提前提示窗上的四个动作，与 Electron 的 'prebreak:action' 同义：
+// PreBreakAction 提前提示窗上的四个动作，与 上一版的 'prebreak:action' 同义：
 // breakNow / postpone / skip 汇聚到调度器（与托盘、快捷键同一条入口），
 // pause 与托盘「暂停休息」完全相同（暂停调度并立即关窗）。
 //

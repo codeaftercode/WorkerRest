@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// 休息调度器：electron/src/scheduler.ts 的 BreakScheduler 逐条移植。
+// 休息调度器：历史源码/scheduler.ts 的 BreakScheduler 逐条移植。
 //
 // 时间基准全部使用**绝对毫秒时间戳**（UnixMilli），避免长时间运行漂移。
 // 「下一次什么时候休息」不在本文件里推算，而是交给纯函数 planNextBreak
@@ -31,7 +31,7 @@ type schedHost interface {
 	closeBreakWindows()
 	takeoutPostponedSnapshot() *TakeoutPostponed
 	takeoutFiredSnapshot() map[string]bool
-	// 推迟 / 跳过休息时各记一笔统计（对应 Electron 的 scheduler.on('postpone' / 'skip')）
+	// 推迟 / 跳过休息时各记一笔统计（对应 上一版的 scheduler.on('postpone' / 'skip')）
 	onBreakPostponed(kind string, postponeMs int64)
 	onBreakSkipped(kind string, skippedMs int64)
 }
@@ -98,7 +98,7 @@ func (s *Scheduler) Stop() {
 	s.stopOnce.Do(func() { close(s.stopCh) })
 }
 
-// loop 半秒一跳。Electron 里是两个各 500ms 的定时器（主 tick + 休息窗口到点收窗），
+// loop 半秒一跳。上一版 里是两个各 500ms 的定时器（主 tick + 休息窗口到点收窗），
 // 这里合成一跳：休息进行中只看向「该收窗了没」，其余情况走主 tick。
 func (s *Scheduler) loop() {
 	ticker := time.NewTicker(500 * time.Millisecond)
@@ -219,7 +219,7 @@ func (s *Scheduler) postpone() {
 	oldAt := st.NextAt
 	st.NextAt = nowMs() + ms
 	st.Phase = "idle"
-	// 统计：记一次推迟 + 推后时长（与 Electron 的 scheduler.on('postpone') 同一口径）
+	// 统计：记一次推迟 + 推后时长（与 上一版的 scheduler.on('postpone') 同一口径）
 	s.host.onBreakPostponed(nextType, ms)
 	// 被推迟的那条线在挂起线表里同步平移（今日时间线读的是这份表）
 	for i := range st.Lines {
@@ -268,7 +268,7 @@ func (s *Scheduler) skip() {
 	// 固定时刻线：不消费的话 replan 会把同一时刻原样排回来，「跳过」等于没跳
 	s.consumed[occurrenceKey(nextType, st.NextAt)] = true
 	s.mu.Unlock()
-	// 统计：记一次跳过 + 被跳过那次的时长（对应 Electron 的 scheduler.on('skip')）
+	// 统计：记一次跳过 + 被跳过那次的时长（对应 上一版的 scheduler.on('skip')）
 	s.host.onBreakSkipped(nextType, skippedMs)
 	log.Printf("[scheduler] 跳过 %s（时长 %d ms）", nextType, skippedMs)
 	s.scheduleNext()
@@ -384,6 +384,14 @@ func (s *Scheduler) resume(reason string) {
 		}
 		if st.Other != nil {
 			st.Other.At += delta
+		}
+		// 与固定线分支一致：恢复后立即重判「即将休息」阶段，不依赖下一个 tick。
+		// 暂停期间若 NextAt 被平移进提前区间内，或暂停前本就在 pre，都应立刻回到提示窗。
+		if c, ok := cfg.BreakByID(nextType); ok &&
+			st.NextAt > 0 && c.NotifyBeforeMs > 0 &&
+			nowMs() >= st.NextAt-c.NotifyBeforeMs {
+			st.Phase = "pre"
+			preType = nextType
 		}
 		s.mu.Unlock()
 	default:
@@ -666,7 +674,7 @@ func (s *Scheduler) finishBreak() {
 	s.scheduleNext()
 }
 
-// emitState 把状态推给设置页与托盘（对应 Electron 的 emit('state')）
+// emitState 把状态推给设置页与托盘（对应 上一版的 emit('state')）
 func (s *Scheduler) emitState() {
 	s.host.onSchedulerState()
 }

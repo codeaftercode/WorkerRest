@@ -13,7 +13,7 @@ import (
 // 窗口创建 / 多屏 / 键鼠轮询依赖原生窗口，由无头冒烟 + GUI 探针覆盖。
 
 // newTakeoutApp 造一个能跑会话构建与触发逻辑的最小 App（不碰窗口与 Wails）。
-// rolesRoot 指向空目录 → buildSupervisorSession 返回 nil（无角色），正好测「无角色」路径。
+// rolesRoot 指向空目录 → buildSupervisorSession 返回 nil（无督休专员），正好测「无督休专员」路径。
 func newTakeoutApp(t *testing.T, cfgJSON string) *App {
 	t.Helper()
 	t.Setenv("WR_STATS_PATH", filepath.Join(t.TempDir(), "stats.json"))
@@ -70,7 +70,7 @@ func TestBuildTakeoutInfo(t *testing.T) {
 		t.Fatal("红包关闭时 redPacket 应为 false、redPacketData 应为 nil")
 	}
 	if info.Supervisor != nil {
-		t.Fatal("无角色目录时 supervisor 应为 nil")
+		t.Fatal("无督休专员目录时 supervisor 应为 nil")
 	}
 	// at 应是当天 12:30 的 Unix 毫秒
 	now := time.Now()
@@ -94,12 +94,12 @@ func TestBuildTakeoutInfoRedPacket(t *testing.T) {
 }
 
 func TestBuildTakeoutInfoSupervisorClearsCommand(t *testing.T) {
-	// 有角色时 supervisor 的 command 必须清空（外卖窗口第二段不换台词）
-	// 这里只验证「nil 时不炸」——有角色的路径由 GUI/对拍覆盖（需要真实立绘 data URL）
+	// 有督休专员时 supervisor 的 command 必须清空（外卖窗口第二段不换台词）
+	// 这里只验证「nil 时不炸」——有督休专员的路径由 GUI/对拍覆盖（需要真实立绘 data URL）
 	a := newTakeoutApp(t, takeoutCfg)
 	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0)
 	if info.Supervisor != nil {
-		t.Fatalf("空角色目录应无 supervisor，得到 %+v", info.Supervisor)
+		t.Fatalf("空督休专员目录应无 supervisor，得到 %+v", info.Supervisor)
 	}
 }
 

@@ -15,7 +15,7 @@ import (
 )
 
 // 使用统计：按**本地日期**记账，落盘在统计文件里（落点见 App.appStatsFile）。
-// 移植自 electron/src/stats.ts，口径逐条对齐。
+// 移植自 历史源码/stats.ts，口径逐条对齐。
 //
 // 三个桶（设置页「统计」与这里一一对应），同一时刻只会落进其中一个：
 //   - **工作 WorkMs**：人还在用电脑。起点是软件启动 / 上一次休息结束 / 上一次离开结束，
@@ -1171,7 +1171,7 @@ func writeFileAtomic(path string, data []byte) error {
 //   - 便携形态（配置文件在 `<运行目录>/config/settings.json`）→ `<运行目录>/data/stats.json`；
 //   - 其余形态 → 配置文件所在目录（= userData 根）下的 `stats.json`。
 //
-// 与 Electron 的 `userDataPath('stats.json', 'data', true)` 对齐。
+// 与 上一版的 `userDataPath('stats.json', 'data', true)` 对齐。
 func statsFileForConfig(cfgPath string) string {
 	if cfgPath == "" {
 		return "stats.json"
@@ -1308,7 +1308,7 @@ func (a *App) statsIsIdle() bool {
 }
 
 // onBreakPostponed / onBreakSkipped 调度器宿主接口的实现（见 scheduler.go 的 schedHost）：
-// 推迟 / 跳过各记一笔统计。对应 Electron 的 scheduler.on('postpone' / 'skip')。
+// 推迟 / 跳过各记一笔统计。对应 上一版的 scheduler.on('postpone' / 'skip')。
 func (a *App) onBreakPostponed(kind string, postponeMs int64) {
 	a.statsStore().RecordBreakPostponed(kind, postponeMs)
 }

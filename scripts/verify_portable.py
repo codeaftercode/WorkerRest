@@ -138,7 +138,7 @@ def main():
 
     # 4. 没往 APPDATA 写**配置**（隔离 APPDATA 里不该出现任何 settings.json）。
     #    注意：WebView2 会自己在 APPDATA 下建 <exe名>/EBWebView 浏览器缓存目录，
-    #    那是浏览器引擎的固有行为（Electron 版同样会在 APPDATA 建缓存），
+    #    那是浏览器引擎的固有行为（上一版同样会在 APPDATA 建缓存），
     #    与「配置数据落点」无关 —— 所以这里只查 settings.json，不查「目录为空」。
     wrote_cfg = False
     for root, _dirs, files in os.walk(iso_appdata):

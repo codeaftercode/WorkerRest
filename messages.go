@@ -2,7 +2,7 @@ package main
 
 import "fmt"
 
-// 内置提醒内容：与 electron/src/messages.ts 的 builtinKindMessages 逐字同源。
+// 内置提醒内容：与 历史源码/messages.ts 的 builtinKindMessages 逐字同源。
 //
 // 这些只是**种子**数据 —— 设置页首次打开某类面板、或启动时 seedPresetEntries 跑第一次
 // 时把它们种进配置，之后就是普通条目（可改、可禁、可删），删空后不再回补。id 由

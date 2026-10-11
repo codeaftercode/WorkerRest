@@ -5,7 +5,7 @@ import "syscall"
 // 系统睡眠检测：用 GetTickCount64 的跳变在**醒来后**检测「刚才睡过」。
 //
 // 为什么用 tick 跳变而不是事件回调：Wails v3 没有暴露 WM_POWERBROADCAST 之类的
-// 电源事件源（Electron 有 powerMonitor.getSystemIdleTime / suspend-resume 事件）。
+// 电源事件源（上一版有 powerMonitor.getSystemIdleTime / suspend-resume 事件）。
 // 而睡眠期间进程被挂起、定时器停摆，无法在入睡那一刻执行任何代码 —— 唯一可靠的
 // 「事后检测」依据是：墙钟（time.Now）跳了很远，但 GetTickCount64（**不含睡眠时间**）
 // 只跳了一点点，两者差值就是睡眠时长。

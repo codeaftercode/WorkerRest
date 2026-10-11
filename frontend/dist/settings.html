@@ -58,7 +58,7 @@
     </aside>
 
     <main id="content">
-      <!-- 通用配置（行为 / 提醒窗口（合并原多屏幕·主题·外观） / 声音） -->
+      <!-- 通用配置（行为 / 设置窗口（标题·主题） / 提醒窗口（含多屏幕） / 声音） -->
       <section class="tab active" id="tab-general">
         <h2>通用配置</h2>
         <div class="card">
@@ -100,6 +100,17 @@
           </details>
         </div>
         <div class="card">
+          <h3>设置窗口</h3>
+          <div class="row field"><label>标题</label><input type="text" id="appName" maxlength="30" placeholder="吃饼人也敢休息？" /></div>
+          <div class="row field"><label>主题</label>
+            <div class="inline">
+              <label class="switch-row"><input type="radio" name="theme" value="system" /> 跟随系统</label>
+              <label class="switch-row"><input type="radio" name="theme" value="light" /> 浅色</label>
+              <label class="switch-row"><input type="radio" name="theme" value="dark" /> 深色</label>
+            </div>
+          </div>
+        </div>
+        <div class="card">
           <div class="card-head">
             <h3>提醒窗口</h3>
           </div>
@@ -114,8 +125,8 @@
           <div class="row field"><label>窗口宽度（屏幕百分比）</label><input type="number" id="ap-widthPct" min="20" max="100" /></div>
           <div class="row field"><label>窗口高度（屏幕百分比）</label><input type="number" id="ap-heightPct" min="20" max="100" /></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-fullscreen" /> 全屏显示（开启后忽略宽高比例）</label></div>
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-alwaysOnTop" /> 窗口置顶（强制显示在所有其他窗口之上）</label></div>
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-allScreens" /> 在所有屏幕显示提醒窗口（取消则只在当前活动的屏幕显示）</label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-alwaysOnTop" /> 窗口置顶 </label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-allScreens" /> 在所有屏幕显示提醒窗口 </label></div>
         </div>
         <div class="card">
           <div class="card-head">
@@ -461,27 +472,13 @@
         </div>
       </section>
 
-      <!-- 关于（外观（标题 / 主题）/ 数据与隐私 / 软件信息） -->
+      <!-- 关于（数据与隐私 / 软件信息） -->
       <section class="tab" id="tab-about">
         <h2>关于</h2>
-        <div class="card">
-          <h3>外观</h3>
-          <div class="row field"><label>标题</label><input type="text" id="appName" maxlength="30" placeholder="吃饼人也敢休息？" /></div>
-          <div class="row field"><label>主题</label>
-            <div class="inline">
-              <label class="switch-row"><input type="radio" name="theme" value="system" /> 跟随系统</label>
-              <label class="switch-row"><input type="radio" name="theme" value="light" /> 浅色</label>
-              <label class="switch-row"><input type="radio" name="theme" value="dark" /> 深色</label>
-            </div>
-          </div>
-        </div>
         <div class="card">
           <h3>数据与隐私</h3>
           <p class="hint">本软件无账户、无遥测，所有配置保存在本地 settings.json，使用统计数据保存在本地 stats.json。唯一会随外链发出的标识是安装 ID（用于优惠券二维码，见下）。</p>
           <div class="btn-row">
-            <button class="btn ghost" id="d-export">导出全部配置</button>
-            <button class="btn ghost" id="d-import">导入配置</button>
-            <button class="btn ghost" id="d-openpath">打开配置文件位置</button>
             <button class="btn ghost" id="d-clearstats">清空统计数据</button>
           </div>
           <div class="btn-row">
@@ -491,7 +488,7 @@
         </div>
         <div class="card">
           <h3>软件信息</h3>
-          <p class="hint" id="d-version">吃饼人也敢休息？ v— · Electron + TypeScript · 本地优先</p>
+          <p class="hint" id="d-version">吃饼人也敢休息？ v— · Wails v3 (Go) · 本地优先</p>
           <p class="hint hidden" id="d-update-status"></p>
           <div class="btn-row">
             <button class="btn ghost" id="d-checkupdate">检查更新</button>
@@ -499,7 +496,7 @@
             <button class="btn ghost" id="d-manual">查看使用手册</button>
           </div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="chk-update" /> 启动时检查更新（有新版才提示，失败不打扰）</label></div>
-          <p class="hint">开源与素材：基于 <a class="ext-link" href="#" data-url="https://github.com/electron/electron">Electron</a>、<a class="ext-link" href="#" data-url="https://www.typescriptlang.org/">TypeScript</a>、<a class="ext-link" href="#" data-url="https://github.com/soldair/node-qrcode">node-qrcode</a> 等开源组件构建（MIT 许可）；<a class="ext-link" href="#" data-url="https://github.com/lwb/worker-rest/blob/main/LICENSE">本软件同为 MIT 开源</a>。立绘均为 AI 生成的原创督休专员，不含第三方素材。</p>
+          <p class="hint">开源与素材：项目采用 <a class="ext-link" href="#" data-url="https://github.com/wailsapp/wails">Wails v3</a>（Go）框架构建，参考使用了 <a class="ext-link" href="#" data-url="https://github.com/soldair/node-qrcode">node-qrcode</a> 等 MIT 开源组件；<a class="ext-link" href="#" data-url="https://github.com/lwb/worker-rest/blob/main/LICENSE">本软件同为 MIT 开源</a>。立绘均为 AI 生成的原创督休专员，不含第三方素材。</p>
           <button class="btn danger" id="d-quit">退出软件</button>
         </div>
       </section>

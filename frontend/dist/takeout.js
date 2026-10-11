@@ -2218,8 +2218,8 @@
   }
 
   // renderer/supervisorStage.ts（外卖窗口版）
-  // 与休息窗口同源，但**没有二阶段**：外卖提醒不玩「凑近命令」——角色台词
-  // 恒为外卖提醒文字（stage1Text），不显示角色自己的劝说/命令台词；
+  // 与休息窗口同源，但**没有二阶段**：外卖提醒不玩「凑近命令」——督休专员台词
+  // 恒为外卖提醒文字（stage1Text），不显示督休专员自己的劝说/命令台词；
   // 检测到活动只向其他窗口广播升级（supActivity），本窗口不升级。
   var GEOM_FALLBACK = { sizePct: 72, posXPct: 4, posYPct: 0, flip: false };
   function setupSupervisor(sup, stage1Text) {
@@ -2253,7 +2253,7 @@
     img.src = sup.image;
     applyFigureTrim(document.getElementById("figure-trim"), img, flip);
     const supApi = window.api;
-    // 台词 = 外卖提醒文字（不回退角色台词；没配提醒文字就不显示台词）
+    // 台词 = 外卖提醒文字（不回退督休专员台词；没配提醒文字就不显示台词）
     const stage1 = stage1Text || "";
     app.dataset.stage = "1";
     line.textContent = stage1;

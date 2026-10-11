@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// 统计层的回归（对应 electron/src/stats.ts）。
+// 统计层的回归（对应 历史源码/stats.ts）。
 //
 // 这一层最容易错的三处，都在这里钉死：
 //   - **跨零点切段**（splitByDay）：工作 / 休息 / 离开的每一段都按本地零点切成多段，
@@ -15,7 +15,7 @@ import (
 //   - **离开的三重封顶**（BeginAway）：不越过工作段起点、按当天 workMs 封顶、不跨天；
 //   - **ISO 周号与季度起始月**（periodRangeOf）：日期算术的经典雷区。
 //
-// 真实性的兜底是 scripts/verify_stats_parity.py —— 拿 Electron 的 stats.ts 当黄金参考
+// 真实性的兜底是 scripts/verify_stats_parity.py —— 拿 上一版的 stats.ts 当黄金参考
 // 对同一组输入逐字段对拍。这里只负责把规则本身钉死。
 
 // statsClock 可推进的假时钟（毫秒墙钟）

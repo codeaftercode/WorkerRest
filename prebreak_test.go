@@ -7,7 +7,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 提前提示窗（electron/src/windows/preBreakWindow.ts 的移植）的回归。
+// 提前提示窗（历史源码/windows/preBreakWindow.ts 的移植）的回归。
 //
 // 分工：「窗口真的弹出来了」只有 probe_gui_boot.py（拉起 GUI 产物读日志）与
 // scripts/smoke_server.py（无头下走绑定）能验；这里钉的是四件纯逻辑的事：
@@ -217,7 +217,7 @@ func TestPreBreakStateShape(t *testing.T) {
 	}
 }
 
-// 内容「算一次就记住」：弹窗打开后读到的标题不随计划漂移（与 Electron 的模块级 info 同口径）
+// 内容「算一次就记住」：弹窗打开后读到的标题不随计划漂移（与 上一版的模块级 info 同口径）
 func TestPreBreakInfoRemembered(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	got := a.rememberPreBreakInfo("cb-water")
