@@ -121,7 +121,7 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 		t.Errorf("应种入 %d 条内置提示音，得到 %d", len(builtinMusic), len(music))
 	}
 
-	// takeout：leadMin 0–120、postponeMin 1–120
+	// takeout：leadMin 0–120、postponeMin 0–120（0 = 不显示「推迟」按钮）
 	tk := raw["takeout"].(map[string]any)
 	if tk["leadMin"] != float64(120) || tk["postponeMin"] != float64(120) {
 		t.Errorf("外卖分钟数应夹到 120，得到 %v / %v", tk["leadMin"], tk["postponeMin"])

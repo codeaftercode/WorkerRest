@@ -217,6 +217,11 @@ def main():
         check(not (stg.get("consoleErrors") or []), "设置页加载期间无控制台错误",
               (stg.get("consoleErrors") or [])[:2])
         check(not (stg.get("errs") or []), "设置页无未捕获 JS 异常", (stg.get("errs") or [])[:2])
+        # 主题：删除了「跟随系统」选项，默认浅色
+        theme_opts = stg.get("themeOptions") or []
+        check("system" not in theme_opts, "主题选项不含「跟随系统」", theme_opts)
+        check(stg.get("themeChecked") == "light", "主题默认选中「浅色」", stg.get("themeChecked"))
+        check(stg.get("themeSet"), "设置页已应用主题（data-theme 已写入）", stg.get("themeSet"))
         check((stg.get("navCount") or 0) >= 6, "侧栏页签渲染出来（>=6 个）", stg.get("navCount"))
         check((stg.get("tabCount") or 0) >= 6, "各页签内容区都在 DOM 里", stg.get("tabCount"))
         check((stg.get("supGallery") or 0) == 9, "督休专员画廊渲染出 9 个督休专员（ListRoles → DOM）",
@@ -442,6 +447,8 @@ def main():
         check(pb.get("post") == " 秒进入休息", "提前提示窗：内置倒计时后缀", repr(pb.get("post")))
         check(pb.get("tipsShown") is True, "提前提示窗：内置版式显示两行说明", pb.get("tipsShown"))
         check(pb.get("pauseShown") is True, "提前提示窗：内置版式带「暂停计时」", pb.get("pauseShown"))
+        check(pb.get("postponeShown") is True,
+              "提前提示窗：默认配置（可推迟>0）显示「推迟」按钮", pb.get("postponeShown"))
         check(pb.get("buttons") == ["立即休息", "推迟休息", "跳过休息", "暂停计时"],
               "提前提示窗：四个按钮文案（内置版式）", pb.get("buttons"))
         check(not (pb.get("consoleErrors") or []), "提前提示窗：页面无控制台错误",
@@ -456,6 +463,8 @@ def main():
               "自定义提醒版式：倒计时后缀带提醒名（来自 URL 的 tail）", repr(pbc.get("post")))
         check(pbc.get("tipsShown") is False, "自定义提醒版式：不显示两行说明", pbc.get("tipsShown"))
         check(pbc.get("pauseShown") is False, "自定义提醒版式：没有「暂停计时」", pbc.get("pauseShown"))
+        check(pbc.get("postponeShown") is True,
+              "自定义提醒版式：默认配置（可推迟>0）显示「推迟」按钮", pbc.get("postponeShown"))
         # 「暂停计时」是被加 .hidden 藏起来的（元素还在 DOM 里），所以这里仍是 4 项；
         # 它到底露没露由上面的 pauseShown 断言。
         check(pbc.get("buttons") == ["立即提醒", "推迟提醒", "跳过提醒", "暂停计时"],
@@ -480,6 +489,8 @@ def main():
               "%s / %s" % (tk.get("orderedBtn"), tk.get("skipBtn")))
         check(str(tk.get("postponeBtn") or "").startswith("推迟"),
               "外卖窗口：「推迟」按钮带时长文案", tk.get("postponeBtn"))
+        check(tk.get("postponeShown") is True,
+              "外卖窗口：默认配置（可推迟>0）显示「推迟」按钮", tk.get("postponeShown"))
         # 时钟是正向走的（固定时刻无倒计时），格式 HH:MM:SS
         ok_clock = False
         try:
@@ -538,6 +549,30 @@ def main():
         check(not (tk.get("consoleErrors") or []), "外卖窗口：页面无控制台错误",
               (tk.get("consoleErrors") or [])[:2])
 
+        # ---- 「可推迟」为 0：提前提示窗与外卖窗口都不显示「推迟」按钮 ----
+        # 场景由 renderer_probe.js 的 5b 段造出：short.postponeMs=0、takeout.postponeMin=0，
+        # URL 带 postpone=0（真实链路里主进程生成的地址同样带这个参数）
+        pbz = m.get("preBreakNoPostpone") or {}
+        check(pbz.get("postponeShown") is False,
+              "可推迟为 0：提前提示窗不显示「推迟」按钮", pbz.get("postponeShown"))
+        # 按钮是被 .hidden 藏起来的（元素与文案都还在 DOM 里），不是被删掉。
+        # 文案用词兼容内置 / 自定义两种版式（轮询会把版式切成上一次记住的 custom）
+        check(any("推迟" in b for b in (pbz.get("buttons") or [])),
+              "可推迟为 0：提前提示窗「推迟」按钮只是被隐藏（DOM 与文案仍在）",
+              pbz.get("buttons"))
+        check(not (pbz.get("consoleErrors") or []),
+              "可推迟为 0：提前提示窗页面无控制台错误",
+              (pbz.get("consoleErrors") or [])[:2])
+        tkz = m.get("takeoutNoPostpone") or {}
+        check(tkz.get("postponeShown") is False,
+              "可推迟为 0：外卖窗口不显示「推迟」按钮", tkz.get("postponeShown"))
+        check(str(tkz.get("postponeBtn") or "").startswith("推迟"),
+              "可推迟为 0：外卖窗口「推迟」按钮只是被隐藏（文案仍在）",
+              tkz.get("postponeBtn"))
+        check(not (tkz.get("consoleErrors") or []),
+              "可推迟为 0：外卖窗口页面无控制台错误",
+              (tkz.get("consoleErrors") or [])[:2])
+
         # ---- 截图 ----
         # 提前提示窗是 400x240 / 400x172 的小窗，字节数天然比整页截图少，阈值单独给
         for name, min_sz in (
@@ -545,6 +580,7 @@ def main():
             ("settings_stats.png", 20000), ("settings_shortcuts.png", 20000), ("settings_about.png", 20000),
             ("index.png", 20000), ("break_wide.png", 20000), ("break_tall.png", 20000),
             ("prebreak.png", 4000), ("prebreak_custom.png", 4000), ("takeout.png", 4000),
+            ("prebreak_no_postpone.png", 4000), ("takeout_no_postpone.png", 4000),
         ):
             p = os.path.join(OUT, name)
             sz = os.path.getsize(p) if os.path.isfile(p) else 0

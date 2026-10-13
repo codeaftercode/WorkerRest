@@ -218,6 +218,34 @@ func TestSchedulerAllDisabledNoPlan(t *testing.T) {
 	}
 }
 
+// 「提前通知」为 0 秒：不进 pre 阶段、不触发 onPreNotify —— 到点直接开始休息，
+// 不弹右下角提前提示窗（ notifyBeforeMs>0 的守卫在 onTick 与恢复暂停两条路径上都有）
+func TestSchedulerNoPreNotifyWhenZero(t *testing.T) {
+	cfg := `{"short":{"enabled":true,"mode":"countdown","intervalMs":600000,` +
+		`"durationMs":20000,"notifyBeforeMs":0,"postponeMs":120000,"slots":[]}}`
+	s, host := newTestSched(t, cfg)
+	s.replan()
+
+	// 挪到「已到点」：notifyBeforeMs=0 时 pre 与 due 同边界，只有守卫能拦住 pre
+	s.mu.Lock()
+	s.state.NextAt = nowMs() - 1
+	for i := range s.state.Lines {
+		s.state.Lines[i].At = s.state.NextAt
+	}
+	s.mu.Unlock()
+
+	s.onTick()
+	if len(host.pre) != 0 {
+		t.Fatalf("notifyBeforeMs=0 不该触发提前通知，得到 %v", host.pre)
+	}
+	if got := s.stateCopy().Phase; got != "break" {
+		t.Fatalf("到点应直接进入休息，得到 %q", got)
+	}
+	if len(host.breaks) != 1 || host.breaks[0] != "short" {
+		t.Fatalf("到点应正常开始短休息，得到 %v", host.breaks)
+	}
+}
+
 func TestSchedulerPostponeShiftsPlan(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()

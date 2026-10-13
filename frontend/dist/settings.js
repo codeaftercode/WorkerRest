@@ -61,7 +61,7 @@
   }
   var TAKEOUT_LEAD_LIMITS = [0, 120];
   var TAKEOUT_LEAD_DEFAULT = 0;
-  var TAKEOUT_POSTPONE_LIMITS = [1, 120];
+  var TAKEOUT_POSTPONE_LIMITS = [0, 120];
   var TAKEOUT_POSTPONE_DEFAULT = 10;
   var APP_PAUSE_PRESETS = [
     { exe: "WeMeetApp.exe", label: "\u817E\u8BAF\u4F1A\u8BAE" },
@@ -1092,7 +1092,9 @@
   }
   function defaultSlotTime() {
     const d = /* @__PURE__ */ new Date();
-    const total = Math.round((d.getHours() * 60 + d.getMinutes()) / 10) * 10;
+    // 向上取到下一个 10 分钟边界：保证新建的提醒时间一定在未来，
+    // 否则落在过去的默认时间会被「今日提醒时间线」过滤掉，看起来像"没刷新"。
+    const total = Math.floor((d.getHours() * 60 + d.getMinutes()) / 10) * 10 + 10;
     return { hour: Math.floor(total / 60) % 24, minute: total % 60 };
   }
   function newSlot() {
@@ -1241,11 +1243,13 @@
       onChange: () => {
         updateTakeoutSummary();
         autoSave();
+        refreshStatusNow();
       },
       onRemove: (slot) => {
         t.slots = t.slots.filter((s) => s !== slot);
         renderTakeoutList();
         autoSave();
+        refreshStatusNow();
       }
     });
     updateTakeoutSummary();
@@ -1321,13 +1325,14 @@
       applyBreakModeUI();
       updateBreakSummary(id);
     });
-    $(`${id}-add`).addEventListener("click", () => {
+    $(`${id}-add`).addEventListener("click", async () => {
       const c = breakCfg(id);
       if (!c) return;
       const slot = newSlot();
       c.slots.push(slot);
       renderBreakList(id);
-      autoSave();
+      await autoSave();
+      refreshStatusNow();
       toast(`\u5DF2\u6DFB\u52A0 ${slotTimeText(slot)} \u7684${cb.name}`);
     });
     for (const suffix of ["enabled", "interval"]) {
@@ -1390,6 +1395,7 @@
     renderCustomCard(cb);
     applyBreakModeUI();
     autoSave();
+    refreshStatusNow();
     toast(`\u5DF2\u65B0\u5EFA\u81EA\u5B9A\u4E49\u63D0\u9192\u300C${name}\u300D`);
   }
   async function removeCustomBreak(id) {
@@ -1406,6 +1412,7 @@
     customCardEl(id)?.remove();
     applyBreakModeUI();
     autoSave();
+    refreshStatusNow();
     toast(`\u5DF2\u5220\u9664\u81EA\u5B9A\u4E49\u63D0\u9192\u300C${cb.name}\u300D`);
   }
   function allBreakIds() {
@@ -1450,11 +1457,13 @@
       onChange: () => {
         updateBreakSummary(id);
         autoSave();
+        refreshStatusNow();
       },
       onRemove: (slot) => {
         c.slots = c.slots.filter((s) => s !== slot);
         renderBreakList(id);
         autoSave();
+        refreshStatusNow();
       }
     });
     updateBreakSummary(id);
@@ -1499,7 +1508,9 @@
   function fillForm() {
     $("appName").value = S.appName ?? "";
     $("tb-title").textContent = S.appName || "\u5403\u997C\u4EBA\u4E5F\u6562\u4F11\u606F\uFF1F";
-    document.querySelector(`input[name=theme][value="${S.theme}"]`).checked = true;
+    const themeVal = S.theme === "light" || S.theme === "dark" ? S.theme : "light";
+    document.querySelector(`input[name=theme][value="${themeVal}"]`).checked = true;
+    S.theme = themeVal;
     $("idlePauseMin").value = String(Math.max(1, Math.round(S.idlePauseMin)));
     $("longEveryNShort").value = String(S.longEveryNShort);
     $("autostart").checked = S.autostart;
@@ -1559,7 +1570,7 @@
       const dv = clampNum($(`${id}-duration`), bySec ? 5 : 1, bySec ? 600 : 60, 20);
       c.durationMs = bySec ? dv * 1e3 : dv * 6e4;
       c.notifyBeforeMs = clampNum($(`${id}-notify`), 0, 300, 10) * 1e3;
-      c.postponeMs = clampNum($(`${id}-postpone`), 1, 120, 2) * 6e4;
+      c.postponeMs = clampNum($(`${id}-postpone`), 0, 120, 2) * 6e4;
     };
     for (const id of allBreakIds()) readBreak(id);
     const a = S.appearance;
@@ -1841,6 +1852,13 @@
     // 「暂停休息/恢复休息」互斥显示：暂停中只显示「恢复休息」，否则只显示「暂停休息」
     const qaPause = $("qa-pause");
     if (qaPause) qaPause.textContent = st.paused ? "\u6062\u590D\u4F11\u606F" : "\u6682\u505C\u4F11\u606F";
+    // 「推迟休息」按钮：当前下次提醒的「可推迟」为 0 分钟时不显示 —— 推迟 0 分钟
+    // 等于立即再弹一次，没有意义。提前提示窗 / 外卖窗口的「推迟」按钮同样按此显隐。
+    const qaPostpone = $("qa-postpone");
+    if (qaPostpone) {
+      const cfg = st.nextType ? breakCfg(st.nextType) : null;
+      qaPostpone.classList.toggle("hidden", !(cfg && cfg.postponeMs > 0));
+    }
     const phaseText = st.phase === "break" ? "\u4F11\u606F\u4E2D" : st.phase === "pre" ? "\u5373\u5C06\u4F11\u606F" : "\u52AA\u529B\u5DE5\u4F5C\u4E2D";
     const phaseVal = st.paused ? `${phaseText}\uFF08\u5DF2\u6682\u505C${st.pauseReasons.length ? "\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001") : ""}\uFF09` : phaseText;
     const now = st.paused ? st.pausedAt : Date.now();
@@ -1942,13 +1960,9 @@
       list.append(row);
     }
   }
-  var themeMq = window.matchMedia("(prefers-color-scheme: dark)");
   function applyTheme() {
-    document.documentElement.dataset.theme = S.theme === "system" ? themeMq.matches ? "dark" : "light" : S.theme;
+    document.documentElement.dataset.theme = S.theme;
   }
-  themeMq.addEventListener("change", () => {
-    if (S.theme === "system") applyTheme();
-  });
   function fmtDur(ms) {
     const s = Math.round(ms / 1e3);
     if (s < 60) return `${s} \u79D2`;
@@ -4594,6 +4608,17 @@
     applyTheme();
     if (supPreview !== null || document.getElementById("sup-preview")) renderSupervisorPreview(curSupStage);
   }
+  // 新增 / 删除提醒时间后，立即向设置页重拉一次状态：刷新「今日提醒时间线」与
+  // 侧栏「下次外卖提醒 / 自定义提醒」迷你卡。后端 saveSettings 已会重算并推送，
+  // 这里再拉一次是为消除保存往返带来的可见延迟，确保「立即」反映。
+  async function refreshStatusNow() {
+    try {
+      const raw = await window.api.getState();
+      renderStatus(raw);
+    } catch (e) {
+      console.error("[refreshStatusNow] 拉取状态失败", e);
+    }
+  }
   function bindAutoSave() {
     for (const el of document.querySelectorAll(".tab input, .tab select")) {
       if (el.closest("#tab-stats")) continue;
@@ -4720,11 +4745,12 @@
       autoSave();
       toast("\u5DF2\u6062\u590D\u9ED8\u8BA4\u5C3A\u5BF8\u4E0E\u4F4D\u7F6E");
     });
-    $("tk-add").addEventListener("click", () => {
+    $("tk-add").addEventListener("click", async () => {
       const slot = newSlot();
       S.takeout.slots.push(slot);
       renderTakeoutList();
-      autoSave();
+      await autoSave();
+      refreshStatusNow();
       toast(`\u5DF2\u6DFB\u52A0 ${slotTimeText(slot)} \u7684\u5916\u5356\u63D0\u9192`);
     });
     $("cb-add").addEventListener("click", () => void addCustomBreak());
@@ -4736,13 +4762,14 @@
         applyBreakModeUI();
         updateBreakSummary(t);
       });
-      $(`${t}-add`).addEventListener("click", () => {
+      $(`${t}-add`).addEventListener("click", async () => {
         const cfg = breakCfg(t);
         if (!cfg) return;
         const slot = newSlot();
         cfg.slots.push(slot);
         renderBreakList(t);
-        autoSave();
+        await autoSave();
+        refreshStatusNow();
         toast(`\u5DF2\u6DFB\u52A0 ${slotTimeText(slot)} \u7684${t === "short" ? "\u77ED" : "\u957F"}\u4F11\u606F`);
       });
       for (const id of [`${t}-enabled`, `${t}-interval`]) {

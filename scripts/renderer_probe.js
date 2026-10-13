@@ -92,6 +92,14 @@ const PROBE_SETTINGS = `(function () {
     idlePauseMin: val('idlePauseMin'),
     dndPause: chk('dndPause'),
     themeSet: !!document.documentElement.getAttribute('data-theme'),
+    themeOptions: Array.prototype.map.call(
+      document.querySelectorAll('input[name=theme]'),
+      function (el) { return el.value; }
+    ),
+    themeChecked: (function () {
+      var el = document.querySelector('input[name=theme]:checked');
+      return el ? el.value : null;
+    })(),
     bodyClass: document.body.className,
     apOpacity: val('ap-opacity'),
     apWidthPct: val('ap-widthPct'),
@@ -112,7 +120,7 @@ const PROBE_SETTINGS = `(function () {
     tkLead: val('tk-lead'),
     tkPostpone: val('tk-postpone'),
     supEnabled: chk('sup-enabled'),
-    supSelection: val('sup-selection'),
+    supSelection: (function () { var b = document.getElementById('sup-selection-btn'); return b ? (b.dataset.mode || null) : null; })(),
     supGallery: cnt('#sup-gallery .role-item'),
     supGalleryAdd: cnt('#sup-gallery .role-add'),
     supGalleryNames: Array.prototype.map.call(
@@ -230,6 +238,7 @@ const PROBE_PREBREAK = `(function () {
     post: txt('pb-post'),
     tipsShown: shown('pb-tips'),
     pauseShown: shown('pb-pause'),
+    postponeShown: shown('pb-postpone'),
     buttons: btns,
     appHeight: app ? Math.round(app.getBoundingClientRect().height) : 0
   };
@@ -279,6 +288,12 @@ const PROBE_STATS = `(function () {
   };
 })()`;
 const PROBE_TAKEOUT = `(async function () {
+  // 量布局前等字体加载 + 两帧：红包框 width:max-content 的宽度依赖 .rp-info 文字
+  // 渲染宽度，字体未加载时会量到 fallback 字体的宽度（与最终不一致），导致摆位
+  // left 与渲染后的红包框中心对不上。等 fonts.ready + rAF 让 RO 触发的 relayout
+  // 跑完，量到的就是真实用户看到的状态。
+  if (document.fonts && document.fonts.ready) { await document.fonts.ready; }
+  await new Promise(function(r){ requestAnimationFrame(function(){ requestAnimationFrame(r); }); });
   var txt = function (id) { var e = document.getElementById(id); return e ? e.textContent.trim() : null; };
   var shown = function (id) { var e = document.getElementById(id); return e ? !e.classList.contains('hidden') : null; };
   var cs = getComputedStyle(document.documentElement);
@@ -293,7 +308,7 @@ const PROBE_TAKEOUT = `(async function () {
     win: window.__WR_WIN || null,
     callErr: err,
     info: info,
-    clock: txt('tk-clock'),
+    clock: txt('rp-time'),
     postponedShown: shown('tk-postponed'),
     leadShown: shown('tk-lead'),
     msgShown: shown('tk-msg'),
@@ -304,6 +319,7 @@ const PROBE_TAKEOUT = `(async function () {
     orderedBtn: txt('tk-ordered'),
     skipBtn: txt('tk-skip'),
     postponeBtn: txt('tk-postpone'),
+    postponeShown: shown('tk-postpone'),
     hasSupervisor: document.body.classList.contains('has-supervisor'),
     stage: (document.getElementById('app') || {}).dataset ? document.getElementById('app').dataset.stage : null,
     viewportW: window.innerWidth,
@@ -411,7 +427,7 @@ async function run() {
 
   // ---- 1b. 提前提示窗：内置版式 ----
   const pbErr = [];
-  const pre = await open(browser, BASE + "/prebreak.html", 400, 240, {
+  const pre = await open(browser, BASE + "/prebreak.html?postpone=1", 400, 240, {
     transparent: true, frame: false, onConsole: pbErr,
   });
   await delay(700);
@@ -437,7 +453,7 @@ async function run() {
   const pbCErr = [];
   const preC = await open(
     browser,
-    BASE + "/prebreak.html?custom=1&tail=" + encodeURIComponent(" 秒显示喝水提醒"),
+    BASE + "/prebreak.html?custom=1&tail=" + encodeURIComponent(" 秒显示喝水提醒") + "&postpone=1",
     400, 172,
     { transparent: true, frame: false, onConsole: pbCErr },
   );
@@ -476,6 +492,41 @@ async function run() {
   metrics.takeout.consoleErrors = tkErr;
   await shot(tk, "takeout");
   console.log("[probe] takeout:", JSON.stringify(metrics.takeout));
+
+  // ---- 5b. 「可推迟」为 0：提前提示窗与外卖窗口都不显示「推迟」按钮 ----
+  await main.evaluate(
+    "(function(){ return window.api.saveSettings({" +
+      "short:{postponeMs:0}, takeout:{postponeMin:0}}); })()",
+  );
+  await delay(1200);
+  const pbZErr = [];
+  const preZ = await open(
+    browser,
+    BASE + "/prebreak.html?custom=0&postpone=0&tail=" + encodeURIComponent(" 秒进入休息"),
+    400, 240,
+    { transparent: true, frame: false, onConsole: pbZErr },
+  );
+  await delay(700);
+  metrics.preBreakNoPostpone = await preZ.evaluate(PROBE_PREBREAK);
+  metrics.preBreakNoPostpone.consoleErrors = pbZErr;
+  await shot(preZ, "prebreak_no_postpone");
+  console.log("[probe] preBreakNoPostpone:", JSON.stringify(metrics.preBreakNoPostpone));
+
+  await main.evaluate("(function(){ return window.api.previewTakeout(); })()");
+  const tkZErr = [];
+  const tkZ = await open(browser, BASE + "/takeout.html", 880, 560, {
+    transparent: true, frame: false, onConsole: tkZErr,
+  });
+  metrics.takeoutNoPostpone = await tkZ.evaluate(PROBE_TAKEOUT);
+  metrics.takeoutNoPostpone.consoleErrors = tkZErr;
+  await shot(tkZ, "takeout_no_postpone");
+  console.log("[probe] takeoutNoPostpone:", JSON.stringify(metrics.takeoutNoPostpone));
+  // 还原配置（收尾 / 后续场景回到默认态）
+  await main.evaluate(
+    "(function(){ return window.api.saveSettings({" +
+      "short:{postponeMs:120000}, takeout:{postponeMin:10}}); })()",
+  );
+  await delay(800);
 
   await browser.close();
   fs.writeFileSync(path.join(OUT, "metrics.json"), JSON.stringify(metrics, null, 2));

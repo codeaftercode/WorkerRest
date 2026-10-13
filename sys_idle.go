@@ -220,6 +220,8 @@ func (s *IdleState) ResetBaseline() {
 	s.lastInputAt = now
 	s.resetAt = now
 	s.activeStreakMs = 0
+	s.forced = false
+	s.forcedMs = 0
 }
 
 // ForceIdle 冒烟 / 单测专用：把 L 钉在 ms（传负数解除）。

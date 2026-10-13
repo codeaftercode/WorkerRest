@@ -2399,6 +2399,10 @@
       if (container) ro.observe(container);
       if (measure) ro.observe(measure);
       ro.observe(content);
+      // 红包框自身尺寸变化（如 .rp-time 内容回流）也要重排，
+      // 否则 max-content 宽度变后写死的 left 会让中心偏离交点。
+      const floatEl = content.querySelector(".tk-redpacket");
+      if (floatEl) ro.observe(floatEl);
     }
     if (measure && typeof MutationObserver !== "undefined") {
       new MutationObserver(relayout).observe(measure, {
@@ -2426,7 +2430,12 @@
       postEl.textContent = `\u5DF2\u63A8\u8FDF ${info.postponedCount} \u6B21`;
       postEl.classList.remove("hidden");
     }
-    el("tk-postpone").textContent = `\u63A8\u8FDF ${info.postponeMin} \u5206\u949F`;
+    // 「可推迟」为 0 分钟时不显示「推迟」按钮（buildTakeoutInfo 透传配置快照）
+    if (info.postponeMin > 0) {
+      el("tk-postpone").textContent = `\u63A8\u8FDF ${info.postponeMin} \u5206\u949F`;
+    } else {
+      el("tk-postpone").classList.add("hidden");
+    }
     const msgEl = el("tk-msg");
     if (info.message) {
       msgEl.textContent = info.message;
@@ -2458,10 +2467,11 @@
       );
     }
     const leadEl = el("tk-lead");
-    const clock = el("tk-clock");
+    const rpTime = el("rp-time");
     const tick = () => {
       const d = /* @__PURE__ */ new Date();
-      clock.textContent = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+      const t = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
+      if (rpTime) rpTime.textContent = t;
       const leftMin = Math.ceil((info.at - Date.now()) / 6e4);
       if (info.leadMin > 0 && leftMin > 0) {
         leadEl.textContent = `\u63D0\u524D ${info.leadMin} \u5206\u949F\u63D0\u9192`;

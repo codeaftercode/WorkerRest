@@ -80,6 +80,44 @@ func TestBuildTakeoutInfo(t *testing.T) {
 	}
 }
 
+// 「可推迟」为 0：会话快照 PostponeMin=0（渲染层据此隐藏「推迟」按钮）
+func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
+	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":0,"redPacket":false,"slots":[]},"installId":"uuid-1234"}`
+	a := newTakeoutApp(t, cfg)
+	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0)
+	if info == nil {
+		t.Fatal("会话不应为空")
+	}
+	if info.PostponeMin != 0 {
+		t.Fatalf("postponeMin=0 时应透传 0，得到 %d", info.PostponeMin)
+	}
+	// 归一化侧同样不许把 0 夹成 1（保存路径）
+	norm := normalizeTakeout(map[string]any{"takeout": map[string]any{"postponeMin": float64(0)}})
+	if norm["postponeMin"] != float64(0) {
+		t.Fatalf("normalizeTakeout 应保留 postponeMin=0，得到 %v", norm["postponeMin"])
+	}
+}
+
+// TakeoutPostponeMin 的下放开到 0：0 = 不显示「推迟」按钮；负值夹到 0、越界夹到 120
+func TestTakeoutPostponeMinClamp(t *testing.T) {
+	cases := []struct {
+		js   string
+		want int
+	}{
+		{`{"takeout":{"postponeMin":0}}`, 0},
+		{`{"takeout":{"postponeMin":-5}}`, 0},
+		{`{"takeout":{"postponeMin":15}}`, 15},
+		{`{"takeout":{"postponeMin":999}}`, 120},
+		{`{"takeout":{}}`, 10}, // 缺省兜底
+	}
+	for _, c := range cases {
+		s := testSettings(t, c.js)
+		if got := s.TakeoutPostponeMin(); got != c.want {
+			t.Errorf("TakeoutPostponeMin(%s) = %d，期望 %d", c.js, got, c.want)
+		}
+	}
+}
+
 func TestBuildTakeoutInfoRedPacket(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":15,"redPacket":true,"slots":[]},"installId":"uuid-1234"}`
 	a := newTakeoutApp(t, cfg)

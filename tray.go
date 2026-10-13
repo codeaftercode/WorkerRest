@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -30,6 +31,9 @@ func (a *App) startTray() {
 		a.ShowSettingsWindow()
 	})
 	tray.OnRightClick(func() {
+		// 右键弹出前先重算一次：原生菜单打开后不会自己重绘，这里补一刀，
+		// 保证菜单顶部的「下次…：约 X 分钟后」是刚算出来的值（不等下一秒的 ticker）。
+		a.refreshTray()
 		tray.OpenMenu()
 	})
 
@@ -75,6 +79,63 @@ func (a *App) startTray() {
 	a.mu.Unlock()
 	log.Printf("[tray] 托盘就绪（单击打开设置）")
 	a.refreshTray()
+	// 剩余时间在流逝、但调度器状态没变时也要推：tooltip / 菜单里的倒计时不能停在
+	// 最后一次事件的值上（用户反馈「x分x秒后」不动的根因就在这）。
+	a.startTrayRefresh()
+}
+
+// ---------- 定时刷新 ----------
+
+// trayRefreshInterval 托盘文案的刷新间隔。用户要求「至少每分钟更新一次」，这里取 1 秒
+// 叠加「文案不变不写」（见 applyTrayLabels）：分钟级文案一分钟才真正落一次原生调用，
+// 休息中的秒级剩余也能秒级跟上，其余 tick 只做纯内存计算、不产生主线程往返。
+const trayRefreshInterval = time.Second
+
+// startTrayRefresh 起托盘定时刷新循环。server 模式没有托盘（startTray 直接返回），
+// 不会走到这里；重复调用安全（已在跑就跳过）。
+func (a *App) startTrayRefresh() {
+	a.mu.Lock()
+	if a.trayStop != nil {
+		a.mu.Unlock()
+		return
+	}
+	a.trayStop = make(chan struct{})
+	ch := a.trayStop
+	a.mu.Unlock()
+	go func() {
+		t := time.NewTicker(trayRefreshInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-ch:
+				return
+			case <-t.C:
+				a.refreshTray()
+			}
+		}
+	}()
+}
+
+// stopTrayRefresh 停止托盘定时刷新（退出清理）
+func (a *App) stopTrayRefresh() {
+	a.mu.Lock()
+	ch := a.trayStop
+	a.trayStop = nil
+	a.mu.Unlock()
+	if ch != nil {
+		close(ch)
+	}
+}
+
+// trayLabels 上一次写到托盘提示与菜单的文案快照（a.mu 保护）。秒级刷新每秒重算，
+// 但只在文案真正变化时才调原生 Set* —— 见 applyTrayLabels。
+type trayLabels struct {
+	tip       string
+	status    string
+	action    string
+	pause     string
+	autostart bool
+	valid     bool // false = 还没写过；首写一律全量落一次
 }
 
 // toggleAutostart 托盘勾选框：翻转 settings.autostart → 落盘 → 同步注册表 → 通知设置页。
@@ -112,14 +173,33 @@ func (a *App) refreshTray() {
 		return
 	}
 	st := a.sched.stateForRenderer()
+	tip, statusText, actionText, pauseText := trayTexts(st)
+	// 开机自启动的勾以**配置**为准（不是以「刚才点了什么」为准）：设置页里改、导入配置改、
+	// 恢复默认改，都会走到这里把托盘那一项对齐。
+	next := trayLabels{
+		tip:       tip,
+		status:    statusText,
+		action:    actionText,
+		pause:     pauseText,
+		autostart: auto != nil && a.cfgSnapshot().Autostart(),
+		valid:     true,
+	}
+	a.applyTrayLabels(tray, status, action, pause, auto, next)
+}
 
-	// 提示语**不带标题前缀**：托盘图标本身就是身份，而标题由用户自定义、可能很长，
-	// 不该把「还剩多久」这半句挤掉（Windows 工具提示的宽度有限）。
-	var tip, statusText, actionText, pauseText string
+// trayTexts 按调度状态算出托盘提示与菜单文案（纯函数：不碰原生对象，便于单测；
+// refreshTray 只负责把它们落到托盘 / 菜单上）。
+//
+// 提示语**不带标题前缀**：托盘图标本身就是身份，而标题由用户自定义、可能很长，
+// 不该把「还剩多久」这半句挤掉（Windows 工具提示的宽度有限）。
+func trayTexts(st SchedulerState) (tip, statusText, actionText, pauseText string) {
 	switch {
 	case st.Paused:
 		tip = "已暂停：" + pauseReasonsText(st.PauseReasons)
 		statusText = "状态：已暂停"
+		// 「立即休息」是常驻项（见本文件顶部的菜单结构说明）：暂停时也要留着标签，
+		// 不能像以前那样留个空串把菜单项清成空白。
+		actionText = "立即休息"
 		pauseText = "恢复休息"
 	case st.Phase == "break":
 		// 暂停期间剩余时间冻结在 pausedAt，但暂停已被上一个分支拦下，这里按当前时间算
@@ -134,20 +214,50 @@ func (a *App) refreshTray() {
 		actionText = "立即休息"
 		pauseText = "暂停休息"
 	default:
-		left := max0(st.NextAt - nowMs())
-		tip = fmtTrayRemain(left) + "后" + st.NextName
-		statusText = "下次" + st.NextName + "：" + fmtTrayRemain(left)
+		// 约数到分钟（用户不要求秒级精度）：tooltip「短休息约 10 分钟后」、
+		// 菜单状态行「下次短休息：约 10 分钟后」。
+		about := fmtTrayAboutMin(max0(st.NextAt - nowMs()))
+		tip = st.NextName + "约 " + about + "后"
+		statusText = "下次" + st.NextName + "：约 " + about + "后"
 		actionText = "立即休息"
 		pauseText = "暂停休息"
 	}
-	tray.SetTooltip(tip)
-	status.SetLabel(statusText)
-	action.SetLabel(actionText)
-	pause.SetLabel(pauseText)
-	// 开机自启动的勾以**配置**为准（不是以「刚才点了什么」为准）：设置页里改、导入配置改、
-	// 恢复默认改，都会走到这里把托盘那一项对齐。
-	if auto != nil {
-		auto.SetChecked(a.cfgSnapshot().Autostart())
+	return tip, statusText, actionText, pauseText
+}
+
+// applyTrayLabels 只在文案变化时才写原生托盘/菜单。秒级刷新循环每秒都会走到这，
+// 而「约 X 分钟后」一分钟才变一次、其余状态文案只在状态翻转时变 —— 变化检测让
+// 绝大多数 tick 什么都不做（既省主线程往返，也避免无谓的菜单重绘）。
+func (a *App) applyTrayLabels(tray *application.SystemTray, status, action, pause, auto *application.MenuItem, next trayLabels) {
+	a.mu.Lock()
+	prev := a.trayLast
+	a.trayLast = next
+	a.mu.Unlock()
+	if !prev.valid {
+		// 首写（托盘刚就绪）一律全量落一次
+		tray.SetTooltip(next.tip)
+		status.SetLabel(next.status)
+		action.SetLabel(next.action)
+		pause.SetLabel(next.pause)
+		if auto != nil {
+			auto.SetChecked(next.autostart)
+		}
+		return
+	}
+	if prev.tip != next.tip {
+		tray.SetTooltip(next.tip)
+	}
+	if prev.status != next.status {
+		status.SetLabel(next.status)
+	}
+	if prev.action != next.action {
+		action.SetLabel(next.action)
+	}
+	if prev.pause != next.pause {
+		pause.SetLabel(next.pause)
+	}
+	if auto != nil && prev.autostart != next.autostart {
+		auto.SetChecked(next.autostart)
 	}
 }
 
@@ -174,6 +284,21 @@ func fmtTrayRemain(ms int64) string {
 		out += fmt.Sprintf(" %d 秒", r)
 	}
 	return out
+}
+
+// fmtTrayAboutMin 分钟级约数（只返回「N 分钟」这段，「约 … 后」由调用方拼）：
+// 托盘 tooltip 与菜单状态行共用。用户不要求秒级精度、刷新也是分钟级，故四舍五入到
+// 分钟；不足 1 分钟按 1 分钟计（免得出「约 0 分钟后」这种怪话）。
+func fmtTrayAboutMin(ms int64) string {
+	s := ms / 1000
+	if s < 0 {
+		s = 0
+	}
+	m := (s + 30) / 60 // 四舍五入到分钟
+	if m < 1 {
+		m = 1
+	}
+	return fmt.Sprintf("%d 分钟", m)
 }
 
 // fmtTrayShort 紧凑倒计时（日志与诊断页用，与 tray.ts 的 fmtShort 同义）

@@ -188,9 +188,9 @@ func (s *Settings) DndPause() bool { return s.Flag(true, "dndPause") }
 // TakeoutLeadMin 外卖「提前通知」分钟数（0=到点提醒）
 func (s *Settings) TakeoutLeadMin() int { return clampInt(s.Int(0, "takeout", "leadMin"), 0, 120) }
 
-// TakeoutPostponeMin 外卖「可推迟」分钟数
+// TakeoutPostponeMin 外卖「可推迟」分钟数（0=不显示「推迟」按钮）
 func (s *Settings) TakeoutPostponeMin() int {
-	return clampInt(s.Int(10, "takeout", "postponeMin"), 1, 120)
+	return clampInt(s.Int(10, "takeout", "postponeMin"), 0, 120)
 }
 
 // TakeoutRedPacket 是否显示外卖优惠券

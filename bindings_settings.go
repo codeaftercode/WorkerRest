@@ -65,10 +65,12 @@ func (a *App) SaveSettings(next map[string]any) bool {
 		a.app.Event.Emit("autostart", autostart)
 		a.ApplyAutostart()
 	}
-	a.pushState()
 	if a.sched != nil {
 		a.sched.refreshPlan()
 	}
+	// 状态推送放在重算之后：否则前端 onState 收到的是旧调度计划，
+	// 会覆盖新增 / 删除提醒时间后 refreshStatusNow 主动拉取的新状态。
+	a.pushState()
 	// 快捷键可能被改：线程内注销旧键 + 按新配置重注册
 	a.reloadHotkeys()
 	return true
@@ -117,10 +119,12 @@ func (a *App) ResetSettings() map[string]any {
 	if autostart != beforeAutostart {
 		a.ApplyAutostart()
 	}
-	a.pushState()
 	if a.sched != nil {
 		a.sched.refreshPlan()
 	}
+	// 状态推送放在重算之后：否则前端 onState 收到的是旧调度计划，
+	// 会覆盖新增 / 删除提醒时间后 refreshStatusNow 主动拉取的新状态。
+	a.pushState()
 	a.reloadHotkeys()
 	log.Printf("[settings] 已恢复默认设置，原配置备份至 %s", backupPath)
 	return map[string]any{"ok": true, "backupPath": backupPath}

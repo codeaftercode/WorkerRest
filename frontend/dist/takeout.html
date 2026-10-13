@@ -37,13 +37,15 @@
       <div class="supervisor-line hidden" id="supervisor-line"></div>
       <!-- 支付红包：开关打开即显示该区域；二维码指向本机专属领取地址，手机扫码打开 -->
       <div class="tk-redpacket hidden" id="redpacket">
-        <canvas class="rp-qr hidden" id="rp-qr" width="88" height="88"></canvas>
+        <div class="rp-qr-wrap">
+          <canvas class="rp-qr hidden" id="rp-qr" width="88" height="88"></canvas>
+        </div>
         <div class="rp-info">
           <span class="rp-icon">&#129511;</span>
           <span class="rp-text" id="rp-text">外卖红包 · 手机扫码领取</span>
         </div>
+        <div class="rp-time">当前时间：<span id="rp-time">--:--:--</span></div>
       </div>
-      <div class="tk-clock">当前时间 <span id="tk-clock">--:--:--</span></div>
       <div class="tk-actions">
         <button class="tk-btn primary" id="tk-ordered">已点好</button>
         <button class="tk-btn" id="tk-skip">不点了</button>

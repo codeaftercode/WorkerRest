@@ -443,6 +443,18 @@ func slotInt(v any, min, max, fallback int) int {
 	switch t := v.(type) {
 	case float64:
 		n = t
+	case int:
+		n = float64(t)
+	case int32:
+		n = float64(t)
+	case int64:
+		n = float64(t)
+	case json.Number:
+		if f, err := t.Float64(); err == nil {
+			n = f
+		} else {
+			return fallback
+		}
 	case string:
 		m := reLeadingInt.FindStringSubmatch(t)
 		if m == nil {
@@ -913,7 +925,8 @@ func normalizeSound(raw map[string]any) {
 }
 
 // normalizeTakeout 归一化整份外卖配置（对应 types.ts 的 normalizeTakeout）：
-// **重建**对象，只留这 5 个键；leadMin 夹到 0–120、postponeMin 夹到 1–120。
+// **重建**对象，只留这 5 个键；leadMin 夹到 0–120、postponeMin 夹到 0–120
+// （0 = 不显示「推迟」按钮，见 takeout.js 的显隐）。
 func normalizeTakeout(raw map[string]any) map[string]any {
 	var o map[string]any
 	if m, ok := raw["takeout"].(map[string]any); ok {
@@ -936,7 +949,7 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 	return map[string]any{
 		"enabled":     o["enabled"] != false,
 		"leadMin":     pick(o["leadMin"], 0, 120, 0),
-		"postponeMin": pick(o["postponeMin"], 1, 120, 10),
+		"postponeMin": pick(o["postponeMin"], 0, 120, 10),
 		"redPacket":   o["redPacket"] == true,
 		"slots":       slotsToAny(normalizeTimeSlots(o["slots"])),
 	}

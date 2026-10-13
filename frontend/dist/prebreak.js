@@ -18,18 +18,25 @@
     builtin: { now: "\u7ACB\u5373\u4F11\u606F", postpone: "\u63A8\u8FDF\u4F11\u606F", skip: "\u8DF3\u8FC7\u4F11\u606F" },
     custom: { now: "\u7ACB\u5373\u63D0\u9192", postpone: "\u63A8\u8FDF\u63D0\u9192", skip: "\u8DF3\u8FC7\u63D0\u9192" }
   };
-  function applyVariant(custom, tail) {
+  function applyVariant(custom, tail, canPostpone) {
     postEl.textContent = tail;
     tipsEl.classList.toggle("hidden", custom);
     pauseBtn.classList.toggle("hidden", custom);
+    // 「可推迟」为 0 分钟时不显示「推迟」按钮（URL query 的 postpone 与
+    // PreBreakState.canPostpone 同源，首帧与轮询两条路都喂）
+    postponeBtn.classList.toggle("hidden", canPostpone === false);
     const label = custom ? BTN_LABELS.custom : BTN_LABELS.builtin;
     nowBtn.textContent = label.now;
     postponeBtn.textContent = label.postpone;
     skipBtn.textContent = label.skip;
   }
+  // URL 里显式带了 postpone 时以它为准：地址由主进程按「弹窗打开时的配置」生成，
+  // 轮询的 canPostpone 只是同源备份（query 缺失的旧地址才回退到 state）
+  var urlPostpone = null;
   {
     const q = new URLSearchParams(location.search);
-    applyVariant(q.get("custom") === "1", q.get("tail") ?? " \u79D2\u8FDB\u5165\u4F11\u606F");
+    urlPostpone = q.get("postpone");
+    applyVariant(q.get("custom") === "1", q.get("tail") ?? " \u79D2\u8FDB\u5165\u4F11\u606F", urlPostpone !== "0");
   }
   async function poll() {
     try {
@@ -41,7 +48,8 @@
       } else {
         titleEl.textContent = st.title || "\u60A8\u5DF2\u8FDE\u7EED\u5DE5\u4F5C\u8F83\u957F\u65F6\u95F4\uFF0C\u5EFA\u8BAE\u60A8\u77ED\u6682\u4F11\u606F";
         secondsEl.textContent = String(Math.max(0, Math.ceil(st.remainMs / 1e3)));
-        applyVariant(st.custom, st.countdownTail);
+        const canPost = urlPostpone !== null ? urlPostpone !== "0" : st.canPostpone !== false;
+        applyVariant(st.custom, st.countdownTail, canPost);
       }
     } catch {
     }

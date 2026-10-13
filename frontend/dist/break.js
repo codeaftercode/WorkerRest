@@ -328,6 +328,35 @@
   // renderer/break.ts
   var api = window.api;
   var RING_LEN = 2 * Math.PI * 88;
+
+  // 把「设置 → 快捷键」录入的组合键字符串（如 "Ctrl+Alt+X" / "Super+Shift+F1" /
+  // "Ctrl+ "）解析成匹配器，让休息窗口的本地 keydown 与全局快捷键完全一致。
+  // 解析失败（格式非法 / 缺修饰键）返回 null —— 对应「未配置」，本地不再兜底触发。
+  function parseAccelerator(acc) {
+    if (!acc || typeof acc !== "string") return null;
+    const parts = acc.split("+");
+    if (parts.length < 2) return null;
+    let ctrl = false, alt = false, shift = false, meta = false;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const m = parts[i].trim().toLowerCase();
+      if (m === "ctrl") ctrl = true;
+      else if (m === "alt") alt = true;
+      else if (m === "shift") shift = true;
+      else if (m === "super" || m === "meta" || m === "win") meta = true;
+      else return null; // 不认识的修饰键 → 无法匹配
+    }
+    return { ctrl, alt, shift, meta, key: parts[parts.length - 1] };
+  }
+  function matchAccelerator(e, acc) {
+    const p = parseAccelerator(acc);
+    if (!p) return false;
+    if (e.ctrlKey !== p.ctrl) return false;
+    if (e.altKey !== p.alt) return false;
+    if (e.shiftKey !== p.shift) return false;
+    if (e.metaKey !== p.meta) return false;
+    const ek = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    return ek === p.key;
+  }
   function renderMessage(text) {
     const p = document.createElement("p");
     p.textContent = text;
@@ -385,13 +414,18 @@
     }
     const skip = document.getElementById("skip-link");
     skip.classList.remove("hidden");
+    // 文案随「设置 → 快捷键」的 endEarly 走：配置了就显示「提前结束（Ctrl+Alt+X）」，
+    // 没配置（禁用）就只显示「提前结束」。
+    skip.textContent = data.endEarlyShortcut
+      ? `提前结束（${data.endEarlyShortcut}）`
+      : "提前结束";
     skip.addEventListener("click", (e) => {
       e.preventDefault();
       if (data.preview) api.closeWindow();
       else api.action("endBreak");
     });
     window.addEventListener("keydown", (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "x") {
+      if (matchAccelerator(e, data.endEarlyShortcut)) {
         e.preventDefault();
         if (data.preview) api.closeWindow();
         else api.action("endBreak");

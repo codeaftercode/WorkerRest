@@ -50,6 +50,9 @@ type BreakInfo struct {
 	Appearance Appearance    `json:"appearance"`
 	Messages   []string      `json:"messages"`
 	Supervisor *SupStageInfo `json:"supervisor"`
+	// EndEarlyShortcut 提前结束休息的全局快捷键（与「设置 → 快捷键」的 endEarly 一致）。
+	// 窗口据此显示「提前结束（Ctrl+Alt+X）」提示；空串 = 未配置（只显示「提前结束」）。
+	EndEarlyShortcut string `json:"endEarlyShortcut"`
 }
 
 // TakeoutInfo 外卖提醒会话（与 历史源码/types.ts 的 TakeoutSessionInfo 逐字对齐）。

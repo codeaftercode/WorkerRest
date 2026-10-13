@@ -50,6 +50,11 @@ type App struct {
 	trayAction    *application.MenuItem
 	trayPause     *application.MenuItem
 	trayAutostart *application.MenuItem
+	// trayStop 托盘定时刷新循环的停止信号（nil = 未启动）：剩余时间流逝但调度状态没变时，
+	// 靠它每秒重算 tooltip / 菜单里的「约 X 分钟后」（见 tray.go）。
+	trayStop chan struct{}
+	// trayLast 上一次写到托盘/菜单的文案（a.mu 保护）：只在变化时才写，秒级 tick 不灌原生调用
+	trayLast trayLabels
 
 	// 提前提示窗当前该显示的内容（打开时算一次，轮询期间不随计划漂移；见 prebreak.go）
 	preInfo PreBreakInfo
@@ -189,6 +194,7 @@ func (a *App) ServiceShutdown() error {
 	a.stopTakeoutWatcher()
 	a.closeTakeoutWindows()
 	a.stopSystemWatchers()
+	a.stopTrayRefresh()
 	a.destroySoundHost()
 	// 统计收尾：无条件写一次盘（比 2 秒防抖 / 1 分钟兜底更早生效，退出时不丢账）
 	a.stopStats()
@@ -458,16 +464,25 @@ func (a *App) showBreakSession(kind string, preview bool, forceKey string) strin
 		dur = 20_000
 	}
 	now := time.Now()
+	// 提前结束快捷键与「设置 → 快捷键」的 endEarly 完全一致：休息窗口据此显示提示，
+	// 本地 keydown 也按它匹配（全局快捷键已由 hotkeys.go 按同一组合键注册）。
+	endEarly := ""
+	if sc, ok := a.cfg.Raw()["shortcuts"].(map[string]any); ok {
+		if s, ok := sc["endEarly"].(string); ok {
+			endEarly = strings.TrimSpace(s)
+		}
+	}
 	info := &BreakInfo{
-		ID:         fmt.Sprintf("%s-%d", kind, now.UnixMilli()),
-		Type:       kind,
-		Name:       name,
-		EndsAt:     now.Add(time.Duration(dur) * time.Millisecond).UnixMilli(),
-		DurationMs: dur,
-		Preview:    preview,
-		Appearance: cfg.AppearanceView(),
-		Messages:   a.pickMessage(kind, name),
-		Supervisor: a.buildSupervisorSession(preview, forceKey),
+		ID:              fmt.Sprintf("%s-%d", kind, now.UnixMilli()),
+		Type:            kind,
+		Name:            name,
+		EndsAt:          now.Add(time.Duration(dur) * time.Millisecond).UnixMilli(),
+		DurationMs:      dur,
+		Preview:         preview,
+		Appearance:      cfg.AppearanceView(),
+		Messages:        a.pickMessage(kind, name),
+		Supervisor:      a.buildSupervisorSession(preview, forceKey),
+		EndEarlyShortcut: endEarly,
 	}
 	a.sess = info
 	a.mu.Unlock()
@@ -509,6 +524,11 @@ func (a *App) closeBreakWindows() {
 			name = cfg.BreakNameByID(info.Type)
 		}
 		a.statsStore().OnBreakEnd(name)
+	}
+	// 休息窗口关闭：把空闲基准清零（无论是否有统计会话 / 是否预览），否则
+	// 「刚休息完、还没动鼠标」进入 idle 后会被立刻误判成离开而暂停
+	if a.idle != nil {
+		a.idle.ResetBaseline()
 	}
 }
 
@@ -639,6 +659,8 @@ func (a *App) ShowBreakWindow(kind string) {
 			// 无边框窗口在 Windows 上会留一圈原生装饰（阴影/描边），与 上一版一致地关掉
 			Windows: application.WindowsWindow{
 				DisableFramelessWindowDecorations: true,
+				// 与 上一版的 skipTaskbar 同义：提醒 / 预览窗口不进任务栏
+				HiddenOnTaskbar: true,
 			},
 		})
 		// 窗口被系统 / 用户直接关掉（Alt+F4）时清掉引用：跨 tick 拿着已销毁的窗口

@@ -104,7 +104,6 @@
           <div class="row field"><label>标题</label><input type="text" id="appName" maxlength="30" placeholder="吃饼人也敢休息？" /></div>
           <div class="row field"><label>主题</label>
             <div class="inline">
-              <label class="switch-row"><input type="radio" name="theme" value="system" /> 跟随系统</label>
               <label class="switch-row"><input type="radio" name="theme" value="light" /> 浅色</label>
               <label class="switch-row"><input type="radio" name="theme" value="dark" /> 深色</label>
             </div>
@@ -192,7 +191,7 @@
           <div class="row field bk-countdown" data-break="short"><label>间隔（分钟）</label><input type="number" id="short-interval" min="1" max="240" /></div>
           <div class="row field"><label>时长（秒）</label><input type="number" id="short-duration" min="5" max="600" /></div>
           <div class="row field"><label>提前通知（秒）</label><input type="number" id="short-notify" min="0" max="300" /></div>
-          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="short-postpone" min="1" max="60" /></div>
+          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="short-postpone" min="0" max="60" title="推迟一次把休息往后推多少分钟；0 = 不显示「推迟」按钮" /></div>
           <!-- 提醒时间列表：固定时间方式的时刻表，默认折叠（与提醒内容面板同一套外观；
                行不可拖动、无单选框，只有行首的启停勾选框）。「＋」新增放标题行右侧 -->
           <div class="slot-fixed" data-break="short">
@@ -233,7 +232,7 @@
           <div class="row field bk-countdown" data-break="long"><label>间隔（分钟）</label><input type="number" id="long-interval" min="1" max="480" /></div>
           <div class="row field"><label>时长（分钟）</label><input type="number" id="long-duration" min="1" max="60" /></div>
           <div class="row field"><label>提前通知（秒）</label><input type="number" id="long-notify" min="0" max="300" /></div>
-          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="long-postpone" min="1" max="120" /></div>
+          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="long-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示「推迟」按钮" /></div>
           <div class="row field" id="longEveryNRow">
             <label>每 N 次短休息后 1 次长休息<span class="q-mark" title="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
             <input type="number" id="longEveryNShort" min="1" max="20" />
@@ -274,7 +273,7 @@
           </div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="tk-redpacket" /> 显示外卖优惠券</label></div>
           <div class="row field"><label>提前通知（分钟）</label><input type="number" id="tk-lead" min="0" max="120" /></div>
-          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="tk-postpone" min="1" max="120" /></div>
+          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="tk-postpone" min="0" max="120" title="窗口上点「推迟」后，间隔多久再次提醒；0 = 不显示「推迟」按钮" /></div>
           <div class="slot-fixed">
             <div class="slot-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>

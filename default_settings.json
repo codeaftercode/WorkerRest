@@ -27,7 +27,7 @@
     "seeded": false,
     "items": []
   },
-  "theme": "system",
+  "theme": "light",
   "appearance": {
     "color": "#4f7cff",
     "transparency": 0.15,

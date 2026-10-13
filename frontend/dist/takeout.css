@@ -84,8 +84,9 @@ html, body {
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
-/* 支付红包区（开关打开时显示） */
+/* 支付红包区（开关打开时显示）：二维码+信息横排，时间绝对定位在红包框正下方居中 */
 .tk-redpacket {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -106,11 +107,21 @@ html, body {
   border-radius: 8px;
 }
 .rp-info { display: flex; align-items: center; gap: 10px; }
-
-.tk-clock {
-  font-size: 14px;
-  opacity: 0.7;
+/* 二维码容器（仅居中放二维码） */
+.rp-qr-wrap { display: flex; flex-direction: column; align-items: center; }
+/* 当前时间：挂在红包框上绝对定位到其正下方居中——跟着红包框走
+   （有督休专员时红包框浮动，时间跟着浮在框下，绝不落进对话框文档流）。
+   left:50% + translateX 水平居中（相对红包框），top:100% 落在框底边下方。 */
+.rp-time {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  transform: translate(-50%, 4px);
+  font-size: 12px;
+  color: #ffe7d6;
   font-variant-numeric: tabular-nums;
+  line-height: 1;
+  white-space: nowrap;
 }
 
 /* 状态徽标：提前通知 / 已推迟次数（都只在对应状态下显示） */
@@ -319,7 +330,6 @@ body.has-supervisor .content {
 
 /* block 布局后 flex 的 gap 失效，框内各块改用 margin 排距 */
 body.has-supervisor .tk-badges { margin-bottom: 12px; }
-body.has-supervisor .tk-clock { margin-top: 12px; }
 body.has-supervisor .tk-actions { margin-top: 14px; }
 
 /* 支付红包区：浮到立绘可见右缘的右侧（left/bottom 由脚本写入 inline style，

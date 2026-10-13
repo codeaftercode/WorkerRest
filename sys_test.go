@@ -290,6 +290,29 @@ func TestIdleWatchSkippedWhileBreakShowing(t *testing.T) {
 	}
 }
 
+// 休息窗口关闭（break-end 的唯一真实调用点 closeBreakWindows）必须清零空闲基准：
+// 否则「刚休息完、还没动鼠标」进入 idle 后，第一次空闲判定会立刻把状态判成离开并暂停。
+func TestIdleResetBaselineOnBreakEnd(t *testing.T) {
+	a, _ := newWatchApp(t, shortCountdown)
+	if a.idle == nil {
+		t.Fatal("前置：newWatchApp 应构造出 idle")
+	}
+	// 休息期间用户一直没动鼠标 → 空闲时长被累计得很大
+	a.idle.ForceIdle(9_999_999)
+	if ms := a.idle.IdleSinceMs(); ms < 60_000 {
+		t.Fatalf("前置：休息期间 L 应已累计，得到 %d", ms)
+	}
+	// closeBreakWindows 是 finishBreak（休息结束）唯一调用点，直接验收它
+	a.closeBreakWindows()
+	if ms := a.idle.IdleSinceMs(); ms >= 60_000 {
+		t.Fatalf("休息结束后空闲基准没清零：L=%d ms（应回到 ~0，否则进入 idle 会立刻判离开）", ms)
+	}
+	// 进入 idle 后的第一次判定不应误判离开
+	if away := a.idleWatchTick(false); away {
+		t.Fatal("休息结束后第一次空闲判定不该判离开（基准应已清零）")
+	}
+}
+
 func TestAppPauseWatchRealProcessHitAndRelease(t *testing.T) {
 	self, err := os.Executable()
 	if err != nil {
