@@ -113,6 +113,11 @@ func (s *Scheduler) loop() {
 	}
 }
 
+// breakCloseDwellMs：能量蓄满（休息自然到点）后让提醒窗口多停留的毫秒数，
+// 让用户看清「满罐」状态再关窗。只作用于自然到点（onTick 的 due 判定），
+// 手动「提前结束」走 endBreak → finishBreak 不经过这里，立即关窗不受影响。
+const breakCloseDwellMs int64 = 1000
+
 func (s *Scheduler) onTick() {
 	s.mu.Lock()
 	if s.state.Paused {
@@ -122,7 +127,8 @@ func (s *Scheduler) onTick() {
 	if s.state.Phase == "break" {
 		// 休息进行中不叠加：固定时刻撞上正在进行的休息时跳过
 		//（不像外卖提醒那样压在休息之上）；到点则收窗。
-		due := s.state.BreakEndsAt > 0 && nowMs() >= s.state.BreakEndsAt
+		// 蓄能容器：到点（能量蓄满）后多停留 breakCloseDwellMs 再关窗
+		due := s.state.BreakEndsAt > 0 && nowMs() >= s.state.BreakEndsAt+breakCloseDwellMs
 		s.mu.Unlock()
 		if due {
 			s.finishBreak()

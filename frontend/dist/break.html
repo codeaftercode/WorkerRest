@@ -38,19 +38,75 @@
            名字标签在左上角凸出，台词大字、提醒内容次要；倒计时环（.bar）脱离
            文档流，中心落在「立绘右缘~窗口右缘」「对话框顶~窗口顶」两个中点的
            交点上（位置由脚本写入），「提前结束」在环内跟随环居中下沉。
-           无督休专员时维持原版式：提醒内容居中、倒计时环沉底。 -->
+           无督休专员时倒计时环精确居中于屏幕正中央，提醒名称在环正上方、提前结束
+           在环正下方、提醒内容落在环下方到窗口底边的区域中央（均以环心为基准）。 -->
       <div class="content" id="content">
         <div class="dialog-name hidden" id="dialog-name"></div>
         <div class="supervisor-line hidden" id="supervisor-line"></div>
         <div class="messages" id="messages"></div>
         <div class="bar" id="bar">
+          <div class="remind-name hidden" id="remind-name"></div>
           <div class="ring-wrap">
-            <svg viewBox="0 0 200 200">
-              <circle class="ring-bg" cx="100" cy="100" r="88" />
-              <circle class="ring-fg" id="ring" cx="100" cy="100" r="88" />
+            <div class="ring-aura"></div>
+            <svg viewBox="0 0 200 200" aria-hidden="true">
+              <defs>
+                <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop class="rg0" offset="0%" />
+                  <stop class="rg1" offset="52%" />
+                  <stop class="rg2" offset="100%" />
+                  <animateTransform attributeName="gradientTransform" type="rotate" from="0 0.5 0.5" to="360 0.5 0.5" dur="6s" repeatCount="indefinite" />
+                </linearGradient>
+                <linearGradient id="liquidGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#bdf7ff" />
+                  <stop offset="34%" stop-color="#46cbff" />
+                  <stop offset="72%" stop-color="#1f8bff" />
+                  <stop offset="100%" stop-color="#0a4fd0" />
+                </linearGradient>
+                <radialGradient id="bubbleGrad" cx="0.5" cy="0.5" r="0.5">
+                  <stop offset="0%" stop-color="#ffffff" stop-opacity="0.95" />
+                  <stop offset="100%" stop-color="#bff2ff" stop-opacity="0.12" />
+                </radialGradient>
+                <filter id="ringGlow" x="-80%" y="-80%" width="260%" height="260%">
+                  <feGaussianBlur stdDeviation="3.2" result="b" />
+                  <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
+                </filter>
+                <filter id="liquidGlow" x="-40%" y="-40%" width="180%" height="180%">
+                  <feGaussianBlur stdDeviation="2.2" />
+                </filter>
+                <filter id="softGlow" x="-60%" y="-60%" width="220%" height="220%">
+                  <feGaussianBlur stdDeviation="2.0" />
+                </filter>
+                <clipPath id="liquidClip"><circle cx="100" cy="100" r="78" /></clipPath>
+              </defs>
+              <!-- 外侧能量溢出：从容器壁向外迸发的光丝 + 扩散脉冲（脚本驱动） -->
+              <g class="energy-overflow" id="energy-overflow" filter="url(#softGlow)"></g>
+              <!-- 容器外壁：厚实带流光的玻璃罐壁 -->
+              <circle class="ring-bg" cx="100" cy="100" r="82" />
+              <!-- 外壁外缘旋转装饰环（保留顺转流光） -->
+              <circle class="ring-deco" cx="100" cy="100" r="89" />
+              <!-- 外界能量汲取：从四面八方射向容器壁、撞击后被吸收进容器（脚本驱动） -->
+              <g class="energy-intake" id="energy-intake" filter="url(#softGlow)"></g>
+              <!-- 内部液态能量：裁剪到容器内，随蓄能上升、带波动 -->
+              <g clip-path="url(#liquidClip)">
+                <path class="liquid" id="liquid" fill="url(#liquidGrad)" />
+                <path class="liquid-surface" id="liquid-surface" fill="none" />
+                <ellipse class="liquid-gloss" id="liquid-gloss" cx="100" cy="100" rx="32" ry="9" opacity="0" />
+                <g class="bubbles" id="bubbles"></g>
+              </g>
+              <!-- 容器内壁玻璃高光（液体与罐壁之间的亮缘，盖在液体之上） -->
+              <circle class="ring-inner-rim" cx="100" cy="100" r="78" />
             </svg>
-            <div class="countdown" id="countdown">20</div>
-            <div class="unit">秒</div>
+            <canvas class="particles" id="particles"></canvas>
+            <div class="count-center">
+              <div class="countdown" id="countdown">20</div>
+              <div class="count-sub"><span class="progress-pct" id="progress-pct"></span></div>
+              <!-- 蓄能铭文：环内、进度百分数下方的两行直排题字，随能量呼吸明灭；
+                   颜色走 --liquid-accent 与液体/汲取光丝同源，与四周汇聚的光丝融为一体 -->
+              <div class="inscribe-lines" id="inscribe-lines" aria-hidden="true">
+                <span class="ins-line">整理思绪</span>
+                <span class="ins-line">积蓄能量</span>
+              </div>
+            </div>
           </div>
           <!-- 「提前结束」放进 bar 内跟随环：环被脚本摆到哪，它就居中挂在环下方。
                文案（含快捷键）由 break.js 按「设置 → 快捷键」的 endEarly 动态填充 -->

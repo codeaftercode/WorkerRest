@@ -213,6 +213,8 @@
   // （环中心对准；「提前结束」在 bar 内跟随环居中下沉）。摆位结果写入
   // supMetrics 供探针断言。
   var CD_EDGE = 10;
+  var frozenFig = null;          // 立绘可见边（去透明）的冻结锚点
+  var lastLayoutKey = "";        // 仅在窗口尺寸/立绘自身尺寸/trim 就绪时重算，避免二阶段缩放导致倒计时位移
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
@@ -248,14 +250,34 @@
     if (cRect.width <= 0) return;
     const measureEl = pickMeasure(figure, measure);
     const fRect = measureEl.getBoundingClientRect();
-    const figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
-    const figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
-    const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
+    const figBox = figure.getBoundingClientRect();
+    const figImg = figure.querySelector("img");
+    const haveTrim = !!(figImg && figImg.dataset.trim);
+    // 锚点仅在「窗口尺寸 / 立绘自身尺寸 / trim 是否就绪」变化时重算：
+    // 二阶段只是对 img 做 scale 变换，不改变 figure/measure 的布局盒，也不改变
+    // cRect 与 trim 存在性 → 不会触发重算 → 倒计时位置在二阶段保持不动。
+    const key = cRect.width + "x" + cRect.height + "|" +
+      Math.round(figBox.width) + "x" + Math.round(figBox.height) + "|" + (haveTrim ? "T" : "t");
+    let figLeft, figRight, figTop;
+    if (key !== lastLayoutKey && fRect.width > 0) {
+      figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
+      figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
+      figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
+      frozenFig = { figLeft: figLeft, figRight: figRight, figTop: figTop };
+      lastLayoutKey = key;
+    } else if (frozenFig) {
+      figLeft = frozenFig.figLeft; figRight = frozenFig.figRight; figTop = frozenFig.figTop;
+    } else {
+      // trim 尚未就绪的极早期兜底：用 figure 自身外框（含透明边距，会随 trim 到达而校正）
+      figLeft = clamp(figBox.left - cRect.left, 0, cRect.width);
+      figRight = clamp(figBox.right - cRect.left, 0, cRect.width);
+      figTop = clamp(figBox.top - cRect.top, 0, cRect.height);
+    }
     // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位。
     // 对话框（.content）与窗口边缘的偏移由 CSS 决定（当前贴边为 0），bar 的
     // 包含块就是它——所以摆位全部用实测 rect 换算，不假设贴边。两个锚点中点：
     //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
-    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2（框顶实测，偏移自动跟随）
+    //   垂直 midY = (立绘可见上缘 + 对话框上边缘) / 2（二者实测，偏移自动跟随）
     // bar 是 column flex（环在上、skip 在下），环中心距 bar 底 = ringH/2 + skip 占位，
     // 所以用 ring-wrap 的高度反推 bottom，让环中心（而非 bar 中心）落在 midY 上。
     const bar = content.querySelector(".bar");
@@ -265,7 +287,7 @@
     const boxBottomGap = cRect.bottom - boxRect.bottom; // 对话框底缘距窗底（= 底部内缩量）
     const boxTop = boxRect.top - cRect.top; // 对话框顶缘相对窗口
     const midX = (figRight + cRect.width) / 2;
-    const midY = boxTop / 2;
+    const midY = (figTop + boxTop) / 2;
     let cdX = midX - boxLeft;
     let cdBottom = cRect.height - midY - boxBottomGap;
     if (bar) {
@@ -273,9 +295,12 @@
       const barW = bar.offsetWidth || 84;
       const ringH = (ringWrap && ringWrap.offsetHeight) || 84;
       const barH = bar.offsetHeight || ringH;
-      // bar 是 column flex：环在上，「提前结束」挂在环下（占 barH - ringH 的高度）。
-      // 要让环中心（而非 bar 中心）落在 midY 上，bottom 得先把 skip 的占位扣掉。
-      const tailH = Math.max(0, barH - ringH);
+      // bar 是 column flex：提醒名称在环上、「提前结束」在环下。环在中间，
+      // 用 ring-wrap 的实际布局位置（距 bar 顶的 offsetTop）反推「环中心距 bar 底」，
+      // 这样无论环上下各放了什么，环中心都能精确落在 midY 上（名称移到环上方后，
+      // 旧式「barH - ringH 当作环下占位」会把环整体抬高，故改为实测 offsetTop）。
+      const ringFromTop = (ringWrap ? ringWrap.offsetTop : 0) + ringH / 2;
+      const ringFromBottom = Math.max(0, barH - ringFromTop);
       // clamp 的合法区间是「bar 相对对话框」的坐标：窗口坐标的边界先算好再减去内缩量
       cdX = clamp(
         midX - boxLeft - barW / 2,
@@ -283,7 +308,7 @@
         Math.max(CD_EDGE - boxLeft, cRect.width - boxLeft - barW - CD_EDGE)
       );
       cdBottom = clamp(
-        cRect.height - midY - ringH / 2 - tailH - boxBottomGap,
+        cRect.height - midY - ringFromBottom - boxBottomGap,
         CD_EDGE - boxBottomGap,
         Math.max(CD_EDGE - boxBottomGap, cRect.height - boxBottomGap - barH - CD_EDGE)
       );
@@ -327,8 +352,6 @@
 
   // renderer/break.ts
   var api = window.api;
-  var RING_LEN = 2 * Math.PI * 88;
-
   // 把「设置 → 快捷键」录入的组合键字符串（如 "Ctrl+Alt+X" / "Super+Shift+F1" /
   // "Ctrl+ "）解析成匹配器，让休息窗口的本地 keydown 与全局快捷键完全一致。
   // 解析失败（格式非法 / 缺修饰键）返回 null —— 对应「未配置」，本地不再兜底触发。
@@ -362,6 +385,321 @@
     p.textContent = text;
     return p;
   }
+  // 粒子层：倒计时周围轻柔上浮的光点，渲染「放松」氛围。仅无督休专员模式启用
+  // （督休专员模式由 CSS 隐藏画布）。纯装饰、不参与信息呈现，低透明度、低速。
+  function startParticles(canvas, color) {
+    try {
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      const dpr = window.devicePixelRatio || 1;
+      const SIZE = 340;
+      canvas.width = SIZE * dpr;
+      canvas.height = SIZE * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const N = 30;
+      const rnd = (a, b) => a + Math.random() * (b - a);
+      const ps = [];
+      for (let i = 0; i < N; i++) {
+        ps.push({
+          x: rnd(0, SIZE), y: rnd(0, SIZE),
+          r: i < 4 ? rnd(2.4, 3.8) : rnd(0.8, 2.8),
+          vy: rnd(0.15, 0.6),
+          a: rnd(0.15, 0.55), ph: rnd(0, Math.PI * 2)
+        });
+      }
+      let t = 0;
+      ctx.shadowColor = color;
+      function tick() {
+        t += 0.016;
+        ctx.clearRect(0, 0, SIZE, SIZE);
+        ctx.shadowBlur = 6;
+        for (const p of ps) {
+          p.y -= p.vy;
+          p.x += Math.sin(t * 0.6 + p.ph) * 0.25;
+          if (p.y < -4) { p.y = SIZE + 4; p.x = rnd(0, SIZE); }
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+          ctx.fillStyle = color;
+          ctx.globalAlpha = p.a * (0.6 + 0.4 * Math.sin(t + p.ph));
+          ctx.fill();
+        }
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+        requestAnimationFrame(tick);
+      }
+      tick();
+    } catch (e) { /* 装饰层异常不影响倒计时主体 */ }
+  }
+  // 蓄能容器：把倒计时当作一只「储存能量的空心容器」——
+  // 起始为空，随着休息推进（剩余时间流逝 = 蓄能累积），内部液态能量自下而上
+  // 上涨、表面波动，直至蓄满整个容器；容器壁外缘有能量溢出（光丝迸发 + 扩散脉冲）。
+  var SVGNS = "http://www.w3.org/2000/svg";
+  var WALL_R = 82;                        // 容器外壁半径（SVG 用户坐标）
+  var LIQ_R = 78;                         // 液态能量裁剪半径（容器内部）
+  var LIQ_BOTTOM = 100 + LIQ_R + 12;      // 液面以下填充延伸，保证裁满下半圆
+  var targetFill = 0, currentFill = 0, energyRunning = false, lastEnergyT = 0;
+  var liquidEl = null, liquidSurfEl = null, glossEl = null;
+  var bubbles = [], wisps = [], pulses = [];
+  var intakeStreaks = [], intakeRipples = [];
+
+  function surfaceYOf(fill) { return 100 + LIQ_R - fill * 2 * LIQ_R; }
+
+  // 液面：两条不同波长/相位的正弦叠加 → 液态波动
+  function liquidWave(fill, x, t) {
+    var sy = surfaceYOf(fill);
+    var a1 = 3.0, a2 = 1.5;
+    var k1 = (Math.PI * 2) / 72, k2 = (Math.PI * 2) / 41;
+    return sy + a1 * Math.sin(k1 * x + t * 1.7) + a2 * Math.sin(k2 * x - t * 2.4);
+  }
+  function liquidPath(fill, t) {
+    var x0 = 100 - LIQ_R - 2, x1 = 100 + LIQ_R + 2, d = "", step = 3, i = 0;
+    for (var x = x0; x <= x1 + 0.001; x += step, i++) {
+      d += (i === 0 ? "M" : "L") + x.toFixed(2) + "," + liquidWave(fill, x, t).toFixed(2) + " ";
+    }
+    d += "L" + (100 + LIQ_R + 2) + "," + LIQ_BOTTOM + " L" + (100 - LIQ_R - 2) + "," + LIQ_BOTTOM + " Z";
+    return d;
+  }
+  function liquidSurfacePath(fill, t) {
+    var x0 = 100 - LIQ_R - 2, x1 = 100 + LIQ_R + 2, d = "", step = 3, i = 0;
+    for (var x = x0; x <= x1 + 0.001; x += step, i++) {
+      d += (i === 0 ? "M" : "L") + x.toFixed(2) + "," + liquidWave(fill, x, t).toFixed(2) + " ";
+    }
+    return d;
+  }
+  function buildBubbles(group) {
+    if (!group) return;
+    for (var i = 0; i < 7; i++) {
+      var c = document.createElementNS(SVGNS, "circle");
+      var b = {
+        el: c,
+        x: 100 + (Math.random() * 2 - 1) * (LIQ_R - 12),
+        y: 100 + Math.random() * LIQ_R,
+        r: 1.4 + Math.random() * 2.4,
+        vy: 10 + Math.random() * 16,
+        ph: Math.random() * 6.28
+      };
+      c.setAttribute("cx", b.x.toFixed(1));
+      c.setAttribute("cy", b.y.toFixed(1));
+      c.setAttribute("r", b.r.toFixed(1));
+      group.appendChild(c);
+      bubbles.push(b);
+    }
+  }
+  function updateBubbles(dt, surfaceY, t) {
+    for (var i = 0; i < bubbles.length; i++) {
+      var b = bubbles[i];
+      b.y -= b.vy * dt;
+      if (b.y <= surfaceY + 3) { b.y = LIQ_BOTTOM - 4; b.x = 100 + (Math.random() * 2 - 1) * (LIQ_R - 12); }
+      var op = 0.55 * (1 - (b.y - surfaceY) / (LIQ_BOTTOM - surfaceY));
+      b.el.setAttribute("cx", (b.x + Math.sin(t * 2 + b.ph) * 1.2).toFixed(1));
+      b.el.setAttribute("cy", b.y.toFixed(1));
+      b.el.setAttribute("opacity", Math.max(0.05, op).toFixed(2));
+    }
+  }
+  function resetWisp(w, init) {
+    w.angle = Math.random() * Math.PI * 2;
+    w.rad = WALL_R - 3 + Math.random() * 4;
+    w.speed = 12 + Math.random() * 22;
+    w.maxLife = 1.1 + Math.random() * 1.4;
+    w.life = init ? Math.random() * w.maxLife : 0;
+    w.size = 1.6 + Math.random() * 2.6;
+  }
+  function buildOverflow(group) {
+    if (!group) return;
+    for (var i = 0; i < 16; i++) {
+      var c = document.createElementNS(SVGNS, "circle");
+      c.setAttribute("class", "overflow-wisp");
+      c.setAttribute("r", "2");
+      group.appendChild(c);
+      var w = { el: c, angle: 0, rad: 0, speed: 0, life: 0, maxLife: 1, size: 2 };
+      resetWisp(w, true);
+      wisps.push(w);
+    }
+    for (var j = 0; j < 3; j++) {
+      var p = document.createElementNS(SVGNS, "circle");
+      p.setAttribute("class", "pulse-ring");
+      group.appendChild(p);
+      pulses.push({ el: p, life: j * 0.9, maxLife: 2.6, max: 46 });
+    }
+  }
+  function updateOverflow(dt, fill) {
+    var intensity = 0.18 + 0.82 * fill; // 蓄得越满，溢出越强
+    for (var i = 0; i < wisps.length; i++) {
+      var w = wisps[i];
+      w.life += dt;
+      if (w.life >= w.maxLife) resetWisp(w, false);
+      w.rad += w.speed * dt;
+      var k = w.life / w.maxLife;
+      var op = Math.sin(Math.PI * k) * intensity;
+      w.el.setAttribute("cx", (100 + w.rad * Math.cos(w.angle)).toFixed(1));
+      w.el.setAttribute("cy", (100 + w.rad * Math.sin(w.angle)).toFixed(1));
+      w.el.setAttribute("r", (w.size * (0.6 + 0.4 * Math.sin(Math.PI * k))).toFixed(2));
+      w.el.setAttribute("opacity", Math.max(0, op).toFixed(3));
+    }
+    for (var j = 0; j < pulses.length; j++) {
+      var p = pulses[j];
+      p.life += dt;
+      if (p.life >= p.maxLife) p.life = 0;
+      var kk = p.life / p.maxLife;
+      p.el.setAttribute("cx", "100");
+      p.el.setAttribute("cy", "100");
+      p.el.setAttribute("r", (WALL_R + p.max * kk).toFixed(1));
+      p.el.setAttribute("stroke-width", (3 * (1 - kk)).toFixed(2));
+      p.el.setAttribute("opacity", (0.5 * (1 - kk) * intensity).toFixed(3));
+    }
+  }
+  // 液体颜色随背景（--accent）自动适配：同色相保证「协调」，提亮 + 高饱和保证「明显」。
+  // 把推导出的提亮同源色写进 --liquid-accent（汲取光丝 / 吸收涟漪 / 液面高光共用），
+  // 并直接改写液态渐变与气泡渐变的色标。
+  function hexToRgb(hex) {
+    if (!hex) return null;
+    var h = String(hex).replace("#", "").trim();
+    if (h.length === 3) h = h.split("").map(function (c) { return c + c; }).join("");
+    if (h.length !== 6) return null;
+    var n = parseInt(h, 16);
+    if (isNaN(n)) return null;
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+  }
+  function rgbToHsl(r, g, b) {
+    r /= 255; g /= 255; b /= 255;
+    var mx = Math.max(r, g, b), mn = Math.min(r, g, b), h = 0, s = 0, l = (mx + mn) / 2;
+    if (mx !== mn) {
+      var d = mx - mn;
+      s = l > 0.5 ? d / (2 - mx - mn) : d / (mx + mn);
+      if (mx === r) h = (g - b) / d + (g < b ? 6 : 0);
+      else if (mx === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h /= 6;
+    }
+    return { h: h * 360, s: s, l: l };
+  }
+  function hsl(h, s, l) { return "hsl(" + h.toFixed(1) + ", " + (s * 100).toFixed(0) + "%, " + (l * 100).toFixed(0) + "%)"; }
+  function applyAdaptiveLiquid(hex) {
+    var rgb = hexToRgb(hex);
+    if (!rgb) return;
+    var c = rgbToHsl(rgb.r, rgb.g, rgb.b);
+    var S = Math.min(1, Math.max(0.5, c.s + 0.12)); // 保证足够鲜艳
+    var lg = document.getElementById("liquidGrad");
+    if (lg) {
+      var ss = lg.querySelectorAll("stop");
+      var stops = [
+        [0, hsl(c.h, Math.min(1, S + 0.08), 0.88)],
+        [34, hsl(c.h, S, 0.66)],
+        [72, hsl(c.h, S, 0.5)],
+        [100, hsl(c.h, S, 0.36)]
+      ];
+      stops.forEach(function (st, i) {
+        if (ss[i]) {
+          ss[i].setAttribute("offset", st[0] + "%");
+          ss[i].setAttribute("stop-color", st[1]);
+        }
+      });
+    }
+    // 提亮同源色：汲取光丝 / 涟漪 / 液面高光都走它，既协调又从暗背景里跳出来
+    document.documentElement.style.setProperty("--liquid-accent", hsl(c.h, Math.min(1, S + 0.05), 0.8));
+    var surf = document.getElementById("liquid-surface");
+    if (surf) surf.style.stroke = hsl(c.h, Math.max(0, S - 0.2), 0.96);
+    var bg = document.getElementById("bubbleGrad");
+    if (bg) {
+      var bs = bg.querySelectorAll("stop");
+      if (bs[0]) bs[0].setAttribute("stop-color", hsl(c.h, 0.25, 0.98));
+      if (bs[1]) bs[1].setAttribute("stop-color", hsl(c.h, S, 0.62));
+    }
+  }
+
+  // 外界能量汲取：从四面八方径向射向容器壁，撞壁后迸出吸收涟漪并被「吸进」容器。
+  // 强度随蓄能反向变化：越空吸得越猛，将满时收束。
+  function resetIntake(w, init) {
+    w.angle = Math.random() * Math.PI * 2;
+    w.rad = WALL_R + 26 + Math.random() * 44;  // 从容器外缘之外射入
+    w.speed = 30 + Math.random() * 36;          // 向内速度（px/s，SVG 用户单位）
+    w.len = 7 + Math.random() * 8;              // 光丝拖尾长度（细锐，无箭头）
+    w.life = init ? Math.random() : 0;          // 错峰：初始化时随机散布在途中
+    if (init) w.rad = WALL_R + (1 - w.life) * 44; // 让初始散布在整段行程上
+  }
+  function buildIntake(group) {
+    if (!group) return;
+    // 密集的细锐光丝（无末端亮头/箭头），从四面八方射向容器壁、被吸收 —— 30 条
+    for (var i = 0; i < 30; i++) {
+      var ln = document.createElementNS(SVGNS, "line");
+      ln.setAttribute("class", "intake-streak");
+      group.appendChild(ln);
+      var w = { ln: ln, angle: 0, rad: 0, speed: 0, len: 0, life: 0 };
+      resetIntake(w, true);
+      intakeStreaks.push(w);
+    }
+    for (var j = 0; j < 6; j++) {
+      var rp = document.createElementNS(SVGNS, "circle");
+      rp.setAttribute("class", "intake-ripple");
+      rp.setAttribute("opacity", "0");
+      group.appendChild(rp);
+      intakeRipples.push({ el: rp, life: 0, max: 0.6 });
+    }
+  }
+  function spawnRipple(angle) {
+    for (var i = 0; i < intakeRipples.length; i++) {
+      if (intakeRipples[i].life <= 0) { intakeRipples[i].life = intakeRipples[i].max; return; }
+    }
+  }
+  function updateIntake(dt, fill) {
+    var intensity = 0.22 + 0.78 * (1 - Math.min(1, Math.max(0, fill)));
+    for (var i = 0; i < intakeStreaks.length; i++) {
+      var w = intakeStreaks[i];
+      w.rad -= w.speed * dt;
+      if (w.rad <= WALL_R - 2) { spawnRipple(w.angle); resetIntake(w, false); continue; }
+      var hx = 100 + w.rad * Math.cos(w.angle), hy = 100 + w.rad * Math.sin(w.angle);
+      var tr = w.rad + w.len, tx = 100 + tr * Math.cos(w.angle), ty = 100 + tr * Math.sin(w.angle);
+      w.ln.setAttribute("x1", tx.toFixed(1)); w.ln.setAttribute("y1", ty.toFixed(1));
+      w.ln.setAttribute("x2", hx.toFixed(1)); w.ln.setAttribute("y2", hy.toFixed(1));
+      // 临近壁时渐隐（被吸收），远离壁时全亮
+      var op = intensity * Math.max(0, Math.min(1, (w.rad - WALL_R) / 16));
+      w.ln.setAttribute("opacity", op.toFixed(3));
+    }
+    for (var k = 0; k < intakeRipples.length; k++) {
+      var r = intakeRipples[k];
+      if (r.life > 0) {
+        r.life -= dt;
+        var p = 1 - r.life / r.max;
+        r.el.setAttribute("r", (WALL_R + 2 + p * 12).toFixed(1));
+        r.el.setAttribute("stroke-width", (2.6 * (1 - p)).toFixed(2));
+        r.el.setAttribute("opacity", (0.6 * (1 - p) * Math.max(0.3, intensity)).toFixed(3));
+      } else {
+        r.el.setAttribute("opacity", "0");
+      }
+    }
+  }
+
+  function buildEnergy(svg) {
+    if (!svg) return;
+    buildBubbles(svg.querySelector("#bubbles"));
+    buildOverflow(svg.querySelector("#energy-overflow"));
+    buildIntake(svg.querySelector("#energy-intake"));
+    liquidEl = svg.querySelector("#liquid");
+    liquidSurfEl = svg.querySelector("#liquid-surface");
+    glossEl = svg.querySelector("#liquid-gloss");
+  }
+  function animateEnergy(now) {
+    if (!energyRunning) return;
+    var dt = Math.min(0.05, (now - lastEnergyT) / 1000);
+    lastEnergyT = now;
+    var t = now / 1000;
+    currentFill += (targetFill - currentFill) * Math.min(1, dt * 2.4);
+    if (Math.abs(targetFill - currentFill) < 0.0008) currentFill = targetFill;
+    var sy = surfaceYOf(currentFill);
+    if (liquidEl) liquidEl.setAttribute("d", liquidPath(currentFill, t));
+    if (liquidSurfEl) liquidSurfEl.setAttribute("d", liquidSurfacePath(currentFill, t));
+    if (glossEl) {
+      glossEl.setAttribute("cy", (sy + 9).toFixed(1));
+      glossEl.setAttribute("opacity", currentFill > 0.02 ? "0.22" : "0");
+    }
+    updateBubbles(dt, sy, t);
+    updateOverflow(dt, currentFill);
+    updateIntake(dt, currentFill);
+    var wrap = document.querySelector(".ring-wrap");
+    if (wrap) wrap.classList.toggle("energy-full", currentFill >= 0.995);
+    requestAnimationFrame(animateEnergy);
+  }
+
   async function main() {
     // 一次性揭示窗口：消除「先无立绘、后有立绘」闪烁——启用督休专员时整窗先透明，
     // 立绘就绪（load/error）后淡入；无立绘时立即显示。超时兜底防异常卡透明。
@@ -375,10 +713,21 @@
     if (!info) { reveal(); return; }
     const data = info;
     document.documentElement.style.setProperty("--accent", data.appearance.color);
+    // 液体颜色随背景（accent）自适配：同色相协调、提亮高饱和明显
+    applyAdaptiveLiquid(data.appearance.color);
     document.documentElement.style.setProperty("--app-opacity", String(1 - data.appearance.transparency));
     document.getElementById("app").dataset.rounded = data.appearance.fullscreen ? "0" : "1";
     const msgBox = document.getElementById("messages");
     for (const m of data.messages) msgBox.appendChild(renderMessage(m));
+    // 提醒名称（短休/长休/外卖/自定义）显示在倒计时环外上方——督休专员模式
+    // 同样显示（与无督休专员模式一致；它与对话框左上角的督休专员名字标签是两回事）
+    const nameEl = document.getElementById("remind-name");
+    if (nameEl) {
+      nameEl.textContent = data.name || "";
+      if (data.name) nameEl.classList.remove("hidden");
+    }
+    // 环内两行直排铭文「整理思绪 / 积蓄能量」已静态写在 break.html 的
+    // #inscribe-lines 中（进度百分数下方，非弧形），无需在此设置。
     if (data.supervisor) {
       msgBox.classList.add("hidden");
       setupSupervisor(data.supervisor, data.messages[0] ?? "");
@@ -397,20 +746,52 @@
     } else {
       reveal();
     }
-    const ring = document.getElementById("ring");
     const countdown = document.getElementById("countdown");
+    const pctEl = document.getElementById("progress-pct");
     const total = data.durationMs;
+    // 生成「蓄能容器」几何：液态能量、气泡、外壁溢出光丝与脉冲
+    buildEnergy(document.querySelector(".ring-wrap svg"));
+    // 启动液态能量动画（独立于倒计时 tick，保证液面波动丝滑）
+    energyRunning = true;
+    lastEnergyT = performance.now();
+    requestAnimationFrame(animateEnergy);
+    let lastSec = -1;
     function frame() {
       const remain = Math.max(0, data.endsAt - Date.now());
       const sec = Math.ceil(remain / 1e3);
-      countdown.textContent = String(sec);
-      ring.style.strokeDashoffset = String(RING_LEN * (1 - remain / total));
-      if (remain <= 0) return;
+      // 每秒翻数：重触发弹跳高光动画，让倒计时有生命力
+      if (sec !== lastSec) {
+        lastSec = sec;
+        countdown.textContent = String(sec);
+        countdown.classList.remove("tick");
+        void countdown.offsetWidth;
+        countdown.classList.add("tick");
+      }
+      // 蓄能进度 = 流逝占比（容器从空到满）；中心「进度」与此同步增长
+      targetFill = total > 0 ? 1 - remain / total : 0;
+      if (pctEl && total > 0) pctEl.textContent = Math.round(targetFill * 100) + "%";
+      if (remain <= 0) {
+        targetFill = 1;
+        if (pctEl) pctEl.textContent = "100%";
+        countdown.textContent = "0";
+        return;
+      }
       requestAnimationFrame(frame);
     }
     frame();
+    if (!data.supervisor) {
+      const pcanvas = document.getElementById("particles");
+      if (pcanvas) {
+        try {
+          const accent = (getComputedStyle(document.documentElement)
+            .getPropertyValue("--accent") || "").trim() || "#4f7cff";
+          startParticles(pcanvas, accent);
+        } catch (e) { /* 装饰层异常不影响主体 */ }
+      }
+    }
     if (data.preview) {
-      window.setTimeout(() => api.closeWindow(), Math.max(0, data.endsAt - Date.now()));
+      // 预览也复刻真实「满罐多停留 1 秒」的体验
+      window.setTimeout(() => api.closeWindow(), Math.max(0, data.endsAt - Date.now()) + 1000);
     }
     const skip = document.getElementById("skip-link");
     skip.classList.remove("hidden");

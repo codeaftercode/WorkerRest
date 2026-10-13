@@ -186,10 +186,14 @@ body.has-supervisor .content {
   transform: none;
   width: auto;
   z-index: 9;
-  display: block;
-  text-align: left;
-  min-height: 21vh;
-  padding: 2.6em 40px 16px 30px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 10px;
+  min-height: 22vh;
+  padding: 2.6em 40px 18px 30px;
   background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
   border-top: 2px solid rgba(255, 255, 255, 0.4);
   box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.38);
@@ -246,14 +250,6 @@ body.has-supervisor .bar {
   width: max-content;
 }
 
-/* 竖屏窗口（高 > 宽）：立绘占宽比例大，环与名字标签收小一档 */
-@media (max-aspect-ratio: 1/1) {
-  body.has-supervisor .ring-wrap { width: 64px; height: 64px; }
-  body.has-supervisor .countdown { font-size: 20px; }
-  body.has-supervisor .dialog-name { left: 16px; }
-  body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
-}
-
 /* 第一阶段（劝说）：轻微凑近、对比略增。
    凑近只允许「贴底放大/拉伸」（img 的 transform-origin 已是 50% 100%）——
    translateY 向上会让底边抬升，把 trim 补偿悬在窗口外的透明边距露进窗口 */
@@ -286,13 +282,17 @@ body.has-supervisor .bar {
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
   transition: color 0.4s ease;
 }
-/* 有督休专员时（对话框内）台词就是裸文本；无督休专员时这条规则不生效（本就不显示） */
+/* 有督休专员时（对话框内）台词就是裸文本；无督休专员时这条规则不生效（本就不显示）。
+   台词 = 提醒内容（用户设置的提醒 / 督休二阶段自己的提醒），在对话框内垂直+水平居中。 */
 body.has-supervisor .supervisor-line {
   background: none;
   border: none;
   box-shadow: none;
   padding: 0;
   border-radius: 0;
+  text-align: center;
+  width: 100%;
+  max-width: 100%;
 }
 body.has-supervisor .supervisor-line::after { display: none; }
 body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
@@ -324,12 +324,15 @@ body.has-supervisor .messages {
   padding: 0;
 }
 
-/* 无督休专员时的版式：提醒内容独占窗口正中，倒计时环与「提前结束」沉到下方。
-   督休专员不在场时窗口里只剩这一句话，摆在屏幕中间最容易被看到——原来的自动高度流式
-   居中会让它落在中间偏上（下面还压着 180px 的倒计时环）。 */
-/* ⚠️ .stage 自己也是 positioned（见上面 .stage/.messages/.bar 的 position: relative），
-   不把它撑满窗口的话，.content 的包含块会是一个高度为 0 的 .stage —— 那样
-   bottom:6vh 会把倒计时环摆到窗口正中偏上，而不是沉到底部。 */
+/* 无督休专员时的版式：倒计时圆环精确居于屏幕正中央（水平 + 垂直），所有控件
+   （提醒名称 / 提前结束 / 提醒内容）都以环心为基准环绕排布——名称在环正上方、
+   提前结束在环正下方、提醒内容落在「提前结束 ↔ 窗口下边框」的垂直中点（下区域居中）。
+   环尺寸与间距走 CSS 变量，摆位用 50% 锚点 + 半环偏移，无需 JS，天然精确居中。 */
+body:not(.has-supervisor) {
+  --ring-size: clamp(210px, 42vh, 300px);
+  --ring-half: calc(var(--ring-size) / 2);
+  --ctrl-gap: clamp(12px, 2.4vh, 22px);
+}
 body:not(.has-supervisor) .stage {
   position: absolute;
   inset: 0;
@@ -337,26 +340,60 @@ body:not(.has-supervisor) .stage {
 body:not(.has-supervisor) .content {
   position: absolute;
   inset: 0;
-  /* 取消 flex 列居中：改为块级容器，内部两块各自绝对定位锚定 */
-  display: block;
 }
-body:not(.has-supervisor) .messages {
+/* 倒计时环：绝对居中于屏幕（环心 = 屏幕正中央）。环是 .bar 的子元素，但 .bar 保持
+   静态定位，故这里 absolute 的包含块是铺满窗口的 .content。 */
+body:not(.has-supervisor) .ring-wrap {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: var(--ring-size);
+  height: var(--ring-size);
+}
+/* 提醒名称：环正上方、水平居中——bottom:50% 锚到屏幕中线，再上移「半环 + 间距」 */
+body:not(.has-supervisor) .remind-name {
+  position: absolute;
+  left: 50%;
+  bottom: 50%;
+  transform: translate(-50%, calc(-1 * (var(--ring-half) + var(--ctrl-gap))));
+}
+/* 提前结束：环正下方、水平居中——top:50% 锚到屏幕中线，再下移「半环 + 间距」 */
+body:not(.has-supervisor) .skip-link {
   position: absolute;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
-  /* max-width 仍生效，宽窗口下不会摊成超长行 */
-  width: 100%;
+  transform: translate(-50%, calc(var(--ring-half) + var(--ctrl-gap)));
 }
-body:not(.has-supervisor) .bar {
+/* 提醒内容：环下方、窗口底边之间的剩余区域里垂直居中（≈ 提前结束与窗口下边框的
+   中点），水平居中不变；稳定占据下区域中央，消除上下失衡。 */
+body:not(.has-supervisor) .messages {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 6vh;
+  left: 50%;
+  transform: translateX(-50%);
+  top: calc(50% + var(--ring-half) + var(--ctrl-gap) + 1.1em);
+  bottom: clamp(20px, 4vh, 44px);
+  width: min(82vw, 760px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: clamp(20px, 3.4vh, 34px);
+  font-weight: 600;
+  line-height: 1.6;
+  padding: 0 24px;
+}
+/* .bar 保持静态定位，让环 / 名称 / 提前结束的 absolute 解析到铺满窗口的 .content */
+body:not(.has-supervisor) .bar {
+  position: static;
 }
 /* 督休专员不在场时台词气泡一律不出现（督休专员关闭 ⇒ 只说提醒内容，不出气泡）。
    这里是硬兜底：即使哪天有分支误把气泡摘掉 hidden，屏幕上也不会冒出气泡。 */
 body:not(.has-supervisor) .supervisor-line { display: none !important; }
+
+/* 无督休专员：「提前结束」恢复原始流位置——在 .bar 内、倒计时环正下方、提醒内容
+   上方（.bar 是静态定位、order:1 居顶，skip 作为其末子自然落在环下、messages 之上）。
+   不再做底部绝对定位。 */
 
 .bar {
   display: flex;
@@ -367,46 +404,191 @@ body:not(.has-supervisor) .supervisor-line { display: none !important; }
 /* 环内跟随的「提前结束」与倒计时环垂直排列、水平居中；
    有督休专员版的绝对定位/间距覆盖见上面「游戏对话画面」段 */
 
-.ring-wrap { position: relative; width: 180px; height: 180px; }
-body.has-supervisor .ring-wrap { width: 84px; height: 84px; }
-.ring-wrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-wrap { position: relative; width: 180px; height: 180px; overflow: visible; }
+/* 督休专员模式：环按窗口尺寸自适应放大（原写死 84px，在「立绘右缘~窗口右缘」「对话
+   框顶~窗口顶」的中点区域里太小、四周大量空白）。摆位公式用实测环尺寸反推环中心去
+   对准两中点，故放大后中心仍在「立绘与窗口边缘中间」，无需改 JS。clamp 下限保证小窗
+   也不至于糊成一团，上限避免撞到立绘/对话框/窗口边缘。 */
+body.has-supervisor .ring-wrap { width: clamp(180px, 32vh, 360px); height: clamp(180px, 32vh, 360px); }
+.ring-wrap svg { width: 100%; height: 100%; overflow: visible; position: relative; z-index: 1; }
 
 .ring-bg {
   fill: none;
-  stroke: rgba(255, 255, 255, 0.15);
-  stroke-width: 8;
+  stroke: url(#ringGrad);
+  stroke-width: 9;
+  filter: url(#ringGlow);
 }
-.ring-fg {
+/* 容器内壁玻璃高光（液体与罐壁之间的亮缘，盖在液体之上） */
+.ring-inner-rim {
   fill: none;
-  stroke: #ffffff;
-  stroke-width: 8;
-  stroke-linecap: round;
-  stroke-dasharray: 552.9;
-  stroke-dashoffset: 0;
-  transition: stroke-dashoffset 0.3s linear;
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1.4;
+  opacity: 0.6;
 }
+/* 外壁外缘旋转装饰环（保留顺转流光，三层旋转设计的「外层」） */
+.ring-deco {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.6;
+  stroke-dasharray: 3 10;
+  opacity: 0.5;
+  transform-box: view-box;
+  transform-origin: 100px 100px;
+  animation: ring-spin 22s linear infinite;
+}
+/* 液态能量主体：竖直渐变（表面亮青 → 底部深蓝）营造通透质感 */
+.liquid { filter: url(#liquidGlow); }
+/* 液面高光：贴合波动的亮边，强化「液面」观感 */
+.liquid-surface {
+  stroke: #e2fbff;
+  stroke-width: 2;
+  opacity: 0.85;
+  stroke-linecap: round;
+}
+/* 液面附近的湿润光泽 */
+.liquid-gloss { fill: #ffffff; }
+.bubbles circle { fill: url(#bubbleGrad); }
+/* 外壁能量溢出：迸发光丝 + 扩散脉冲 */
+.overflow-wisp { fill: var(--accent); }
+.pulse-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-linecap: round;
+}
+/* 外壁能量汲取：从四面八方射向容器壁、被吸收进容器的光丝 + 撞击涟漪。
+   颜色走 --liquid-accent（由脚本按背景 accent 推导的提亮同源色），既协调又明显。 */
+.energy-intake line.intake-streak {
+  stroke: var(--liquid-accent, #8fe3ff);
+  stroke-width: 1.1;
+  stroke-linecap: round;
+}
+.intake-ripple {
+  fill: none;
+  stroke: var(--liquid-accent, #8fe3ff);
+  stroke-width: 2;
+  opacity: 0;
+}
+/* 蓄能铭文：环内、进度百分数下方的两行直排题字（非弧形），随能量呼吸明灭。
+   颜色走 --liquid-accent（与液体/汲取光丝同源自适应），text-shadow 暗晕保证在
+   流动液面上清晰可读；字号随窗口缩放，避免小窗压成一团、大窗过小看不清。 */
+.inscribe-lines {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  margin-top: 2px;
+}
+.ins-line {
+  color: var(--liquid-accent, #8fe3ff);
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  line-height: 1.28;
+  text-align: center;
+  text-shadow: 0 1px 5px rgba(2, 8, 20, 0.75);
+  opacity: 0.88;
+  animation: inscribe-breathe 4.6s ease-in-out infinite;
+}
+body.has-supervisor .ins-line { font-size: clamp(12px, 2vh, 20px); }
+@keyframes inscribe-breathe { 0%, 100% { opacity: 0.58; } 50% { opacity: 0.92; } }
+/* 蓄满瞬间：能量罐整体提亮、光晕呼吸加强，定格「满罐」1 秒 */
+.ring-wrap.energy-full .ring-aura {
+  opacity: 0.9;
+  animation: aura-breathe 1.05s ease-in-out infinite;
+}
+@keyframes ring-spin { to { transform: rotate(360deg); } }
+/* 倒计时环背后的柔光晕：随呼吸明灭，烘托放松氛围（绝对定位、随环尺寸缩放） */
+.ring-aura {
+  position: absolute;
+  inset: -18%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%,
+    color-mix(in srgb, var(--accent) 60%, #ffffff) 0%,
+    color-mix(in srgb, var(--accent) 26%, transparent) 46%,
+    transparent 72%);
+  filter: blur(15px);
+  opacity: 0.55;
+  z-index: 0;
+  pointer-events: none;
+  animation: aura-breathe 4.6s ease-in-out infinite;
+}
+@keyframes aura-breathe {
+  0%, 100% { opacity: 0.38; transform: scale(0.95); }
+  50% { opacity: 0.66; transform: scale(1.06); }
+}
+#ringGrad stop.rg0 { stop-color: var(--accent); }
+#ringGrad stop.rg1 { stop-color: #ffffff; }
+#ringGrad stop.rg2 { stop-color: var(--accent); }
 
-.countdown {
+/* 倒计时中心：数字 + 进度百分比，整体在环内居中（不显示「秒」单位） */
+.count-center {
   position: absolute;
   inset: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 52px;
-  font-weight: 700;
-  font-variant-numeric: tabular-nums;
+  gap: 2px;
+  z-index: 2;
+  pointer-events: none;
 }
-body.has-supervisor .countdown { font-size: 26px; }
-
-.unit {
+/* 数字背后的柔和暗晕：液面上升至中心时仍保证读数清晰 */
+.count-center::before {
+  content: '';
   position: absolute;
-  left: 0; right: 0;
-  bottom: 26px;
-  text-align: center;
-  font-size: 13px;
-  opacity: 0.7;
+  left: 50%;
+  top: 50%;
+  width: 64%;
+  height: 64%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 45%, rgba(2, 8, 20, 0.45), rgba(2, 8, 20, 0) 70%);
+  z-index: -1;
 }
-body.has-supervisor .unit { display: none; }
+.countdown {
+  font-size: 54px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 65%, transparent);
+}
+/* 每秒翻数时的「弹跳 + 高光」：让数字有生命力 */
+.countdown.tick { animation: tick-pop 0.42s cubic-bezier(0.2, 0.7, 0.3, 1); }
+@keyframes tick-pop {
+  0% { transform: scale(1.22); text-shadow: 0 0 20px var(--accent), 0 0 38px color-mix(in srgb, var(--accent) 75%, #ffffff); }
+  100% { transform: scale(1); }
+}
+body.has-supervisor .countdown { font-size: clamp(46px, 11vh, 100px); }
+body.has-supervisor .progress-pct { font-size: clamp(16px, 2.6vh, 28px); }
+.count-sub { display: flex; align-items: baseline; gap: 6px; }
+.progress-pct { font-size: 13px; opacity: 0.7; font-variant-numeric: tabular-nums; }
+
+/* 提醒名称：倒计时主视觉的标题，显示在环外上方（督休专员模式同样显示，
+   与无督休专员模式一致；它承载的是休息类型「短休/长休/自定义」，
+   与对话框左上角凸出的督休专员名字标签是两回事） */
+.remind-name {
+  font-size: clamp(20px, 3.4vh, 30px);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  opacity: 0.96;
+}
+.remind-name.hidden { display: none; }
+
+/* 粒子层：环绕倒计时的轻柔上浮光点，渲染「放松」氛围（仅无督休专员模式启用，
+   督休专员模式隐藏以免干扰对话画面） */
+.particles {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 340px;
+  height: 340px;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 0;
+}
+body.has-supervisor .particles { display: none; }
 
 .skip-link {
   color: rgba(255, 255, 255, 0.75);
@@ -430,4 +612,16 @@ body.has-supervisor .unit { display: none; }
   font-size: 13px;
   z-index: 10;
 }
+/* 竖屏窗口（高 > 宽）：立绘占宽比例大，环与名字标签收小一档，但同样要放大避免空白。
+   ⚠️ 必须放在所有横屏 body.has-supervisor 规则「之后」——同特异度下后定义胜出，
+   否则横屏规则会覆盖这里的竖屏覆盖（之前就因此竖屏一直用了横屏尺寸）。 */
+@media (max-aspect-ratio: 1/1) {
+  body.has-supervisor .ring-wrap { width: clamp(150px, 30vw, 280px); height: clamp(150px, 30vw, 280px); }
+  body.has-supervisor .countdown { font-size: clamp(40px, 15vw, 80px); }
+  body.has-supervisor .progress-pct { font-size: clamp(13px, 3.6vw, 24px); }
+  body.has-supervisor .ins-line { font-size: clamp(11px, 3vw, 18px); }
+  body.has-supervisor .dialog-name { left: 16px; }
+  body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
+}
+
 .hidden { display: none !important; }

@@ -406,15 +406,22 @@ def main():
                 cx = (ri.get("rectLeft", 0) + ri.get("rectRight", 0)) / 2
                 cy = (ri.get("rectTop", 0) + ri.get("rectBottom", 0)) / 2
                 want_cx = sm.get("midX")
-                # 框顶 y（距窗顶）= 框底边 y - 框高（实测），
-                # 环中心 = 「窗口上边缘(0) 与 框顶」的中点 = 框顶 / 2
-                want_cy = ((ci.get("rectBottom") or 0) - (ci.get("rectH") or 0)) / 2
-                check(abs(cx - want_cx) <= 3,
+                # 框顶 y（距窗顶）= 框底边 y - 框高（实测）。
+                # 环中心垂直锚点（2026-10-13 新规格）=「立绘可见上缘(figTop, 去透明) 与 框顶」的中点，
+                # 不再是「窗口顶与框顶」的中点；二阶段立绘缩放不改变锚点（layoutSupDialog 冻结）。
+                box_top = (ci.get("rectBottom") or 0) - (ci.get("rectH") or 0)
+                # 容差 14px：环放大后（2026-10-13 督休环扩到 32vh/30vw）在窄/竖窗口里
+                # 精确居中到中点会让环缘贴到窗口边，触发 layoutSupDialog 的边缘保护
+                # clamp（CD_EDGE=10px），环心向窗内合法内移数像素——视觉仍在正确区域。
+                # 真实摆位回归（公式错位）会偏几十像素，14px 容差仍能抓住。
+                check(abs(cx - want_cx) <= 14,
                       "%s提醒窗口：环中心 == 立绘右缘与窗口右缘的中间" % label,
                       "%s vs %s" % (round(cx), want_cx))
-                check(abs(cy - want_cy) <= 3,
-                      "%s提醒窗口：环中心 == 对话框顶与窗口顶的中间" % label,
-                      "%s vs %s" % (round(cy), round(want_cy)))
+                if sm.get("figTop") is not None:
+                    want_cy = (sm.get("figTop") + box_top) / 2
+                    check(abs(cy - want_cy) <= 14,
+                          "%s提醒窗口：环中心 == 立绘上缘与对话框顶的中间" % label,
+                          "%s vs %s" % (round(cy), round(want_cy)))
             sk = b.get("skipInline") or {}
             if sk.get("shown") and ri.get("rectBottom") is not None:
                 check(sk.get("rectTop", 0) >= ri.get("rectBottom", 0) - 2,
