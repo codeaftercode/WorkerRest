@@ -2109,7 +2109,7 @@
 
   // renderer/figureTrim.ts
   var ALPHA_MIN = 8;
-  var MAX_SAMPLE = 512;
+  var MAX_SAMPLE = 2048;
   var IGNORE = 8e-3;
   var MIN_CONTENT = 0.25;
   var MAX_SCALE = 4;
@@ -2162,6 +2162,12 @@
       right: norm((cw - 1 - right) / cw),
       top: norm(top / ch),
       bottom: norm((ch - 1 - bottom) / ch),
+      // 未过 IGNORE 阈值的原始边距（摆位锚点专用，与 break.js 同一套）：
+      // IGNORE 会把 <0.8% 的边距归零，对变换无害，但锚点必须指向像素真实位置。
+      rawLeft: left / cw,
+      rawRight: (cw - 1 - right) / cw,
+      rawTop: top / ch,
+      rawBottom: (ch - 1 - bottom) / ch,
       content: 1,
       scale: 1,
       transform: "none"
@@ -2178,7 +2184,14 @@
       const t = measureFigureTrim(img);
       const left = flip ? t.right : t.left;
       const right = flip ? t.left : t.right;
-      const rendered = img.getBoundingClientRect();
+      // ⚠️ fill 必须按**布局盒**算，不能读 img 的 getBoundingClientRect：img 自身
+      // 可能带着 Stage 变换（#app[data-stage='1'] 的 scale(1.03) scaleY(1.006)，
+      // 纵向 1.03618 > 横向 1.03）。立绘图常在变换生效之后才加载完，那时量到的是
+      // 变换后尺寸——W/H 比自然 aspect 小 0.6%，fill 被压成 0.994（应为 1.0），
+      // trim 的平移量整体偏小、立绘可见边与红包锚点一起算歪（实测顶缘差 ~4px）。
+      // host 的变换已在函数开头重置为 none，其 rect 即布局盒（img 盒撑满 host），
+      // 且不受 img 自身变换影响。
+      const rendered = host.getBoundingClientRect();
       const scale = t.content >= MIN_CONTENT ? Math.min(MAX_SCALE, 1 / t.content) : 1;
       const ar = img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : 0;
       const fill = rendered.height > 0 && ar > 0 ? Math.min(1, rendered.width / ar / rendered.height) : 1;
@@ -2191,6 +2204,11 @@
         right: +right.toFixed(4),
         top: +t.top.toFixed(4),
         bottom: +t.bottom.toFixed(4),
+        // 像素真实边距（未过 IGNORE）：摆位锚点用，语义与 left/right 一致（含 flip 交换）
+        rawLeft: +(flip ? t.rawRight : t.rawLeft).toFixed(4),
+        rawRight: +(flip ? t.rawLeft : t.rawRight).toFixed(4),
+        rawTop: +t.rawTop.toFixed(4),
+        rawBottom: +t.rawBottom.toFixed(4),
         scale: +scale.toFixed(4),
         fill: +fill.toFixed(4),
         flip,
@@ -2299,78 +2317,109 @@
 
   // renderer/supervisorLayout.ts —— 游戏对话画面版式（与 break.js 同一套）
   // .content 已是底部全宽对话框（CSS 定版），这里只负责把支付红包区浮到
-  // 「立绘可见右缘~窗口右缘」与「对话框上边缘~窗口上边缘」两个中点的交点上
+  // 「立绘可见右缘~窗口右缘」与「立绘可见上缘~窗口上边缘」两个中点的交点上
   // （红包中心对准）。摆位结果写入 supMetrics 供探针断言。
   var CD_EDGE = 10;
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
-  function pickMeasure(figure, measure) {
-    if (!measure) return figure;
-    return measure.getBoundingClientRect().width > 0 ? measure : figure;
-  }
-  function trimFactor(figure) {
-    const img = figure.querySelector("img");
-    const raw = img?.dataset.trim;
-    if (!raw) return 1;
-    try {
-      const t = JSON.parse(raw);
-      const scale = typeof t.scale === "number" ? t.scale : 1;
-      const fill = typeof t.fill === "number" ? t.fill : 1;
-      const top = typeof t.top === "number" ? t.top : 0;
-      const f = scale * fill * (1 - top);
-      return f > 0 ? f : 1;
-    } catch {
-      return 1;
-    }
-  }
-  function figureTop(figure, fallback) {
+  // 立绘「去掉透明部分后」的可见边缘（窗口坐标）——与 break.js 同一套几何。
+  // .trim 补偿变换 translate(-left*s%, bottom*s*fill%) scale(s)（origin: left bottom）
+  // 把 img 盒（铺满立绘盒，盒左缘 x0、底缘 yB、盒宽 W、盒高 H）映射到屏幕，
+  // 像素内容的四条可见边：
+  //   · 左缘 = x0 + s*W*(rawLeft - left)
+  //   · 右缘 = x0 + s*W*(1 - rawRight - left)
+  //   · 顶缘 = yB - s*fill*H*(1 - rawTop - bottom)
+  //   · 底缘 = yB - s*fill*H*(rawBottom - bottom)
+  // left/bottom 是变换实际使用的边距（过 IGNORE，可能被归零），rawLeft/rawTop 等是
+  // 像素真实边距（未归零）——二者只在边距 <0.8% 时不同。
+  // ⚠️ 曾经的 bug：① 顶缘漏减 bottom；② 左右缘取含透明边距的变换后外框；
+  // ③ fill 读 img 变换后的 rect（Stage 纵向缩放更大 → 被压成 0.994）。
+  // trim 尚未就绪（图片未加载/量失败）时退化为立绘自身外框。
+  function figureVisibleRect(figure, fallbackTop) {
     const box = figure.getBoundingClientRect();
-    if (box.height <= 0) return fallback;
-    const h = box.height * trimFactor(figure);
-    return h > 0 ? box.bottom - h : fallback;
+    const img = figure.querySelector("img");
+    let t = null;
+    try { t = img ? JSON.parse(img.dataset.trim || "null") : null; } catch (e) { t = null; }
+    if (!t || typeof t.scale !== "number" || box.width <= 0 || box.height <= 0) {
+      return { left: box.left, right: box.right, top: fallbackTop, bottom: box.bottom };
+    }
+    const s = t.scale;
+    const fill = typeof t.fill === "number" ? t.fill : 1;
+    const l = typeof t.left === "number" ? t.left : 0;
+    const bt = typeof t.bottom === "number" ? t.bottom : 0;
+    const rl = typeof t.rawLeft === "number" ? t.rawLeft : l;
+    const rr = typeof t.rawRight === "number" ? t.rawRight : (typeof t.right === "number" ? t.right : 0);
+    const rtp = typeof t.rawTop === "number" ? t.rawTop : (typeof t.top === "number" ? t.top : 0);
+    const rbt = typeof t.rawBottom === "number" ? t.rawBottom : bt;
+    return {
+      left: box.left + s * box.width * (rl - l),
+      right: box.left + s * box.width * (1 - rr - l),
+      top: box.bottom - s * fill * box.height * (1 - rtp - bt),
+      bottom: box.bottom - s * fill * box.height * (rbt - bt)
+    };
   }
   function layoutSupDialog(figure, content, measure) {
     const container = figure?.parentElement ?? null;
     if (!container || !figure || !content) return;
     const cRect = container.getBoundingClientRect();
     if (cRect.width <= 0) return;
-    const measureEl = pickMeasure(figure, measure);
-    const fRect = measureEl.getBoundingClientRect();
-    const figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
-    const figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
-    const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
+    const figBox = figure.getBoundingClientRect();
+    const vis = figureVisibleRect(figure, figBox.top);
+    const figLeft = clamp(vis.left - cRect.left, 0, cRect.width);
+    const figRight = clamp(vis.right - cRect.left, 0, cRect.width);
+    const figTop = clamp(vis.top - cRect.top, 0, cRect.height);
     // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位。
     // 对话框（.content）与窗口边缘的偏移由 CSS 决定（当前贴边为 0），红包区
     // （.tk-redpacket）的包含块就是它——所以摆位全部用实测 rect 换算，不假设贴边。
-    // 两个锚点中点：
+    // 两个锚点中点（红包「标题+框」整组的中心对准交点，left/bottom 写 inline）：
     //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
-    //   垂直 midY = (对话框上边缘 + 窗口上边缘) / 2（框顶实测，偏移自动跟随）
-    // 红包中心对准交点（left/bottom 写 inline）。红包开关关闭时它整块 hidden，
-    // 照常落位无副作用（display:none 不渲染）。
+    //   垂直 midY = (立绘可见上缘[去透明] + 底部对话框上边缘) / 2。
+    //     即「立绘去透明上缘」与「显示督休专员名称的对话框顶」两线中点。
+    //     「外卖提醒」标题胶囊浮在框外上方（.rp-title bottom:100%），框若贴顶
+    //     标题会被顶出窗口——两线中点离对话框顶不足（框高+标题高）时，整组
+    //     （标题+框）下移到刚好留出顶边距（TOP_MARGIN）为止。figTop/dialogTop
+    //     随立绘尺寸/位置/图片动态实测；红包开关关闭时整块 hidden（display:none
+    //     不渲染），照常落位无副作用。
     const floatEl = content.querySelector(".tk-redpacket");
-    const boxRect = content.getBoundingClientRect();
-    const boxH = boxRect.height;
-    const boxLeft = boxRect.left - cRect.left; // 对话框左缘相对窗口（= 水平内缩量）
-    const boxBottomGap = cRect.bottom - boxRect.bottom; // 对话框底缘距窗底（= 底部内缩量）
-    const boxTop = boxRect.top - cRect.top; // 对话框顶缘相对窗口
+    const titleEl = content.querySelector(".rp-title");
+    // 包含块换算一律用布局坐标（offsetLeft/offsetTop/offsetHeight）：
+    // .content 有入场动画 tk-in（scale 0.97 + translateY），动画进行中
+    // getBoundingClientRect 量到的是被 transform 污染的中间态；而动画结束后
+    // ResizeObserver 不感知纯 transform 的变化、不会触发重排——过期摆位会一直
+    // 留在页面上（实测：水平偏 8px、垂直偏 6px，红包整体错位）。offset* 恒为
+    // 终态布局值，动画进行中算出的也是正确落点。督休模式下 .content 是
+    // position:fixed（left:0 right:0 bottom:0），offset* 相对视口 = 窗口坐标。
+    const boxLeft = content.offsetLeft; // 对话框左缘相对窗口（= 水平内缩量）
+    const dialogTop = content.offsetTop; // 对话框顶缘（窗口坐标，= 显示督休专员名称那条边上沿）
+    const contentBottom = content.offsetTop + content.offsetHeight; // 对话框底缘（窗口坐标）
     const midX = (figRight + cRect.width) / 2;
-    const midY = boxTop / 2;
-    let cdX = midX - boxLeft;
-    let cdBottom = cRect.height - midY - boxBottomGap;
+    const floatW = (floatEl && floatEl.offsetWidth) || 240;
+    const floatH = (floatEl && floatEl.offsetHeight) || 108;
+    // 标题悬在框外上方，占「标题高 + margin-bottom」的空间（offsetHeight 不受
+    // .content 入场动画的 transform 缩放影响，比 getBoundingClientRect 稳）
+    const titleExtra = titleEl
+      ? titleEl.offsetHeight + (parseFloat(getComputedStyle(titleEl).marginBottom) || 0)
+      : 0;
+    const unitH = floatH + titleExtra; // 标题 + 红包框的整组高度
+    const TOP_MARGIN = CD_EDGE; // 标题离窗口顶的最小间距
+    const midY = Math.max((figTop + dialogTop) / 2, TOP_MARGIN + unitH / 2);
+    // 红包框中心 = 单元中心 + titleExtra/2（标题悬在框上方，框心比单元心低半标题）
+    let cdX = midX - boxLeft - floatW / 2;
+    let cdBottom = contentBottom - midY - titleExtra / 2 - floatH / 2;
     if (floatEl) {
-      const floatW = floatEl.offsetWidth || 240;
-      const floatH = floatEl.offsetHeight || 108;
       // clamp 的合法区间是「红包相对对话框」的坐标：窗口坐标的边界先算好再减去内缩量
       cdX = clamp(
-        midX - boxLeft - floatW / 2,
+        cdX,
         CD_EDGE - boxLeft,
         Math.max(CD_EDGE - boxLeft, cRect.width - boxLeft - floatW - CD_EDGE)
       );
+      //   下限：框底不沉入对话框（距对话框底缘 ≥ CD_EDGE）
+      //   上限：整组（标题+框）顶离窗口顶 ≥ TOP_MARGIN（标题不出窗）
       cdBottom = clamp(
-        cRect.height - midY - floatH / 2 - boxBottomGap,
-        CD_EDGE - boxBottomGap,
-        Math.max(CD_EDGE - boxBottomGap, cRect.height - boxBottomGap - floatH - CD_EDGE)
+        cdBottom,
+        CD_EDGE,
+        Math.max(CD_EDGE, contentBottom - TOP_MARGIN - unitH)
       );
       floatEl.style.left = `${Math.round(cdX)}px`;
       floatEl.style.bottom = `${Math.round(cdBottom)}px`;
@@ -2385,7 +2434,12 @@
       cdBottom: Math.round(cdBottom),
       midX: Math.round(midX),
       midY: Math.round(midY),
-      src: measureEl === measure ? "trim" : "figure"
+      unitH: Math.round(unitH),
+      titleExtra: Math.round(titleExtra),
+      boxLeft: Math.round(boxLeft),
+      floatW,
+      floatH,
+      src: figure.querySelector("img")?.dataset.trim ? "trim" : "figure"
     });
   }
   function bindSupContentLayout(figure, content, measure) {
@@ -2450,8 +2504,8 @@
       if (data && data.url) {
         const qr = el("rp-qr");
         qr.classList.remove("hidden");
-        el("rp-text").textContent = "\u5916\u5356\u7EA2\u5305 \xB7 \u624B\u673A\u626B\u7801\u9886\u53D6";
-        import_qrcode.default.toCanvas(qr, data.url, { width: 88, margin: 1, color: { dark: "#331a12", light: "#ffffff" } }).catch(() => {
+        el("rp-text").textContent = "\u5916\u5356\u4F18\u60E0\u5238 \xB7 \u5FAE\u4FE1\u626B\u7801\u9886\u53D6";
+        import_qrcode.default.toCanvas(qr, data.url, { width: 120, margin: 1, color: { dark: "#331a12", light: "#ffffff" } }).catch(() => {
           qr.classList.add("hidden");
           el("rp-text").textContent = "\u652F\u4ED8\u7EA2\u5305 \xB7 \u4E8C\u7EF4\u7801\u751F\u6210\u5931\u8D25";
         });

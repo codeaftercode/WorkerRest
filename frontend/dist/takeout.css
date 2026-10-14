@@ -89,22 +89,42 @@ html, body {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 20px;
-  border-radius: 14px;
+  gap: 14px;
+  padding: 16px 30px;
+  border-radius: 18px;
   background: rgba(196, 40, 40, 0.28);
   border: 1px dashed rgba(255, 190, 150, 0.6);
-  font-size: 15px;
+  font-size: 17px;
+}
+/* 红包虚线框上方的「外卖提醒」胶囊标签：浮在框外顶部（absolute 不占框内布局），
+   与红色虚线框构成「标题 + 红包」的整体视觉 */
+.rp-title {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  margin-bottom: 10px;
+  padding: 5px 16px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: rgba(196, 40, 40, 0.62);
+  border: 1px solid rgba(255, 190, 150, 0.75);
+  border-radius: 999px;
+  white-space: nowrap;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
 }
 .rp-icon { font-size: 20px; }
 .rp-text { color: #ffe7d6; }
 /* 二维码：白底圆角小块（浅底深码保证可扫），有地址时替换图标+占位文案 */
 .rp-qr {
-  width: 88px;
-  height: 88px;
-  padding: 4px;
+  width: 120px;
+  height: 120px;
+  padding: 5px;
   background: #fff;
-  border-radius: 8px;
+  border-radius: 10px;
 }
 .rp-info { display: flex; align-items: center; gap: 10px; }
 /* 二维码容器（仅居中放二维码） */
@@ -347,7 +367,7 @@ body:not(.has-supervisor) .supervisor-line { display: none !important; }
 
 /* 竖屏窗口（高 > 宽）：立绘占宽比例大，红包区与名字标签收小一档 */
 @media (max-aspect-ratio: 1/1) {
-  body.has-supervisor .rp-qr { width: 64px; height: 64px; }
+  body.has-supervisor .rp-qr { width: 92px; height: 92px; }
   body.has-supervisor .dialog-name { left: 16px; }
   body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
 }

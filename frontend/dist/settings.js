@@ -145,7 +145,7 @@
 
   // renderer/figureTrim.ts
   var ALPHA_MIN = 8;
-  var MAX_SAMPLE = 512;
+  var MAX_SAMPLE = 2048;
   var IGNORE = 8e-3;
   var MIN_CONTENT = 0.25;
   var MAX_SCALE = 4;
@@ -198,6 +198,12 @@
       right: norm((cw - 1 - right) / cw),
       top: norm(top / ch),
       bottom: norm((ch - 1 - bottom) / ch),
+      // 未过 IGNORE 阈值的原始边距（摆位锚点专用，与 break/takeout 同一套）：
+      // IGNORE 会把 <0.8% 的边距归零，对变换无害，但锚点必须指向像素真实位置。
+      rawLeft: left / cw,
+      rawRight: (cw - 1 - right) / cw,
+      rawTop: top / ch,
+      rawBottom: (ch - 1 - bottom) / ch,
       content: 1,
       scale: 1,
       transform: "none"
@@ -214,7 +220,11 @@
       const t = measureFigureTrim(img);
       const left = flip ? t.right : t.left;
       const right = flip ? t.left : t.right;
-      const rendered = img.getBoundingClientRect();
+      // ⚠️ fill 必须按**布局盒**算，不能读 img 的 getBoundingClientRect：img 自身
+      // 可能带着 Stage 变换（scale(1.03) scaleY(1.006)，纵向 1.03618 > 横向 1.03），
+      // 立绘常在变换生效之后才加载完——量到变换后尺寸会把 fill 压成 0.994（应 1.0），
+      // trim 平移量整体偏小、预览摆位一起算歪。host 变换已重置为 none，其 rect 即布局盒。
+      const rendered = host.getBoundingClientRect();
       const scale = t.content >= MIN_CONTENT ? Math.min(MAX_SCALE, 1 / t.content) : 1;
       const ar = img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : 0;
       const fill = rendered.height > 0 && ar > 0 ? Math.min(1, rendered.width / ar / rendered.height) : 1;
@@ -227,6 +237,11 @@
         right: +right.toFixed(4),
         top: +t.top.toFixed(4),
         bottom: +t.bottom.toFixed(4),
+        // 像素真实边距（未过 IGNORE）：摆位锚点用，语义与 left/right 一致（含 flip 交换）
+        rawLeft: +(flip ? t.rawRight : t.rawLeft).toFixed(4),
+        rawRight: +(flip ? t.rawLeft : t.rawRight).toFixed(4),
+        rawTop: +t.rawTop.toFixed(4),
+        rawBottom: +t.rawBottom.toFixed(4),
         scale: +scale.toFixed(4),
         fill: +fill.toFixed(4),
         flip,
@@ -258,30 +273,39 @@
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
-  function pickMeasure(figure, measure) {
-    if (!measure) return figure;
-    return measure.getBoundingClientRect().width > 0 ? measure : figure;
-  }
-  function trimFactor(figure) {
-    const img = figure.querySelector("img");
-    const raw = img?.dataset.trim;
-    if (!raw) return 1;
-    try {
-      const t = JSON.parse(raw);
-      const scale = typeof t.scale === "number" ? t.scale : 1;
-      const fill = typeof t.fill === "number" ? t.fill : 1;
-      const top = typeof t.top === "number" ? t.top : 0;
-      const f = scale * fill * (1 - top);
-      return f > 0 ? f : 1;
-    } catch {
-      return 1;
-    }
-  }
-  function figureTop(figure, fallback) {
+  // 立绘「去掉透明部分后」的可见边缘（容器坐标）——与 break/takeout 同一套几何：
+  // .trim 补偿变换 translate(-left*s%, bottom*s*fill%) scale(s)（origin: left bottom）
+  // 把 img 盒（铺满立绘盒，盒左缘 x0、底缘 yB、盒宽 W、盒高 H）映射到屏幕，
+  // 像素内容的四条可见边：
+  //   · 左缘 = x0 + s*W*(rawLeft - left)
+  //   · 右缘 = x0 + s*W*(1 - rawRight - left)
+  //   · 顶缘 = yB - s*fill*H*(1 - rawTop - bottom)
+  //   · 底缘 = yB - s*fill*H*(rawBottom - bottom)
+  // left/bottom 是变换实际使用的边距（过 IGNORE，可能被归零），rawLeft/rawTop 等是
+  // 像素真实边距（未归零）——二者只在边距 <0.8% 时不同。
+  // trim 尚未就绪（图片未加载/量失败）时退化为立绘自身外框。
+  function figureVisibleRect(figure, fallbackTop) {
     const box = figure.getBoundingClientRect();
-    if (box.height <= 0) return fallback;
-    const h = box.height * trimFactor(figure);
-    return h > 0 ? box.bottom - h : fallback;
+    const img = figure.querySelector("img");
+    let t = null;
+    try { t = img ? JSON.parse(img.dataset.trim || "null") : null; } catch (e) { t = null; }
+    if (!t || typeof t.scale !== "number" || box.width <= 0 || box.height <= 0) {
+      return { left: box.left, right: box.right, top: fallbackTop, bottom: box.bottom };
+    }
+    const s = t.scale;
+    const fill = typeof t.fill === "number" ? t.fill : 1;
+    const l = typeof t.left === "number" ? t.left : 0;
+    const bt = typeof t.bottom === "number" ? t.bottom : 0;
+    const rl = typeof t.rawLeft === "number" ? t.rawLeft : l;
+    const rr = typeof t.rawRight === "number" ? t.rawRight : (typeof t.right === "number" ? t.right : 0);
+    const rtp = typeof t.rawTop === "number" ? t.rawTop : (typeof t.top === "number" ? t.top : 0);
+    const rbt = typeof t.rawBottom === "number" ? t.rawBottom : bt;
+    return {
+      left: box.left + s * box.width * (rl - l),
+      right: box.left + s * box.width * (1 - rr - l),
+      top: box.bottom - s * fill * box.height * (1 - rtp - bt),
+      bottom: box.bottom - s * fill * box.height * (rbt - bt)
+    };
   }
   // 与休息窗口的 layoutSupDialog 同一套规则（见 break.js）：锚点中点
   //   水平 midX = (立绘可见右缘 + 容器右缘) / 2
@@ -295,11 +319,13 @@
     if (!container || !figure || !content) return;
     const cRect = container.getBoundingClientRect();
     if (cRect.width <= 0) return;
-    const measureEl = pickMeasure(figure, measure);
-    const fRect = measureEl.getBoundingClientRect();
-    const figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
-    const figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
-    const figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
+    const figBox = figure.getBoundingClientRect();
+    const figImg = figure.querySelector("img");
+    const haveTrim = !!(figImg && figImg.dataset.trim);
+    const vis = figureVisibleRect(figure, figBox.top);
+    const figLeft = clamp(vis.left - cRect.left, 0, cRect.width);
+    const figRight = clamp(vis.right - cRect.left, 0, cRect.width);
+    const figTop = clamp(vis.top - cRect.top, 0, cRect.height);
     const bar = content.querySelector(".bar");
     const boxRect = content.getBoundingClientRect();
     const boxLeft = boxRect.left - cRect.left; // 对话框左缘相对容器（= 水平内缩量）
@@ -338,7 +364,7 @@
       cdBottom: Math.round(cdBottom),
       midX: Math.round(midX),
       midY: Math.round(midY),
-      src: measureEl === measure ? "trim" : "figure"
+      src: haveTrim ? "trim" : "figure"
     });
   }
   function bindSupContentLayout(figure, content, measure) {

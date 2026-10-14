@@ -363,8 +363,29 @@ def main():
             check(sm.get("mode") == "dialog",
                   "%s提醒窗口：版式是游戏对话画面（supMetrics.mode == dialog）" % label, sm.get("mode"))
             check(isinstance(sm.get("figLeft"), int) and isinstance(sm.get("figRight"), int),
-                  "%s提醒窗口：supMetrics 记录了立绘左右缘（量的是补偿层）" % label,
+                  "%s提醒窗口：supMetrics 记录了立绘去透明后的左右缘" % label,
                   "%r / %r" % (sm.get("figLeft"), sm.get("figRight")))
+            # 独立对拍（2026-10-14）：figLeft/figRight/figTop 必须与「图片自然像素
+            # alpha bbox + .trim 计算变换矩阵」独立反推的可见边一致。这条断言不读
+            # 页面的摆位公式，专门抓「trim 补偿几何算错」这类 bug——曾经的错法：
+            # 顶缘漏减底部透明边距 bottom、左右缘直接取 .trim 变换后外框（含缩放后的
+            # 透明边距），锚点整体偏高/偏外，用户换立绘/改尺寸后必错位。
+            fv = b.get("figureVisible") or {}
+            if fv and all(isinstance(sm.get(k), int) for k in ("figLeft", "figRight", "figTop")):
+                # figureVisible（独立反推）的键名是 left/right/top，与 supMetrics 的
+                # figLeft/figRight/figTop **不同名**——必须映射着比。曾按同名直接
+                # fv.get("figLeft") 取到 None，int - None 把断言段整个崩掉（TypeError），
+                # 报告都没写出来。两侧都验一下是 int 再比。
+                for _sk, _fk, _n in (("figLeft", "left", "左缘"),
+                                     ("figRight", "right", "右缘"),
+                                     ("figTop", "top", "上缘")):
+                    if not isinstance(fv.get(_fk), int):
+                        check(False, "%s提醒窗口：独立反推缺少可见%s（键 %s）" % (label, _n, _fk),
+                              "keys=%s" % sorted(fv.keys()))
+                        continue
+                    check(abs(sm.get(_sk) - fv.get(_fk)) <= 2,
+                          "%s提醒窗口：supMetrics.%s == 独立反推的立绘去透明可见%s" % (label, _sk, _n),
+                          "%s vs %s（alpha=%s figBox=%s）" % (sm.get(_sk), fv.get(_fk), fv.get("alpha"), fv.get("figBox")))
             check(isinstance(sm.get("cdX"), int) and sm.get("cdX", 0) > 0,
                   "%s提醒窗口：倒计时环的水平锚点已算出（cdX）" % label, sm.get("cdX"))
             if want_role:
@@ -515,6 +536,23 @@ def main():
         if tk.get("hasSupervisor"):
             check(tksm.get("mode") == "dialog",
                   "外卖窗口：版式是游戏对话画面（supMetrics.mode == dialog）", tksm.get("mode"))
+            # 独立对拍（2026-10-14，与提醒窗口同一套）：红包锚点用的 figLeft/figRight/
+            # figTop 必须与独立反推的立绘去透明可见边一致（像素 alpha bbox + .trim 矩阵），
+            # 曾经的错法（顶缘漏减 bottom、左右缘取含透明边距的变换外框）会让红包整体偏高。
+            tkfv = tk.get("figureVisible") or {}
+            if tkfv and all(isinstance(tksm.get(k), int) for k in ("figLeft", "figRight", "figTop")):
+                # 键名映射同提醒窗口段：独立反推是 left/right/top，supMetrics 是
+                # figLeft/figRight/figTop；两侧都验 int 再比（曾因同名误取崩过断言段）。
+                for _sk, _fk, _n in (("figLeft", "left", "左缘"),
+                                     ("figRight", "right", "右缘"),
+                                     ("figTop", "top", "上缘")):
+                    if not isinstance(tkfv.get(_fk), int):
+                        check(False, "外卖窗口：独立反推缺少可见%s（键 %s）" % (_n, _fk),
+                              "keys=%s" % sorted(tkfv.keys()))
+                        continue
+                    check(abs(tksm.get(_sk) - tkfv.get(_fk)) <= 2,
+                          "外卖窗口：supMetrics.%s == 独立反推的立绘去透明可见%s" % (_sk, _n),
+                          "%s vs %s（alpha=%s figBox=%s）" % (tksm.get(_sk), tkfv.get(_fk), tkfv.get("alpha"), tkfv.get("figBox")))
             check(tk.get("stage") == "1",
                   "外卖窗口：督休专员没有二阶段（data-stage 恒为 1）", tk.get("stage"))
             if info.get("message"):
@@ -543,14 +581,41 @@ def main():
                     rcy = (rp.get("rectTop", 0) + rp.get("rectBottom", 0)) / 2
                     tk_cr = tk.get("contentRect") or {}
                     want_rcx = tksm.get("midX")
-                    # 框顶 y = 框底边 y - 框高（实测），红包中心 = 框顶与窗顶的中点
-                    want_rcy = ((tk_cr.get("bottom") or 0) - (tk_cr.get("h") or 0)) / 2
-                    check(abs(rcx - want_rcx) <= 3,
+                    # 水平：红包中心 == 立绘可见右缘与窗口右缘的中点（midX 由页面按此公式算出）
+                    check(abs(rcx - want_rcx) <= 14,
                           "外卖窗口：红包中心 == 立绘右缘与窗口右缘的中间",
                           "%s vs %s" % (round(rcx), want_rcx))
-                    check(abs(rcy - want_rcy) <= 3,
-                          "外卖窗口：红包中心 == 对话框顶与窗口顶的中间",
-                          "%s vs %s" % (round(rcy), round(want_rcy)))
+                    # 垂直：理想中心 = (立绘去透明上缘 figTop + 底部对话框顶 dialogTop) / 2
+                    # （2026-10-14 终版：立绘上缘与「显示督休专员名称的对话框顶」两线中点；
+                    # 之前误用窗顶 y=0）。「外卖提醒」标题浮在框外上方，框贴顶会把标题顶
+                    # 出窗口——两线中点离对话框顶不足（框高+标题高）时整组（标题+框）下移
+                    # 到刚好留出 TOP_MARGIN（=CD_EDGE=10）：
+                    #   midY == max((figTop + dialogTop)/2, TOP_MARGIN + unitH/2)
+                    #   红包框心 = midY + titleExtra/2
+                    unit = tksm.get("unitH") or 0
+                    _cr = tk.get("contentRect") or {}
+                    _dialog_top = _cr.get("offsetTop") or _cr.get("top") or 0  # 与页面 dialogTop 同源
+                    fig_top = tksm.get("figTop") or 0
+                    want_rcy = max((fig_top + _dialog_top) / 2, 10 + unit / 2)
+                    # 容差 1px：页面 midY 走 JS Math.round（半数向上），属取整边界非逻辑偏差
+                    check(abs((tksm.get("midY") or 0) - want_rcy) <= 1,
+                          "外卖窗口：红包中点公式 == max(立绘上缘与对话框顶中点, 标题净空下移)",
+                          "%s vs %s（unitH=%s figTop=%s dialogTop=%s）" % (
+                            tksm.get("midY"), round(want_rcy), tksm.get("unitH"),
+                            fig_top, _dialog_top))
+                    # 标题可见：「外卖提醒」胶囊整枚落在窗口内（曾被贴顶红包顶出窗外）
+                    rt = tk.get("rpTitleInline") or {}
+                    check(bool(rt.get("shown")) and (rt.get("rectTop") or -99) >= 0
+                          and (rt.get("rectBottom") or -99) <= (rp.get("rectTop") or 0),
+                          "外卖窗口：「外卖提醒」标题完整可见（窗口内且悬于框上方）",
+                          "titleTop=%s titleBottom=%s rpTop=%s" % (rt.get("rectTop"),
+                                                                   rt.get("rectBottom"), rp.get("rectTop")))
+                    # 红包框中心 == 单元中心 + titleExtra/2（框比整组中心低半标题）
+                    want_box_cy = (tksm.get("midY") or 0) + (tksm.get("titleExtra") or 0) / 2
+                    check(abs(rcy - want_box_cy) <= 2,
+                          "外卖窗口：红包框中心 == 单元中心下移半标题",
+                          "rcy=%s want=%s（titleExtra=%s）" % (round(rcy), round(want_box_cy),
+                                                              tksm.get("titleExtra")))
         # 有督休专员时红包/提醒内容/台词链路照常；无督休专员时也不该有 JS 错误
         check(not (tk.get("errors") or []), "外卖窗口：页面无 JS 错误", (tk.get("errors") or [])[:2])
         check(not (tk.get("consoleErrors") or []), "外卖窗口：页面无控制台错误",

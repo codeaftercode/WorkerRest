@@ -158,7 +158,83 @@ const PROBE_MAIN = `(function () {
     optCount: document.querySelectorAll('#rolePick option').length
   };
 })()`;
+// 独立反推立绘「去掉透明部分后」的可见边——完全不依赖页面 layoutSupDialog 的公式：
+// ① 从图片自然像素扫 alpha bbox；② 读 .trim 的计算变换矩阵（translate+scale，
+//    不含 img 自身的二阶段缩放）；③ 内容在 .trim 局部坐标的 bbox（img 盒铺满
+//    .trim，object-fit:contain + 底对齐 ⇒ 绘制区高 fill*H 贴盒底）；④ 按
+//    transform-origin: left bottom 做原点修正，映射到窗口坐标。
+// 用于对拍 supMetrics 的 figLeft/figRight/figTop（同基准：figure 父容器相对坐标）。
+// 假设：.gaze 跟随层无位移（探针不触发鼠标活动 ⇒ 恒等变换）；水平翻转按 sup-flip 处理。
+// ⚠️ 拼接方式：本常量是**函数声明**，只能拼进 IIFE 内部（见 PROBE_BREAK / PROBE_TAKEOUT
+// 的 `(function () {` + FIG_VISIBLE_FN + 后续体）。绝不能当前缀拼在整串最前面——
+// page.evaluate 的表达式若以 function 开头，Playwright 的 normalizeEvaluationExpression
+// 会按 /^(async)?\s*function(\s|\()/ 给它包一层括号，「函数声明 + IIFE」被并成单个
+// 表达式 E1(E2)()：helper 先被执行、其返回值（对象）再被当函数调用，直接 TypeError
+// "(intermediate value)(...) is not a function"（2026-10-14 踩坑：整串以 function
+// 开头 ⇒ 探针 break 段整个挂掉）。
+const FIG_VISIBLE_FN = `function figureVisibleProbe() {
+  var figure = document.getElementById('figure');
+  var host = document.getElementById('figure-trim');
+  var img = document.getElementById('figure-img');
+  if (!figure || !host || !img || !img.naturalWidth || !img.naturalHeight) return null;
+  var cw = img.naturalWidth, ch = img.naturalHeight;
+  var cv = document.createElement('canvas');
+  cv.width = cw; cv.height = ch;
+  var ctx = cv.getContext('2d');
+  ctx.drawImage(img, 0, 0);
+  var data;
+  try { data = ctx.getImageData(0, 0, cw, ch).data; } catch (e) { return null; }
+  var x0 = cw, y0 = ch, x1 = -1, y1 = -1;
+  for (var y = 0; y < ch; y++) {
+    for (var x = 0; x < cw; x++) {
+      if (data[(y * cw + x) * 4 + 3] >= 8) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  if (x1 < 0) return null;
+  var cs = getComputedStyle(host);
+  var m = cs.transform;
+  var a = 1, b = 0, c = 0, d = 1, e = 0, f = 0;
+  if (m && m !== 'none') {
+    if (m.indexOf('matrix(') !== 0) return null;
+    var parts = m.slice(7, m.length - 1).split(',');
+    if (parts.length !== 6) return null;
+    a = parseFloat(parts[0]); b = parseFloat(parts[1]); c = parseFloat(parts[2]);
+    d = parseFloat(parts[3]); e = parseFloat(parts[4]); f = parseFloat(parts[5]);
+  }
+  var fb = figure.getBoundingClientRect();
+  var W = fb.width, H = fb.height;
+  if (W <= 0 || H <= 0) return null;
+  var ar = cw / ch;
+  var fill = Math.min(1, W / (ar * H));
+  var flipped = document.body.classList.contains('sup-flip');
+  var paintH = fill * H;
+  var lx0 = flipped ? W - ((x1 + 1) / cw) * W : (x0 / cw) * W;
+  var lx1 = flipped ? W - (x0 / cw) * W : ((x1 + 1) / cw) * W;
+  var ly0 = H - paintH + (y0 / ch) * paintH;
+  var ly1 = H - paintH + ((y1 + 1) / ch) * paintH;
+  var ox = 0, oy = H;
+  var wx0 = fb.left + ox + a * (lx0 - ox) + c * (ly0 - oy) + e;
+  var wy0 = fb.top + oy + b * (lx0 - ox) + d * (ly0 - oy) + f;
+  var wx1 = fb.left + ox + a * (lx1 - ox) + c * (ly1 - oy) + e;
+  var wy1 = fb.top + oy + b * (lx1 - ox) + d * (ly1 - oy) + f;
+  var cr = figure.parentElement ? figure.parentElement.getBoundingClientRect() : { left: 0, top: 0 };
+  return {
+    left: Math.round(wx0 - cr.left), right: Math.round(wx1 - cr.left),
+    top: Math.round(wy0 - cr.top), bottom: Math.round(wy1 - cr.top),
+    alpha: { x0: x0, y0: y0, x1: x1, y1: y1, cw: cw, ch: ch },
+    matrix: { a: a, d: d, e: e, f: f },
+    figBox: { w: Math.round(W), h: Math.round(H) },
+    fill: Math.round(fill * 1000) / 1000,
+    flipped: flipped
+  };
+}`;
 const PROBE_BREAK = `(function () {
+` + FIG_VISIBLE_FN + `
   var app = document.getElementById('app');
   var cs = getComputedStyle(document.documentElement);
   var line = document.getElementById('supervisor-line');
@@ -201,6 +277,7 @@ const PROBE_BREAK = `(function () {
     appBrRadius: app ? getComputedStyle(app).borderBottomRightRadius : null,
     badgeHidden: document.getElementById('preview-badge').classList.contains('hidden'),
     supMetrics: supMetrics,
+    figureVisible: (typeof figureVisibleProbe === 'function' ? figureVisibleProbe() : null),
     contentInline: content ? {
       rectW: Math.round(contentRect.width), rectH: Math.round(contentRect.height),
       rectLeft: Math.round(contentRect.left), rectRight: Math.round(contentRect.right),
@@ -288,6 +365,7 @@ const PROBE_STATS = `(function () {
   };
 })()`;
 const PROBE_TAKEOUT = `(async function () {
+` + FIG_VISIBLE_FN + `
   // 量布局前等字体加载 + 两帧：红包框 width:max-content 的宽度依赖 .rp-info 文字
   // 渲染宽度，字体未加载时会量到 fallback 字体的宽度（与最终不一致），导致摆位
   // left 与渲染后的红包框中心对不上。等 fonts.ready + rAF 让 RO 触发的 relayout
@@ -335,12 +413,14 @@ const PROBE_TAKEOUT = `(async function () {
       if (!c || !c.dataset.supMetrics) return null;
       try { return JSON.parse(c.dataset.supMetrics); } catch (e) { return { err: String(e) }; }
     })(),
+    figureVisible: (typeof figureVisibleProbe === 'function' ? figureVisibleProbe() : null),
     contentRect: (function () {
       var c = document.querySelector('.content');
       if (!c) return null;
       var r = c.getBoundingClientRect();
       var ccs = getComputedStyle(c);
-      return { h: Math.round(r.height), left: Math.round(r.left), right: Math.round(r.right), bottom: Math.round(r.bottom),
+      return { h: Math.round(r.height), left: Math.round(r.left), right: Math.round(r.right),
+               top: Math.round(r.top), bottom: Math.round(r.bottom), offsetTop: Math.round(c.offsetTop),
                blRadius: ccs.borderBottomLeftRadius, brRadius: ccs.borderBottomRightRadius };
     })(),
     appBlRadius: (function () {
@@ -356,6 +436,14 @@ const PROBE_TAKEOUT = `(async function () {
       if (!rp) return null;
       var r = rp.getBoundingClientRect();
       return { left: rp.style.left, bottom: rp.style.bottom, shown: !rp.classList.contains('hidden'),
+               rectLeft: Math.round(r.left), rectTop: Math.round(r.top),
+               rectRight: Math.round(r.right), rectBottom: Math.round(r.bottom) };
+    })(),
+    rpTitleInline: (function () {
+      var t = document.querySelector('.rp-title');
+      if (!t) return null;
+      var r = t.getBoundingClientRect();
+      return { shown: !!(r.width > 0 && r.height > 0),
                rectLeft: Math.round(r.left), rectTop: Math.round(r.top),
                rectRight: Math.round(r.right), rectBottom: Math.round(r.bottom) };
     })(),

@@ -2,7 +2,7 @@
 (() => {
   // renderer/figureTrim.ts
   var ALPHA_MIN = 8;
-  var MAX_SAMPLE = 512;
+  var MAX_SAMPLE = 2048;
   var IGNORE = 8e-3;
   var MIN_CONTENT = 0.25;
   var MAX_SCALE = 4;
@@ -55,6 +55,14 @@
       right: norm((cw - 1 - right) / cw),
       top: norm(top / ch),
       bottom: norm((ch - 1 - bottom) / ch),
+      // 未过 IGNORE 阈值的原始边距（摆位锚点专用）：IGNORE 会把 <0.8% 的边距归零，
+      // 对变换无害（那点边距本就看不见），但锚点必须指向像素的真实位置——
+      // 否则立绘上缘差 0.8%*立绘高（≈5px），换不同角色（如 role_ai 上缘 0.78%）
+      // 时倒计时锚点会系统性偏高。
+      rawLeft: left / cw,
+      rawRight: (cw - 1 - right) / cw,
+      rawTop: top / ch,
+      rawBottom: (ch - 1 - bottom) / ch,
       content: 1,
       scale: 1,
       transform: "none"
@@ -71,9 +79,16 @@
       const t = measureFigureTrim(img);
       const left = flip ? t.right : t.left;
       const right = flip ? t.left : t.right;
-      const rendered = img.getBoundingClientRect();
+      const rendered = host.getBoundingClientRect();
       const scale = t.content >= MIN_CONTENT ? Math.min(MAX_SCALE, 1 / t.content) : 1;
       const ar = img.naturalHeight > 0 ? img.naturalWidth / img.naturalHeight : 0;
+      // ⚠️ fill 必须按**布局盒**算，不能读 img 的 getBoundingClientRect：img 自身
+      // 可能带着 Stage 变换（#app[data-stage='1'] 的 scale(1.03) scaleY(1.006)，
+      // 纵向 1.03618 > 横向 1.03）。立绘图常在变换生效之后才加载完，那时量到的是
+      // 变换后尺寸——W/H 比自然 aspect 小 0.6%，fill 被压成 0.994（应为 1.0），
+      // trim 的平移量整体偏小、立绘可见边与摆位锚点一起算歪（实测顶缘差 ~4px）。
+      // host 的变换已在函数开头重置为 none，其 rect 即布局盒（img 盒撑满 host：
+      // height:100%，宽度随 shrink-to-fit 链相等），且不受 img 自身变换影响。
       const fill = rendered.height > 0 && ar > 0 ? Math.min(1, rendered.width / ar / rendered.height) : 1;
       const needTrim = left > 0 || t.top > 0 || t.bottom > 0;
       const transform = needTrim ? `translate(${(-left * scale * 100).toFixed(3)}%, ${(t.bottom * scale * fill * 100).toFixed(3)}%) scale(${scale.toFixed(4)})` : "none";
@@ -84,6 +99,11 @@
         right: +right.toFixed(4),
         top: +t.top.toFixed(4),
         bottom: +t.bottom.toFixed(4),
+        // 像素真实边距（未过 IGNORE）：摆位锚点用，语义与 left/right 一致（含 flip 交换）
+        rawLeft: +(flip ? t.rawRight : t.rawLeft).toFixed(4),
+        rawRight: +(flip ? t.rawLeft : t.rawRight).toFixed(4),
+        rawTop: +t.rawTop.toFixed(4),
+        rawBottom: +t.rawBottom.toFixed(4),
         scale: +scale.toFixed(4),
         fill: +fill.toFixed(4),
         flip,
@@ -209,77 +229,92 @@
 
   // renderer/supervisorLayout.ts —— 游戏对话画面版式
   // .content 已是底部全宽对话框（CSS 定版），这里只负责把倒计时环浮到
-  // 「立绘可见右缘~窗口右缘」与「对话框上边缘~窗口上边缘」两个中点的交点上
+  // 「立绘可见右缘~窗口右缘」与「立绘可见上缘~对话框上边缘」两个中点的交点上
   // （环中心对准；「提前结束」在 bar 内跟随环居中下沉）。摆位结果写入
   // supMetrics 供探针断言。
   var CD_EDGE = 10;
-  var frozenFig = null;          // 立绘可见边（去透明）的冻结锚点
-  var lastLayoutKey = "";        // 仅在窗口尺寸/立绘自身尺寸/trim 就绪时重算，避免二阶段缩放导致倒计时位移
+  var frozenFig = null;          // 立绘可见边（去透明）的冻结锚点（窗口坐标）
+  var lastLayoutKey = "";        // 仅在窗口/立绘盒（含位置）/trim 就绪变化时重算，避免二阶段缩放导致倒计时位移
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
-  function pickMeasure(figure, measure) {
-    if (!measure) return figure;
-    return measure.getBoundingClientRect().width > 0 ? measure : figure;
-  }
-  function trimFactor(figure) {
-    const img = figure.querySelector("img");
-    const raw = img?.dataset.trim;
-    if (!raw) return 1;
-    try {
-      const t = JSON.parse(raw);
-      const scale = typeof t.scale === "number" ? t.scale : 1;
-      const fill = typeof t.fill === "number" ? t.fill : 1;
-      const top = typeof t.top === "number" ? t.top : 0;
-      const f = scale * fill * (1 - top);
-      return f > 0 ? f : 1;
-    } catch {
-      return 1;
-    }
-  }
-  function figureTop(figure, fallback) {
+  // 立绘「去掉透明部分后」的可见边缘（窗口坐标）——摆位锚点的唯一来源。
+  // DOM 链：figure(绝对定位盒) > .trim(透明边距补偿) > .gaze > .mirror > img，
+  // img 盒撑满 .trim/.figure（height:100%，宽度由 shrink-to-fit 链决定）。
+  // .trim 的补偿变换 = translate(-left*s%, bottom*s*fill%) scale(s)，
+  // transform-origin: left bottom。设立绘盒左缘 x0、底缘 yB、盒宽 W、盒高 H，
+  // 把 img 盒映射到屏幕后，像素内容的四条可见边：
+  //   · 左缘 = x0 + s*W*(rawLeft - left)
+  //   · 右缘 = x0 + s*W*(1 - rawRight - left)
+  //   · 顶缘 = yB - s*fill*H*(1 - rawTop - bottom)
+  //   · 底缘 = yB - s*fill*H*(rawBottom - bottom)
+  // 其中 left/bottom 是变换**实际使用**的边距（过 IGNORE，可能被归零），
+  // rawLeft/rawTop 等是像素**真实**边距（未归零）——二者只在边距 <0.8% 时不同。
+  // s/fill/边距来自 img.dataset.trim（applyFigureTrim 量出，量取时 Stage 变换
+  // 不参与——fill 按布局盒量），W/H 取立绘盒。
+  // ⚠️ 曾经的 bug：① 顶缘漏减 bottom；② 左右缘直接取 .trim 变换后外框（含缩放后
+  // 的透明边距）；③ fill 读的是 img 变换后的 rect（Stage 纵向缩放更大 → 被压成
+  // 0.994）。三者都让锚点整体偏高/偏外，用户换立绘、改尺寸后必错位。
+  // trim 尚未就绪（图片未加载/量失败）时退化为立绘自身外框。
+  function figureVisibleRect(figure, fallbackTop) {
     const box = figure.getBoundingClientRect();
-    if (box.height <= 0) return fallback;
-    const h = box.height * trimFactor(figure);
-    return h > 0 ? box.bottom - h : fallback;
+    const img = figure.querySelector("img");
+    let t = null;
+    try { t = img ? JSON.parse(img.dataset.trim || "null") : null; } catch (e) { t = null; }
+    if (!t || typeof t.scale !== "number" || box.width <= 0 || box.height <= 0) {
+      return { left: box.left, right: box.right, top: fallbackTop, bottom: box.bottom };
+    }
+    const s = t.scale;
+    const fill = typeof t.fill === "number" ? t.fill : 1;
+    const l = typeof t.left === "number" ? t.left : 0;
+    const bt = typeof t.bottom === "number" ? t.bottom : 0;
+    const rl = typeof t.rawLeft === "number" ? t.rawLeft : l;
+    const rr = typeof t.rawRight === "number" ? t.rawRight : (typeof t.right === "number" ? t.right : 0);
+    const rtp = typeof t.rawTop === "number" ? t.rawTop : (typeof t.top === "number" ? t.top : 0);
+    const rbt = typeof t.rawBottom === "number" ? t.rawBottom : bt;
+    return {
+      left: box.left + s * box.width * (rl - l),
+      right: box.left + s * box.width * (1 - rr - l),
+      top: box.bottom - s * fill * box.height * (1 - rtp - bt),
+      bottom: box.bottom - s * fill * box.height * (rbt - bt)
+    };
   }
   function layoutSupDialog(figure, content, measure) {
     const container = figure?.parentElement ?? null;
     if (!container || !figure || !content) return;
     const cRect = container.getBoundingClientRect();
     if (cRect.width <= 0) return;
-    const measureEl = pickMeasure(figure, measure);
-    const fRect = measureEl.getBoundingClientRect();
     const figBox = figure.getBoundingClientRect();
     const figImg = figure.querySelector("img");
     const haveTrim = !!(figImg && figImg.dataset.trim);
-    // 锚点仅在「窗口尺寸 / 立绘自身尺寸 / trim 是否就绪」变化时重算：
-    // 二阶段只是对 img 做 scale 变换，不改变 figure/measure 的布局盒，也不改变
-    // cRect 与 trim 存在性 → 不会触发重算 → 倒计时位置在二阶段保持不动。
-    const key = cRect.width + "x" + cRect.height + "|" +
+    // 锚点重算条件：窗口尺寸 / 立绘盒（含 left/top 位置）/ trim 是否就绪。
+    // 位置进 key 是必须的：用户可拖动「立绘尺寸/水平/垂直」滑条、更换立绘、
+    // 上传新图，都表现为 figure 盒变化，锚点必须跟着重算（不能写死）。
+    // 二阶段只是对 img 做 scale 变换——后代变换不改 figure 布局盒，也不改
+    // cRect 与 trim 存在性 → 不触发重算 → 倒计时位置在二阶段保持不动。
+    const key = Math.round(cRect.width) + "x" + Math.round(cRect.height) + "|" +
+      Math.round(figBox.left) + "," + Math.round(figBox.top) + " " +
       Math.round(figBox.width) + "x" + Math.round(figBox.height) + "|" + (haveTrim ? "T" : "t");
-    let figLeft, figRight, figTop;
-    if (key !== lastLayoutKey && fRect.width > 0) {
-      figLeft = clamp(fRect.left - cRect.left, 0, cRect.width);
-      figRight = clamp(fRect.right - cRect.left, 0, cRect.width);
-      figTop = clamp(figureTop(figure, fRect.top) - cRect.top, 0, cRect.height);
-      frozenFig = { figLeft: figLeft, figRight: figRight, figTop: figTop };
+    let vis;
+    if (key !== lastLayoutKey && figBox.width > 0) {
+      vis = figureVisibleRect(figure, figBox.top);
+      frozenFig = vis;
       lastLayoutKey = key;
-    } else if (frozenFig) {
-      figLeft = frozenFig.figLeft; figRight = frozenFig.figRight; figTop = frozenFig.figTop;
     } else {
-      // trim 尚未就绪的极早期兜底：用 figure 自身外框（含透明边距，会随 trim 到达而校正）
-      figLeft = clamp(figBox.left - cRect.left, 0, cRect.width);
-      figRight = clamp(figBox.right - cRect.left, 0, cRect.width);
-      figTop = clamp(figBox.top - cRect.top, 0, cRect.height);
+      // key 未变（含二阶段缩放）时沿用冻结锚点；trim 未就绪的极早期兜底：
+      // 用 figure 自身外框（会随 trim 到达、key 变化而校正）。
+      vis = frozenFig || figureVisibleRect(figure, figBox.top);
     }
+    const figLeft = clamp(vis.left - cRect.left, 0, cRect.width);
+    const figRight = clamp(vis.right - cRect.left, 0, cRect.width);
+    const figTop = clamp(vis.top - cRect.top, 0, cRect.height);
     // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位。
     // 对话框（.content）与窗口边缘的偏移由 CSS 决定（当前贴边为 0），bar 的
     // 包含块就是它——所以摆位全部用实测 rect 换算，不假设贴边。两个锚点中点：
     //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
     //   垂直 midY = (立绘可见上缘 + 对话框上边缘) / 2（二者实测，偏移自动跟随）
-    // bar 是 column flex（环在上、skip 在下），环中心距 bar 底 = ringH/2 + skip 占位，
-    // 所以用 ring-wrap 的高度反推 bottom，让环中心（而非 bar 中心）落在 midY 上。
+    // bar 是 column flex（名称在上、环居中、skip 在下），环中心距 bar 底用
+    // ring-wrap 的 offsetTop 实测反推，让环中心（而非 bar 中心）落在 midY 上。
     const bar = content.querySelector(".bar");
     const boxRect = content.getBoundingClientRect();
     const boxH = boxRect.height;
@@ -325,7 +360,7 @@
       cdBottom: Math.round(cdBottom),
       midX: Math.round(midX),
       midY: Math.round(midY),
-      src: measureEl === measure ? "trim" : "figure"
+      src: haveTrim ? "trim" : "figure"
     });
   }
   function bindSupContentLayout(figure, content, measure) {
