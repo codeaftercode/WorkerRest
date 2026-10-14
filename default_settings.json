@@ -81,7 +81,6 @@
     "enabled": true,
     "leadMin": 0,
     "postponeMin": 10,
-    "redPacket": false,
     "slots": []
   },
   "autostart": false,

@@ -950,7 +950,6 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 		"enabled":     o["enabled"] != false,
 		"leadMin":     pick(o["leadMin"], 0, 120, 0),
 		"postponeMin": pick(o["postponeMin"], 0, 120, 10),
-		"redPacket":   o["redPacket"] == true,
 		"slots":       slotsToAny(normalizeTimeSlots(o["slots"])),
 	}
 }

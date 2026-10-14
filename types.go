@@ -57,7 +57,7 @@ type BreakInfo struct {
 
 // TakeoutInfo 外卖提醒会话（与 历史源码/types.ts 的 TakeoutSessionInfo 逐字对齐）。
 // 渲染层 takeout.ts 读 id / at / hour / minute / firedAt / preview / meal / leadMin /
-// postponeMin / postponedCount / message / appearance / supervisor / redPacket / redPacketData；
+// postponeMin / postponedCount / message / appearance / supervisor / redPacketData；
 // slot 额外保留给主进程「推迟」记账（takeout:action 按 cur.slot 重弹），渲染层不读也无妨。
 type TakeoutInfo struct {
 	ID     string `json:"id"`
@@ -80,13 +80,11 @@ type TakeoutInfo struct {
 	Message    string        `json:"message"`
 	Appearance Appearance    `json:"appearance"`
 	Supervisor *SupStageInfo `json:"supervisor"`
-	// RedPacket 是否显示外卖优惠券（弹窗内展示红包二维码）
-	RedPacket bool `json:"redPacket"`
-	// RedPacketData 红包二维码指向的地址；开关关闭时为 nil（渲染层据此隐藏二维码）
+	// RedPacketData 红包二维码指向的地址；外卖提醒窗口始终展示优惠券，渲染层据此显示二维码
 	RedPacketData *TakeoutRedPacket `json:"redPacketData"`
 }
 
-// TakeoutRedPacket 红包二维码地址（开关打开时指向本机专属领取地址）
+// TakeoutRedPacket 红包二维码地址（外卖提醒窗口始终展示，指向本机专属领取地址）
 type TakeoutRedPacket struct {
 	URL string `json:"url"`
 }

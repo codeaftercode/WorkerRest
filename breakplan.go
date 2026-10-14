@@ -193,9 +193,6 @@ func (s *Settings) TakeoutPostponeMin() int {
 	return clampInt(s.Int(10, "takeout", "postponeMin"), 0, 120)
 }
 
-// TakeoutRedPacket 是否显示外卖优惠券
-func (s *Settings) TakeoutRedPacket() bool { return s.Flag(false, "takeout", "redPacket") }
-
 // AppPauseItem 指定应用运行时暂停的一条规则
 type AppPauseItem struct {
 	ID      string

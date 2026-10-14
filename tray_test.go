@@ -33,7 +33,7 @@ func TestTrayTexts(t *testing.T) {
 			Phase: "idle", NextType: "short", NextName: shortBreakName,
 			NextAt: now + 10*60_000,
 		})
-		if want := "短休息约 10 分钟后"; tip != want {
+		if want := "约 10 分钟后短休息"; tip != want {
 			t.Errorf("tooltip = %q，期望 %q", tip, want)
 		}
 		if want := "下次短休息：约 10 分钟后"; status != want {

@@ -2498,7 +2498,7 @@
     // 红包显隐要先于摆位：layoutSupDialog 量红包的 offsetWidth/Height 定中心，
     // 隐藏状态下量到 0 会走 fallback（位置偏差）。红包显隐不改变 content 尺寸
     // （absolute 脱离文档流），ResizeObserver 不会补触发，顺序必须摆对。
-    if (info.redPacket) {
+    if (info.redPacketData) {
       el("redpacket").classList.remove("hidden");
       const data = info.redPacketData;
       if (data && data.url) {

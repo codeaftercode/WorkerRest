@@ -556,8 +556,9 @@ def main():
                 check(k in pb, "PreBreakState 带字段 %s（渲染层直接读它）" % k, sorted(pb.keys()))
             check(pb.get("phase") == "pre", "PreBreakState.phase == pre", pb.get("phase"))
             check(pb.get("custom") is False, "内置短休息走内置版式（custom=false）", pb.get("custom"))
-            check(pb.get("title") == "您已连续工作较长时间，建议您短暂休息",
-                  "标题是内置劝说文案（自定义提醒才用「XX时间到」）", pb.get("title"))
+            check(pb.get("title") in ("您已连续工作较长时间，建议您短休息",
+                                        "您已连续工作较长时间，建议您长休息"),
+                  "标题是内置劝说文案（按长短休息区分；自定义提醒才用「XX时间到」）", pb.get("title"))
             check(pb.get("countdownTail") == " 秒进入休息",
                   "倒计时后缀是内置那套（含前导空格，接在数字后面）", repr(pb.get("countdownTail")))
             rm = pb.get("remainMs")
@@ -791,7 +792,7 @@ def main():
             # 渲染层 takeout.ts 读的字段：少一个就「Cannot read properties of undefined」
             TK_KEYS = ("id", "at", "hour", "minute", "firedAt", "preview", "meal",
                        "leadMin", "postponeMin", "postponedCount", "message",
-                       "appearance", "supervisor", "redPacket", "redPacketData")
+                       "appearance", "supervisor", "redPacketData")
             missing = [k for k in TK_KEYS if k not in tk]
             check(not missing, "外卖会话带全部渲染层字段", "缺 %s" % missing)
             check(tk.get("preview") is True, "预览会话 preview=true", tk.get("preview"))
@@ -801,14 +802,12 @@ def main():
             check(isinstance(tk.get("appearance"), dict)
                   and "color" in tk.get("appearance", {}),
                   "会话带外观（含颜色）", tk.get("appearance"))
-            check(isinstance(tk.get("redPacketData"), (dict, type(None))),
-                  "redPacketData 是对象或 null", tk.get("redPacketData"))
-            # 红包开启时地址要指向 installId；这里配置默认关闭 → null
-            # （真实配置里 redPacket 可能开着，所以不断言具体值，只断形状）
-            if tk.get("redPacket"):
-                rd = tk.get("redPacketData") or {}
-                check(str(rd.get("url") or "").startswith("https://nav.hcctc.cn/api/cps/id="),
-                      "红包开启时地址指向本机专属领取地址", rd.get("url"))
+            # 外卖提醒窗口始终展示优惠券：redPacketData 必有且指向本机专属领取地址
+            check(isinstance(tk.get("redPacketData"), dict),
+                  "外卖会话始终带外卖优惠券（redPacketData 为对象）", tk.get("redPacketData"))
+            rd = tk.get("redPacketData") or {}
+            check(str(rd.get("url") or "").startswith("https://nav.hcctc.cn/api/cps/id="),
+                  "红包地址指向本机专属领取地址（含 installId）", rd.get("url"))
         # 动作：预览态点「不点了」→ 只关会话，不记真实统计（预览不算次数）
         st, _ = call(base, "TakeoutAction", ["takeout", "skip"], window="takeout")
         check(st == 200, "TakeoutAction(skip) 可调用", "status=%s" % st)

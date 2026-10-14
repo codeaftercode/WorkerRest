@@ -27,13 +27,12 @@ func newTakeoutApp(t *testing.T, cfgJSON string) *App {
 	}
 }
 
-// takeoutCfg 一条启用的外卖配置：午餐 12:30、可推迟 15 分钟、提前 0 分钟、不开红包
+// takeoutCfg 一条启用的外卖配置：午餐 12:30、可推迟 15 分钟、提前 0 分钟
 const takeoutCfg = `{
   "takeout": {
     "enabled": true,
     "leadMin": 0,
     "postponeMin": 15,
-    "redPacket": false,
     "slots": [{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]
   },
   "reminderMessages": {
@@ -66,8 +65,9 @@ func TestBuildTakeoutInfo(t *testing.T) {
 	if info.Message == "" {
 		t.Fatal("提醒内容不应为空（有一条启用项）")
 	}
-	if info.RedPacket || info.RedPacketData != nil {
-		t.Fatal("红包关闭时 redPacket 应为 false、redPacketData 应为 nil")
+	// 外卖提醒窗口始终展示优惠券：redPacketData 不应为 nil
+	if info.RedPacketData == nil {
+		t.Fatal("外卖提醒窗口应始终展示外卖优惠券，redPacketData 不应为 nil")
 	}
 	if info.Supervisor != nil {
 		t.Fatal("无督休专员目录时 supervisor 应为 nil")
@@ -82,7 +82,7 @@ func TestBuildTakeoutInfo(t *testing.T) {
 
 // 「可推迟」为 0：会话快照 PostponeMin=0（渲染层据此隐藏「推迟」按钮）
 func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
-	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":0,"redPacket":false,"slots":[]},"installId":"uuid-1234"}`
+	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":0,"slots":[]},"installId":"uuid-1234"}`
 	a := newTakeoutApp(t, cfg)
 	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0)
 	if info == nil {
@@ -118,12 +118,13 @@ func TestTakeoutPostponeMinClamp(t *testing.T) {
 	}
 }
 
-func TestBuildTakeoutInfoRedPacket(t *testing.T) {
-	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":15,"redPacket":true,"slots":[]},"installId":"uuid-1234"}`
+// 外卖提醒窗口始终展示优惠券：redPacketData 必有且地址指向本机专属领取地址
+func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
+	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":15,"slots":[]},"installId":"uuid-1234"}`
 	a := newTakeoutApp(t, cfg)
 	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 18, Minute: 0, Enabled: true}, false, 0)
-	if !info.RedPacket || info.RedPacketData == nil {
-		t.Fatal("红包开启时 redPacket 应为 true 且有地址")
+	if info.RedPacketData == nil {
+		t.Fatal("外卖提醒窗口应始终展示外卖优惠券（redPacketData 不应为 nil）")
 	}
 	want := "https://nav.hcctc.cn/api/cps/id=uuid-1234"
 	if info.RedPacketData.URL != want {
@@ -146,7 +147,7 @@ func TestBuildTakeoutInfoSupervisorClearsCommand(t *testing.T) {
 // 固定时刻线：把 slot 设成「现在这一刻」就应立即触发
 func TestCheckTakeoutFiresOnDueSlot(t *testing.T) {
 	now := time.Now()
-	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":15,"redPacket":false,"slots":[` +
+	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":15,"slots":[` +
 		`{"id":"s1","hour":` + itoa(now.Hour()) + `,"minute":` + itoa(now.Minute()) +
 		`,"repeat":"daily","days":[],"enabled":true}]}}`
 	a := newTakeoutApp(t, cfg)
@@ -206,7 +207,7 @@ func TestCheckTakeoutPostponeExpired(t *testing.T) {
 
 // 外卖总开关关闭：清掉推迟计划，不触发
 func TestCheckTakeoutDisabled(t *testing.T) {
-	a := newTakeoutApp(t, `{"takeout":{"enabled":false,"leadMin":0,"postponeMin":15,"redPacket":false,"slots":[]}}`)
+	a := newTakeoutApp(t, `{"takeout":{"enabled":false,"leadMin":0,"postponeMin":15,"slots":[]}}`)
 	a.sched = nil
 	a.takeoutPostponed = &TakeoutPostponed{Slot: TimeSlot{}, DueAt: nowMs() - 1, Count: 1}
 	a.checkTakeoutReminders()

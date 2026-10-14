@@ -44,9 +44,12 @@ type PreBreakInfo struct {
 	PostponeMin int `json:"postponeMin"`
 }
 
-// builtinPreBreakTitle 内置短 / 长的标题。它们的名字（短休息 / 长休息）不是用户起的，
-// 说「短休息时间到」很怪 —— 保持原来的劝说文案与原来的四按钮版式（含两行说明）。
-const builtinPreBreakTitle = "您已连续工作较长时间，建议您短暂休息"
+// builtinPreBreakTitleShort / builtinPreBreakTitleLong 内置短 / 长的标题。它们的名字
+// （短休息 / 长休息）不是用户起的，说「短休息时间到」很怪 —— 保持原来的劝说文案与
+// 原来的四按钮版式（含两行说明）。标题末尾按休息身份区分「短休息 / 长休息」，以便提前
+// 提示窗能分清是哪一种（长 / 短休息提前提示窗口分开提示）。
+const builtinPreBreakTitleShort = "您已连续工作较长时间，建议您短休息"
+const builtinPreBreakTitleLong = "您已连续工作较长时间，建议您长休息"
 
 // builtinPreBreakTail 内置版的倒计时后缀；自定义提醒那套见 preBreakCountdownTail
 const builtinPreBreakTail = " 秒进入休息"
@@ -64,7 +67,11 @@ func (a *App) preBreakInfoOfType(kind string) PreBreakInfo {
 		pm = int(cfg.PostponeMs / 60_000)
 	}
 	if kind == "short" || kind == "long" {
-		return PreBreakInfo{Custom: false, Title: builtinPreBreakTitle, CountdownTail: builtinPreBreakTail, PostponeMin: pm}
+		title := builtinPreBreakTitleShort
+		if kind == "long" {
+			title = builtinPreBreakTitleLong
+		}
+		return PreBreakInfo{Custom: false, Title: title, CountdownTail: builtinPreBreakTail, PostponeMin: pm}
 	}
 	name := a.cfgSnapshot().BreakNameByID(kind)
 	return PreBreakInfo{Custom: true, Title: preBreakTitle(name), CountdownTail: preBreakCountdownTail(name), PostponeMin: pm}
@@ -90,7 +97,7 @@ func (a *App) currentPreBreakInfo() PreBreakInfo {
 		info.CountdownTail = builtinPreBreakTail
 	}
 	if !info.Custom && info.Title == "" {
-		info.Title = builtinPreBreakTitle
+		info.Title = builtinPreBreakTitleShort
 	}
 	return info
 }

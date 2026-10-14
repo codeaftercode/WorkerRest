@@ -214,10 +214,10 @@ func trayTexts(st SchedulerState) (tip, statusText, actionText, pauseText string
 		actionText = "立即休息"
 		pauseText = "暂停休息"
 	default:
-		// 约数到分钟（用户不要求秒级精度）：tooltip「短休息约 10 分钟后」、
+		// 约数到分钟（用户不要求秒级精度）：tooltip「约 10 分钟后短休息」、
 		// 菜单状态行「下次短休息：约 10 分钟后」。
 		about := fmtTrayAboutMin(max0(st.NextAt - nowMs()))
-		tip = st.NextName + "约 " + about + "后"
+		tip = "约 " + about + "后" + st.NextName
 		statusText = "下次" + st.NextName + "：约 " + about + "后"
 		actionText = "立即休息"
 		pauseText = "暂停休息"

@@ -43,7 +43,12 @@ func TestPreBreakInfoOfTypeBuiltin(t *testing.T) {
 		if got.Custom {
 			t.Fatalf("%s 应走内置版式（四按钮 + 两行说明），得到 custom=true", kind)
 		}
-		if got.Title != builtinPreBreakTitle {
+		// 标题按长短休息区分：short→「建议您短休息」、long→「建议您长休息」
+		wantTitle := builtinPreBreakTitleShort
+		if kind == "long" {
+			wantTitle = builtinPreBreakTitleLong
+		}
+		if got.Title != wantTitle {
 			t.Fatalf("%s 的标题应是劝说文案，得到 %q", kind, got.Title)
 		}
 		if got.CountdownTail != builtinPreBreakTail {
@@ -258,7 +263,7 @@ func TestPreBreakStateShape(t *testing.T) {
 		t.Fatalf("remainMs 应是正的毫秒整数，得到 %#v", st["remainMs"])
 	}
 	// 还没弹过窗：兜底成内置版式（不能让标题 / 后缀空着）
-	if st["title"] != builtinPreBreakTitle || st["countdownTail"] != builtinPreBreakTail || st["custom"] != false {
+	if st["title"] != builtinPreBreakTitleShort || st["countdownTail"] != builtinPreBreakTail || st["custom"] != false {
 		t.Fatalf("未弹过窗时应兜底成内置版式，得到 %v", st)
 	}
 }
@@ -278,7 +283,7 @@ func TestPreBreakInfoRemembered(t *testing.T) {
 	// 下一次弹出换回内置提醒：记忆要跟着换（不是「第一次是什么就永远是什么」）
 	a.rememberPreBreakInfo("short")
 	st = a.PreBreakState()
-	if st["title"] != builtinPreBreakTitle || st["custom"] != false {
+	if st["title"] != builtinPreBreakTitleShort || st["custom"] != false {
 		t.Fatalf("再次记住后应变成内置版式，得到 %v", st)
 	}
 }

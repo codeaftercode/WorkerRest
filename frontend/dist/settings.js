@@ -1569,7 +1569,6 @@
     $("tk-enabled").checked = S.takeout.enabled;
     $("tk-lead").value = String(S.takeout.leadMin);
     $("tk-postpone").value = String(S.takeout.postponeMin);
-    $("tk-redpacket").checked = S.takeout.redPacket;
     $("sc-postpone").value = S.shortcuts.postpone;
     $("sc-endEarly").value = S.shortcuts.endEarly;
     $("sc-pause").value = S.shortcuts.pause;
@@ -1613,7 +1612,6 @@
     S.takeout.enabled = $("tk-enabled").checked;
     S.takeout.leadMin = clampNum($("tk-lead"), TAKEOUT_LEAD_LIMITS[0], TAKEOUT_LEAD_LIMITS[1], TAKEOUT_LEAD_DEFAULT);
     S.takeout.postponeMin = clampNum($("tk-postpone"), TAKEOUT_POSTPONE_LIMITS[0], TAKEOUT_POSTPONE_LIMITS[1], TAKEOUT_POSTPONE_DEFAULT);
-    S.takeout.redPacket = $("tk-redpacket").checked;
     S.shortcuts.postpone = $("sc-postpone").value.trim();
     S.shortcuts.endEarly = $("sc-endEarly").value.trim();
     S.shortcuts.pause = $("sc-pause").value.trim();
@@ -1886,7 +1884,13 @@
       qaPostpone.classList.toggle("hidden", !(cfg && cfg.postponeMs > 0));
     }
     const phaseText = st.phase === "break" ? "\u4F11\u606F\u4E2D" : st.phase === "pre" ? "\u5373\u5C06\u4F11\u606F" : "\u52AA\u529B\u5DE5\u4F5C\u4E2D";
-    const phaseVal = st.paused ? `${phaseText}\uFF08\u5DF2\u6682\u505C${st.pauseReasons.length ? "\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001") : ""}\uFF09` : phaseText;
+    // 系统空闲（键鼠长时间无操作、人已离开工位）触发的是「离开」而非普通暂停：
+    // 这种暂停不显示「努力工作中（已暂停：系统空闲）」，而是明确标成「已离开」，
+    // 与统计里的离开时长口径一致（离开 = 连续无键鼠输入超过空闲阈值那段）。
+    const idlePaused = st.paused && st.pauseReasons.includes("idle");
+    const phaseVal = idlePaused
+      ? "\u5DF2\u79BB\u5F00"
+      : (st.paused ? `${phaseText}\uFF08\u5DF2\u6682\u505C${st.pauseReasons.length ? "\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001") : ""}\uFF09` : phaseText);
     const now = st.paused ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("\u63D0\u9192") ? `\u4E0B\u6B21${name}` : `\u4E0B\u6B21${name}\u63D0\u9192`;
     const todayOnly = (at) => dayDiffOf(at) > 0 ? "\u4ECA\u65E5\u5DF2\u65E0\u63D0\u9192" : fmtRemain(Math.max(0, at - now));

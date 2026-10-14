@@ -93,11 +93,9 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) 
 	now := time.Now()
 	at := time.Date(now.Year(), now.Month(), now.Day(), slot.Hour, slot.Minute, 0, 0, now.Location())
 	// 红包二维码指向本机专属领取地址：installId 是每台设备一枚的 UUID，
-	// 服务端（nav.hcctc.cn）按 id 区分来源。开关关闭时不带地址。
-	var redData *TakeoutRedPacket
-	if cfg.TakeoutRedPacket() {
-		redData = &TakeoutRedPacket{URL: "https://nav.hcctc.cn/api/cps/id=" + cfg.Str("", "installId")}
-	}
+	// 服务端（nav.hcctc.cn）按 id 区分来源。只要显示外卖提醒窗口就必须展示优惠券，
+	// 因此这里无条件带上地址（不再有开关）。
+	redData := &TakeoutRedPacket{URL: "https://nav.hcctc.cn/api/cps/id=" + cfg.Str("", "installId")}
 	info := &TakeoutInfo{
 		ID:             takeoutID(),
 		At:             at.UnixMilli(),
@@ -111,7 +109,6 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) 
 		PostponeMin:    cfg.TakeoutPostponeMin(),
 		PostponedCount: postponedCount,
 		Appearance:     cfg.AppearanceView(),
-		RedPacket:      cfg.TakeoutRedPacket(),
 		RedPacketData:  redData,
 	}
 	// 外卖提醒自己的提醒内容：每次弹窗选 1 条；一条启用的都没有时用提醒名「外卖提醒」

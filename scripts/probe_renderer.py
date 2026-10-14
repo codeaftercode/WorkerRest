@@ -464,8 +464,9 @@ def main():
         # 这条链路（按名调用 + 500ms 轮询 + URL 带版式）只有真跑一遍才看得见。
         pb = m.get("preBreak") or {}
         check(pb.get("shim") == "go", "提前提示窗：shim 生效", pb.get("shim"))
-        check(pb.get("title") == "您已连续工作较长时间，建议您短暂休息",
-              "提前提示窗：标题是内置劝说文案（来自 Go 的 PreBreakState）", pb.get("title"))
+        check(pb.get("title") in ("您已连续工作较长时间，建议您短休息",
+                                    "您已连续工作较长时间，建议您长休息"),
+              "提前提示窗：标题是内置劝说文案（按长短休息区分，来自 Go 的 PreBreakState）", pb.get("title"))
         ok_sec = False
         try:
             ok_sec = 0 < int(pb.get("seconds")) <= 600
