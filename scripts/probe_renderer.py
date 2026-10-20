@@ -28,6 +28,25 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+
+
+def role_dir(root, key):
+    """在 supervisors/ 下按 key 反查某个督休专员的目录（目录名是专员名称，不固定）。"""
+    sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):
+        return None
+    for name in os.listdir(sup):
+        p = os.path.join(sup, name, "role.json")
+        if not os.path.isfile(p):
+            continue
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if d.get("key") == key:
+            return os.path.join(sup, name)
+    return None
 PROBE = os.path.join(HERE, "renderer_probe.js")
 TEMP = os.environ.get("TEMP", ROOT)
 OUT = os.path.join(TEMP, "wr_go_probe")
@@ -202,7 +221,7 @@ def main():
         fixed_key = (cfg.get("supervisor") or {}).get("fixedKey")
         want_role = ""
         if fixed_key:
-            rp = os.path.join(ROOT, "roles", fixed_key, "role.json")
+            rp = os.path.join(role_dir(ROOT, fixed_key) or "", "role.json")
             if os.path.isfile(rp):
                 want_role = json.load(open(rp, encoding="utf-8")).get("name") or ""
         print("   （对齐基准：settings=%s role=%s）" % (iso_settings if cfg else "未找到", fixed_key or "-"))

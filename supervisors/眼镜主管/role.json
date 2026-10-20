@@ -1,4 +1,5 @@
 {
+  "key": "supervisor_default",
   "name": "眼镜主管",
   "enabled": true,
   "image": "figure.png",

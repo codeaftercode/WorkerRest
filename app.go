@@ -34,7 +34,7 @@ type App struct {
 	start     time.Time
 
 	cfg       *Settings // 整份配置（见 settings.go 的说明；保存时会整体替换指针）
-	rolesRoot string
+	rolesRoot string     // 督休专员目录落点（随包 supervisors/，见 resourcesRoot）
 	sched     *Scheduler
 
 	// 台词选取：random 用 rng（测试可固定种子），sequence 的游标按 key 记忆
@@ -121,7 +121,10 @@ func NewApp(app *application.App) *App {
 		idle:            NewIdleState(),
 		activeTab:       "general",
 	}
-	a.rolesRoot = filepath.Join(a.resourcesRoot(), "roles")
+	a.rolesRoot = filepath.Join(a.resourcesRoot(), "supervisors")
+	// 旧版「roles/」目录（目录名=英文 key、role.json 无 key 字段）一次性迁到 supervisors/
+	// （目录名=专员名称、role.json 注入 key）：兼容老用户升级，不丢配置。
+	migrateRolesLayout(a.resourcesRoot())
 	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
 	resourcesRootHintFn = a.resourcesRoot
 	// 内置提示音随包目录：<resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）
@@ -233,20 +236,20 @@ func (a *App) cfgSnapshot() *Settings {
 
 // ---------- 路径 ----------
 
-// resourcesRoot 定位随包数据目录（roles/ 等）：打包态取 exe 旁，开发态回退到模块根。
-// roles/ 随 Go 工程一起分发（在模块根下），不再复用上层 上一版工程的数据。
+// resourcesRoot 定位随包数据目录（supervisors/ 等）：打包态取 exe 旁，开发态回退到模块根。
+// supervisors/ 随 Go 工程一起分发（在模块根下），不再复用上层 上一版工程的数据。
 func (a *App) resourcesRoot() string {
 	exe, err := os.Executable()
 	if err != nil || isDevBuild(exe) {
 		return a.devOrCwd()
 	}
 	dir := filepath.Dir(exe)
-	if hasRoles(dir) {
+	if hasSupervisorsDir(dir) {
 		return dir
 	}
-	// 开发态：exe 落在 build/bin/ 这类构建输出目录里，roles/ 在模块根。
+	// 开发态：exe 落在 build/bin/ 这类构建输出目录里，supervisors/ 在模块根。
 	// 判据是向上找到**最近的 go.mod 所在目录**（= 模块根）——打包安装目录的上方
-	// 不会有 go.mod，所以这条回退在正式环境里不会触发、也不会误认别人的 roles/。
+	// 不会有 go.mod，所以这条回退在正式环境里不会触发、也不会误认别人的 supervisors/。
 	if modRoot := nearestModuleRoot(dir); modRoot != "" {
 		return modRoot
 	}
@@ -256,10 +259,10 @@ func (a *App) resourcesRoot() string {
 // devOrCwd 非可执行路径可判时的回退（go run / IDE 直接跑）
 func (a *App) devOrCwd() string {
 	wd, _ := os.Getwd()
-	if hasRoles(wd) {
+	if hasSupervisorsDir(wd) {
 		return wd
 	}
-	// 在模块根的子目录里直接 run 时，向上找模块根（roles/ 随工程在模块根下）
+	// 在模块根的子目录里直接 run 时，向上找模块根（supervisors/ 随工程在模块根下）
 	if modRoot := nearestModuleRoot(wd); modRoot != "" {
 		return modRoot
 	}
@@ -281,9 +284,85 @@ func nearestModuleRoot(dir string) string {
 	return ""
 }
 
-func hasRoles(dir string) bool {
-	st, err := os.Stat(filepath.Join(dir, "roles"))
+func hasSupervisorsDir(dir string) bool {
+	st, err := os.Stat(filepath.Join(dir, "supervisors"))
 	return err == nil && st.IsDir()
+}
+
+// migrateRolesLayout 把旧版「roles/」目录整体迁到新的「supervisors/」目录：
+// 旧目录名是英文 key、role.json 没有 key 字段；新布局目录名用专员名称、role.json 注入 key。
+// 只在检测到「旧 roles/ 存在、新 supervisors/ 尚未就位」时跑一次（升级老用户数据，不丢配置）。
+// 若 supervisors/ 已就位（随包模板已带）则不自动搬——避免冲掉模板或让已删内置复活；
+// 若两者皆无则建一个空 supervisors/ 兜底，后续逻辑按空目录处理。
+func migrateRolesLayout(resRoot string) {
+	oldRoot := filepath.Join(resRoot, "roles")
+	newRoot := filepath.Join(resRoot, "supervisors")
+	if _, err := os.Stat(newRoot); err == nil {
+		// 新版 supervisors/ 已就位：不覆盖、不搬，避免冲掉随包模板 / 让已删内置复活
+		if _, err2 := os.Stat(oldRoot); err2 == nil {
+			log.Printf("[supervisor] 检测到旧 roles/ 但 supervisors/ 已存在：旧目录暂不自动迁移（自定义督休专员请手动合并）")
+		}
+		return
+	}
+	if _, err := os.Stat(oldRoot); err != nil {
+		// 都没有：建空 supervisors/ 兜底
+		_ = os.MkdirAll(newRoot, 0o755)
+		return
+	}
+	// 只有旧 roles/、没有新 supervisors/：整体搬过去（升级老用户）
+	if err := os.MkdirAll(newRoot, 0o755); err != nil {
+		log.Printf("[supervisor] 迁移：创建 supervisors/ 失败 %v", err)
+		return
+	}
+	entries, err := os.ReadDir(oldRoot)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !validRoleKey(e.Name()) {
+			continue
+		}
+		oldDir := filepath.Join(oldRoot, e.Name())
+		raw, rerr := os.ReadFile(filepath.Join(oldDir, "role.json"))
+		roleKey := e.Name() // 旧目录名即 key
+		roleName := roleKey
+		if rerr == nil {
+			var m map[string]any
+			if json.Unmarshal(raw, &m) == nil {
+				if k, ok := m["key"].(string); ok && k != "" {
+					roleKey = k
+				}
+				if n, ok := m["name"].(string); ok && strings.TrimSpace(n) != "" {
+					roleName = n
+				}
+			}
+		}
+		newDir := uniqueRoleDir(newRoot, sanitizeRoleDirName(roleName), "")
+		if err := os.Rename(oldDir, newDir); err != nil {
+			log.Printf("[supervisor] 迁移：移动 %s 失败 %v", e.Name(), err)
+			continue
+		}
+		// 回写 key 字段到新目录的 role.json（缺失才补，不覆盖已有值）
+		if rerr == nil {
+			var m map[string]any
+			if json.Unmarshal(raw, &m) == nil {
+				if cur, ok := m["key"].(string); !ok || cur == "" {
+					m["key"] = roleKey
+					if out, jerr := json.MarshalIndent(m, "", "  "); jerr == nil {
+						out = append(out, '\n')
+						_ = os.WriteFile(filepath.Join(newDir, "role.json"), out, 0o644)
+					}
+				}
+			}
+		}
+		log.Printf("[supervisor] 迁移：%s → %s（key=%s）", e.Name(), filepath.Base(newDir), roleKey)
+	}
+	// 旧目录搬空后移除
+	if entries2, _ := os.ReadDir(oldRoot); len(entries2) == 0 {
+		_ = os.RemoveAll(oldRoot)
+	} else {
+		log.Printf("[supervisor] 迁移：旧 roles/ 仍有残留，未删除：%v", oldRoot)
+	}
 }
 
 func isDevBuild(exe string) bool {

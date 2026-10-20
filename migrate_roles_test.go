@@ -33,10 +33,14 @@ func seedBuiltinRoles(t *testing.T, root string) {
 	}
 }
 
-// readRoleJSON 读一份 role.json 回 map，方便断言个别字段
+// readRoleJSON 读一份 role.json 回 map，方便断言个别字段（按 key 反查目录，目录名是名称）
 func readRoleJSON(t *testing.T, root, key string) map[string]any {
 	t.Helper()
-	b, err := os.ReadFile(filepath.Join(root, key, "role.json"))
+	dir, ok := resolveRoleDir(root, key)
+	if !ok {
+		t.Fatalf("按 key 找不到督休专员目录 %s（root=%s）", key, root)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "role.json"))
 	if err != nil {
 		t.Fatalf("读 %s/role.json 失败: %v", key, err)
 	}
@@ -66,7 +70,8 @@ func TestMigrateLegacyRolesFreshInstall(t *testing.T) {
 	}
 	// 内置目录没被删（短路保护：不能把「旧配置没这督休专员」误判成「用户删过」）
 	for _, key := range []string{"role_coach", "role_ai"} {
-		if !isRegularFile(filepath.Join(root, key, "role.json")) {
+		dir, ok := resolveRoleDir(root, key)
+		if !ok || !isRegularFile(filepath.Join(dir, "role.json")) {
 			t.Fatalf("全新安装不该删内置目录 %s", key)
 		}
 	}
@@ -158,10 +163,10 @@ func TestMigrateLegacyRolesBuiltinDeleted(t *testing.T) {
 	if !migrateLegacyRoles(raw, root) {
 		t.Fatal("应发生迁移")
 	}
-	if isRegularFile(filepath.Join(root, "role_ai", "role.json")) {
+	if _, ok := resolveRoleDir(root, "role_ai"); ok {
 		t.Fatal("role_ai 在旧配置中不存在，目录应被删除")
 	}
-	if !isRegularFile(filepath.Join(root, "role_coach", "role.json")) {
+	if dir, ok := resolveRoleDir(root, "role_coach"); !ok || !isRegularFile(filepath.Join(dir, "role.json")) {
 		t.Fatal("role_coach 目录应保留")
 	}
 }
@@ -188,8 +193,9 @@ func TestMigrateLegacyRolesCustomRole(t *testing.T) {
 	}
 	// createRoleDir 按 sha1 摘要算 key（custom-6820e4f877 = sha1("fake-png-bytes") 前 10 位），
 	// 与旧 key 不同（旧 key 只是「是否已存在」的参考，落点以摘要目录为准，对齐 上一版）。
-	dir := filepath.Join(root, "custom-6820e4f877")
-	if !isRegularFile(filepath.Join(dir, "role.json")) {
+	// 目录名改用专员名称，按 key 反查真实目录。
+	dir, ok := resolveRoleDir(root, "custom-6820e4f877")
+	if !ok || !isRegularFile(filepath.Join(dir, "role.json")) {
 		t.Fatal("自定义督休专员目录应建立在摘要 key 下")
 	}
 	cfg := readRoleJSON(t, root, "custom-6820e4f877")

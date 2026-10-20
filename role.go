@@ -11,7 +11,8 @@ import (
 )
 
 // 督休专员目录读取：语义与 历史源码/supervisor.ts 的 role.json 完全对齐——
-// 一个督休专员 = roles/<key>/ 一个子目录，内含 role.json + 立绘 + 预览图。
+// 一个督休专员 = supervisors/<名称>/ 一个子目录，内含 role.json + 立绘 + 预览图。
+// 目录名现在用专员名称（中文），身份 key 存进 role.json 的 key 字段，读写一律按 key 反查。
 // 用户在该目录里增删子目录即增删督休专员，重启即生效（本阶段先做到「扫描 + 读取」，
 // 增删改留到设置页迁移那一阶段）。
 
@@ -31,6 +32,10 @@ type RoleMessages struct {
 
 // RoleFile role.json 的磁盘结构（字段名与 上一版逐字一致，两侧可互相识别）
 type RoleFile struct {
+	// Key 督休专员的稳定身份标识（旧版等于目录名，现目录名改用专员名称后，
+	// key 仍保持旧值：内置沿用 role_* / supervisor_default，自定义沿用 custom-<sha1>）。
+	// 它才是 fixedKey / 迁移映射 / 读写定位的权威键，目录名只是给人看的名字。
+	Key      string       `json:"key,omitempty"`
 	Name     string       `json:"name"`
 	Enabled  bool         `json:"enabled"`
 	Image    string       `json:"image"`
@@ -123,6 +128,10 @@ func normalizeRoleFile(raw map[string]any) RoleFile {
 		Geom:     normalizeSupGeom(asMap(raw["geom"])),
 		Messages: normalizeRoleMessages(asMap(raw["messages"])),
 	}
+	// key 优先取 role.json 显式字段；缺失（旧部署）时留给调用方按目录名兜底
+	if s, ok := raw["key"].(string); ok && s != "" {
+		out.Key = s
+	}
 	if s, ok := raw["image"].(string); ok && isImageName(s) {
 		out.Image = s
 	}
@@ -197,21 +206,25 @@ func validRoleKey(key string) bool {
 // 立绘缺失的督休专员**仍然列出**（figurePath 为空）——与 上一版一致：要被设置页看到
 // 才能改名 / 删除 / 换图，不能凭空消失。
 //
-// 顺序：内置督休专员按 BUILTIN_ROLE_META 的清单顺序在前，其余（自定义 / 用户手放）按目录名
-// 跟在后面。这个顺序就是立绘库磁贴与「顺序轮换」的出场次序。
+// 目录名现在是专员名称（中文），与身份 key 解耦：身份以 role.json 的 key 字段为准，
+// 找不到 key 时回退到目录名（兼容旧部署）。顺序：内置督休专员按 BUILTIN_ROLE_META
+// 的清单顺序在前，其余（自定义 / 用户手放）按目录名跟在后面——这个顺序就是立绘库磁贴
+// 与「顺序轮换」的出场次序。
 func scanRoles(root string) []Role {
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return nil
 	}
-	byKey := make(map[string]Role, len(entries))
-	dirKeys := make([]string, 0, len(entries))
+	type rec struct {
+		role    Role
+		dirName string
+	}
+	recs := make([]rec, 0, len(entries))
 	for _, e := range entries {
 		if !e.IsDir() || !validRoleKey(e.Name()) {
 			continue
 		}
-		key := e.Name()
-		dir := filepath.Join(root, key)
+		dir := filepath.Join(root, e.Name())
 		raw, err := os.ReadFile(filepath.Join(dir, "role.json"))
 		if err != nil {
 			continue
@@ -221,11 +234,15 @@ func scanRoles(root string) []Role {
 			continue
 		}
 		cfg := normalizeRoleFile(rawMap)
+		roleKey := cfg.Key
+		if roleKey == "" {
+			roleKey = e.Name()
+		}
 		if cfg.Name == "" {
-			cfg.Name = roleFallbackName(key)
+			cfg.Name = roleFallbackName(roleKey)
 		}
 		r := Role{
-			Key:      key,
+			Key:      roleKey,
 			Name:     cfg.Name,
 			Enabled:  cfg.Enabled,
 			Image:    cfg.Image,
@@ -243,24 +260,89 @@ func scanRoles(root string) []Role {
 		if p := filepath.Join(dir, prevName); isRegularFile(p) {
 			r.Thumb = toDataURL(p)
 		}
-		byKey[key] = r
-		dirKeys = append(dirKeys, key)
+		recs = append(recs, rec{role: r, dirName: e.Name()})
 	}
-	sort.Strings(dirKeys)
-	out := make([]Role, 0, len(byKey))
-	used := make(map[string]bool, len(byKey))
+	// 内置督休专员按清单顺序在前
+	out := make([]Role, 0, len(recs))
+	used := make(map[string]bool, len(recs))
 	for _, m := range builtinRoleMeta {
-		if r, ok := byKey[m.key]; ok {
-			out = append(out, r)
-			used[m.key] = true
+		for _, rc := range recs {
+			if rc.role.Key == m.key && !used[m.key] {
+				out = append(out, rc.role)
+				used[m.key] = true
+				break
+			}
 		}
 	}
-	for _, k := range dirKeys {
-		if !used[k] {
-			out = append(out, byKey[k])
+	// 其余按目录名排序（自定义 / 用户手放）
+	rest := make([]rec, 0)
+	for _, rc := range recs {
+		if !used[rc.role.Key] {
+			rest = append(rest, rc)
 		}
+	}
+	sort.Slice(rest, func(i, j int) bool { return rest[i].dirName < rest[j].dirName })
+	for _, rc := range rest {
+		out = append(out, rc.role)
 	}
 	return out
+}
+
+// resolveRoleDir 按 key 反查督休专员子目录：目录名改用专员名称后，key 不再等于目录名，
+// 所有读写都必须「按 key 反查」——扫描各子目录的 role.json，返回 key 字段（或目录名兜底）
+// 与 key 匹配的目录绝对路径。找不到返回 ("", false)。
+func resolveRoleDir(root, key string) (string, bool) {
+	if key == "" {
+		return "", false
+	}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return "", false
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !validRoleKey(e.Name()) {
+			continue
+		}
+		dir := filepath.Join(root, e.Name())
+		raw, err := os.ReadFile(filepath.Join(dir, "role.json"))
+		if err != nil {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			continue
+		}
+		if k, ok := m["key"].(string); ok && k == key {
+			return dir, true
+		}
+		// 旧部署：role.json 没有 key 字段，目录名即 key
+		if e.Name() == key {
+			return dir, true
+		}
+	}
+	return "", false
+}
+
+// sanitizeRoleDirName 把专员名称收敛成合法目录名：剔除 Windows 非法字符并裁掉首尾空白。
+// 空名给一个兜底，避免建出坏目录。
+func sanitizeRoleDirName(name string) string {
+	s := strings.TrimSpace(name)
+	if s == "" {
+		return "督休专员"
+	}
+	s = strings.Map(func(r rune) rune {
+		switch r {
+		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
+			return -1
+		default:
+			return r
+		}
+	}, s)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "督休专员"
+	}
+	return s
 }
 
 // isRegularFile 路径存在且是普通文件

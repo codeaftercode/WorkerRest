@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha1"
 	"encoding/hex"
+	"encoding/json"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,12 +14,13 @@ import (
 // 逐字对应 历史源码/supervisor.ts 的 migrateLegacyRoles（见那处的完整注释）。
 //
 // 与 上一版的一个有意差异：Go 侧的督休专员目录是**单一落点**（rolesRoot 就是
-// 数据目录，没有「随包模板 → %APPDATA%/roles」的 ensureRolesDir 分离），所以迁移
+// 数据目录，没有「随包模板 → %APPDATA%/supervisors」的 ensureRolesDir 分离），所以迁移
 // 直接写进 rolesRoot 本身。模板目录里的 role.json 自带默认配置，迁移用旧数据覆盖它。
+// 目录名用专员名称、身份 key 存于 role.json（见 role.go 的 resolveRoleDir）。
 
 // migrateLegacyRoles 执行一次性迁移，返回是否发生了迁移（调用方据此落盘）。
 //
-// raw = 整份配置的 map（含 supervisor 子对象）；rolesRoot = 督休专员目录落点。
+// raw = 整份配置的 map（含 supervisor 子对象）；rolesRoot = 督休专员目录落点（supervisors/）。
 // 迁移内容：内置督休专员的名称/启用/几何/台词覆盖模板 role.json（旧列表里没有的内置督休专员
 // 连目录一起删，不回补）、自定义督休专员按旧 key 建目录并搬图、fixedKey 键名重映射、
 // 迁完删掉 supervisor 里的全部旧键并置 rolesMigrated=true。
@@ -230,7 +232,8 @@ func firstEnabledRole(roles []Role) string {
 // createRoleDir 新建自定义督休专员目录：把本地图片复制成 figure + preview，算 sha1 摘要做 key。
 // 对应 supervisor.ts 的 createRoleDir。与 上一版的差异：preview 直接复制原图（Go 侧
 // 没有 nativeImage 缩图，原生选图 + 生成缩略图是占位项），所以 preview 用与 figure 相同的扩展名。
-// 返回新督休专员目录的 key（目录已存在时返回既有 key）。
+// 目录名改用专员名称（sanitize + 去重），与「督休专员 = 目录、目录名 = 名称」的新布局一致；
+// key 仍由摘要决定并写进 role.json，作为稳定身份。返回新督休专员目录的 key。
 func createRoleDir(rolesRoot, name, src string) string {
 	st, err := os.Stat(src)
 	if err != nil || !st.Mode().IsRegular() || st.Size() > 20*1024*1024 {
@@ -242,9 +245,14 @@ func createRoleDir(rolesRoot, name, src string) string {
 	}
 	sum := sha1.Sum(b)
 	key := "custom-" + hex.EncodeToString(sum[:])[:10]
-	dir := filepath.Join(rolesRoot, key)
+	// 目录按专员名称命名（去重），与「目录名 = 名称」的新布局一致
+	base := sanitizeRoleDirName(name)
+	if base == "" {
+		base = key
+	}
+	dir := uniqueRoleDir(rolesRoot, base, "")
 	if isRegularFile(filepath.Join(dir, "role.json")) {
-		return key // 同一张图已导入过：沿用既有目录
+		return key // 同名目录里已有 role.json：沿用既有目录
 	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ""
@@ -260,6 +268,7 @@ func createRoleDir(rolesRoot, name, src string) string {
 		return ""
 	}
 	cfg := RoleFile{
+		Key:      key,
 		Name:     name,
 		Enabled:  true,
 		Image:    "figure" + ext,
@@ -270,7 +279,20 @@ func createRoleDir(rolesRoot, name, src string) string {
 	if cfg.Name == "" {
 		cfg.Name = "自定义督休专员"
 	}
-	if err := writeRoleFile(rolesRoot, key, cfg); err != nil {
+	// 目录已按名称建好：直接落盘 role.json（绕过「按 key 反查目录」）
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return ""
+	}
+	data = append(data, '\n')
+	target := filepath.Join(dir, "role.json")
+	tmp := target + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		_ = os.Remove(tmp)
+		return ""
+	}
+	if err := os.Rename(tmp, target); err != nil {
+		_ = os.Remove(tmp)
 		return ""
 	}
 	return key

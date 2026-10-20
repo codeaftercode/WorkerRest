@@ -135,7 +135,7 @@ func (a *App) ResetSettings() map[string]any {
 func (a *App) OpenManual() bool {
 	exe, _ := os.Executable()
 	cands := []string{filepath.Join(filepath.Dir(exe), "manual", "操作手册.html")}
-	// 开发态：模块根下的 manual/（roles/ 同款回退）
+	// 开发态：模块根下的 manual/（supervisors/ 同款回退）
 	if root := nearestModuleRoot(filepath.Dir(exe)); root != "" {
 		cands = append(cands, filepath.Join(root, "manual", "操作手册.html"))
 	}
@@ -180,19 +180,36 @@ func (a *App) BuiltinMsgDefaults() map[string]any {
 
 // SaveRole 保存某个督休专员的 role.json（改名 / 启停 / 尺寸位置 / 台词编辑）。
 // 只覆盖 patch 里带到的字段，立绘文件名等读取侧字段保持不动。
+//
+// 名称变化时把目录改名到新名称（与「目录名 = 专员名称」的新布局一致）：key 不变，
+// 只是给人看的目录名跟着名称走，写入时仍按 key 反查真实目录。
 func (a *App) SaveRole(key string, patch map[string]any) bool {
 	if !validRoleKey(key) {
 		log.Printf("[role] 非法督休专员 key：%q", key)
 		return false
 	}
-	base, ok := readRoleFile(a.rolesRoot, key)
+	dir, ok := resolveRoleDir(a.rolesRoot, key)
 	if !ok {
 		log.Printf("[role] 督休专员不存在或 role.json 读不出来：%s", key)
 		return false
 	}
+	base, _ := readRoleFile(a.rolesRoot, key)
 	next := applyRolePatch(base, patch)
 	if next.Name == "" {
 		next.Name = key
+	}
+	next.Key = key
+	// 名称变了 → 把目录改名到新名称（去重后）
+	if next.Name != base.Name {
+		newBase := sanitizeRoleDirName(next.Name)
+		if filepath.Base(dir) != newBase {
+			newDir := uniqueRoleDir(a.rolesRoot, newBase, dir)
+			if err := os.Rename(dir, newDir); err != nil {
+				log.Printf("[role] 重命名督休专员目录失败 %s→%s: %v", dir, newDir, err)
+				return false
+			}
+			dir = newDir
+		}
 	}
 	if err := writeRoleFile(a.rolesRoot, key, next); err != nil {
 		log.Printf("[role] 写入失败 %s: %v", key, err)

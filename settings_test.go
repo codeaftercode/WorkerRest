@@ -331,3 +331,41 @@ func TestSetSitesReplacesLocal(t *testing.T) {
 		}
 	}
 }
+
+// 全新 / 老配置 singleId 为空时，normalizeSound 应兜底指向第一首「启用」的提示音。
+// 否则默认 single 模式下会「列表里有音、真休息却静音、只有试听能响」（用户报过的坑）。
+func TestNormalizeSoundDefaultsSingleId(t *testing.T) {
+	// 1) 全新配置：sound 段只有 mode，没 music / singleId / seeded
+	raw := map[string]any{"sound": map[string]any{"mode": "single"}}
+	normalizeSound(raw)
+	snd := raw["sound"].(map[string]any)
+	if snd["seeded"] != true {
+		t.Fatal("首次应种入内置音并置 seeded=true")
+	}
+	if got := len(snd["music"].([]any)); got != len(builtinMusic) {
+		t.Fatalf("应种入 %d 条内置音，得到 %d", len(builtinMusic), got)
+	}
+	if got := jsStr(snd["singleId"]); got != builtinMusic[0].id {
+		t.Fatalf("全新安装 singleId 应默认指向第一首内置音 %q，得到 %q", builtinMusic[0].id, got)
+	}
+
+	// 2) 老配置（seeded=true）singleId 为空、但有启用项：兜底指向第一首启用的
+	raw2 := map[string]any{"sound": map[string]any{
+		"seeded": true, "mode": "single", "singleId": "",
+		"music": []any{map[string]any{"id": "x1", "file": "a.wav", "name": "A", "enabled": true}},
+	}}
+	normalizeSound(raw2)
+	if got := jsStr(raw2["sound"].(map[string]any)["singleId"]); got != "x1" {
+		t.Fatalf("singleId 空但有启用项应兜底指向 x1，得到 %q", got)
+	}
+
+	// 3) 全部停用：尊重用户选择，保持静音（singleId 仍空）
+	raw3 := map[string]any{"sound": map[string]any{
+		"seeded": true, "mode": "single", "singleId": "",
+		"music": []any{map[string]any{"id": "x1", "file": "a.wav", "name": "A", "enabled": false}},
+	}}
+	normalizeSound(raw3)
+	if got := jsStr(raw3["sound"].(map[string]any)["singleId"]); got != "" {
+		t.Fatalf("全部停用应尊重用户选择保持 singleId 空，得到 %q", got)
+	}
+}

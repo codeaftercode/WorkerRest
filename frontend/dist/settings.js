@@ -1329,8 +1329,13 @@
     actions.className = "card-actions";
     sum.replaceWith(actions);
     actions.appendChild(sum);
-    const del = mkBtn("\u5220\u9664", "\u5220\u9664\u8FD9\u6761\u81EA\u5B9A\u4E49\u63D0\u9192", () => void removeCustomBreak(cb.id));
-    del.classList.add("cb-del");
+    // 重命名 / 删除：图标按钮（✎ / ✕，与「提醒内容」行尾的编辑 / 删除同款），
+    // 重命名在左、删除在右；改名后即时同步卡片标题与今日时间线。
+    const rename = mkBtn("\u270E", "\u91CD\u547D\u540D", () => void renameCustomBreak(cb.id));
+    rename.classList.add("cb-rename");
+    actions.appendChild(rename);
+    const del = mkBtn("\u2715", "\u5220\u9664", () => void removeCustomBreak(cb.id));
+    del.classList.add("cb-del", "danger");
     actions.appendChild(del);
     const pvBtn = card.querySelector(`#${cb.id}-preview`);
     if (pvBtn) {
@@ -1439,12 +1444,42 @@
     refreshStatusNow();
     toast(`\u5DF2\u65B0\u5EFA\u81EA\u5B9A\u4E49\u63D0\u9192\u300C${name}\u300D`);
   }
+  // 重命名自定义提醒：复用新建时的输入弹窗（预填当前名并自动全选，直接输入即覆盖）。
+  // 校验口径与新建一致：非空 / ≤24 字 / 不与内置和其他自定义提醒重名；
+  // reservedReminderNames 含自身当前名，故「原名直接确认」已在上面提前返回，不会误报重名。
+  async function renameCustomBreak(id) {
+    const cb = (S.customBreaks ?? []).find((c) => c.id === id);
+    if (!cb) return;
+    const input = await promptDialog({
+      title: "\u91CD\u547D\u540D\u81EA\u5B9A\u4E49\u63D0\u9192",
+      label: "\u63D0\u9192\u540D\u79F0\uFF1A",
+      value: cb.name,
+      okText: "\u4FDD\u5B58"
+    });
+    if (input === null) return;
+    const name = input.trim().slice(0, 24);
+    if (!name) {
+      toast("\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+      return;
+    }
+    if (name === cb.name) return; // 没改：不落盘、不提示
+    if (reservedReminderNames().includes(name)) {
+      toast(`\u63D0\u9192\u540D\u79F0\u300C${name}\u300D\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A`);
+      return;
+    }
+    cb.name = name;
+    const h3 = customCardEl(id)?.querySelector(":scope > .card-head h3");
+    if (h3) h3.textContent = name;
+    autoSave();
+    refreshStatusNow();
+    toast(`\u5DF2\u91CD\u547D\u540D\u4E3A\u300C${name}\u300D`);
+  }
   async function removeCustomBreak(id) {
     const cb = (S.customBreaks ?? []).find((c) => c.id === id);
     if (!cb) return;
     const ok = await confirmDialog({
       title: `\u5220\u9664\u81EA\u5B9A\u4E49\u63D0\u9192\u300C${cb.name}\u300D\uFF1F`,
-      desc: "\u5220\u9664\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u65E0\u6CD5\u64A4\u9500\uFF08\u5DF2\u7ECF\u8BB0\u8FC7\u7684\u4F11\u606F\u4ECD\u7559\u5728\u7EDF\u8BA1\u91CC\uFF09\u3002",
+      desc: "\u5220\u9664\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002",
       detail: cb.config.mode === "fixed" ? `\u56FA\u5B9A\u65F6\u95F4 \xB7 ${cb.config.slots.length} \u6761\u65F6\u523B` : `\u5012\u8BA1\u65F6 \xB7 \u6BCF ${Math.round(cb.config.intervalMs / 6e4)} \u5206\u949F\u4E00\u6B21`,
       okText: "\u5220\u9664"
     });
@@ -2484,7 +2519,7 @@
     { key: "skip", label: "\u8DF3\u8FC7\u6B21\u6570" },
     { key: "post", label: "\u63A8\u8FDF\u6B21\u6570" }
   ];
-  var rcTableSort = { key: "period", dir: "asc" };
+  var rcTableSort = { key: "period", dir: "desc" };
   var rcTableData = [];
   function rcRenderTable(rows) {
     const t = $("rc-table");
@@ -3251,7 +3286,7 @@
     { key: "can", label: "\u53D6\u6D88\u6B21\u6570" },
     { key: "post", label: "\u63A8\u8FDF\u6B21\u6570" }
   ];
-  var tkTableSort = { key: "period", dir: "asc" };
+  var tkTableSort = { key: "period", dir: "desc" };
   var tkTableData = [];
   function tkRenderTable(rows) {
     const t = $("tk-table");
@@ -3819,7 +3854,7 @@
       (s) => `<button type="button" class="rc-legend-item${on[s.id] === false ? " off" : ""}" data-s="${s.id}" title="\u70B9\u51FB\u663E\u793A / \u9690\u85CF"><i class="line" style="background:${s.color}"></i>${ckEsc(s.label)}</button>`
     ).join("");
   }
-  var ckTableSort = { key: "period", dir: "asc" };
+  var ckTableSort = { key: "period", dir: "desc" };
   var ckTableData = [];
   function ckRenderTable(rows) {
     const t = $("ck-table");

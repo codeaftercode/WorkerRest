@@ -57,6 +57,25 @@ BUILTIN_ROLE_ORDER = [
     "role_doctor", "role_coach", "role_warden", "role_shopkeeper", "role_ai",
 ]
 
+def role_dir(root, key):
+    """在 supervisors/ 下按 key 反查某个督休专员的目录（目录名是专员名称，不固定）。"""
+    sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):
+        return None
+    for name in os.listdir(sup):
+        p = os.path.join(sup, name, "role.json")
+        if not os.path.isfile(p):
+            continue
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if d.get("key") == key:
+            return os.path.join(sup, name)
+    return None
+
+
 # 绑定全限定名前缀：main 包在构建产物里的 PkgPath 就是 "main"（不是模块名——
 # 这与 `go test` 里 reflect 拿到的值不同，见 rewrite-go/contract.go 的说明）。
 # 真值可用 WR_LOG_LEVEL=debug 跑一次，日志里会打出 fqn=main.App.Xxx。
@@ -323,15 +342,15 @@ def main():
             # 与真实配置里固定的那个督休专员目录对齐
             fixed = (cfg.get("supervisor") or {}).get("fixedKey") if cfg else None
             if fixed:
-                rp = os.path.join(ROOT, "roles", fixed, "role.json")
+                rp = os.path.join(role_dir(ROOT, fixed) or "", "role.json")
                 if os.path.isfile(rp):
                     rc = read_json(rp)
                     check(sup.get("name") == rc.get("name"),
-                          "督休专员名 == roles/%s/role.json name" % fixed,
+                          "督休专员名 == supervisors/<key>/role.json name" % fixed,
                           "%s vs %s" % (sup.get("name"), rc.get("name")))
                     rg = rc.get("geom") or {}
                     check(geom.get("sizePct") == rg.get("sizePct") and geom.get("posXPct") == rg.get("posXPct"),
-                          "督休专员几何 == roles/%s/role.json geom" % fixed,
+                          "督休专员几何 == supervisors/<key>/role.json geom" % fixed,
                           "%s vs %s" % (geom, rg))
                     cmds = [i.get("text") for i in ((rc.get("messages") or {}).get("items") or []) if i.get("enabled")]
                     check(lines.get("command") in cmds,

@@ -1,4 +1,5 @@
 {
+  "key": "role_coach",
   "name": "体能教练",
   "enabled": true,
   "image": "figure.png",

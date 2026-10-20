@@ -200,6 +200,7 @@ func soundFileUsable(file string) bool {
 // resolveSoundFile 单曲循环要播的文件：singleId 指向的那一条。条目不存在 / 没有 file /
 // 文件不可用都返回空串 = 静音（与 sound.ts 的 resolveSoundFile 同口径）。
 // 注意「条目是否被停用」与这里无关 —— 停用只影响 random / sequence 的选池。
+// singleId 为空 = 用户没选过单曲，按契约静音（默认值由 normalizeSound 在首次种入时补上）。
 func resolveSoundFile(cfg SoundCfg) string {
 	for _, m := range cfg.Music {
 		if m.ID != cfg.SingleID || cfg.SingleID == "" {
@@ -558,12 +559,10 @@ func (a *App) playSoundFile(file string, volume float64) {
 	a.execPlaySound(url, volume)
 }
 
-// execPlaySound 把播放指令发给宿主窗口。每次新建一个 Audio 元素 —— 允许重叠播放
-// （休息结束音紧接下一段开始时不该互相打断），与 sound.ts 的 playSound 同口径。
+// execPlaySound 把播放指令发给承载 <audio> 的窗口。每次新建一个 Audio 元素 —— 允许重叠
+// 播放（休息结束音紧接下一段开始时不该互相打断），与 sound.ts 的 playSound 同口径。
 func (a *App) execPlaySound(url string, volume float64) {
-	a.mu.Lock()
-	w := a.wins[soundHostWindowName]
-	a.mu.Unlock()
+	w := a.audioHostWindow()
 	if w == nil {
 		return
 	}
@@ -572,6 +571,26 @@ func (a *App) execPlaySound(url string, volume float64) {
 		"(()=>{const a=new Audio(%s);a.volume=%s;a.play().catch(()=>{})})()",
 		strconv.Quote(url), strconv.FormatFloat(volume, 'f', -1, 64))
 	w.ExecJS(script)
+}
+
+// audioHostWindow 挑一个承载 <audio> 的窗口：优先主设置窗口（main.go 里随应用创建、
+// 「关闭」只是 Hide 不销毁，全程存活、已加载且用户交互过），退回专用宿主窗。
+// 历史上只用隐藏宿主窗，但那条链从未被验证能真发声（隐藏窗可能不加载 + WebView2 默认
+// 拦无手势有声自动播放）；改走必然存活的设置窗更稳，autoplay 已在 main.go 全局放开。
+// 二者皆无返回 nil（server 模式在 playSoundFile 已先行短路，不会走到这里）。
+func (a *App) audioHostWindow() application.Window {
+	if a.app != nil {
+		if w := a.settingsWindow(); w != nil {
+			return w
+		}
+	}
+	a.mu.Lock()
+	hw := a.wins[soundHostWindowName]
+	a.mu.Unlock()
+	if hw == nil {
+		return nil // 别把「类型化 nil」当接口返回，否则上层 w==nil 判不出
+	}
+	return hw
 }
 
 // ---------- 绑定给渲染层的接口 ----------

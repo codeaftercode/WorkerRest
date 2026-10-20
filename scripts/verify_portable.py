@@ -48,6 +48,25 @@ failures = []
 checks = 0
 
 
+def find_role_json(root, key):
+    """在 supervisors/ 下按 key 反查某个督休专员的 role.json（目录名是专员名称，不固定）。"""
+    sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):
+        return None
+    for name in os.listdir(sup):
+        p = os.path.join(sup, name, "role.json")
+        if not os.path.isfile(p):
+            continue
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if d.get("key") == key:
+            return p
+    return None
+
+
 def check(ok, label, detail=""):
     global checks
     checks += 1
@@ -69,7 +88,7 @@ def main():
         print("找不到 %s —— 先跑 make_portable.py" % exe_src)
         return 2
 
-    # 隔离副本：复制整个便携目录（含 roles/），在临时位置跑，不污染 release/
+    # 隔离副本：复制整个便携目录（含 supervisors/），在临时位置跑，不污染 release/
     iso = os.path.join(TEMP, "wr_portable_verify_iso")
     shutil.rmtree(iso, ignore_errors=True)
     shutil.copytree(src, iso)
@@ -148,9 +167,11 @@ def main():
     check(not wrote_cfg, "隔离 APPDATA 里没有写入 settings.json（配置没外溢到 APPDATA）",
           "发现 settings.json" if wrote_cfg else "（干净）")
 
-    # 5. roles/ 随包完整（渲染层立绘要能读到）
-    role_json = os.path.join(iso, "roles", "supervisor_default", "role.json")
-    check(os.path.isfile(role_json), "roles/ 随包完整（supervisor_default 在）", role_json)
+    # 5. supervisors/ 随包完整（渲染层立绘要能读到）。目录名是专员名称、不固定，
+    # 按 key 反查 supervisor_default 的 role.json。
+    role_json = find_role_json(iso, "supervisor_default")
+    check(bool(role_json) and os.path.isfile(role_json),
+          "supervisors/ 随包完整（supervisor_default 在）", role_json or "(未找到)")
 
     with open(REPORT, "w", encoding="utf-8") as f:
         f.write("便携版验证：%d 项断言，失败 %d 项\n\n" % (checks, len(failures)))

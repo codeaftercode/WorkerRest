@@ -59,7 +59,7 @@ type AppearanceConfig struct {
 	HeightPct    float64 `json:"heightPct"`
 }
 
-// SupervisorConfig 督休专员显示开关（督休专员本体在 roles/<key>/role.json）
+// SupervisorConfig 督休专员显示开关（督休专员本体在 supervisors/<名称>/role.json，key 在 role.json 内）
 type SupervisorConfig struct {
 	Enabled   bool   `json:"enabled"`
 	Gaze      bool   `json:"gaze"`
@@ -355,7 +355,7 @@ func mapInt(m map[string]any, key string, def int64) int64 {
 	return def
 }
 
-// SupervisorCfg 督休专员显示开关（督休专员本体在 roles/<key>/role.json）
+// SupervisorCfg 督休专员显示开关（督休专员本体在 supervisors/<名称>/role.json，key 在 role.json 内）
 func (s *Settings) SupervisorCfg() SupervisorConfig {
 	return SupervisorConfig{
 		Enabled:   s.Flag(true, "supervisor", "enabled"),
@@ -1001,6 +1001,19 @@ func normalizeSound(raw map[string]any) {
 			snd["singleId"] = legacy
 		} else {
 			snd["singleId"] = ""
+		}
+	}
+	// singleId 兜底：上面校验后若仍为空（全新安装 / 老配置升级 / 被用户清空），且列表里
+	// 至少有「启用」的条目，默认指向第一首启用的提示音——否则默认 single 模式下会「列表
+	// 里有音、真休息却静音」（只有试听能响），与用户预期相悖。全部停用时尊重用户选择，静音。
+	if jsStr(snd["singleId"]) == "" {
+		for _, it := range snd["music"].([]any) {
+			if m, ok := it.(map[string]any); ok && m["enabled"] != false {
+				if id := jsStr(m["id"]); id != "" {
+					snd["singleId"] = id
+					break
+				}
+			}
 		}
 	}
 }

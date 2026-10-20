@@ -7,7 +7,7 @@
     release/WorkerRest-<版本>-portable.zip
 
 组装结构：
-  - rest.exe + roles/（22 MB 内置督休专员模板）；
+  - rest.exe + supervisors/（22 MB 内置督休专员模板，子目录按专员名称命名）；
   - 预置三件套（运行数据随包分发，首跑直接在预置文件上继续写）：
       sounds/               四个内置提示音（源文件在模块根 sounds/，不再 embed 进二进制）
       config/settings.json  出厂默认配置（与 go:embed 的 default_settings.json 同一
@@ -27,6 +27,7 @@
 
 import argparse
 import hashlib
+import json
 import os
 import re
 from datetime import datetime
@@ -37,7 +38,7 @@ import zipfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
-ROLES_SRC = os.path.join(ROOT, "roles")  # 督休专员目录随 Go 工程一起（模块根下）
+ROLES_SRC = os.path.join(ROOT, "supervisors")  # 督休专员目录随 Go 工程一起（模块根下）
 SOUNDS_SRC = os.path.join(ROOT, "sounds")  # 内置提示音源文件（打包预置进便携包）
 DEFAULT_SETTINGS_SRC = os.path.join(ROOT, "default_settings.json")  # 出厂默认（go:embed 同一份）
 EXE_NAME = "rest.exe"
@@ -88,13 +89,13 @@ def build_exe(version: str) -> bool:
 
 
 def assemble(dest: str, version: str) -> bool:
-    """把 exe + roles/ + 预置三件套组装进 dest（可分发便携目录）。"""
+    """把 exe + supervisors/ + 预置三件套组装进 dest（可分发便携目录）。"""
     if os.path.exists(dest):
         shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest, exist_ok=True)
     shutil.copy2(EXE_SRC, os.path.join(dest, EXE_NAME))
-    shutil.copytree(ROLES_SRC, os.path.join(dest, "roles"))
-    # 清掉运行时残留（roles/ 里理论上没有，但 exe 同目录可能被组装源污染）
+    shutil.copytree(ROLES_SRC, os.path.join(dest, "supervisors"))
+    # 清掉运行时残留（supervisors/ 里理论上没有，但 exe 同目录可能被组装源污染）
     for rel in RUNTIME_REL:
         p = os.path.join(dest, rel)
         if os.path.isdir(p):
@@ -133,7 +134,7 @@ def zip_dir(zip_path: str, src_dir: str) -> bool:
 
 
 def verify_zip(zip_path: str, top: str) -> bool:
-    """校验 zip 内容：条目数 + exe/roles/预置三件套在正确位置（带顶层目录前缀）。"""
+    """校验 zip 内容：条目数 + exe/supervisors/预置三件套在正确位置（带顶层目录前缀）。"""
     try:
         with zipfile.ZipFile(zip_path, "r") as zf:
             names = zf.namelist()
@@ -142,9 +143,9 @@ def verify_zip(zip_path: str, top: str) -> bool:
         print(f"[make-portable] zip 校验异常: {e}")
         return False
     has_exe = f"{top}/{EXE_NAME}" in names
-    has_roles = any(n.startswith(f"{top}/roles/") for n in names)
+    has_roles = any(n.startswith(f"{top}/supervisors/") for n in names)
     has_role_json = any(n.endswith("/role.json") for n in names)
-    n_roles = sum(1 for n in names if n.startswith(f"{top}/roles/") and n.endswith(".png"))
+    n_roles = sum(1 for n in names if n.startswith(f"{top}/supervisors/") and n.endswith(".png"))
     # 预置三件套：四个内置提示音 + 出厂默认配置 + 空统计表
     n_sounds = sum(1 for n in names if n.startswith(f"{top}/sounds/") and n.endswith(".wav"))
     has_cfg = f"{top}/config/settings.json" in names
@@ -157,7 +158,7 @@ def verify_zip(zip_path: str, top: str) -> bool:
         and n_sounds == 4 and has_cfg and has_stats and not escaped
     )
     print(
-        f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} roles={has_roles}"
+        f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} supervisors={has_roles}"
         f" role_json={has_role_json} png={n_roles} sounds={n_sounds} cfg={has_cfg}"
         f" stats={has_stats} escaped={len(escaped)} crc={test is None}"
     )
@@ -174,6 +175,25 @@ def md5(p: str) -> str:
         for chunk in iter(lambda: f.read(65536), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def find_role_json(root: str, key: str):
+    """在 supervisors/ 下按 key 反查某个督休专员的 role.json（目录名是专员名称，不固定）。"""
+    sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):
+        return None
+    for name in os.listdir(sup):
+        p = os.path.join(sup, name, "role.json")
+        if not os.path.isfile(p):
+            continue
+        try:
+            with open(p, encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        if d.get("key") == key:
+            return p
+    return None
 
 
 def main() -> int:
@@ -202,7 +222,7 @@ def main() -> int:
     # 3. 结构核验
     checks = [
         ("exe", os.path.join(dest, EXE_NAME)),
-        ("督休专员目录", os.path.join(dest, "roles", "supervisor_default", "role.json")),
+        ("督休专员目录", find_role_json(dest, "supervisor_default")),
         ("预置 sounds/", os.path.join(dest, "sounds", "short_start.wav")),
         ("预置 config/settings.json", os.path.join(dest, "config", "settings.json")),
         ("预置 data/stats.json", os.path.join(dest, "data", "stats.json")),

@@ -36,7 +36,7 @@ embed 进二进制，打包时随包放在 `sounds/` 目录，开发态是模块
 ## 打包
 
 ```powershell
-# 便携目录打包：构建发布版 exe → 组装 exe + roles/ → 打 zip → 校验内容
+# 便携目录打包：构建发布版 exe → 组装 exe + supervisors/ → 打 zip → 校验内容
 python scripts/make_portable.py
 
 # （可选）隔离环境解包首跑，验证预置三件套与首跑落点（不外溢到 APPDATA）
@@ -70,7 +70,7 @@ python scripts/probe_gui_boot.py # GUI 启动探针：16 项断言（系统能�
   *.go                    后端源码（App 窗口/会话 + 调度器/计划 + 统计 + 系统能力 + 各窗口）
   main.go                 入口：注册服务 + 主窗口（= 设置窗口）
   contract.go             前端绑定「契约表」：wiredCalls 列表 + 启动自检
-  roles/                  内置督休专员模板（22MB 立绘，随包分发）
+  supervisors/            内置督休专员模板（22MB 立绘，随包分发；子目录用专员名称命名，key 存于 role.json）
   sounds/                 内置提示音源文件（四个 wav，打包时预置进便携包）
   manual/操作手册.html     随包操作手册（自包含 HTML）
   frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）

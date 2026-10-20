@@ -1,4 +1,5 @@
 {
+  "key": "role_warden",
   "name": "宿管大爷",
   "enabled": true,
   "image": "figure.png",

@@ -1,4 +1,5 @@
 {
+  "key": "role_doctor",
   "name": "值班医生",
   "enabled": true,
   "image": "figure.png",

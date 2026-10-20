@@ -1,4 +1,5 @@
 {
+  "key": "role_ai",
   "name": "赛博监考官",
   "enabled": true,
   "image": "figure.png",

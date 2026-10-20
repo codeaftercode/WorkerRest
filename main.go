@@ -36,6 +36,14 @@ func main() {
 		}
 	}
 
+	// 诊断用日志落盘：设了 WR_LOG_FILE 就把应用自身的 log 输出（[boot]/[sound]/[plan]…）
+	// 追加到该文件。GUI 版 stderr 不可见，排查「提示音不响」这类问题靠它抓现场。
+	if lf := os.Getenv("WR_LOG_FILE"); lf != "" {
+		if f, err := os.OpenFile(lf, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
+			log.SetOutput(f)
+		}
+	}
+
 	// 音频请求不走默认资源服务（内置提示音在随包 sounds/ 目录、用户导入的音频在
 	// config/sounds/，都不在 embed 的前端资源里），需要一条自己的分发中间件，而
 	// 自定义音的白名单校验要读配置 —— 所以转交给 backend。
@@ -44,6 +52,12 @@ func main() {
 	app := application.New(application.Options{
 		Name:        "chibingren",
 		Description: "吃饼人也敢休息？— 休息提醒",
+		Windows: application.WindowsOptions{
+			// WebView2 默认拦截「无用户手势的有声自动播放」：休息提示音由定时器触发、
+			// 在从无点击交互的宿主窗口里 new Audio().play() 会被静默拒绝（.catch 吞掉），
+			// 表现为「试听能响、真休息不响」。全局放开 autoplay 策略，对所有窗口生效。
+			AdditionalBrowserArgs: []string{"--autoplay-policy=no-user-gesture-required"},
+		},
 		// 单例运行：第二个实例立即退出（ExitCode），第一个实例收到回调后把
 		// 设置窗口唤到前台 —— 与托盘「双击二次启动唤起窗口」同一条入口。
 		// 此前没有这层，双开会导致两份调度器抢着弹提醒窗口。

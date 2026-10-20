@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"math"
 	"os"
@@ -67,7 +68,11 @@ func readRoleFile(root, key string) (RoleFile, bool) {
 	if !validRoleKey(key) {
 		return cfg, false
 	}
-	raw, err := os.ReadFile(filepath.Join(root, key, "role.json"))
+	dir, ok := resolveRoleDir(root, key)
+	if !ok {
+		return cfg, false
+	}
+	raw, err := os.ReadFile(filepath.Join(dir, "role.json"))
 	if err != nil {
 		return cfg, false
 	}
@@ -79,18 +84,33 @@ func readRoleFile(root, key string) (RoleFile, bool) {
 	if cfg.Name == "" {
 		cfg.Name = key
 	}
+	if cfg.Key == "" {
+		cfg.Key = key
+	}
 	return cfg, true
 }
 
-// writeRoleFile 落盘 role.json（先写临时文件再改名，避免写出半截 JSON）
+// writeRoleFile 落盘 role.json（先写临时文件再改名，避免写出半截 JSON）。
+//
+// 目录名现在是专员名称、与 key 解耦：优先按 key 反查既有目录；找不到（全新创建）时
+// 按（清洗后的）name 建名称化目录。无论哪种路径，role.json 的 key 字段都强制写成传入的 key，
+// 保证身份稳定。
 func writeRoleFile(root, key string, cfg RoleFile) error {
 	if !validRoleKey(key) {
 		return os.ErrInvalid
 	}
-	dir := filepath.Join(root, key)
+	dir, ok := resolveRoleDir(root, key)
+	if !ok {
+		base := sanitizeRoleDirName(cfg.Name)
+		if base == "" {
+			base = key
+		}
+		dir = uniqueRoleDir(root, base, "")
+	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
+	cfg.Key = key
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return err
@@ -108,6 +128,26 @@ func writeRoleFile(root, key string, cfg RoleFile) error {
 	return nil
 }
 
+// uniqueRoleDir 在 root 下找一个不与现有目录冲突的名称化目录（返回完整路径）：
+// base 已存在（且不是 exclude）就加 (2)/(3) 后缀去重。exclude 是当前督休专员正在用的目录，
+// 改名时跳过自己，避免「同名 → 自指」误判成已占用。
+func uniqueRoleDir(root, base, exclude string) string {
+	base = sanitizeRoleDirName(base)
+	cand := base
+	i := 2
+	for {
+		p := filepath.Join(root, cand)
+		if p == exclude {
+			return p
+		}
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			return p
+		}
+		cand = fmt.Sprintf("%s (%d)", base, i)
+		i++
+	}
+}
+
 // replaceRoleImage 替换某个已有督休专员的立绘：把新图复制成 figure<ext> 与 preview<ext>，
 // 并回写 role.json 的 image / preview 字段（名字 / 启停 / 几何 / 台词等读取侧字段原样保留）。
 //
@@ -116,6 +156,11 @@ func writeRoleFile(root, key string, cfg RoleFile) error {
 // 返回是否成功（key 非法 / 督休专员不存在 / 源文件不合法或过大 / 写入失败都会返回 false）。
 func replaceRoleImage(root, key, src string) bool {
 	if !validRoleKey(key) {
+		return false
+	}
+	dir, ok := resolveRoleDir(root, key)
+	if !ok {
+		log.Printf("[role] 督休专员不存在或 role.json 读不出来：%s", key)
 		return false
 	}
 	base, ok := readRoleFile(root, key)
@@ -141,7 +186,6 @@ func replaceRoleImage(root, key, src string) bool {
 		log.Printf("[role] 读取源立绘失败 %s: %v", src, err)
 		return false
 	}
-	dir := filepath.Join(root, key)
 	// 清掉旧的 figure.* / preview.*（扩展名可能跟新图不同，残留会占着目录）
 	for _, pat := range []string{"figure.*", "preview.*"} {
 		if matches, _ := filepath.Glob(filepath.Join(dir, pat)); matches != nil {
@@ -170,12 +214,17 @@ func replaceRoleImage(root, key, src string) bool {
 	return true
 }
 
-// removeRoleDir 删除整个督休专员子目录（督休专员 = 目录，删督休专员就是删目录）
+// removeRoleDir 删除整个督休专员子目录（督休专员 = 目录，删督休专员就是删目录）。
+// 目录名是专员名称、与 key 解耦，必须按 key 反查到真实目录再删。
 func removeRoleDir(root, key string) bool {
 	if !validRoleKey(key) {
 		return false
 	}
-	if err := os.RemoveAll(filepath.Join(root, key)); err != nil {
+	dir, ok := resolveRoleDir(root, key)
+	if !ok {
+		return false
+	}
+	if err := os.RemoveAll(dir); err != nil {
 		return false
 	}
 	return true
