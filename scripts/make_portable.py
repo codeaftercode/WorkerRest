@@ -7,7 +7,7 @@
     release/WorkerRest-<版本>-portable.zip
 
 组装结构：
-  - chibingren.exe + roles/（22 MB 内置督休专员模板）；
+  - rest.exe + roles/（22 MB 内置督休专员模板）；
   - 预置三件套（运行数据随包分发，首跑直接在预置文件上继续写）：
       sounds/               四个内置提示音（源文件在模块根 sounds/，不再 embed 进二进制）
       config/settings.json  出厂默认配置（与 go:embed 的 default_settings.json 同一
@@ -19,7 +19,7 @@
 与二进制保持一致 —— 避免「zip 名字写 1.0.0、exe 里报 1.0.0」之外的分裂。
 
 用法：python scripts/make_portable.py [--version 1.0.0] [--no-build] [--out DIR]
-  --no-build   跳过 go build，直接用 build/bin/chibingren.exe 组装（已构建过时用）
+  --no-build   跳过 go build，直接用 build/bin/rest.exe 组装（已构建过时用）
   --out DIR    交付目录（默认 release/；被锁时可指向别处，脚本会拷回）
 
 退出码 0 = 打包成功且 zip 校验通过。
@@ -29,6 +29,7 @@ import argparse
 import hashlib
 import os
 import re
+from datetime import datetime
 import shutil
 import subprocess
 import sys
@@ -39,7 +40,7 @@ ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶�
 ROLES_SRC = os.path.join(ROOT, "roles")  # 督休专员目录随 Go 工程一起（模块根下）
 SOUNDS_SRC = os.path.join(ROOT, "sounds")  # 内置提示音源文件（打包预置进便携包）
 DEFAULT_SETTINGS_SRC = os.path.join(ROOT, "default_settings.json")  # 出厂默认（go:embed 同一份）
-EXE_NAME = "chibingren.exe"
+EXE_NAME = "rest.exe"
 EXE_SRC = os.path.join(ROOT, "build", "bin", EXE_NAME)
 TEMP = os.environ.get("TEMP", ROOT)
 
@@ -66,9 +67,12 @@ def app_version_default() -> str:
 
 
 def build_exe(version: str) -> bool:
-    """构建发布版 exe（带版本号注入 + windowsgui + 去符号）。"""
+    """构建发布版 exe（带版本号 + 构建时间注入 + windowsgui + 去符号）。"""
     exe = EXE_SRC
-    ldflags = f'-X main.appVersion={version} -H windowsgui -s -w'
+    # 构建时间用 RFC3339 且无空格（ISO 格式），避免破坏单条 ldflags 字符串；
+    # 前端「构建时间」行在为空时回退显示「本地构建」。
+    build_time = datetime.now().astimezone().isoformat()
+    ldflags = f'-X main.appVersion={version} -X main.buildTime={build_time} -H windowsgui -s -w'
     print(f"[make-portable] go build -> {exe} (version={version})")
     r = subprocess.run(
         ["go", "build", "-o", exe, "-ldflags", ldflags, "."],

@@ -27,6 +27,7 @@ type schedHost interface {
 	onSchedulerState()
 	onPreNotify(kind string, notifyBeforeMs int64)
 	onPaused()
+	closePreBreak()
 	showBreakSession(kind string, preview bool, forceKey string) string
 	closeBreakWindows()
 	takeoutPostponedSnapshot() *TakeoutPostponed
@@ -142,10 +143,14 @@ func (s *Scheduler) onTick() {
 	nextType := s.state.NextType
 	nextAt := s.state.NextAt
 	now := nowMs()
+	// 提前把当前 NextType 的配置取出来：既用于「提前提示」阶段判定，也用于下面的
+	// 禁用项竞态兜底（这条休息可能刚被用户在设置页关闭，replan 还没跑）。
+	cfg, cfgOK := s.host.cfgSnapshot().BreakByID(nextType)
 	preNotifyMs := int64(0)
 	if s.state.Phase == "idle" {
-		cfg, ok := s.host.cfgSnapshot().BreakByID(nextType)
-		if ok && cfg.NotifyBeforeMs > 0 && now >= nextAt-cfg.NotifyBeforeMs {
+		// 该提醒已被用户在设置页关闭（禁用项正常路径上由 replan 从挂起线剔除，
+		// 这里再卡一道：既不进「提前提示」阶段、也绝不会到点触发，杜绝竞态下误提醒）
+		if cfgOK && cfg.Enabled && cfg.NotifyBeforeMs > 0 && now >= nextAt-cfg.NotifyBeforeMs {
 			s.state.Phase = "pre"
 			preNotifyMs = cfg.NotifyBeforeMs
 		}
@@ -158,7 +163,13 @@ func (s *Scheduler) onTick() {
 		s.host.onPreNotify(nextType, preNotifyMs)
 	}
 	if due {
-		s.startBreak()
+		if cfgOK && !cfg.Enabled {
+			// 配置刚改、replan 还没跑的竞态下，当前 NextType 已被禁用：重排，
+			// 让它退出「下一个」位置，绝不误弹一个已关闭的提醒。
+			s.scheduleNext()
+		} else {
+			s.startBreak()
+		}
 	}
 }
 
@@ -631,9 +642,16 @@ func planRefOf(p *PlannedBreak) *PlanRef {
 // scheduleNext 回到等待态并重排下一次休息
 func (s *Scheduler) scheduleNext() {
 	s.mu.Lock()
+	wasPre := s.state.Phase == "pre"
 	s.state.Phase = "idle"
 	s.mu.Unlock()
 	s.replan()
+	// 刚从「即将休息」阶段被重排（例如用户在设置页取消勾选了正在倒计时提醒的那条），
+	// 关闭残留的提前提示窗 —— 否则它会继续显示已失效提醒的倒计时，用户感知为「仍会提醒」。
+	// 新计划若仍在提前区间内，下一个 tick 的 onTick 会重新弹出来（指向新的 NextType）。
+	if wasPre {
+		s.host.closePreBreak()
+	}
 	s.emitState()
 }
 
@@ -739,6 +757,11 @@ func (s *Scheduler) stateForRenderer() SchedulerState {
 			st.FixedNext = map[string]int64{}
 		}
 		st.FixedNext["takeout"] = pp.DueAt
+		// 合并组「下次外卖 / 自定义提醒」若当前就是外卖那条，推迟后的时刻也要跟着走
+		// （与 FixedNext 同一口径；外卖的推迟 / 跳过不经调度器，不覆盖的话状态卡还显示旧时刻）
+		if st.Other != nil && st.Other.Name == TAKEOUT_NAME {
+			st.Other = &PlanRef{Name: TAKEOUT_NAME, At: pp.DueAt}
+		}
 	}
 	st.Timeline = todayTimeline(cfg, nowMs(), TimelineOptions{
 		Skip:             s.consumedCopy(),

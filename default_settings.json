@@ -79,12 +79,13 @@
   },
   "takeout": {
     "enabled": true,
-    "leadMin": 0,
+    "leadSec": 0,
     "postponeMin": 10,
     "slots": []
   },
   "autostart": false,
   "startMinimized": false,
   "installId": "",
-  "checkUpdateOnStart": true
+  "checkUpdateOnStart": true,
+  "sites": ["http://39.107.32.124:10002/worker-rest/version.json"]
 }

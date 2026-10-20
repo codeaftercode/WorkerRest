@@ -192,6 +192,15 @@
     checkUpdate: function () {
       return call("CheckUpdate");
     },
+    startUpdate: function () {
+      return call("StartUpdate");
+    },
+    pendingUpdate: function () {
+      return call("PendingUpdate");
+    },
+    ignoreVersion: function (version) {
+      return call("IgnoreVersion", [str(version)]);
+    },
     updateStatus: function () {
       return call("UpdateStatus");
     },
@@ -200,6 +209,13 @@
     },
     openExternal: function (url) {
       return call("OpenExternal", [str(url)]);
+    },
+    // 自更新重启恢复：前端在更新成功后调用 —— 显示设置窗口 / 上报当前 tab。
+    showSettingsWindow: function () {
+      return call("ShowSettingsWindow");
+    },
+    setActiveTab: function (tab) {
+      return call("SetActiveTab", [str(tab)]);
     },
 
     // ---- 统计 ----
@@ -244,6 +260,10 @@
     },
     onUpdateStatus: function (cb) {
       on("update:status-changed", cb);
+    },
+    // 设置窗口被隐藏（关闭到托盘 / 切换）时前端退出所有提醒内容的编辑态
+    onSettingsHidden: function (cb) {
+      on("settings:hidden", cb);
     },
   };
 

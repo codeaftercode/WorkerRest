@@ -56,7 +56,7 @@ type BreakInfo struct {
 }
 
 // TakeoutInfo 外卖提醒会话（与 历史源码/types.ts 的 TakeoutSessionInfo 逐字对齐）。
-// 渲染层 takeout.ts 读 id / at / hour / minute / firedAt / preview / meal / leadMin /
+// 渲染层 takeout.ts 读 id / at / hour / minute / firedAt / preview / meal / leadSec /
 // postponeMin / postponedCount / message / appearance / supervisor / redPacketData；
 // slot 额外保留给主进程「推迟」记账（takeout:action 按 cur.slot 重弹），渲染层不读也无妨。
 type TakeoutInfo struct {
@@ -70,8 +70,8 @@ type TakeoutInfo struct {
 	FiredAt int64  `json:"firedAt"`
 	Preview bool   `json:"preview"`
 	Meal    string `json:"meal"` // 餐段文案：早餐 / 午餐 / 下午茶 / 晚餐 / 夜宵
-	// LeadMin 提前通知分钟数（生成会话时的配置快照）：>0 时窗口显示「还差几分钟」
-	LeadMin int `json:"leadMin"`
+	// LeadSec 提前通知秒数（生成会话时的配置快照）：只用于诊断，真实窗口始终按原定时刻弹出
+	LeadSec int `json:"leadSec"`
 	// PostponeMin 可推迟的分钟数（「推迟」按钮文案与主进程推迟时长共用）
 	PostponeMin int `json:"postponeMin"`
 	// PostponedCount 本次是第几次推迟：0=到点正常弹出，>0 显示「已推迟 N 次」

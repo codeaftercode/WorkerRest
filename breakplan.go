@@ -67,9 +67,12 @@ type TimelineItem struct {
 
 // TakeoutPostponed 外卖的待推迟提醒（窗口上点「推迟」时由外卖模块记账）
 type TakeoutPostponed struct {
-	Slot  TimeSlot `json:"slot"`
-	DueAt int64    `json:"dueAt"`
-	Count int      `json:"count"`
+	Slot     TimeSlot `json:"slot"`
+	DueAt    int64    `json:"dueAt"`
+	Count    int      `json:"count"`
+	// PreFired 推迟后的提前通知是否已弹过：leadSec>0 时，推迟线在 DueAt 前 leadMs
+	// 要再弹一次预通知（与原始提前通知线同口径），用这个标记去重，避免每秒 tick 重复弹。
+	PreFired bool `json:"preFired"`
 }
 
 // SchedulerState 调度器状态快照。
@@ -185,8 +188,9 @@ func (s *Settings) IdlePauseMin() int {
 // DndPause 系统勿扰时暂停
 func (s *Settings) DndPause() bool { return s.Flag(true, "dndPause") }
 
-// TakeoutLeadMin 外卖「提前通知」分钟数（0=到点提醒）
-func (s *Settings) TakeoutLeadMin() int { return clampInt(s.Int(0, "takeout", "leadMin"), 0, 120) }
+// TakeoutLeadSec 外卖「提前通知」秒数（0=到点提醒；提前通知只是先弹一个小窗提示，
+// 真正的外卖提醒窗口仍在「原定时刻」弹出，不会因提前通知而提前）
+func (s *Settings) TakeoutLeadSec() int { return clampInt(s.Int(0, "takeout", "leadSec"), 0, 300) }
 
 // TakeoutPostponeMin 外卖「可推迟」分钟数（0=不显示「推迟」按钮）
 func (s *Settings) TakeoutPostponeMin() int {
@@ -673,9 +677,9 @@ func describePlan(p *PlannedBreak) string {
 	return p.Name + "（" + src + "）" + time.UnixMilli(p.At).Format("15:04")
 }
 
-// takeoutLine 外卖提醒的下一次触发时刻（含「提前通知」——提醒时刻 = 条目时刻 - 提前量）。
-// 外卖不进休息调度（窗口独立、永不自动收窗），这里只为设置页状态卡提供倒计时。
-// 固定时刻每天循环，查今天与明天两天足够覆盖「下一个还没到的时刻」。
+// takeoutLine 外卖提醒的「原定时刻」（下一次条目的时刻，不含提前通知——提前通知只是
+// 先弹个小窗，真实提醒窗口仍在原定时刻弹出）。外卖不进休息调度（窗口独立、永不自动收窗），
+// 这里只为设置页状态卡提供倒计时。固定时刻每天循环，查今天与明天两天足够覆盖「下一个还没到的时刻」。
 func takeoutLine(s *Settings, now int64) (PlannedBreak, bool) {
 	if !s.TakeoutEnabled() {
 		return PlannedBreak{}, false
@@ -684,13 +688,12 @@ func takeoutLine(s *Settings, now int64) (PlannedBreak, bool) {
 	if len(slots) == 0 {
 		return PlannedBreak{}, false
 	}
-	leadMs := int64(s.TakeoutLeadMin()) * 60_000
 	best := int64(0)
 	found := false
 	for d := 0; d < 2; d++ {
 		day := now + int64(d)*86_400_000
 		for _, sl := range slots {
-			at := slotAlertAt(sl, leadMs, day)
+			at := slotAlertAt(sl, 0, day)
 			if at > now && (!found || at < best) {
 				best, found = at, true
 			}
@@ -901,10 +904,26 @@ func todayTimeline(s *Settings, now int64, opts TimelineOptions) []TimelineItem 
 			})
 			from = hit.At + 1
 		}
+		// 被推迟的固定时刻线：上面的循环把「原时刻那一跳」跳过了，但没把「推迟后的时刻」
+		// 补回来——否则推迟后该条会从今日时间线消失。这里把 shifts 里覆盖过的时刻补成
+		// 这一身份下一次实际触发（若该时刻已作为后续 slot 出现则不再重复）。
+		if shift, ok := opts.Shifts[e.ID]; ok && shift > now {
+			dup := false
+			for _, it := range out {
+				if it.Type == e.ID && it.At == shift {
+					dup = true
+					break
+				}
+			}
+			if !dup {
+				out = append(out, TimelineItem{
+					Key: occurrenceKey(e.ID, shift), Type: e.ID, Name: e.Name, At: shift, Source: "fixed",
+				})
+			}
+		}
 	}
-	// ② 外卖：展开当天剩余条目（弹出时刻 = 条目时刻 - 提前量）
+	// ② 外卖：展开当天剩余条目（原定时刻；提前通知只弹小窗，真实窗口仍按原定时刻弹出）
 	if s.TakeoutEnabled() {
-		leadMs := int64(s.TakeoutLeadMin()) * 60_000
 		day := time.UnixMilli(now)
 		for _, sl := range s.TakeoutSlots() {
 			if !sl.Enabled {
@@ -913,11 +932,11 @@ func todayTimeline(s *Settings, now int64, opts TimelineOptions) []TimelineItem 
 			if sl.Repeat == "weekly" && !intIn(sl.Days, isoWeekday(day)) {
 				continue
 			}
-			at := slotAlertAt(sl, leadMs, now)
+			at := slotAlertAt(sl, 0, now)
 			if at <= now {
 				continue
 			}
-			if opts.TakeoutFired[slotFireKey(sl, now, leadMs)] {
+			if opts.TakeoutFired[occurrenceKey("takeout", at)] {
 				continue
 			}
 			out = append(out, TimelineItem{

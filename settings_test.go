@@ -35,7 +35,7 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 		"sound": map[string]any{
 			"mode": "bogus", "shortStart": "old_start.wav", "longEnd": "old_end.wav",
 		},
-		"takeout":  map[string]any{"leadMin": 999.0, "postponeMin": 999.0},
+		"takeout":  map[string]any{"leadSec": 999.0, "postponeMin": 999.0},
 		"appPause": nil,
 		"workTime": map[string]any{"start": "09:00"},
 		"customBreaks": []any{
@@ -121,10 +121,10 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 		t.Errorf("应种入 %d 条内置提示音，得到 %d", len(builtinMusic), len(music))
 	}
 
-	// takeout：leadMin 0–120、postponeMin 0–120（0 = 不显示「推迟」按钮）
+	// takeout：leadSec 0–300、postponeMin 0–120（0 = 不显示「推迟」按钮）
 	tk := raw["takeout"].(map[string]any)
-	if tk["leadMin"] != float64(120) || tk["postponeMin"] != float64(120) {
-		t.Errorf("外卖分钟数应夹到 120，得到 %v / %v", tk["leadMin"], tk["postponeMin"])
+	if tk["leadSec"] != float64(300) || tk["postponeMin"] != float64(120) {
+		t.Errorf("外卖提前通知秒数应夹到 300，得到 %v / %v", tk["leadSec"], tk["postponeMin"])
 	}
 
 	// appPause：null ⇒ 空配置 + 种入 8 条内置会议软件
@@ -259,4 +259,75 @@ func assertAbsent(t *testing.T, m map[string]any, keys ...string) {
 
 func hasPrefix(s, p string) bool {
 	return len(s) >= len(p) && s[:len(p)] == p
+}
+
+// TestUpdateSites 验证更新源地址过滤：只保留 http/https，丢空串/非法 scheme/非数组。
+func TestUpdateSites(t *testing.T) {
+	cases := []struct {
+		raw  map[string]any
+		want []string
+	}{
+		{map[string]any{}, nil},
+		{map[string]any{"sites": "not-an-array"}, nil},
+		{
+			map[string]any{"sites": []any{
+				"http://a/version.json",
+				"https://b/version.json",
+				"ftp://c/x", // 非法 scheme
+				"",                  // 空串
+				"  http://d/x.json", // 带空白仍保留（调用方 trim 后下发）
+			}},
+			[]string{"http://a/version.json", "https://b/version.json", "http://d/x.json"},
+		},
+	}
+	for _, c := range cases {
+		s := &Settings{raw: c.raw, path: ""}
+		got := s.UpdateSites()
+		if len(got) != len(c.want) {
+			t.Errorf("UpdateSites(%v) 长度=%d，期望 %d（%v）", c.raw, len(got), len(c.want), got)
+			continue
+		}
+		for i := range got {
+			if got[i] != c.want[i] {
+				t.Errorf("UpdateSites(%v)[%d]=%q，期望 %q", c.raw, i, got[i], c.want[i])
+			}
+		}
+	}
+}
+
+// TestSetSitesReplacesLocal 验证远程 version.json 下发的 sites 是「整体替换」本地 sites，
+// 而不是合并追加；且落盘形状为 []any 字符串，UpdateSites 能原样读回。
+func TestSetSitesReplacesLocal(t *testing.T) {
+	// 本地原本有一组 sites
+	s := &Settings{
+		raw: map[string]any{
+			"sites": []any{"http://old-1/version.json", "http://old-2/version.json"},
+		},
+		path: "",
+	}
+	// 远程下发一组新的 sites（含空白，应原样写入、由 UpdateSites 在读取时 trim）
+	s.SetSites([]string{"https://new-1/version.json", "  https://new-2/version.json  "})
+
+	stored, ok := s.raw["sites"].([]any)
+	if !ok {
+		t.Fatalf("sites 应以 []any 存储，实际 %T", s.raw["sites"])
+	}
+	if len(stored) != 2 {
+		t.Fatalf("sites 应被整体替换为 2 项，实际 %d 项", len(stored))
+	}
+	if _, ok := stored[0].(string); !ok {
+		t.Errorf("sites 元素应为字符串，实际 %T", stored[0])
+	}
+
+	// 读取回来：旧的两项应彻底消失，新的两项（trim 后）生效
+	got := s.UpdateSites()
+	want := []string{"https://new-1/version.json", "https://new-2/version.json"}
+	if len(got) != len(want) {
+		t.Fatalf("覆盖后 UpdateSites 长度=%d，期望 %d（%v）", len(got), len(want), got)
+	}
+	for i := range got {
+		if got[i] != want[i] {
+			t.Errorf("UpdateSites()[%d]=%q，期望 %q", i, got[i], want[i])
+		}
+	}
 }

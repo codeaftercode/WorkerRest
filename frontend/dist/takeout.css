@@ -96,25 +96,21 @@ html, body {
   border: 1px dashed rgba(255, 190, 150, 0.6);
   font-size: 17px;
 }
-/* 红包虚线框上方的「外卖提醒」胶囊标签：浮在框外顶部（absolute 不占框内布局），
-   与红色虚线框构成「标题 + 红包」的整体视觉 */
+/* 「外卖提醒」标题：浮在红包框外顶部（absolute 不占框内布局），
+   文字样式与长/短休息窗口倒计时上方的休息名称（break.css .remind-name）保持一致：
+   纯文字、无胶囊背景、同字号/字重/字距/文字阴影 */
 .rp-title {
   position: absolute;
   bottom: 100%;
   left: 50%;
   transform: translateX(-50%);
   margin-bottom: 10px;
-  padding: 5px 16px;
-  font-size: 16px;
+  font-size: clamp(20px, 3.4vh, 30px);
   font-weight: 700;
   letter-spacing: 0.08em;
-  color: #fff;
-  background: rgba(196, 40, 40, 0.62);
-  border: 1px solid rgba(255, 190, 150, 0.75);
-  border-radius: 999px;
   white-space: nowrap;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.5);
-  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.35);
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.45);
+  opacity: 0.96;
 }
 .rp-icon { font-size: 20px; }
 .rp-text { color: #ffe7d6; }

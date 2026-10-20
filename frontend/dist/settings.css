@@ -158,7 +158,6 @@ body {
 #content { flex: 1; overflow-y: auto; padding: 26px 32px 60px; }
 .tab { display: none; }
 .tab.active { display: block; }
-.tab h2 { font-size: 20px; margin-bottom: 18px; }
 /* 内容区封顶并居中：默认窗口（980 宽）下可用宽度只有 676px，小于此值，所以默认尺寸下
    完全不受影响；窗口宽过约 1140px 才开始封顶，标签与控件的距离不再随窗口无限增长。
    统计报表页是数据表（10 列、不换行）不是配置项，单独豁免，见下方 #tab-stats。 */
@@ -177,6 +176,69 @@ body {
    margin-left:auto 顶到行尾。不用 space-between —— 那会让三个子元素均分，标题被挤到中间。 */
 .card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
 .card-head h3 { margin-bottom: 0; }
+
+/* 关于页：在保持卡片满宽（与其他页面一致）的前提下，徽标 / 说明块 / 软按钮沿用 v2 视觉 */
+/* 卡片头：标题 + 副标题在左，徽标推到右侧（覆盖全局 .card-head 的默认对齐） */
+#tab-about .card-head { justify-content: space-between; }
+#tab-about .card-head p { margin-top: 3px; font-size: 11.5px; color: var(--text-2); }
+
+/* 状态徽标：最新(绿) / 有新版本(琥珀) / 失败(红) / 本地(蓝) */
+#tab-about .pill { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 10px; border-radius: 999px; font-size: 11.5px; font-weight: 600; white-space: nowrap; flex: none; }
+#tab-about .pill i { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+#tab-about .pill.ok { background: rgba(28, 194, 127, .15); color: #0f9d6b; }
+#tab-about .pill.ok i { background: #1cc27f; box-shadow: 0 0 0 3px rgba(28, 194, 127, .22); }
+#tab-about .pill.warn { background: rgba(245, 166, 35, .18); color: #b9760a; }
+#tab-about .pill.warn i { background: #f5a623; box-shadow: 0 0 0 3px rgba(245, 166, 35, .24); }
+#tab-about .pill.err { background: var(--danger-weak); color: var(--danger); }
+#tab-about .pill.err i { background: var(--danger); box-shadow: 0 0 0 3px rgba(229, 72, 77, .22); }
+#tab-about .pill.local { background: rgba(91, 127, 232, .15); color: #4a6bd6; }
+#tab-about .pill.local i { background: #5b7fe8; box-shadow: 0 0 0 3px rgba(91, 127, 232, .18); }
+
+/* 键值行 */
+#tab-about .rows { padding: 0; }
+#tab-about .rows .row { display: flex; align-items: center; justify-content: space-between; min-height: 36px; font-size: 12.5px; }
+#tab-about .rows .row + .row { border-top: 1px dashed var(--border); }
+#tab-about .rows .k { color: var(--text-2); }
+#tab-about .rows .v { color: var(--text); font-weight: 520; }
+#tab-about .rows .v.strong { font-size: 14px; font-weight: 650; }
+#tab-about .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: -.2px; }
+
+/* 底部操作区：与上方键值行同一套虚线分隔 + 同一行高，整张卡片各行间距一致 */
+#tab-about .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 0; padding-top: 0; min-height: 36px; border-bottom: 1px dashed var(--border); }
+
+/* 自定义勾选框（主题化，替代原生复选框，保持 v2 观感） */
+#tab-about .check { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; position: relative; }
+#tab-about .check input { position: absolute; opacity: 0; pointer-events: none; }
+#tab-about .check .box { width: 16px; height: 16px; flex: none; border: 1.5px solid var(--border); border-radius: 5px; background: var(--panel); display: grid; place-items: center; transition: background .15s, border-color .15s, box-shadow .15s; }
+#tab-about .check .box svg { opacity: 0; transform: scale(.6); transition: opacity .15s, transform .15s; }
+#tab-about .check input:checked + .box { background: var(--accent); border-color: var(--accent); box-shadow: 0 2px 6px -1px color-mix(in srgb, var(--accent) 55%, transparent); }
+#tab-about .check input:checked + .box svg { opacity: 1; transform: scale(1); }
+#tab-about .check input:focus-visible + .box { box-shadow: 0 0 0 3px var(--accent-weak); }
+#tab-about .check .txt { font-size: 13px; color: var(--text); }
+
+/* 数据与隐私说明块 */
+#tab-about .note { margin: 14px 0 0; padding: 11px 13px; background: var(--accent-weak); border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border)); border-radius: 10px; display: flex; flex-direction: column; gap: 9px; }
+#tab-about .note-row { display: flex; align-items: flex-start; gap: 9px; font-size: 12px; line-height: 1.5; color: var(--text-2); }
+#tab-about .note-row svg { flex: none; margin-top: 1px; color: var(--accent); }
+#tab-about .note-row b { color: var(--text); font-weight: 600; }
+
+/* 数据管理按钮行（软按钮：描边风格，区别于主/次按钮） */
+#tab-about .data-actions { display: flex; gap: 10px; margin-top: 14px; }
+#tab-about .btn-soft { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 13px; border-radius: 8px; font-family: inherit; font-size: 12.5px; font-weight: 550; cursor: pointer; transition: background .15s, border-color .15s, color .15s, transform .08s; background: var(--panel); border: 1px solid var(--border); color: var(--text); }
+#tab-about .btn-soft:hover { background: var(--bg); border-color: var(--accent); color: var(--accent); }
+#tab-about .btn-soft:active { transform: translateY(1px); }
+#tab-about .btn-soft svg { display: block; }
+#tab-about .btn-soft.btn-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
+#tab-about .btn-soft.btn-danger:hover { background: var(--danger-weak); border-color: var(--danger); color: var(--danger); }
+
+/* 底栏：版权 + 退出软件 */
+#tab-about .bottom-bar { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; }
+#tab-about .copyright { font-size: 11px; color: var(--text-2); letter-spacing: .2px; }
+#tab-about .btn-quit { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 14px; border-radius: 8px; font-family: inherit; font-size: 12.5px; font-weight: 550; cursor: pointer; background: var(--panel); border: 1px solid color-mix(in srgb, var(--danger) 45%, var(--border)); color: var(--danger); transition: background .15s, border-color .15s, color .15s, transform .08s; }
+#tab-about .btn-quit:hover { background: var(--danger-weak); border-color: var(--danger); color: var(--danger); }
+#tab-about .btn-quit:active { transform: translateY(1px); }
+#tab-about .btn-quit svg { display: block; }
+
 
 /* 配置行：全站只保留三种形态，卡片里不再有「半列网格 + 整行」混排。
    改版式前这里是单个 .row 承担四种语义（勾选/字段/按钮/说明），唯一的对齐规则是
@@ -255,9 +317,15 @@ select:focus {
 }
 input[type='color'] { width: 60px; height: 32px; border: 1px solid var(--border); border-radius: 8px; background: var(--panel); padding: 2px; }
 input[type='range'] { width: 200px; accent-color: var(--accent); }
-/* 滑条收窄特例：透明度滑条与同行数字框对齐、音量滑条与播放方式下拉（180px）对齐 */
-#ap-opacity { width: 180px; }
-#snd-volume { width: 180px; }
+/* 滑条 + 数值框：数值框定宽贴在滑块右侧，滑块占满剩余；整体定宽 180px，
+   与同列的数字 / 文本输入框（窗口宽度等）完全同宽对齐 */
+.slider-row { display: flex; align-items: center; gap: 6px; width: 180px; }
+.slider-row input[type='range'] { flex: 1 1 auto; width: auto; min-width: 0; }
+/* 数值：纯文本、无边框无胶囊，按内容自适应宽度，把空间让给滑块使其更长 */
+.slider-val {
+  flex: 0 0 auto; width: auto; min-width: 0;
+  text-align: left; font-size: 13px; color: var(--text);
+}
 input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width: 16px; height: 16px; }
 /* 勾选项行：勾选框一律在文字左侧、与文字紧贴（gap 8px）。
    注意不要改成"文字在左、勾选框被 space-between 推到行尾"的写法——那会让框与文字
@@ -313,7 +381,7 @@ details.advanced > summary {
 }
 .msg-toggle:hover,
 details.advanced > summary:hover { background: var(--accent-weak); }
-/* 音乐列表标题行：折叠开关占满剩余宽度，右侧「＋」导入按钮同高同悬停态 */
+/* 提示音标题行：折叠开关占满剩余宽度，右侧「＋」导入按钮同高同悬停态 */
 .snd-music-head { display: flex; align-items: stretch; }
 .snd-music-head .msg-toggle { flex: 1; }
 .snd-music-add {
@@ -349,7 +417,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .adv-body .subhead { margin-top: 4px; }
 /* 提醒时间面板：列表贴头部一点（tk-list 自带的下外边距在面板里显松） */
 .slot-body .tk-list { margin: 10px 0 2px; }
-/* 提醒内容 / 提醒时间面板标题行：折叠开关占满剩余宽度，右侧「＋」按钮（与音乐列表标题行同一套） */
+/* 提醒内容 / 提醒时间面板标题行：折叠开关占满剩余宽度，右侧「＋」按钮（与提示音标题行同一套） */
 .msg-head,
 .slot-head { display: flex; align-items: stretch; }
 .msg-head .msg-toggle,
@@ -363,7 +431,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .msg-add:hover,
 .slot-add:hover { background: var(--accent-weak); color: var(--text); }
 
-/* 立绘列表折叠面板：复用 .fold-panel 折叠外观与 .msg-head/.msg-toggle 头部行。
+/* 候选专员折叠面板：复用 .fold-panel 折叠外观与 .msg-head/.msg-toggle 头部行。
    展开后列表体固定高度（默认 = 两行磁贴，由脚本按实测行高写入），溢出出纵向滚动条；
    底部拖柄上下拖动调高度（记 localStorage，下次打开保持）。折叠时体与拖柄一并隐藏。 */
 .gallery-body {
@@ -401,6 +469,14 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .msg-item.drop-target { border-color: var(--accent); }
 .msg-item input[type='text'] { flex: 1; width: auto; }
 .msg-item.disabled { opacity: 0.5; }
+/* 整行可点击勾选（非编辑态）；编辑态恢复默认光标，文本框用文本光标 */
+.msg-item { cursor: pointer; }
+.msg-item.editing { cursor: default; }
+/* 非编辑态：文本框只读，去边框/背景，像普通文本一样可点 */
+.msg-item input.msg-text[readonly] { border-color: transparent; background: transparent; cursor: pointer; padding-left: 0; }
+.msg-item input.msg-text[readonly]:focus { outline: none; }
+/* 编辑态：文本框可编辑、高亮边框 */
+.msg-item.editing input.msg-text { cursor: text; border-color: var(--accent); background: var(--bg); }
 .msg-empty { color: var(--text-2); font-size: 13px; padding: 12px 0; text-align: center; }
 .inline { display: flex; gap: 8px; align-items: center; }
 /* 只读的文件路径显示（立绘） */
@@ -897,14 +973,16 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
 }
 .tk-item.disabled { opacity: 0.5; }
-/* 音乐列表行的拖拽态（与提醒内容列表同一套观感） */
+/* 提示音行的拖拽态（与提醒内容列表同一套观感） */
 .tk-item.dragging { opacity: 0.45; border-style: dashed; }
 .tk-item.drop-target { border-color: var(--accent); }
-/* 声音卡音乐列表：行与行之间留一条窄缝（比提醒内容列表的 8px 略小，不显松散） */
+/* 声音卡提示音：行与行之间留一条窄缝（比提醒内容列表的 8px 略小，不显松散） */
 #snd-music-list { display: flex; flex-direction: column; gap: 5px; }
+/* 整行可点击勾选/取消，光标提示可点 */
+#snd-music-list .snd-row { cursor: pointer; }
 /* 播放方式：单一图标按钮（点击循环切换 单曲 / 随机 / 顺序），与「＋」并排紧贴于
-   「音乐列表」标题行右侧，且紧贴标题、与左侧不再留空隙。两者都不带外框、直角、
-   透明底，hover 浅底，与标题栏的「▸音乐列表」「＋」按钮同一套观感。图标按钮与
+   「提示音」标题行右侧，且紧贴标题、与左侧不再留空隙。两者都不带外框、直角、
+   透明底，hover 浅底，与标题栏的「▸提示音」「＋」按钮同一套观感。图标按钮与
    「＋」等宽（同 padding:0 14px），左右各一条 1px 竖线与「＋」明显区分。图标区分
    三种模式：单曲循环=带「1」的循环箭头、随机播放=交叉箭头、顺序循环=循环箭头；
    常驻只显示图标，悬浮由浏览器原生 title 显示文字名称。 */
@@ -924,7 +1002,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   fill: none; stroke: currentColor; stroke-width: 1.9;
   stroke-linecap: round; stroke-linejoin: round;
 }
-/* 声音卡音乐列表：名称占满中间剩余宽度，过长省略 */
+/* 声音卡提示音：名称占满中间剩余宽度，过长省略 */
 .snd-music-name {
   flex: 1 1 0; min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -1026,6 +1104,22 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   word-break: break-all; max-height: 132px; overflow-y: auto;
 }
 .cf-detail:empty { display: none; }
+
+/* 更新弹窗：版本更新内容列表 */
+.up-changes {
+  margin: 4px 0 2px; padding: 10px 12px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  max-height: 220px; overflow-y: auto;
+}
+.up-changes:empty { display: none; }
+.up-changes .up-item {
+  display: flex; gap: 8px; align-items: flex-start;
+  font-size: 13px; line-height: 1.7; color: var(--text);
+}
+.up-changes .up-item::before {
+  content: ""; flex: none; width: 6px; height: 6px; margin-top: 8px;
+  border-radius: 50%; background: var(--accent);
+}
 
 #toast {
   position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);

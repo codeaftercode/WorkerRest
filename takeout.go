@@ -105,7 +105,7 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) 
 		FiredAt:        now.UnixMilli(),
 		Preview:        preview,
 		Meal:           takeoutMealLabel(slot.Hour),
-		LeadMin:        cfg.TakeoutLeadMin(),
+		LeadSec:        cfg.TakeoutLeadSec(),
 		PostponeMin:    cfg.TakeoutPostponeMin(),
 		PostponedCount: postponedCount,
 		Appearance:     cfg.AppearanceView(),
@@ -134,8 +134,8 @@ func takeoutID() string {
 
 // fireTakeout 弹出一次外卖提醒（固定时刻线、推迟线两条触发路径共用）
 func (a *App) fireTakeout(slot TimeSlot, postponedCount int) {
-	log.Printf("[takeout] 触发提醒 %02d:%02d lead=%d分 postponed=%d次",
-		slot.Hour, slot.Minute, a.cfgSnapshot().TakeoutLeadMin(), postponedCount)
+	log.Printf("[takeout] 触发提醒 %02d:%02d lead=%d秒 postponed=%d次",
+		slot.Hour, slot.Minute, a.cfgSnapshot().TakeoutLeadSec(), postponedCount)
 	a.showTakeoutWindows(slot, false, postponedCount)
 	a.playConfiguredSound()
 }
@@ -144,15 +144,20 @@ func (a *App) fireTakeout(slot TimeSlot, postponedCount int) {
 // 就触发」。每秒跑一次（按分钟匹配），因此就算某次 tick 被阻塞也不会漏掉整分钟的窗口。
 // 暂停提醒期间不弹，恢复后也不补弹——时刻已经过去，补弹只是打扰。
 //
-// 两条触发线，谁先到谁弹：
+// 三条触发线，谁先到谁弹：
 //
 //	① 推迟线：用户刚点了「推迟」，到点就重新弹一次
-//	② 固定时刻线：到条目时刻（再减去「提前通知」的分钟数）就弹
+//	② 固定时刻线（真窗）：到「条目原定时刻」就弹（提前通知不改真实弹出时刻，
+//	   只是先在 原定时刻−提前量 弹一个预通知小窗，见 showTakeoutPreNotify）
+//	③ 提前通知线：在原定时刻−提前量 与 原定时刻 之间弹一次预通知小窗（提前量=0 不弹）
+//
+// 去重键按 occurrence（原定时刻）计，不含提前量——所以预通知与真窗不会互相串。
 func (a *App) checkTakeoutReminders() {
 	cfg := a.cfgSnapshot()
 	if !cfg.TakeoutEnabled() {
 		a.mu.Lock()
 		a.takeoutPostponed = nil
+		a.takeoutPreFired = nil
 		a.mu.Unlock()
 		return
 	}
@@ -168,21 +173,98 @@ func (a *App) checkTakeoutReminders() {
 	if a.sched != nil && a.sched.isPaused() {
 		return
 	}
-	if pp != nil && nowMs() >= pp.DueAt {
+	now := nowMs()
+	leadSec := cfg.TakeoutLeadSec()
+	leadMs := int64(leadSec) * 1000
+	// ① 推迟线：到点直接弹真窗
+	if pp != nil && now >= pp.DueAt {
 		a.mu.Lock()
 		a.takeoutPostponed = nil
 		a.mu.Unlock()
+		a.closeTakeoutPreNotifyIfOpen()
 		a.fireTakeout(pp.Slot, pp.Count)
 		return
 	}
-	leadMs := int64(cfg.TakeoutLeadMin()) * 60_000
-	// findDueTimeSlots 会往 fired 里写新触发的键，所以必须拿 a.takeoutFired 本身（加锁），
-	// 不能拿快照——否则去重键写不回去，同一分钟内的多次 tick 会重复弹窗。
+	// ①b 推迟后的提前通知：leadSec>0 时，在推迟后的真实时刻前 leadMs 再弹一次预通知小窗
+	// （倒计时指向推迟后的到点时刻）。与原始提前通知线同口径：推迟后仍需提前提醒用户。
+	// 去重用 pp.PreFired——每秒 tick 都会走到这里，只弹一次。
+	if pp != nil && leadSec > 0 && now >= pp.DueAt-leadMs && now < pp.DueAt && !pp.PreFired {
+		pp.PreFired = true
+		a.showTakeoutPreNotify(pp.Slot, pp.DueAt)
+		return
+	}
+	// ② 固定时刻线（真窗）：原定时刻已到就弹；③ 提前通知线：在原定时刻−提前量 之后弹一次
+	var toFire []TimeSlot
+	var toPreNotify []TimeSlot
 	a.mu.Lock()
-	due := findDueTimeSlots(cfg.TakeoutSlots(), nowMs(), a.takeoutFired, leadMs)
+	for _, slot := range cfg.TakeoutSlots() {
+		if !slot.Enabled {
+			continue
+		}
+		at := slotAlertAt(slot, 0, now) // 原定时刻（当天，用于 occurrence 去重键）
+		// ② 真窗：now 命中条目「原定分钟」（leadMs=0）才弹——保持原来的「按分钟匹配」语义，
+		//    不补弹过去错过的分钟；按 occurrence 去重，避免同一分钟重复弹。
+		if isTimeSlotDue(slot, now, 0) {
+			key := occurrenceKey("takeout", at)
+			if a.takeoutFired[key] {
+				continue
+			}
+			a.takeoutFired[key] = true
+			toFire = append(toFire, slot)
+			continue
+		}
+		// ③ 提前通知窗：now+提前量 命中原定分钟那一刻弹一次（提前量=0 不进此支）；
+		//    窗口随后保持显示，直到原定时刻真窗弹出或用户动作。
+		if leadSec > 0 && isTimeSlotDue(slot, now, leadMs) {
+			key := occurrenceKey("takeout", at)
+			if a.takeoutPreFired[key] {
+				continue
+			}
+			a.takeoutPreFired[key] = true
+			toPreNotify = append(toPreNotify, slot)
+		}
+	}
 	a.mu.Unlock()
-	for _, slot := range due {
+	for _, slot := range toFire {
+		a.closeTakeoutPreNotifyIfOpen()
 		a.fireTakeout(slot, 0)
+	}
+	for _, slot := range toPreNotify {
+		a.showTakeoutPreNotify(slot, 0)
+	}
+}
+
+// showTakeoutPreNotify 在外卖「原定时刻−提前量」弹出提前通知小窗（复用休息的提前提示窗，
+// 但走外卖 owner：标题=提醒名、倒计时指向 targetAt（原定时刻或推迟后的到点时刻）、
+// 三按钮 立即提醒/推迟提醒/跳过提醒）。targetAt=0 时按原定时刻（slotAlertAt）推算。
+// 提前量=0 时不该被调用（checkTakeoutReminders 已把这条支滤掉）。
+func (a *App) showTakeoutPreNotify(slot TimeSlot, targetAt int64) {
+	cfg := a.cfgSnapshot()
+	if targetAt == 0 {
+		targetAt = slotAlertAt(slot, 0, nowMs()) // 原定时刻（当天）
+	}
+	info := PreBreakInfo{
+		Owner:         "takeout",
+		Custom:        true,
+		Title:         TAKEOUT_NAME,
+		CountdownTail: " 秒",
+		PostponeMin:   cfg.TakeoutPostponeMin(),
+	}
+	a.mu.Lock()
+	a.preInfo = info
+	a.preTargetAt = targetAt
+	a.preTakeoutSlot = slot
+	a.mu.Unlock()
+	a.ShowPreBreakWindow(info)
+}
+
+// closeTakeoutPreNotifyIfOpen 关掉「外卖预通知」小窗（不打扰正在显示的休息/自定义预通知）
+func (a *App) closeTakeoutPreNotifyIfOpen() {
+	a.mu.Lock()
+	isTakeout := a.preInfo.Owner == "takeout"
+	a.mu.Unlock()
+	if isTakeout {
+		a.closePreBreakWindow()
 	}
 }
 
@@ -217,7 +299,7 @@ func (a *App) stopTakeoutWatcher() {
 
 // ---------- 窗口（对应 takeoutWindow.ts + displays.ts） ----------
 
-// targetDisplays 按「在所有屏幕显示提醒窗口」开关选出要显示的显示器（休息窗口与外卖
+// targetDisplays 按「在所有屏幕显示」开关选出要显示的显示器（休息窗口与外卖
 // 窗口共用同一策略）。取消勾选 ⇒ 只在主屏幕显示（Wails v3 无获取光标所在屏的 API，以主屏兜底）。
 func (a *App) targetDisplays() []*application.Screen {
 	cfg := a.cfgSnapshot()
@@ -340,6 +422,11 @@ func (a *App) closeTakeoutWindows() {
 	a.takeoutWins = nil
 	a.takeoutCurrent = nil
 	a.mu.Unlock()
+	// 外卖提醒结束提示音：只在「确有窗口被关掉」时播（启动清理 / 空关窗不响）。
+	// 与休息结束（closeBreakWindows）同口径：声音卡片勾选启用才会在结束响一声。
+	if len(ws) > 0 {
+		a.playConfiguredSound()
+	}
 	for _, w := range ws {
 		w.Close()
 	}

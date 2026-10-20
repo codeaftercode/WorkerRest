@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -41,8 +42,12 @@ type App struct {
 	cursor   map[string]int
 	roleTurn int // 督休专员本体按顺序轮换时的游标
 
-	// 最近一次检查更新结果（内存态、不落盘；与 上一版 updateStatus 同语义）
+	// 最近一次检查更新结果（内存态，但会通过 lastUpdateResult 持久化到配置，
+	// 使「发现新版本但未更新」在重启后仍显示在关于页，直到更新成功才清除）
 	updateStatus map[string]any
+	// activeTab 设置页当前所在的 tab（前端每次切页通过 SetActiveTab 上报，
+	// 用于在自更新重启后恢复「更新前所在的页面」）。默认 general。
+	activeTab string
 
 	// 托盘（server 模式为 nil）：状态一变就刷新提示与菜单文案
 	tray          *application.SystemTray
@@ -58,6 +63,11 @@ type App struct {
 
 	// 提前提示窗当前该显示的内容（打开时算一次，轮询期间不随计划漂移；见 prebreak.go）
 	preInfo PreBreakInfo
+	// 外卖预通知：当前预通知所指向的「原定时刻」与条目（倒计时与动作据此判断）。
+	// 仅在外卖预通知窗打开期间有意义；owner 标记见 prebreak.go 的 PreBreakInfo.Owner。
+	preTargetAt     int64
+	preTakeoutSlot  TimeSlot
+	takeoutPreFired map[string]bool // 外卖预通知去重键（按 occurrence，不含提前量）
 
 	// 提示音（见 sound.go）：顺序播放的游标跨播放持续递增（不是每次从头开始）
 	soundCursor int
@@ -101,13 +111,15 @@ type App struct {
 
 func NewApp(app *application.App) *App {
 	a := &App{
-		app:          app,
-		wins:         make(map[string]*application.WebviewWindow),
-		start:        time.Now(),
-		rng:          rand.New(rand.NewSource(time.Now().UnixNano())),
-		cursor:       make(map[string]int),
-		takeoutFired: map[string]bool{},
-		idle:         NewIdleState(),
+		app:             app,
+		wins:            make(map[string]*application.WebviewWindow),
+		start:           time.Now(),
+		rng:             rand.New(rand.NewSource(time.Now().UnixNano())),
+		cursor:          make(map[string]int),
+		takeoutFired:    map[string]bool{},
+		takeoutPreFired: map[string]bool{},
+		idle:            NewIdleState(),
+		activeTab:       "general",
 	}
 	a.rolesRoot = filepath.Join(a.resourcesRoot(), "roles")
 	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
@@ -170,7 +182,9 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 			log.Printf("[boot] startMinimized：只起托盘，不显示设置窗口")
 		}
 	}
-	// 启动时检查更新：按配置延时 15 秒静默查一次（失败不打扰，见 update.go）。
+	// 恢复上次「发现新版本但未更新」的状态（重启后仍显示「有更新」，见 update.go）。
+	a.restoreUpdateStatus()
+	// 启动时检查更新：按配置在首次非空闲时静默查一次（失败不打扰，见 update.go）。
 	a.startAutoUpdateCheck()
 	return nil
 }
@@ -473,15 +487,15 @@ func (a *App) showBreakSession(kind string, preview bool, forceKey string) strin
 		}
 	}
 	info := &BreakInfo{
-		ID:              fmt.Sprintf("%s-%d", kind, now.UnixMilli()),
-		Type:            kind,
-		Name:            name,
-		EndsAt:          now.Add(time.Duration(dur) * time.Millisecond).UnixMilli(),
-		DurationMs:      dur,
-		Preview:         preview,
-		Appearance:      cfg.AppearanceView(),
-		Messages:        a.pickMessage(kind, name),
-		Supervisor:      a.buildSupervisorSession(preview, forceKey),
+		ID:               fmt.Sprintf("%s-%d", kind, now.UnixMilli()),
+		Type:             kind,
+		Name:             name,
+		EndsAt:           now.Add(time.Duration(dur) * time.Millisecond).UnixMilli(),
+		DurationMs:       dur,
+		Preview:          preview,
+		Appearance:       cfg.AppearanceView(),
+		Messages:         a.pickMessage(kind, name),
+		Supervisor:       a.buildSupervisorSession(preview, forceKey),
 		EndEarlyShortcut: endEarly,
 	}
 	a.sess = info
@@ -558,6 +572,12 @@ func (a *App) onPaused() {
 	a.closePreBreakWindow()
 }
 
+// closePreBreak 调度器重排时关掉残留的提前提示窗（对应 schedHost.closePreBreak）。
+// 与 onPaused 的区别：这里只关窗、不改 pause 状态，专供「被禁用 / 重排的提醒」清场。
+func (a *App) closePreBreak() {
+	a.closePreBreakWindow()
+}
+
 // ---------- 外卖状态的快照（供状态快照读取） ----------
 
 func (a *App) takeoutPostponedSnapshot() *TakeoutPostponed {
@@ -609,7 +629,7 @@ func breakBoundsFor(wa application.Rect, cfg AppearanceConfig) (x, y, w, h int) 
 // 无头（-tags server）构建下没有原生窗口，跳过创建——会话数据仍然构建，
 // 因此无头构建可以完整验证「绑定 → 会话 JSON」这条链路。
 //
-// 多屏：按「在所有屏幕显示提醒窗口」开关对每块目标屏各建一个窗（与外卖窗口同策略，
+// 多屏：按「在所有屏幕显示」开关对每块目标屏各建一个窗（与外卖窗口同策略，
 // 见 targetDisplays）。已有窗口在场时只唤起不重建。
 func (a *App) ShowBreakWindow(kind string) {
 	if serverMode {
@@ -706,12 +726,23 @@ func (a *App) settingsWindow() application.Window {
 }
 
 // ShowSettingsWindow 打开（或唤起）设置窗口。窗口在 main.go 里随应用创建，
-// 这里只负责显示与聚焦——托盘、单实例二次启动都走它。
+// 这里只负责显示与聚焦——托盘、单实例二次启动、自更新重启恢复都走它。
 func (a *App) ShowSettingsWindow() {
 	if w := a.settingsWindow(); w != nil {
 		w.Show()
 		w.Focus()
 	}
+}
+
+// SetActiveTab 前端每次切页时上报当前 tab 名（general/timing/supervisor/stats/
+// shortcuts/about），用于自更新重启后恢复「更新前所在的页面」。
+func (a *App) SetActiveTab(tab string) {
+	if tab == "" {
+		return
+	}
+	a.mu.Lock()
+	a.activeTab = tab
+	a.mu.Unlock()
 }
 
 // CloseWindow 渲染层「关窗」入口（休息窗口的预览点任意处 / 设置窗口的关闭按钮）。
@@ -804,13 +835,16 @@ func (a *App) Action(win, name string) error {
 				w.Maximise()
 			}
 		}
-	case "winClose":
-		// 关闭 = 隐藏到托盘（不是销毁）：托盘「设置…」/ 双击要能重新唤起。
-		// Wails 的 Window.Close() 会销毁窗口并从注册表移除，之后 GetByName 拿不到、
-		// ShowSettingsWindow 就无法再显示 —— 所以这里用 Hide 保留窗口对象。
-		if w := a.settingsWindow(); w != nil {
-			w.Hide()
-		}
+		case "winClose":
+			// 关闭 = 隐藏到托盘（不是销毁）：托盘「设置…」/ 双击要能重新唤起。
+			// Wails 的 Window.Close() 会销毁窗口并从注册表移除，之后 GetByName 拿不到、
+			// ShowSettingsWindow 就无法再显示 —— 所以这里用 Hide 保留窗口对象。
+			if w := a.settingsWindow(); w != nil {
+				w.Hide()
+				if a.app != nil && a.app.Event != nil {
+					a.app.Event.Emit("settings:hidden", nil)
+				}
+			}
 	default:
 		log.Printf("[action] 设置窗口未实现的动作 %q", name)
 	}
@@ -952,17 +986,21 @@ func structToMap(v any) map[string]any {
 
 // AppInfo 关于页的环境信息。
 //
-// 如实回报引擎为 Wails v3 (Go)，不伪装成 上一版。设置页版本行会读取本结构的
-// version / 上一版 字段渲染（见 settings.html 的 #d-version），不再写死 上一版 字样。
+// 如实回报引擎为 Wails v3 (Go)，不伪装成 上一版。设置页「软件信息」卡片读取本结构的
+// version / goVersion / wailsVersion / buildTime 渲染（见 settings.html 的软件信息卡片）。
 func (a *App) AppInfo() map[string]any {
+	goVer := strings.TrimPrefix(runtime.Version(), "go")
 	return map[string]any{
-		"name":     a.cfgSnapshot().AppName(),
-		"version":  appVersion,
-		"electron": "Wails v3 (Go)",
-		"node":     "-",
-		"engine":   "go+wails3",
-		"platform": "windows",
-		"roles":    len(scanRoles(a.rolesRoot)),
+		"name":         a.cfgSnapshot().AppName(),
+		"version":      appVersion,
+		"electron":     "Wails v3 (Go)",
+		"node":         "-",
+		"engine":       "go+wails3",
+		"platform":     "windows",
+		"roles":        len(scanRoles(a.rolesRoot)),
+		"goVersion":    goVer,
+		"wailsVersion": "v3",
+		"buildTime":    buildTime,
 	}
 }
 
@@ -989,6 +1027,10 @@ func (a *App) WindowMaximized() bool {
 // 用 var 而非 const：打包时可通过 -ldflags "-X main.appVersion=<版本>" 注入，
 // 默认 1.0.0（开发 / 无头验证直接用默认值即可）。
 var appVersion = "1.0.0"
+
+// buildTime 打包时通过 -ldflags "-X main.buildTime=<RFC3339>" 注入；
+// 开发 / 无头验证不注入则留空，前端「构建时间」回退显示「本地构建」。
+var buildTime = ""
 
 // pauseReasonText 暂停原因键 → 界面文案：内部用稳定的英文键，展示层不该原样抛给用户；
 // 中文原因（'勿扰' / '应用占用'）原样返回，未知键也不会消失（与 types.ts 同口径）。

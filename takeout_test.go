@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"math/rand"
 	"path/filepath"
 	"testing"
@@ -21,9 +22,10 @@ func newTakeoutApp(t *testing.T, cfgJSON string) *App {
 		cfg:          testSettings(t, cfgJSON),
 		rolesRoot:    t.TempDir(),
 		rng:          rand.New(rand.NewSource(1)),
-		cursor:       make(map[string]int),
-		takeoutFired: map[string]bool{},
-		idle:         NewIdleState(),
+		cursor:         make(map[string]int),
+		takeoutFired:    map[string]bool{},
+		takeoutPreFired: map[string]bool{},
+		idle:           NewIdleState(),
 	}
 }
 
@@ -31,7 +33,7 @@ func newTakeoutApp(t *testing.T, cfgJSON string) *App {
 const takeoutCfg = `{
   "takeout": {
     "enabled": true,
-    "leadMin": 0,
+    "leadSec": 0,
     "postponeMin": 15,
     "slots": [{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]
   },
@@ -53,8 +55,8 @@ func TestBuildTakeoutInfo(t *testing.T) {
 	if info.Hour != 12 || info.Minute != 30 {
 		t.Fatalf("时刻应=12:30，得到 %d:%d", info.Hour, info.Minute)
 	}
-	if info.LeadMin != 0 || info.PostponeMin != 15 {
-		t.Fatalf("lead/postpone 应=0/15，得到 %d/%d", info.LeadMin, info.PostponeMin)
+	if info.LeadSec != 0 || info.PostponeMin != 15 {
+		t.Fatalf("lead/postpone 应=0/15，得到 %d/%d", info.LeadSec, info.PostponeMin)
 	}
 	if info.PostponedCount != 0 {
 		t.Fatalf("首次弹 postponedCount 应=0，得到 %d", info.PostponedCount)
@@ -82,7 +84,7 @@ func TestBuildTakeoutInfo(t *testing.T) {
 
 // 「可推迟」为 0：会话快照 PostponeMin=0（渲染层据此隐藏「推迟」按钮）
 func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
-	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":0,"slots":[]},"installId":"uuid-1234"}`
+	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]},"installId":"uuid-1234"}`
 	a := newTakeoutApp(t, cfg)
 	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0)
 	if info == nil {
@@ -120,7 +122,7 @@ func TestTakeoutPostponeMinClamp(t *testing.T) {
 
 // 外卖提醒窗口始终展示优惠券：redPacketData 必有且地址指向本机专属领取地址
 func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
-	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":15,"slots":[]},"installId":"uuid-1234"}`
+	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":[]},"installId":"uuid-1234"}`
 	a := newTakeoutApp(t, cfg)
 	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 18, Minute: 0, Enabled: true}, false, 0)
 	if info.RedPacketData == nil {
@@ -147,7 +149,7 @@ func TestBuildTakeoutInfoSupervisorClearsCommand(t *testing.T) {
 // 固定时刻线：把 slot 设成「现在这一刻」就应立即触发
 func TestCheckTakeoutFiresOnDueSlot(t *testing.T) {
 	now := time.Now()
-	cfg := `{"takeout":{"enabled":true,"leadMin":0,"postponeMin":15,"slots":[` +
+	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":[` +
 		`{"id":"s1","hour":` + itoa(now.Hour()) + `,"minute":` + itoa(now.Minute()) +
 		`,"repeat":"daily","days":[],"enabled":true}]}}`
 	a := newTakeoutApp(t, cfg)
@@ -207,7 +209,7 @@ func TestCheckTakeoutPostponeExpired(t *testing.T) {
 
 // 外卖总开关关闭：清掉推迟计划，不触发
 func TestCheckTakeoutDisabled(t *testing.T) {
-	a := newTakeoutApp(t, `{"takeout":{"enabled":false,"leadMin":0,"postponeMin":15,"slots":[]}}`)
+	a := newTakeoutApp(t, `{"takeout":{"enabled":false,"leadSec":0,"postponeMin":15,"slots":[]}}`)
 	a.sched = nil
 	a.takeoutPostponed = &TakeoutPostponed{Slot: TimeSlot{}, DueAt: nowMs() - 1, Count: 1}
 	a.checkTakeoutReminders()
@@ -272,6 +274,73 @@ func TestTakeoutActionPreview(t *testing.T) {
 	}
 }
 
+// 外卖推迟后、提前通知（leadSec>0）仍应在推迟后的时刻前弹提前通知窗：
+// checkTakeoutReminders 应在 DueAt 前 leadMs 处补弹一次预通知，倒计时指向推迟后的到点时刻。
+func TestCheckTakeoutPostponePreNotify(t *testing.T) {
+	const cfg = `{"takeout":{"enabled":true,"leadSec":60,"postponeMin":15,"slots":` +
+		`[{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
+	a := newTakeoutApp(t, cfg)
+	a.sched = nil
+	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	// 推迟到 30 秒后（仍在 60 秒提前窗内）：此刻应弹「推迟后的提前通知」
+	due := nowMs() + 30*1000
+	a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: due, Count: 1}
+	a.checkTakeoutReminders()
+	if a.takeoutPostponed == nil || !a.takeoutPostponed.PreFired {
+		t.Fatal("推迟后的提前通知应已标记 PreFired")
+	}
+	if a.preInfo.Owner != "takeout" {
+		t.Fatalf("应弹外卖预通知，得到 owner=%q", a.preInfo.Owner)
+	}
+	if a.preTargetAt != due {
+		t.Fatalf("预通知倒计时应指向推迟后的到点时刻 %d，得到 %d", due, a.preTargetAt)
+	}
+	if a.takeoutCurrent != nil {
+		t.Fatal("推迟后的提前通知阶段不应同时弹真窗")
+	}
+	// 同一次推迟线：再跑一次 tick 不应重复弹（PreFired 去重）
+	a.checkTakeoutReminders()
+	if a.preTargetAt != due {
+		t.Fatalf("PreFired 去重后倒计时目标不应变，得到 %d", a.preTargetAt)
+	}
+}
+
+// 外卖推迟后的提前通知已弹过（PreFired），到点（DueAt）应弹真窗并清掉推迟线；
+// 且用户若「立即提醒」/「跳过」也应清掉推迟线，避免到点重复弹。
+func TestCheckTakeoutPostponePreNotifyThenFire(t *testing.T) {
+	const cfg = `{"takeout":{"enabled":true,"leadSec":60,"postponeMin":15,"slots":` +
+		`[{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
+	a := newTakeoutApp(t, cfg)
+	a.sched = nil
+	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	// ①b 已弹过提前通知（PreFired=true），现在到点
+	a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: nowMs() - 1, Count: 1, PreFired: true}
+	a.checkTakeoutReminders()
+	if a.takeoutCurrent == nil {
+		t.Fatal("推迟线到点应弹真窗")
+	}
+	if a.takeoutPostponed != nil {
+		t.Fatal("推迟线触发后应清空，避免重复弹")
+	}
+}
+
+// 外卖推迟后、提前通知为 0（leadSec=0）时不应弹提前通知窗，只到点弹真窗。
+func TestCheckTakeoutPostponeNoLead(t *testing.T) {
+	const cfg = `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":` +
+		`[{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
+	a := newTakeoutApp(t, cfg)
+	a.sched = nil
+	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: nowMs() + 30*1000, Count: 1}
+	a.checkTakeoutReminders()
+	if a.takeoutPostponed != nil && a.takeoutPostponed.PreFired {
+		t.Fatal("leadSec=0 时不应弹推迟后的提前通知")
+	}
+	if a.preInfo.Owner == "takeout" {
+		t.Fatal("leadSec=0 时不应出现外卖预通知窗口")
+	}
+}
+
 // 外卖统计记账走 RecordTakeoutAction：验证 stats 里确实 +1（预览不计）
 func TestTakeoutActionRecordsStats(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
@@ -310,6 +379,138 @@ func TestRaiseStateBookkeeping(t *testing.T) {
 	r.setBreaksActive(false)
 	if r.anyBreakActive() {
 		t.Fatal("setBreaksActive(false) 后 anyBreakActive 应为 false")
+	}
+}
+
+// ---------- 提前通知（复用休息提前提示窗）----------
+
+// futureSlot 造一个「原定时刻在现在之后约 2 小时」的外卖条目，避免测试跑在槽位已过的时刻
+// （真实预通知只会在原定时刻之前弹出，preTargetAt 一定是未来时刻，这里复刻该前提）。
+func futureSlot() TimeSlot {
+	ft := time.Now().Add(2 * time.Hour)
+	return TimeSlot{ID: "s1", Hour: ft.Hour(), Minute: ft.Minute(), Repeat: "daily", Enabled: true}
+}
+
+// 外卖预通知：showTakeoutPreNotify 把内容标记为 owner=takeout，PreBreakState 据此返回
+// 指向「原定时刻」的倒计时（不是提前量）；倒计时归零（原定时刻到）由 checkTakeoutReminders
+// 的真窗分支接管，预通知窗也会被关掉。
+func TestTakeoutPreNotifyState(t *testing.T) {
+	cfg := `{"takeout":{"enabled":true,"leadSec":300,"postponeMin":15,"slots":[` +
+		`{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
+	a := newTakeoutApp(t, cfg)
+	a.sched = nil
+	slot := futureSlot()
+	a.showTakeoutPreNotify(slot, 0)
+	st := a.PreBreakState()
+	if st["title"] != TAKEOUT_NAME {
+		t.Fatalf("预通知标题应为 %q，得到 %v", TAKEOUT_NAME, st["title"])
+	}
+	if st["custom"] != true {
+		t.Fatalf("外卖预通知应走 custom 版式（无说明/无暂停），得到 %v", st["custom"])
+	}
+	if st["paused"] != false {
+		t.Fatalf("外卖预通知不应暂停计时，得到 %v", st["paused"])
+	}
+	at := slotAlertAt(slot, 0, nowMs())
+	remain, _ := st["remainMs"].(int64)
+	want := at - nowMs()
+	if remain < want-2000 || remain > want+2000 {
+		t.Fatalf("预通知倒计时应≈原定时刻剩余 %d，得到 %d", want, remain)
+	}
+}
+
+// 外卖预通知「立即提醒」：提前弹真窗并消费该次 occurrence（原定时刻不再重复弹）
+func TestTakeoutPreNotifyBreakNow(t *testing.T) {
+	cfg := `{"takeout":{"enabled":true,"leadSec":300,"postponeMin":15,"slots":[` +
+		`{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
+	a := newTakeoutApp(t, cfg)
+	a.sched = nil
+	slot := futureSlot()
+	a.showTakeoutPreNotify(slot, 0)
+	if err := a.preBreakAct("breakNow"); err != nil {
+		t.Fatalf("立即提醒不应报错：%v", err)
+	}
+	if a.takeoutCurrent == nil {
+		t.Fatal("立即提醒应弹真窗（takeoutCurrent 非空）")
+	}
+	at := slotAlertAt(slot, 0, nowMs())
+	if !a.takeoutFired[occurrenceKey("takeout", at)] {
+		t.Fatal("立即提醒应消费该次 occurrence，避免原定时刻重复弹")
+	}
+}
+
+// 外卖预通知「跳过提醒」：消费该次 occurrence，真窗不再弹
+func TestTakeoutPreNotifySkip(t *testing.T) {
+	cfg := `{"takeout":{"enabled":true,"leadSec":300,"postponeMin":15,"slots":[` +
+		`{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
+	a := newTakeoutApp(t, cfg)
+	a.sched = nil
+	slot := futureSlot()
+	a.showTakeoutPreNotify(slot, 0)
+	if err := a.preBreakAct("skip"); err != nil {
+		t.Fatalf("跳过提醒不应报错：%v", err)
+	}
+	at := slotAlertAt(slot, 0, nowMs())
+	if !a.takeoutFired[occurrenceKey("takeout", at)] {
+		t.Fatal("跳过提醒应消费该次 occurrence")
+	}
+	if a.takeoutCurrent != nil {
+		t.Fatal("跳过提醒不应弹真窗")
+	}
+}
+
+// 外卖预通知「推迟提醒」：消费原 occurrence，改走推迟线（到点重新弹）
+func TestTakeoutPreNotifyPostpone(t *testing.T) {
+	cfg := `{"takeout":{"enabled":true,"leadSec":300,"postponeMin":15,"slots":[` +
+		`{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
+	a := newTakeoutApp(t, cfg)
+	a.sched = nil
+	slot := futureSlot()
+	a.showTakeoutPreNotify(slot, 0)
+	if err := a.preBreakAct("postpone"); err != nil {
+		t.Fatalf("推迟提醒不应报错：%v", err)
+	}
+	at := slotAlertAt(slot, 0, nowMs())
+	if !a.takeoutFired[occurrenceKey("takeout", at)] {
+		t.Fatal("推迟提醒应消费原 occurrence")
+	}
+	if a.takeoutPostponed == nil {
+		t.Fatal("推迟提醒应设置推迟计划")
+	}
+}
+
+// 时间线：外卖条目按「原定时刻」展示（不再减提前量），被消费（立即/跳过）的条目隐藏。
+// 用 futureSlot（原定时刻在未来）确保今日时间线会展开它。
+func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
+	slot := futureSlot()
+	cfg := `{"takeout":{"enabled":true,"leadSec":600,"postponeMin":15,"slots":[` +
+		fmt.Sprintf(`{"id":%q,"hour":%d,"minute":%d,"repeat":"daily","days":[],"enabled":true}]}}`,
+			slot.ID, slot.Hour, slot.Minute)
+	a := newTakeoutApp(t, cfg)
+	a.sched = nil
+	s := a.cfgSnapshot()
+	wantAt := slotAlertAt(slot, 0, nowMs())
+	tl := todayTimeline(s, nowMs(), TimelineOptions{TakeoutFired: map[string]bool{}})
+	found := false
+	for _, it := range tl {
+		if it.Type == "takeout" {
+			found = true
+			if it.At != wantAt {
+				t.Fatalf("外卖时间线应显示原定时刻 %d，得到 %d", wantAt, it.At)
+			}
+		}
+	}
+	if !found {
+		t.Fatal("时间线应包含外卖条目")
+	}
+	// 该 occurrence 被消费后，时间线应隐藏它
+	tl2 := todayTimeline(s, nowMs(), TimelineOptions{
+		TakeoutFired: map[string]bool{occurrenceKey("takeout", wantAt): true},
+	})
+	for _, it := range tl2 {
+		if it.Type == "takeout" && it.At == wantAt {
+			t.Fatal("被消费的外卖条目应从时间线隐藏")
+		}
 	}
 }
 

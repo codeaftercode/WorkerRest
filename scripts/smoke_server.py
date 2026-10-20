@@ -791,7 +791,7 @@ def main():
         if isinstance(tk, dict):
             # 渲染层 takeout.ts 读的字段：少一个就「Cannot read properties of undefined」
             TK_KEYS = ("id", "at", "hour", "minute", "firedAt", "preview", "meal",
-                       "leadMin", "postponeMin", "postponedCount", "message",
+                       "leadSec", "postponeMin", "postponedCount", "message",
                        "appearance", "supervisor", "redPacketData")
             missing = [k for k in TK_KEYS if k not in tk]
             check(not missing, "外卖会话带全部渲染层字段", "缺 %s" % missing)

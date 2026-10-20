@@ -4,6 +4,7 @@ import (
 	"embed"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -18,6 +19,23 @@ var assets embed.FS
 var trayIcon []byte
 
 func main() {
+	// 自更新分支：必须在构建 Wails 应用之前处理，避免触发单例互斥。
+	//   --self-update <pending>：替换旧 exe 并启动 --updated 新进程（见 update.go）。
+	//   --updated <pending>：正常启动，并把 pending 路径交给前端展示更新摘要。
+	for i := 0; i < len(os.Args); i++ {
+		switch os.Args[i] {
+		case "--self-update":
+			if i+1 < len(os.Args) {
+				runSelfUpdate(os.Args[i+1])
+				return
+			}
+		case "--updated":
+			if i+1 < len(os.Args) {
+				pendingUpdatePath = os.Args[i+1]
+			}
+		}
+	}
+
 	// 音频请求不走默认资源服务（内置提示音在随包 sounds/ 目录、用户导入的音频在
 	// config/sounds/，都不在 embed 的前端资源里），需要一条自己的分发中间件，而
 	// 自定义音的白名单校验要读配置 —— 所以转交给 backend。
@@ -30,7 +48,7 @@ func main() {
 		// 设置窗口唤到前台 —— 与托盘「双击二次启动唤起窗口」同一条入口。
 		// 此前没有这层，双开会导致两份调度器抢着弹提醒窗口。
 		SingleInstance: &application.SingleInstanceOptions{
-			UniqueID: "com.chibingren.workerrest",
+			UniqueID: "com.goodgoodlive.workerrest",
 			OnSecondInstanceLaunch: func(application.SecondInstanceData) {
 				if backend != nil {
 					backend.ShowSettingsWindow()

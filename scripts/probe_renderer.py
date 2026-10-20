@@ -272,9 +272,9 @@ def main():
         check(same_num(stg.get("apWidthPct"), (cfg.get("appearance") or {}).get("widthPct")),
               "提醒窗口宽度百分比 == 配置 appearance.widthPct",
               "%s vs %s" % (stg.get("apWidthPct"), (cfg.get("appearance") or {}).get("widthPct")))
-        check(same_num(stg.get("tkLead"), (cfg.get("takeout") or {}).get("leadMin")),
-              "外卖提前通知分钟 == 配置 takeout.leadMin",
-              "%s vs %s" % (stg.get("tkLead"), (cfg.get("takeout") or {}).get("leadMin")))
+        check(same_num(stg.get("tkLead"), (cfg.get("takeout") or {}).get("leadSec")),
+              "外卖提前通知秒数 == 配置 takeout.leadSec",
+              "%s vs %s" % (stg.get("tkLead"), (cfg.get("takeout") or {}).get("leadSec")))
 
         # ---- 页签切换：切到每一页都要真的显示出来（切换时抛错会让内容空白）----
         tabs = m.get("tabs") or {}

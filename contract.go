@@ -52,9 +52,16 @@ var wiredCalls = []string{
 	"AppInfo",
 	"UpdateStatus",
 	"CheckUpdate",
+	"StartUpdate",
+	"PendingUpdate",
+	"IgnoreVersion",
 	"OpenManual",
 	"OpenExternal",
 	"ExportReport",
+
+	// ---- 窗口 / 自更新重启恢复 ----
+	"ShowSettingsWindow",
+	"SetActiveTab",
 
 	// ---- 统计 ----
 	"GetStats",

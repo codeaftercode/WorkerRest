@@ -2520,19 +2520,11 @@
         document.getElementById("figure-trim")
       );
     }
-    const leadEl = el("tk-lead");
     const rpTime = el("rp-time");
     const tick = () => {
       const d = /* @__PURE__ */ new Date();
       const t = `${pad2(d.getHours())}:${pad2(d.getMinutes())}:${pad2(d.getSeconds())}`;
       if (rpTime) rpTime.textContent = t;
-      const leftMin = Math.ceil((info.at - Date.now()) / 6e4);
-      if (info.leadMin > 0 && leftMin > 0) {
-        leadEl.textContent = `\u63D0\u524D ${info.leadMin} \u5206\u949F\u63D0\u9192`;
-        leadEl.classList.remove("hidden");
-      } else {
-        leadEl.classList.add("hidden");
-      }
     };
     tick();
     setInterval(tick, 500);

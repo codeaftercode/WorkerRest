@@ -32,12 +32,16 @@ import (
 
 // PreBreakInfo 与「哪一种提醒」绑定的弹窗内容
 type PreBreakInfo struct {
+	// Owner 弹窗归属："" / "break" = 休息 / 自定义提醒（走调度器倒计时）；"takeout" =
+	// 外卖预通知（倒计时指向「原定时刻」，动作走外卖记账，不经过调度器）。
+	// 渲染层不区分 owner（takeout 复用 custom 版式），仅主进程动作分发据此分流。
+	Owner string `json:"owner"`
 	// Custom 自定义提醒：另一套版式（倒计时带名称、不显示两行说明、按钮改「…提醒」
 	// 且没有「暂停计时」）
 	Custom bool `json:"custom"`
-	// Title 标题：自定义提醒是「XX时间到」，内置短 / 长是劝说文案
+	// Title 标题：自定义提醒是「XX时间到」，内置短 / 长是劝说文案；外卖预通知是提醒名
 	Title string `json:"title"`
-	// CountdownTail 倒计时数字后面那段（内置「 秒进入休息」/ 自定义「 秒显示喝水提醒」）
+	// CountdownTail 倒计时数字后面那段（内置「 秒进入休息」/ 自定义 / 外卖「 秒」）
 	CountdownTail string `json:"countdownTail"`
 	// PostponeMin 该提醒的「可推迟」分钟数：0 = 渲染层不显示「推迟」按钮。
 	// 弹窗打开时算一次（与标题同口径），中途改配置不跟随。
@@ -226,13 +230,32 @@ func (a *App) closePreBreakWindow() {
 // 渲染层直接读 st.paused / st.title / st.custom / st.countdownTail / st.remainMs，
 // 少一个字段不会报错，只会静默显示错内容 —— 所以这里不裁字段。
 func (a *App) PreBreakState() map[string]any {
+	info := a.currentPreBreakInfo()
+	// 外卖预通知：倒计时指向「原定时刻」（不读调度器剩余），且永不暂停计时
+	if info.Owner == "takeout" {
+		a.mu.Lock()
+		target := a.preTargetAt
+		a.mu.Unlock()
+		remain := target - nowMs()
+		if remain < 0 {
+			remain = 0
+		}
+		return map[string]any{
+			"phase":         "idle",
+			"paused":        false,
+			"remainMs":      remain,
+			"title":         info.Title,
+			"custom":        info.Custom,
+			"countdownTail": info.CountdownTail,
+			"canPostpone":   info.PostponeMin > 0,
+		}
+	}
 	phase, paused, remain := "idle", false, int64(0)
 	if a.sched != nil {
 		st := a.sched.stateCopy()
 		phase, paused = st.Phase, st.Paused
 		remain = a.sched.remainingMs()
 	}
-	info := a.currentPreBreakInfo()
 	return map[string]any{
 		"phase":         phase,
 		"paused":        paused,
@@ -261,6 +284,50 @@ func (a *App) PreBreakAction(action string) error {
 
 // preBreakAct 动作分发（不碰窗口，单测可直接驱动）
 func (a *App) preBreakAct(action string) error {
+	a.mu.Lock()
+	owner := a.preInfo.Owner
+	slot := a.preTakeoutSlot
+	at := a.preTargetAt
+	a.mu.Unlock()
+	// 外卖预通知：动作走外卖记账，不经过调度器（立即提醒=提前弹真窗并消费该次 occurrence；
+	// 推迟=改走推迟线；跳过=消费该次 occurrence，原定时刻不再弹）
+	if owner == "takeout" {
+		switch action {
+		case "breakNow":
+			a.mu.Lock()
+			a.takeoutPostponed = nil
+			a.takeoutFired[occurrenceKey("takeout", at)] = true
+			a.mu.Unlock()
+			a.closePreBreakWindow()
+			a.fireTakeout(slot, 0)
+			a.refreshStateAfterTakeout()
+			return nil
+		case "postpone":
+			// 先取配置（cfgSnapshot 要加 a.mu，不能在持锁时调用）；再一次性持锁写簿记
+			mins := a.cfgSnapshot().TakeoutPostponeMin()
+			a.mu.Lock()
+			prevCount := 0
+			if a.takeoutPostponed != nil {
+				prevCount = a.takeoutPostponed.Count
+			}
+			a.takeoutFired[occurrenceKey("takeout", at)] = true
+			a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: nowMs() + int64(mins)*60000, Count: prevCount + 1}
+			a.mu.Unlock()
+			a.closePreBreakWindow()
+			a.refreshStateAfterTakeout()
+			return nil
+		case "skip":
+			a.mu.Lock()
+			a.takeoutPostponed = nil
+			a.takeoutFired[occurrenceKey("takeout", at)] = true
+			a.mu.Unlock()
+			a.closePreBreakWindow()
+			a.refreshStateAfterTakeout()
+			return nil
+		default:
+			return fmt.Errorf("未知的外卖预通知动作 %q（可用：breakNow / postpone / skip）", action)
+		}
+	}
 	switch action {
 	case "breakNow":
 		a.schedBreakNow()
@@ -274,4 +341,18 @@ func (a *App) preBreakAct(action string) error {
 		return fmt.Errorf("未知的提前提示动作 %q（可用：breakNow / postpone / skip / pause）", action)
 	}
 	return nil
+}
+
+// refreshStateAfterTakeout 外卖预通知动作（立即 / 推迟 / 跳过）改了 takeoutFired /
+// takeoutPostponed 后，主动把状态推给设置页并刷新托盘：这些簿记不经过调度器，调度器的
+// emitState 不会触发，不主动推的话设置页「今日提醒时间线」与「下次外卖提醒」在动作后
+// 仍是旧值（与休息 / 自定义提醒走 schedPostpone→emitState 不同，外卖要自己推）。
+//
+// a.app == nil（无头单测）时跳过——pushState 要经 Wails 事件总线，没有 app 会崩。
+func (a *App) refreshStateAfterTakeout() {
+	if a.app == nil {
+		return
+	}
+	a.pushState()
+	a.refreshTray()
 }

@@ -64,7 +64,7 @@ def main():
     args = ap.parse_args()
 
     src = os.path.abspath(args.dir)
-    exe_src = os.path.join(src, "chibingren.exe")
+    exe_src = os.path.join(src, "rest.exe")
     if not os.path.isfile(exe_src):
         print("找不到 %s —— 先跑 make_portable.py" % exe_src)
         return 2
@@ -73,7 +73,7 @@ def main():
     iso = os.path.join(TEMP, "wr_portable_verify_iso")
     shutil.rmtree(iso, ignore_errors=True)
     shutil.copytree(src, iso)
-    exe = os.path.join(iso, "chibingren.exe")
+    exe = os.path.join(iso, "rest.exe")
     # 隔离 APPDATA：干净、空，确保「便携优先」不是靠 APPDATA 里恰好有配置才成立
     iso_appdata = os.path.join(TEMP, "wr_portable_verify_appdata")
     shutil.rmtree(iso_appdata, ignore_errors=True)

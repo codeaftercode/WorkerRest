@@ -134,7 +134,10 @@
   var GEOM_FALLBACK = { sizePct: 72, posXPct: 4, posYPct: 0, flip: false };
   var ESCALATE_WEIGHT = 3;
   var RELAX_MS = 6e3;
-  function setupSupervisor(sup, stage1Text) {
+  function setupSupervisor(sup, stage1Text, opts) {
+    opts = opts || {};
+    const showLine = opts.showLine !== false;            // 默认显示督休专员台词
+    const allowEscalate = opts.allowEscalate !== false;  // 默认允许升级到第二阶段
     const app = document.getElementById("app");
     const figure = document.getElementById("figure");
     const gaze = document.getElementById("gaze");
@@ -142,9 +145,14 @@
     const line = document.getElementById("supervisor-line");
     document.body.classList.add("has-supervisor");
     figure.classList.remove("hidden");
-    line.classList.remove("hidden");
-    if (sup.name) line.dataset.speaker = sup.name;
-    else delete line.dataset.speaker;
+    if (showLine) {
+      line.classList.remove("hidden");
+      if (sup.name) line.dataset.speaker = sup.name;
+      else delete line.dataset.speaker;
+    } else {
+      line.classList.add("hidden");
+      delete line.dataset.speaker;
+    }
     // 游戏对话画面：名字挂在对话框左上角的凸出标签上（.dialog-name）
     const nameEl = document.getElementById("dialog-name");
     if (nameEl) {
@@ -166,7 +174,7 @@
     img.src = sup.image;
     applyFigureTrim(document.getElementById("figure-trim"), img, flip);
     const supApi = window.api;
-    const stage1 = stage1Text || sup.lines.urge;
+    const stage1 = showLine ? (stage1Text || sup.lines.urge) : "";
     let stage = 1;
     let weight = 0;
     let relaxTimer;
@@ -174,10 +182,10 @@
       if (next === stage) return;
       stage = next;
       app.dataset.stage = String(next);
-      line.textContent = next === 2 ? sup.lines.command || stage1 : stage1;
+      if (showLine) line.textContent = next === 2 ? sup.lines.command || stage1 : stage1;
     };
     app.dataset.stage = "1";
-    line.textContent = stage1;
+    if (showLine) line.textContent = stage1;
     const relax = () => {
       window.clearTimeout(relaxTimer);
       relaxTimer = window.setTimeout(() => {
@@ -191,18 +199,20 @@
       relax();
       if (broadcast) supApi?.supActivity?.();
     };
-    let lastMove = 0;
-    window.addEventListener("mousemove", () => {
-      const now = performance.now();
-      if (now - lastMove < 500) return;
-      lastMove = now;
-      noteActivity(1, true);
-    });
-    window.addEventListener("mousedown", () => noteActivity(3, true), { passive: true });
-    window.addEventListener("keydown", () => noteActivity(3, true), { passive: true });
-    window.addEventListener("wheel", () => noteActivity(3, true), { passive: true });
-    window.addEventListener("touchstart", () => noteActivity(3, true), { passive: true });
-    supApi?.onSupActivity?.(() => noteActivity(3, false));
+    if (allowEscalate) {
+      let lastMove = 0;
+      window.addEventListener("mousemove", () => {
+        const now = performance.now();
+        if (now - lastMove < 500) return;
+        lastMove = now;
+        noteActivity(1, true);
+      });
+      window.addEventListener("mousedown", () => noteActivity(3, true), { passive: true });
+      window.addEventListener("keydown", () => noteActivity(3, true), { passive: true });
+      window.addEventListener("wheel", () => noteActivity(3, true), { passive: true });
+      window.addEventListener("touchstart", () => noteActivity(3, true), { passive: true });
+      supApi?.onSupActivity?.(() => noteActivity(3, false));
+    }
     if (!sup.gaze) return;
     gaze.style.transformOrigin = "50% 100%";
     let targetNX = 0;
@@ -764,8 +774,15 @@
     // 环内两行直排铭文「整理思绪 / 积蓄能量」已静态写在 break.html 的
     // #inscribe-lines 中（进度百分数下方，非弧形），无需在此设置。
     if (data.supervisor) {
-      msgBox.classList.add("hidden");
-      setupSupervisor(data.supervisor, data.messages[0] ?? "");
+      const isCustom = typeof data.type === "string" && data.type.indexOf("cb-") === 0;
+      if (isCustom) {
+        // 自定义提醒：督休专员只作背景立绘，不显示其台词（提醒内容）、不进入第二阶段；
+        // 对话区只展示自定义提醒自己的「提醒内容」（messages 保持可见，不被隐藏）。
+        setupSupervisor(data.supervisor, "", { showLine: false, allowEscalate: false });
+      } else {
+        msgBox.classList.add("hidden");
+        setupSupervisor(data.supervisor, data.messages[0] ?? "");
+      }
       bindSupContentLayout(
         document.getElementById("figure"),
         document.querySelector(".content"),

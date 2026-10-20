@@ -239,6 +239,51 @@ func (s *Settings) Raw() map[string]any { return s.raw }
 // Path 配置来自哪个文件（空 = 全用出厂默认，尚未落盘）
 func (s *Settings) Path() string { return s.path }
 
+// LastUpdateCheck 最近一次自动/手动检查更新落到的日期（YYYY-MM-DD），空 = 从未检查。
+// 用于「自动检查更新」的当日去重：同一天已查过就不再查。
+func (s *Settings) LastUpdateCheck() string {
+	return s.Str("", "lastUpdateCheck")
+}
+
+// SetLastUpdateCheck 记录一次检查发生的日期（仅当非空时写入 raw，由调用方 Save 落盘）。
+func (s *Settings) SetLastUpdateCheck(date string) {
+	if date == "" {
+		return
+	}
+	s.raw["lastUpdateCheck"] = date
+}
+
+// IgnoredVersion 被用户「忽略本版本」的版本号；空 = 没有忽略任何版本。
+// 自动弹窗时若 latest 落在 ignoredVersion 上则抑制弹窗，但「立即更新」按钮仍可显示。
+func (s *Settings) IgnoredVersion() string {
+	return s.Str("", "ignoredVersion")
+}
+
+// SetIgnoredVersion 设置/清除忽略版本（"" 表示清除忽略，之后任何新版本都会再次弹窗）。
+func (s *Settings) SetIgnoredVersion(v string) {
+	if v == "" {
+		delete(s.raw, "ignoredVersion")
+		return
+	}
+	s.raw["ignoredVersion"] = v
+}
+
+// LastUpdateResult 持久化的「最近一次检查结果」（形状与 updateCheckResult.toMap 一致）。
+// 用于让「发现新版本但未更新」的状态在重启后仍然显示，直到更新真正成功才清除。
+// 空/nil = 没有待展示的更新结果。
+func (s *Settings) LastUpdateResult() map[string]any {
+	return s.Map("lastUpdateResult")
+}
+
+// SetLastUpdateResult 写入/清除最近一次检查结果（nil 表示清除）。
+func (s *Settings) SetLastUpdateResult(m map[string]any) {
+	if m == nil {
+		delete(s.raw, "lastUpdateResult")
+		return
+	}
+	s.raw["lastUpdateResult"] = m
+}
+
 // ---------- 类型化视图（只覆盖 Go 逻辑真正要用的字段） ----------
 
 // Break 某种休息的配置（kind = "short" | "long"）
@@ -333,7 +378,7 @@ func (s *Settings) normSelection(v string) string {
 func (s *Settings) AppearanceCfg() AppearanceConfig {
 	return AppearanceConfig{
 		Color:        s.Str("#4f7cff", "appearance", "color"),
-		Transparency: s.Num(0.15, "appearance", "transparency"),
+		Transparency: math.Min(0.5, math.Max(0, s.Num(0.15, "appearance", "transparency"))),
 		Blur:         s.Flag(true, "appearance", "blur"),
 		Fullscreen:   s.Flag(false, "appearance", "fullscreen"),
 		AlwaysOnTop:  s.Flag(true, "appearance", "alwaysOnTop"),
@@ -403,7 +448,7 @@ func (s *Settings) TakeoutEnabled() bool { return s.Flag(true, "takeout", "enabl
 // TakeoutSlots 外卖提醒的时刻表（已归一化）
 func (s *Settings) TakeoutSlots() []TimeSlot { return normalizeTimeSlots(s.lookup("takeout", "slots")) }
 
-// AllScreens 「在所有屏幕显示提醒窗口」开关（休息窗口与外卖窗口共用同一多屏策略）
+// AllScreens 「在所有屏幕显示」开关（休息窗口与外卖窗口共用同一多屏策略）
 func (s *Settings) AllScreens() bool { return s.Flag(true, "allScreens") }
 
 // StartMinimized 启动时最小化到托盘（不显示设置窗口，托盘图标在，点一下就出来）
@@ -416,6 +461,42 @@ func (s *Settings) AppName() string { return normalizeAppName(s.Str("", "appName
 
 // Autostart 开机自启动开关
 func (s *Settings) Autostart() bool { return s.Flag(false, "autostart") }
+
+// UpdateSites 更新源地址列表：每一项都是 http/https 地址，指向一份远程 version.json。
+// 只保留 http/https 开头的非空串；其余（空串 / 非法 scheme / 非数组）一律丢弃，
+// 返回 nil 表示「未配置任何更新源」。供 update.go 依次容错拉取版本信息用。
+func (s *Settings) UpdateSites() []string {
+	arr, ok := s.lookup("sites").([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, it := range arr {
+		str, ok := it.(string)
+		if !ok {
+			continue
+		}
+		str = strings.TrimSpace(str)
+		if str == "" {
+			continue
+		}
+		lower := strings.ToLower(str)
+		if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+			out = append(out, str)
+		}
+	}
+	return out
+}
+
+// SetSites 直接覆盖本地更新源列表（远程 version.json 下发的 sites 会走这里替换本地）。
+// 调用方应只在远程确实返回了非空 sites 时才调用，避免把本地更新源误清空。
+func (s *Settings) SetSites(sites []string) {
+	raw := make([]any, 0, len(sites))
+	for _, it := range sites {
+		raw = append(raw, it)
+	}
+	s.raw["sites"] = raw
+}
 
 // ---------- 时刻表 ----------
 
@@ -925,8 +1006,10 @@ func normalizeSound(raw map[string]any) {
 }
 
 // normalizeTakeout 归一化整份外卖配置（对应 types.ts 的 normalizeTakeout）：
-// **重建**对象，只留这 5 个键；leadMin 夹到 0–120、postponeMin 夹到 0–120
+// **重建**对象，只留这 5 个键；leadSec 夹到 0–300、postponeMin 夹到 0–120
 // （0 = 不显示「推迟」按钮，见 takeout.js 的显隐）。
+//
+// 提前通知单位由「分钟」改为「秒」：旧配置里若为分钟（leadMin）则 ×60 换算成秒，保留用户意图。
 func normalizeTakeout(raw map[string]any) map[string]any {
 	var o map[string]any
 	if m, ok := raw["takeout"].(map[string]any); ok {
@@ -946,9 +1029,16 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 		}
 		return r
 	}
+	// 提前通知：新字段 leadSec（秒）；旧配置 leadMin（分）按比例换算成秒，保留用户意图
+	leadVal := 0.0
+	if v, ok := toNumber(o["leadSec"]); ok {
+		leadVal = v
+	} else if v, ok := toNumber(o["leadMin"]); ok {
+		leadVal = v * 60
+	}
 	return map[string]any{
 		"enabled":     o["enabled"] != false,
-		"leadMin":     pick(o["leadMin"], 0, 120, 0),
+		"leadSec":     pick(leadVal, 0, 300, 0),
 		"postponeMin": pick(o["postponeMin"], 0, 120, 10),
 		"slots":       slotsToAny(normalizeTimeSlots(o["slots"])),
 	}
@@ -1104,7 +1194,7 @@ func cleanLegacyKeys(raw map[string]any) {
 	if ap, ok := raw["appearance"].(map[string]any); ok {
 		if _, hasNew := ap["transparency"].(float64); !hasNew {
 			if old, ok := ap["opacity"].(float64); ok {
-				ap["transparency"] = math.Min(0.9, math.Max(0, 1-old))
+				ap["transparency"] = math.Min(0.5, math.Max(0, 1-old))
 			}
 		}
 		// 清理可能残留的旧键（如迁移中途混写的配置）

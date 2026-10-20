@@ -60,7 +60,6 @@
     <main id="content">
       <!-- 通用配置（行为 / 设置窗口（标题·主题） / 提醒窗口（含多屏幕） / 声音） -->
       <section class="tab active" id="tab-general">
-        <h2>通用配置</h2>
         <div class="card">
           <h3>行为</h3>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="autostart" /> 开机自启动</label></div>
@@ -120,12 +119,12 @@
               <button type="button" class="btn ghost" id="ap-preview-short">预览</button>
             </div>
           </div>
-          <div class="row field"><label>透明度 <span id="ap-opacity-val"></span></label><input type="range" id="ap-opacity" min="0" max="0.9" step="0.02" /></div>
+          <div class="row field"><label>透明度</label><div class="slider-row"><input type="range" id="ap-opacity" min="0" max="0.5" step="0.02" /><span class="slider-val" id="ap-opacity-val"></span></div></div>
           <div class="row field"><label>窗口宽度（屏幕百分比）</label><input type="number" id="ap-widthPct" min="20" max="100" /></div>
           <div class="row field"><label>窗口高度（屏幕百分比）</label><input type="number" id="ap-heightPct" min="20" max="100" /></div>
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-fullscreen" /> 全屏显示（开启后忽略宽高比例）</label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-fullscreen" /> 全屏显示 </label></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-alwaysOnTop" /> 窗口置顶 </label></div>
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-allScreens" /> 在所有屏幕显示提醒窗口 </label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-allScreens" /> 在所有屏幕显示 </label></div>
         </div>
         <div class="card">
           <div class="card-head">
@@ -133,13 +132,13 @@
           </div>
           <!-- 总开关放在卡片内容第一行（与「时间规划」三张提醒卡一致）：勾选框在左、「启用」在右 -->
           <div class="row check"><label class="switch-row"><input type="checkbox" id="snd-enabled" /> 启用</label></div>
-          <div class="row field"><label>音量 <span id="snd-volume-val"></span></label><input type="range" id="snd-volume" min="0" max="1" step="0.05" /></div>
-          <!-- 音乐列表：默认折叠（自建折叠面板，不走提醒内容的 .msg-panel 接线）；
+          <div class="row field"><label>音量</label><div class="slider-row"><input type="range" id="snd-volume" min="0" max="1" step="0.05" /><span class="slider-val" id="snd-volume-val"></span></div></div>
+          <!-- 提示音：默认折叠（自建折叠面板，不走提醒内容的 .msg-panel 接线）；
                「播放方式」为标题行的图标按钮（全局生效的播放策略），与列表展开/收起无关 -->
           <div class="fold-panel" id="snd-music-panel">
             <!-- 标题行：折叠开关占满 + 右侧「播放方式」图标按钮（紧贴标题行、居「＋」左侧、同组无外框直角）+「＋」导入 -->
             <div class="snd-music-head">
-              <button type="button" class="msg-toggle" id="snd-music-toggle"><span class="msg-arrow">▸</span>音乐列表</button>
+              <button type="button" class="msg-toggle" id="snd-music-toggle"><span class="msg-arrow">▸</span>提示音</button>
               <div class="snd-music-actions">
                 <button type="button" class="snd-mode-btn" id="snd-mode" aria-label="播放方式" title="单曲循环">
                   <span class="snd-mode-ico"></span>
@@ -164,7 +163,6 @@
 
       <!-- 时间规划（休息节奏 + 外卖提醒） -->
       <section class="tab" id="tab-timing">
-        <h2>时间规划</h2>
         <!-- 今日提醒时间线：综合全部提醒设置推算当天未触发的提醒，自动跟随调度更新（默认折叠） -->
         <div class="card tl-card" id="tl-card">
           <button type="button" class="tl-head" id="tl-toggle">
@@ -271,7 +269,7 @@
             <label class="switch-row"><input type="checkbox" id="tk-enabled" /> 启用</label>
             <button class="btn ghost" id="tk-preview" title="预览外卖提醒">预览</button>
           </div>
-          <div class="row field"><label>提前通知（分钟）</label><input type="number" id="tk-lead" min="0" max="120" /></div>
+          <div class="row field"><label>提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>
           <div class="row field"><label>可推迟（分钟）</label><input type="number" id="tk-postpone" min="0" max="120" title="窗口上点「推迟」后，间隔多久再次提醒；0 = 不显示「推迟」按钮" /></div>
           <div class="slot-fixed">
             <div class="slot-head">
@@ -304,7 +302,6 @@
 
       <!-- 督休专员（开关 / 预览 / 立绘） -->
       <section class="tab" id="tab-supervisor">
-        <h2>督休专员</h2>
         <div class="card">
           <!-- 总开关行与其他提醒卡一致（has-btn）：「预览」按钮在右侧，弹当前选中督休专员的休息预览窗 -->
           <div class="row check has-btn">
@@ -333,11 +330,11 @@
             <div class="sup-preview-badge hidden" id="sup-preview-badge"></div>
           </div>
           <!-- 「预览」按钮已收进督休专员磁贴的右键菜单（按菜单所属督休专员预览） -->
-          <!-- 立绘列表：所有督休专员（内置 + 自定义）都可改名、可禁用、可删除。
+          <!-- 候选专员：所有督休专员（内置 + 自定义）都可改名、可禁用、可删除。
                收进可折叠面板（默认展开、两行磁贴高，溢出出纵向滚动条，底部拖柄可拖调高度） -->
           <div class="fold-panel gallery-panel open" id="sup-gallery-panel">
             <div class="msg-head">
-              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span><span class="toggle-label">立绘列表（<span id="sup-gallery-count">0</span>）</span></button>
+              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span><span class="toggle-label">候选专员（<span id="sup-gallery-count">0</span>）</span></button>
               <div class="snd-music-actions">
                 <button type="button" class="snd-mode-btn" id="sup-selection-btn" aria-label="立绘显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
                 <button type="button" class="msg-add" id="sup-gallery-add" title="新增立绘（支持 PNG / JPG / WebP）">＋</button>
@@ -385,7 +382,6 @@
 
       <!-- 快捷键 -->
       <section class="tab" id="tab-shortcuts">
-        <h2>快捷键</h2>
         <div class="card">
           <p class="hint">点击输入框后按下组合键即可录入；留空表示禁用。</p>
           <div class="row field"><label>推迟当前休息</label><input type="text" class="shortcut" id="sc-postpone" readonly placeholder="点击后按键录入" /></div>
@@ -397,7 +393,6 @@
 
       <!-- 统计报表：全部卡片可折叠（样式与行为同时间规划页，状态记本地、默认展开） -->
       <section class="tab" id="tab-stats">
-        <h2>统计报表</h2>
         <div class="card foldable" id="stats-today-card">
           <div class="card-head">
             <span class="card-fold" aria-hidden="true">▾</span>
@@ -472,30 +467,93 @@
 
       <!-- 关于（数据与隐私 / 软件信息） -->
       <section class="tab" id="tab-about">
-        <h2>关于</h2>
-        <div class="card">
-          <h3>数据与隐私</h3>
-          <p class="hint">本软件无账户、无遥测，所有配置保存在本地 settings.json，使用统计数据保存在本地 stats.json。唯一会随外链发出的标识是安装 ID（用于优惠券二维码，见下）。</p>
-          <div class="btn-row">
-            <button class="btn ghost" id="d-clearstats">清空统计数据</button>
+        <!-- 卡片 1：软件信息 -->
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h3>软件信息</h3>
+            </div>
+            <span class="pill ok" id="d-update-pill"><i></i><span id="d-update-pill-text">已是最新版本</span></span>
           </div>
-          <div class="btn-row">
-            <button class="btn danger" id="d-reset">恢复默认设置</button>
+
+          <div class="card-foot">
+            <label class="check">
+              <input type="checkbox" id="chk-update" />
+              <span class="box">
+                <svg viewBox="0 0 12 12" width="11" height="11" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 6.2 4.8 8.5 9.5 3.8"/></svg>
+              </span>
+              <span class="txt">自动检查更新</span>
+            </label>
+            <div class="foot-right">
+              <button class="btn-soft hidden" id="d-update-go">立即更新</button>
+              <button class="btn-soft" id="d-checkupdate">检查更新</button>
+            </div>
           </div>
-          <p class="hint">恢复默认设置会把当前配置先备份成 settings.backup.json（每次覆盖），然后重置全部选项；安装 ID 保留，督休专员目录与已导入的音乐文件不受影响。</p>
-        </div>
-        <div class="card">
-          <h3>软件信息</h3>
-          <p class="hint" id="d-version">吃饼人也敢休息？ v— · Wails v3 (Go) · 本地优先</p>
-          <p class="hint hidden" id="d-update-status"></p>
-          <div class="btn-row">
-            <button class="btn ghost" id="d-checkupdate">检查更新</button>
-            <button class="btn ghost hidden" id="d-update-go">前往下载</button>
-            <button class="btn ghost" id="d-manual">查看使用手册</button>
+
+          <div class="rows">
+            <div class="row"><span class="k">当前版本</span><span class="v mono strong" id="d-version-val">v—</span></div>
+            <div class="row"><span class="k">构建时间</span><span class="v mono" id="d-build-time">本地构建</span></div>
+            <div class="row"><span class="k">运行环境</span><span class="v mono" id="d-runtime">Go · Wails v3</span></div>
           </div>
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="chk-update" /> 启动时检查更新（有新版才提示，失败不打扰）</label></div>
-          <p class="hint">开源与素材：项目采用 <a class="ext-link" href="#" data-url="https://github.com/wailsapp/wails">Wails v3</a>（Go）框架构建，参考使用了 <a class="ext-link" href="#" data-url="https://github.com/soldair/node-qrcode">node-qrcode</a> 等 MIT 开源组件；<a class="ext-link" href="#" data-url="https://github.com/lwb/worker-rest/blob/main/LICENSE">本软件同为 MIT 开源</a>。立绘均为 AI 生成的原创督休专员，不含第三方素材。</p>
-          <button class="btn danger" id="d-quit">退出软件</button>
+        </section>
+
+        <!-- 卡片 2：数据与隐私 -->
+        <section class="card">
+          <div class="card-head">
+            <div>
+              <h3>数据与隐私</h3>
+            </div>
+            <span class="pill local"><i></i>本地存储</span>
+          </div>
+
+          <div class="note">
+            <div class="note-row">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+                <path d="m9 12 2 2 4-4"/>
+              </svg>
+              <span><b>免注册登录</b>，不上传任何数据，无需联网即可使用</span>
+            </div>
+            <div class="note-row">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/>
+                <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+                <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+              </svg>
+              <span>所有统计数据与配置均保存在本地设备，可随时清空或恢复默认</span>
+            </div>
+          </div>
+
+          <div class="data-actions">
+            <button class="btn-soft btn-danger" id="d-clearstats" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M3 6h18"/>
+                <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                <path d="M10 11v6M14 11v6"/>
+              </svg>
+              清空统计数据
+            </button>
+            <button class="btn-soft" id="d-reset" type="button">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 1 1-2.64-6.36"/>
+                <path d="M21 3v6h-6"/>
+              </svg>
+              恢复默认设置
+            </button>
+          </div>
+        </section>
+
+        <!-- 底栏：版权 + 退出软件 -->
+        <div class="bottom-bar">
+          <span class="copyright">© 2026 吃饼人也敢休息？</span>
+          <button class="btn-quit" id="d-quit" type="button">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3v9"/>
+              <path d="M18.4 6.6a9 9 0 1 1-12.8 0"/>
+            </svg>
+            退出软件
+          </button>
         </div>
       </section>
     </main>
@@ -590,6 +648,40 @@
       </div>
       <div class="modal-actions">
         <button type="button" class="btn" id="cp-done">完成</button>
+      </div>
+    </div>
+  </div>
+  <!-- 更新确认框：检查到新版本时展示版本 / 发布日期 / 更新内容，提供立即更新 -->
+  <div id="update-modal" class="modal hidden">
+    <div class="modal-box cf-box" role="alertdialog" aria-modal="true" aria-labelledby="up-title">
+      <div class="cf-head">
+        <span class="cf-icon accent" aria-hidden="true">&#8593;</span>
+        <div class="cf-titles">
+          <h3 id="up-title">发现新版本</h3>
+          <p class="cf-desc"><span id="up-version"></span> · 发布于 <span id="up-date"></span></p>
+        </div>
+      </div>
+      <div class="up-changes" id="up-changes"></div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="up-ignore">忽略本版本</button>
+        <button class="btn ghost" id="up-later">下次一定</button>
+        <button class="btn primary" id="up-now">立即更新</button>
+      </div>
+    </div>
+  </div>
+  <!-- 更新完成摘要：软件重启后展示「已更新到 vX / 日期 / 更新内容」 -->
+  <div id="updated-modal" class="modal hidden">
+    <div class="modal-box cf-box" role="alertdialog" aria-modal="true" aria-labelledby="upd-title">
+      <div class="cf-head">
+        <span class="cf-icon accent" aria-hidden="true">&#10003;</span>
+        <div class="cf-titles">
+          <h3 id="upd-title">已更新到新版本</h3>
+          <p class="cf-desc"><span id="upd-version"></span> · 发布于 <span id="upd-date"></span></p>
+        </div>
+      </div>
+      <div class="up-changes" id="upd-changes"></div>
+      <div class="modal-actions">
+        <button class="btn primary" id="upd-ok">好的</button>
       </div>
     </div>
   </div>

@@ -59,7 +59,7 @@
     }
     return best;
   }
-  var TAKEOUT_LEAD_LIMITS = [0, 120];
+  var TAKEOUT_LEAD_LIMITS = [0, 300];
   var TAKEOUT_LEAD_DEFAULT = 0;
   var TAKEOUT_POSTPONE_LIMITS = [0, 120];
   var TAKEOUT_POSTPONE_DEFAULT = 10;
@@ -952,7 +952,7 @@
     }
     for (const m of music) {
       const row = document.createElement("div");
-      row.className = "tk-item" + (!singleMode && !m.enabled ? " disabled" : "");
+      row.className = "tk-item" + (!singleMode && !m.enabled ? " disabled" : "") + " snd-row";
       const handle = document.createElement("span");
       handle.className = "msg-handle";
       handle.textContent = "\u283F";
@@ -1012,6 +1012,21 @@
         toast("\u5DF2\u5220\u9664");
       });
       row.append(handle, ctrl, name, test, del);
+      row.addEventListener("click", (e) => {
+        // 点试听 / 删除 / 拖拽手柄 / 前面的控件本身时，交给各自的监听，不触发整行勾选
+        if (e.target.closest(".btn") || e.target === ctrl || e.target === handle) return;
+        if (singleMode) {
+          if (S.sound.singleId === m.id) return; // 已是当前单曲，无需动作
+          S.sound.singleId = m.id;
+          autoSave();
+          renderSoundMusic(); // 重绘以正确反映单选互斥
+        } else {
+          m.enabled = !m.enabled;
+          ctrl.checked = m.enabled;
+          row.classList.toggle("disabled", !m.enabled);
+          autoSave();
+        }
+      });
       list.appendChild(row);
       handle.addEventListener("mousedown", () => {
         row.draggable = true;
@@ -1144,8 +1159,8 @@
     }
     const plannedAt = LAST_STATE?.fixedNext?.takeout;
     const cfgNext = nextSlotAt(t.slots);
-    const next = plannedAt !== void 0 ? { at: plannedAt } : cfgNext && { at: cfgNext.at - t.leadMin * 6e4 };
-    const lead = t.leadMin > 0 ? `\u63D0\u524D ${t.leadMin} \u5206\u901A\u77E5 \xB7 ` : "";
+    const next = plannedAt !== void 0 ? { at: plannedAt } : cfgNext && { at: cfgNext.at };
+    const lead = t.leadSec > 0 ? `\u63D0\u524D ${t.leadSec} \u79D2\u901A\u77E5 \xB7 ` : "";
     el.textContent = `\u56FA\u5B9A\u65F6\u95F4 \xB7 ${active.length} \u6761 \xB7 ${lead}${slotNextText(next)}`;
     el.classList.add("customized");
   }
@@ -1567,7 +1582,7 @@
     fillSupervisorImageName();
     fillGeomControls(normalizeSupGeom(geomOf(currentGeomKey())));
     $("tk-enabled").checked = S.takeout.enabled;
-    $("tk-lead").value = String(S.takeout.leadMin);
+    $("tk-lead").value = String(S.takeout.leadSec);
     $("tk-postpone").value = String(S.takeout.postponeMin);
     $("sc-postpone").value = S.shortcuts.postpone;
     $("sc-endEarly").value = S.shortcuts.endEarly;
@@ -1610,7 +1625,7 @@
     S.sound.mode = $("snd-mode").dataset.mode || "single";
     S.supervisor.enabled = $("sup-enabled").checked;
     S.takeout.enabled = $("tk-enabled").checked;
-    S.takeout.leadMin = clampNum($("tk-lead"), TAKEOUT_LEAD_LIMITS[0], TAKEOUT_LEAD_LIMITS[1], TAKEOUT_LEAD_DEFAULT);
+    S.takeout.leadSec = clampNum($("tk-lead"), TAKEOUT_LEAD_LIMITS[0], TAKEOUT_LEAD_LIMITS[1], TAKEOUT_LEAD_DEFAULT);
     S.takeout.postponeMin = clampNum($("tk-postpone"), TAKEOUT_POSTPONE_LIMITS[0], TAKEOUT_POSTPONE_LIMITS[1], TAKEOUT_POSTPONE_DEFAULT);
     S.shortcuts.postpone = $("sc-postpone").value.trim();
     S.shortcuts.endEarly = $("sc-endEarly").value.trim();
@@ -1681,6 +1696,12 @@
     }
     for (const item of cfg.items) list.appendChild(buildMsgRow(target, item, fixedMode));
   }
+  // 退出所有「提醒内容」列表中仍处于编辑态的行（折叠 / 切页 / 关窗时调用）
+  function exitAllMsgEditing() {
+    document.querySelectorAll(".msg-item.editing").forEach((row) => {
+      if (typeof row._cancelEdit === "function") row._cancelEdit();
+    });
+  }
   function buildMsgRow(target, item, fixedMode) {
     const cfg = msgCfgOf(target);
     const row = document.createElement("div");
@@ -1717,13 +1738,46 @@
     }
     const txt = document.createElement("input");
     txt.type = "text";
+    txt.className = "msg-text";
     txt.value = item.text;
     txt.placeholder = "\u63D0\u9192\u5185\u5BB9\uFF08\u7EAF\u6587\u672C\uFF09";
-    txt.addEventListener("change", () => {
+    txt.readOnly = true; // 默认不可编辑，点「编辑」图标才进入编辑态
+    const ICON_EDIT = "\u270E", ICON_DEL = "\u2715", ICON_SAVE = "\u2713", ICON_CANCEL = "\u21BA";
+    let editing = false;
+    function setButtonsToEdit() {
+      editBtn.textContent = ICON_EDIT; editBtn.title = "\u7F16\u8F91";
+      delBtn.textContent = ICON_DEL; delBtn.title = "\u5220\u9664";
+    }
+    function setButtonsToSave() {
+      editBtn.textContent = ICON_SAVE; editBtn.title = "\u4FDD\u5B58";
+      delBtn.textContent = ICON_CANCEL; delBtn.title = "\u53D6\u6D88";
+    }
+    function enterEdit() {
+      if (editing) return;
+      editing = true;
+      row.classList.add("editing");
+      txt.readOnly = false;
+      txt.focus();
+      txt.select();
+      setButtonsToSave();
+    }
+    function cancelEdit() {
+      editing = false;
+      txt.value = item.text; // 丢弃未保存改动，恢复为原文本
+      txt.readOnly = true;
+      row.classList.remove("editing");
+      setButtonsToEdit();
+    }
+    function saveEdit() {
+      editing = false;
       item.text = txt.value;
+      txt.readOnly = true;
+      row.classList.remove("editing");
+      setButtonsToEdit();
       autoSave();
-    });
-    const del = mkBtn("\u2715", "\u5220\u9664", () => {
+      if (target === "sup") void refreshSupervisorPreview(true);
+    }
+    function deleteRow() {
       void confirmDialog({
         title: "\u5220\u9664\u8FD9\u6761\u63D0\u9192\u5185\u5BB9\uFF1F",
         desc: "\u5220\u9664\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002",
@@ -1738,9 +1792,26 @@
         autoSave();
         if (target === "sup") void refreshSupervisorPreview(true);
       });
+    }
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "btn mini";
+    editBtn.textContent = ICON_EDIT;
+    editBtn.title = "\u7F16\u8F91";
+    const delBtn = document.createElement("button");
+    delBtn.type = "button";
+    delBtn.className = "btn mini danger";
+    delBtn.textContent = ICON_DEL;
+    delBtn.title = "\u5220\u9664";
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (editing) saveEdit(); else enterEdit();
     });
-    del.classList.add("danger");
-    row.append(handle, ctrl, txt, del);
+    delBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (editing) cancelEdit(); else deleteRow();
+    });
+    row.append(handle, ctrl, txt, editBtn, delBtn);
     handle.addEventListener("mousedown", () => {
       row.draggable = true;
     });
@@ -1776,6 +1847,26 @@
       renderMsgList(target);
       autoSave();
     });
+    // 供「折叠 / 切页 / 关窗」统一退出编辑态调用
+    row._cancelEdit = cancelEdit;
+    // 整行点击：非编辑态下，点行任意处（含只读文本框）勾选 / 取消勾选本行
+    row.addEventListener("click", (e) => {
+      if (editing) return; // 编辑态不触发整行勾选，避免干扰输入
+      if (e.target.closest(".btn") || e.target === ctrl || e.target === handle) return;
+      if (fixedMode) {
+        if (cfg && cfg.fixedId === item.id) return; // 已是当前固定项
+        if (cfg) cfg.fixedId = item.id;
+        autoSave();
+        renderMsgList(target); // 重绘以正确反映单选互斥
+        if (target === "sup") void refreshSupervisorPreview(true);
+      } else {
+        item.enabled = !item.enabled;
+        ctrl.checked = item.enabled;
+        row.classList.toggle("disabled", !item.enabled);
+        autoSave();
+        if (target === "sup") void refreshSupervisorPreview(true);
+      }
+    });
     return row;
   }
   function renderAllMsgLists() {
@@ -1789,6 +1880,7 @@
     msgPanelBound.add(panel);
     const target = panel.dataset.kind ?? "short";
     panel.querySelector(".msg-toggle").addEventListener("click", () => {
+      if (panel.classList.contains("open")) exitAllMsgEditing();
       panel.classList.toggle("open");
       panel.querySelector(".msg-body").classList.toggle("hidden");
     });
@@ -2382,7 +2474,7 @@
     post: (b) => b.postponeCount
   };
   var RC_TABLE_COLS = [
-    { key: "period", label: "\u5468\u671F" },
+    { key: "period", label: "\u7EDF\u8BA1\u5468\u671F" },
     { key: "work", label: "\u5DE5\u4F5C\u65F6\u95F4" },
     { key: "break", label: "\u4F11\u606F\u603B\u65F6\u95F4" },
     { key: "long", label: "\u957F\u4F11\u606F" },
@@ -2955,7 +3047,7 @@
     $("rc-exp-csv").addEventListener("click", () => {
       const rows = [...rcTableData].sort((a2, b) => a2.start < b.start ? -1 : 1);
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      const lines = ["\u5468\u671F,\u5F00\u59CB,\u7ED3\u675F,\u5DE5\u4F5C\u65F6\u95F4,\u4F11\u606F\u603B\u65F6\u95F4,\u957F\u4F11\u606F,\u77ED\u4F11\u606F,\u79BB\u5F00\u65F6\u95F4,\u4F11\u606F\u6B21\u6570,\u8DF3\u8FC7\u6B21\u6570,\u63A8\u8FDF\u6B21\u6570"];
+      const lines = ["\u7EDF\u8BA1\u5468\u671F,\u5F00\u59CB,\u7ED3\u675F,\u5DE5\u4F5C\u65F6\u95F4,\u4F11\u606F\u603B\u65F6\u95F4,\u957F\u4F11\u606F,\u77ED\u4F11\u606F,\u79BB\u5F00\u65F6\u95F4,\u4F11\u606F\u6B21\u6570,\u8DF3\u8FC7\u6B21\u6570,\u63A8\u8FDF\u6B21\u6570"];
       for (const b of rows) {
         lines.push(
           [
@@ -3154,7 +3246,7 @@
     post: (b) => b.takeoutPostponed
   };
   var TK_TABLE_COLS = [
-    { key: "period", label: "\u5468\u671F" },
+    { key: "period", label: "\u7EDF\u8BA1\u5468\u671F" },
     { key: "ord", label: "\u70B9\u5916\u5356\u6B21\u6570" },
     { key: "can", label: "\u53D6\u6D88\u6B21\u6570" },
     { key: "post", label: "\u63A8\u8FDF\u6B21\u6570" }
@@ -3537,7 +3629,7 @@
     $("tk-exp-csv").addEventListener("click", () => {
       const rows = [...tkTableData].sort((a2, b) => a2.start < b.start ? -1 : 1);
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      const lines = ["\u5468\u671F,\u5F00\u59CB,\u7ED3\u675F,\u70B9\u5916\u5356\u6B21\u6570,\u53D6\u6D88\u6B21\u6570,\u63A8\u8FDF\u6B21\u6570"];
+      const lines = ["\u7EDF\u8BA1\u5468\u671F,\u5F00\u59CB,\u7ED3\u675F,\u70B9\u5916\u5356\u6B21\u6570,\u53D6\u6D88\u6B21\u6570,\u63A8\u8FDF\u6B21\u6570"];
       for (const b of rows) {
         lines.push(
           [b.title, b.start, b.end, b.takeoutOrdered, b.takeoutSkipped, b.takeoutPostponed].map(q).join(",")
@@ -3738,7 +3830,7 @@
       const num = key === "period" ? "" : " num";
       return `<th class="sortable${num}" data-key="${key}" title="\u70B9\u6309\u6392\u5E8F">${ckEsc(label)}${arrow}</th>`;
     };
-    const head = "<tr>" + th("period", "\u5468\u671F") + ckSeries.map((s) => th(s.id, s.label)).join("") + "</tr>";
+    const head = "<tr>" + th("period", "\u7EDF\u8BA1\u5468\u671F") + ckSeries.map((s) => th(s.id, s.label)).join("") + "</tr>";
     const dir = ckTableSort.dir === "asc" ? 1 : -1;
     const sorted = [...rows].sort((a, b) => {
       const va = ckTableSort.key === "period" ? a.start : ckVal(a, ckTableSort.key);
@@ -4098,7 +4190,7 @@
     $("ck-exp-csv").addEventListener("click", () => {
       const rows = [...ckTableData].sort((a2, b) => a2.start < b.start ? -1 : 1);
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      const lines = [["\u5468\u671F", "\u5F00\u59CB", "\u7ED3\u675F", ...ckSeries.map((s) => s.label)].map(q).join(",")];
+      const lines = [["\u7EDF\u8BA1\u5468\u671F", "\u5F00\u59CB", "\u7ED3\u675F", ...ckSeries.map((s) => s.label)].map(q).join(",")];
       for (const b of rows) {
         lines.push([b.title, b.start, b.end, ...ckSeries.map((s) => ckVal(b, s.id))].map(q).join(","));
       }
@@ -4662,11 +4754,23 @@
     el.dataset.wrAutosave = "1";
     el.addEventListener("change", autoSave);
   }
+  // 程序化切到指定 tab（与点击导航项同效），供自更新重启后恢复页面用。
+  function goTab(name) {
+    if (!name) return;
+    exitAllMsgEditing();
+    document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    const tab = $(`tab-${name}`);
+    if (tab) tab.classList.add("active");
+    if (name === "stats") void renderStats();
+    void window.api.setActiveTab(name);
+  }
   async function init() {
     S = await window.api.getSettings();
     applyTheme();
     for (const btn of document.querySelectorAll(".nav-item")) {
       btn.addEventListener("click", () => {
+        exitAllMsgEditing();
         document.querySelectorAll(".nav-item").forEach((b) => b.classList.remove("active"));
         document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
         btn.classList.add("active");
@@ -4674,6 +4778,8 @@
         if (btn.dataset.tab === "stats") {
           void renderStats();
         }
+        // 上报当前 tab 给 Go，供自更新重启后恢复「更新前所在的页面」
+        void window.api.setActiveTab(btn.dataset.tab);
       });
     }
     renderCustomCards();
@@ -4837,8 +4943,17 @@
         batchModal.classList.add("hidden");
         return;
       }
+      const beforeLen = cfg.items.length;
+      const newIds = [];
       for (const text of lines) {
-        cfg.items.push({ id: crypto.randomUUID(), text, enabled: true });
+        const id = crypto.randomUUID();
+        cfg.items.push({ id, text, enabled: true });
+        newIds.push(id);
+      }
+      // 新建第 1 条时自动勾选：新增前列表为空（即这是首条），让第一条处于选中态。
+      // 固定模式靠 fixedId 选中单条；随机/顺序模式下新增条目默认 enabled:true 已勾选。
+      if (beforeLen === 0 && newIds.length > 0 && cfg.order === "fixed") {
+        cfg.fixedId = newIds[0];
       }
       batchModal.classList.add("hidden");
       renderMsgList(msgBatchTarget);
@@ -4919,51 +5034,141 @@
       })();
     });
     $("d-quit").addEventListener("click", () => void window.api.quit());
+    // 版本号规范化：确保恰好一个 v 前缀（version.json 已是 v1.2.3，不要再拼一个 v）
+    const normVer = (v) => (v == null ? "" : "v" + String(v).replace(/^v+/, ""));
     const info = await window.api.appInfo();
-    $("d-version").textContent = `\u5403\u997C\u4EBA\u4E5F\u6562\u4F11\u606F\uFF1F v${info.version} \xB7 ${info.electron} \xB7 \u672C\u5730\u4F18\u5148`;
-    const updateLine = $("d-update-status");
+    $("d-version-val").textContent = normVer(info.version);
+    const goVer = info.goVersion || "";
+    const wailsVer = info.wailsVersion || "v3";
+    $("d-runtime").textContent = `Go ${goVer} · Wails ${wailsVer}`.replace(/\s+/g, " ").trim();
+    const rawBuild = info.buildTime || "";
+    $("d-build-time").textContent = rawBuild ? rawBuild.replace("T", " ").slice(0, 16) : "本地构建";
+
     const updateGo = $("d-update-go");
-    const renderUpdate = (st) => {
-      if (st.status === "update-available") {
-        updateLine.textContent = `\u53D1\u73B0\u65B0\u7248\u672C v${st.latest}\uFF08\u5F53\u524D v${st.current}\uFF09`;
-        updateLine.classList.remove("hidden");
-        updateGo.classList.remove("hidden");
-      } else if (st.status === "up-to-date") {
-        updateLine.textContent = `\u5DF2\u662F\u6700\u65B0\u7248\u672C\uFF08v${st.current}\uFF09`;
-        updateLine.classList.remove("hidden");
-        updateGo.classList.add("hidden");
-      } else if (st.status === "error") {
-        updateLine.textContent = `\u68C0\u67E5\u66F4\u65B0\u5931\u8D25\uFF1A${st.message ?? "\u66F4\u65B0\u6E90\u4E0D\u53EF\u8FBE"}`;
-        updateLine.classList.remove("hidden");
-        updateGo.classList.add("hidden");
-      } else {
-        updateLine.classList.add("hidden");
-        updateGo.classList.add("hidden");
+    const updatePill = $("d-update-pill");
+    const updatePillText = $("d-update-pill-text");
+    let updateModalShownFor = ""; // 防止同一版本重复自动弹窗
+    const setPill = (kind, text) => {
+      updatePill.className = `pill ${kind}`;
+      updatePillText.textContent = text;
+    };
+    const fillChanges = (el, changes) => {
+      el.innerHTML = "";
+      const list = Array.isArray(changes) ? changes : [];
+      for (const c of list) {
+        const div = document.createElement("div");
+        div.className = "up-item";
+        div.textContent = c;
+        el.appendChild(div);
       }
     };
-    renderUpdate(await window.api.updateStatus());
+    const showUpdateModal = (st) => {
+      $("up-version").textContent = normVer(st.latest);
+      $("up-date").textContent = st.date || "—";
+      fillChanges($("up-changes"), st.changes);
+      $("update-modal").classList.remove("hidden");
+    };
+    const showUpdatedModal = (info) => {
+      if (!info) return;
+      $("upd-version").textContent = normVer(info.version);
+      $("upd-date").textContent = info.date || "—";
+      fillChanges($("upd-changes"), info.changes);
+      // 更新成功：隐藏「立即更新」按钮并复位状态条（直到下次发现新版本）
+      updateGo.classList.add("hidden");
+      setPill("ok", "已是最新版本");
+      updateModalShownFor = "";
+      $("updated-modal").classList.remove("hidden");
+    };
+    // autoModal=false 时只显示「有更新」状态（按钮+状态条），不自动弹窗——
+    // 用于「未勾选自动检查更新」时打开设置页，避免把上次残留的更新提示又弹出来。
+    const renderUpdate = (st, autoModal = true) => {
+      if (st.status === "update-available") {
+        updateGo.classList.remove("hidden");
+        setPill("warn", `发现新版本 ${normVer(st.latest)}`);
+        // 被用户忽略的版本：仍显示「立即更新」按钮，但不再自动弹窗
+        // （直到发现比被忽略版本更大的版本号才恢复弹窗）
+        if (!st.ignored && autoModal && updateModalShownFor !== st.latest) {
+          updateModalShownFor = st.latest;
+          showUpdateModal(st);
+        }
+      } else if (st.status === "up-to-date") {
+        updateGo.classList.add("hidden");
+        setPill("ok", "已是最新版本");
+      } else if (st.status === "error") {
+        updateGo.classList.add("hidden");
+        setPill("err", "更新检查失败");
+      } else {
+        updateGo.classList.add("hidden");
+        setPill("ok", "已是最新版本");
+      }
+    };
+    // 设置页打开时的初始渲染：仅当勾选「自动检查更新」时才自动弹窗，
+    // 否则只显示「有更新」状态（按钮+状态条），不弹提示——避免把上次
+    // 残留的「发现新版本」又弹出来打扰用户。
+    renderUpdate(await window.api.updateStatus(), S.checkUpdateOnStart);
     window.api.onUpdateStatus(renderUpdate);
+    window.api.onSettingsHidden(() => exitAllMsgEditing());
     $("d-checkupdate").addEventListener("click", async () => {
       const btn = $("d-checkupdate");
       btn.disabled = true;
       try {
         const st = await window.api.checkUpdate();
         renderUpdate(st);
-        if (st.status === "update-available") toast(`\u53D1\u73B0\u65B0\u7248\u672C v${st.latest}`);
+        if (st.status === "update-available") toast(`\u53D1\u73B0\u65B0\u7248\u672C ${normVer(st.latest)}`);
         else if (st.status === "up-to-date") toast("\u5DF2\u662F\u6700\u65B0\u7248\u672C");
         else toast(`\u68C0\u67E5\u66F4\u65B0\u5931\u8D25\uFF08${st.message ?? "\u66F4\u65B0\u6E90\u4E0D\u53EF\u8FBE"}\uFF09`);
       } finally {
         btn.disabled = false;
       }
     });
+    // 「立即更新」（在「检查更新」左侧）：直接执行更新
     updateGo.addEventListener("click", () => {
+      void (async () => {
+        toast("正在更新，软件将重启…");
+        try {
+          const r = await window.api.startUpdate();
+          if (r && r.status === "error") {
+            toast(`更新未能启动：${r.message ?? "未知错误"}`);
+          }
+        } catch (e) {
+          // 进程即将退出时绑定调用会被中断，属正常现象
+        }
+      })();
+    });
+    // 更新确认弹窗按钮
+    // 下次一定：仅关闭弹窗，什么都不做（该版本下次仍会提示）
+    $("up-later").addEventListener("click", () => $("update-modal").classList.add("hidden"));
+    // 忽略本版本：记录忽略并关闭弹窗；之后同一版本不再自动弹窗，直到更大版本号出现
+    $("up-ignore").addEventListener("click", () => {
       void window.api.updateStatus().then((st) => {
-        if (st.status === "update-available" && st.url) void window.api.openExternal(st.url);
+        if (st && st.latest) void window.api.ignoreVersion(st.latest);
+        $("update-modal").classList.add("hidden");
       });
     });
-    $("d-manual").addEventListener("click", async () => {
-      const ok = await window.api.openManual();
-      if (!ok) toast("\u624B\u518C\u6587\u4EF6\u7F3A\u5931\uFF0C\u8BF7\u91CD\u65B0\u5B89\u88C5\u8F6F\u4EF6");
+    // 立即更新：执行更新
+    $("up-now").addEventListener("click", () => {
+      $("update-modal").classList.add("hidden");
+      void (async () => {
+        toast("正在更新，软件将重启…");
+        try {
+          const r = await window.api.startUpdate();
+          if (r && r.status === "error") {
+            toast(`更新未能启动：${r.message ?? "未知错误"}`);
+          }
+        } catch (e) {
+          // 进程即将退出时绑定调用会被中断，属正常现象
+        }
+      })();
+    });
+    $("upd-ok").addEventListener("click", () => $("updated-modal").classList.add("hidden"));
+    // 软件刚完成更新：拉取摘要并展示；若更新前设置窗口可见，则恢复显示并切回原页面
+    void window.api.pendingUpdate().then((info) => {
+      if (!info) return;
+      showUpdatedModal(info);
+      if (info.settingsVisible) {
+        goTab(info.activeTab || "general");
+        void window.api.showSettingsWindow();
+      }
     });
     $("d-reset").addEventListener("click", () => {
       void (async () => {
