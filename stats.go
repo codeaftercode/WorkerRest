@@ -283,6 +283,13 @@ type StatsStore struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 
+	// notifyCh 「统计数据已变」的合并通知通道（容量 1）：工作时长每秒都在涨，
+	// 连续的多次改动合并成一次通知 —— 渲染层只需要知道「后来变了」，中间态没意义。
+	notifyCh chan struct{}
+	// onChange 由 App 注入：把「已变」转成发给渲染层的事件（见 StartNotify）。
+	// 在独立的 notifier goroutine 里调用，调用时不持 mu，可以放心再读 Today()。
+	onChange func()
+
 	// loadOnce 让「首次读盘」只发生一次：App.statsStore 会在**不持自己的锁**的情况下调
 	// LoadOnce —— Load 里要回读配置路径，而那条路径需要 App 的锁，持锁调用会自死锁
 	//（本项目踩过一次：idleWatchTick → statsStore → Load → appStatsFile → cfgSnapshot）。
@@ -305,6 +312,7 @@ func NewStatsStore(fileFn func() string) *StatsStore {
 		fileFn:         fileFn,
 		wakeTickFn:     sysWakeTick,
 		stopCh:         make(chan struct{}),
+		notifyCh:       make(chan struct{}, 1),
 	}
 }
 
@@ -405,14 +413,18 @@ func (st *StatsStore) Clear() {
 		st.saveTimer.Stop()
 		st.saveTimer = nil
 	}
+	// 清空也是「数据变了」：渲染层的「今天」卡要立刻归零
+	st.notifyLocked()
 	st.mu.Unlock()
 	st.Flush()
 }
 
 // markDirtyLocked 标脏 + 2 秒防抖落盘（调用方需持锁）。
 // 频繁的秒级累加不必每次落盘：合并 2 秒写一次。
+// 顺手投一个「已变」通知（非阻塞、容量 1，连着的改动自动合并成一次）。
 func (st *StatsStore) markDirtyLocked() {
 	st.dirty = true
+	st.notifyLocked()
 	if st.saveTimer == nil {
 		st.saveTimer = time.AfterFunc(2*time.Second, func() {
 			st.mu.Lock()
@@ -424,6 +436,47 @@ func (st *StatsStore) markDirtyLocked() {
 			}
 		})
 	}
+}
+
+// notifyLocked 投一个「统计数据已变」通知（调用方需持锁）。
+// 通道容量 1 + 非阻塞投递 = 天然合并：notifier 还在处理上一次时，后来的改动只会把
+// 同一格再标一次，不会积压出每秒一长串事件。
+func (st *StatsStore) notifyLocked() {
+	if st.notifyCh == nil {
+		return
+	}
+	select {
+	case st.notifyCh <- struct{}{}:
+	default:
+	}
+}
+
+// SetOnChange 注册「统计数据已变」的回调（App 侧注入发事件的实现）。
+// 回调在 notifier goroutine 里执行，**不持锁**，可以安全地再读 Today()。
+func (st *StatsStore) SetOnChange(fn func()) {
+	st.mu.Lock()
+	st.onChange = fn
+	st.mu.Unlock()
+}
+
+// StartNotify 启动通知 goroutine：把合并后的「已变」通知转给 onChange（幂等无保护，
+// 只在 startStats 里调一次）。数据没变就不发通知 —— 空闲 / 暂停时不会每秒刷。
+func (st *StatsStore) StartNotify() {
+	go func() {
+		for {
+			select {
+			case <-st.stopCh:
+				return
+			case <-st.notifyCh:
+				st.mu.Lock()
+				fn := st.onChange
+				st.mu.Unlock()
+				if fn != nil {
+					fn()
+				}
+			}
+		}
+	}()
 }
 
 // StartAutoFlush 周期性落盘（默认 1 分钟一次）：防止直接关电脑 / 突然断电把工作时长、
@@ -1218,11 +1271,26 @@ func (a *App) appStatsFile() string {
 func (a *App) statsStore() *StatsStore {
 	a.mu.Lock()
 	st := a.stats
+	created := false
 	if st == nil {
 		st = NewStatsStore(a.appStatsFile)
 		a.stats = st
+		created = true
 	}
 	a.mu.Unlock()
+	// onChange 在 App 锁之外注入：SetOnChange 内部要拿 st.mu，而 st.mu 侧有一条
+	// 「Flush → appStatsFile → a.mu」的反向路径，两个方向锁序相反会留下死锁窗口。
+	if created {
+		// 数据一变就把今天的快照推给渲染层（统计报表「今天」卡实时刷新）。
+		// 回调在 notifier goroutine 里跑、**不持任何锁**，只读一份快照再广播。
+		st.SetOnChange(func() {
+			app := a.app
+			if app == nil {
+				return
+			}
+			app.Event.Emit("stats:changed", st.Today())
+		})
+	}
 	st.LoadOnce()
 	return st
 }
@@ -1274,6 +1342,7 @@ func (a *App) startStats() {
 	st := a.statsStore()
 	st.StartAutoFlush(60_000)
 	st.StartWorkAccumulator(a.statsIsBreak, a.statsIsIdle)
+	st.StartNotify()
 	log.Printf("[stats] 已启动（文件 %s）", st.file())
 }
 

@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 )
@@ -678,5 +679,75 @@ func TestStatsFileForConfig(t *testing.T) {
 	loose := filepath.Join("C:", "somewhere", "else", "settings.json")
 	if got, want := statsFileForConfig(loose), filepath.Join("C:", "somewhere", "else", "stats.json"); got != want {
 		t.Fatalf("非 config 形态落点 = %q，应为 %q", got, want)
+	}
+}
+
+// TestStatsChangeNotify 「数据变了」要真的通知出去（统计报表「今天」卡靠它实时刷新）。
+//
+// 三件事一起钉：记一笔就通知；连着记多笔不会被合并丢掉至少一次；Stop 之后不再通知。
+func TestStatsChangeNotify(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "stats.json")
+	st := NewStatsStore(func() string { return path })
+	st.Load()
+	defer st.Stop()
+
+	var mu sync.Mutex
+	hits := 0
+	st.SetOnChange(func() {
+		mu.Lock()
+		hits++
+		mu.Unlock()
+	})
+	st.StartNotify()
+
+	waitHits := func(min int, d time.Duration) int {
+		deadline := time.Now().Add(d)
+		for time.Now().Before(deadline) {
+			mu.Lock()
+			n := hits
+			mu.Unlock()
+			if n >= min {
+				return n
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return hits
+	}
+
+	st.RecordTakeoutAction("ordered")
+	if n := waitHits(1, 2*time.Second); n < 1 {
+		t.Fatalf("记一笔外卖动作后没有收到通知（hits=%d）", n)
+	}
+
+	// 连着记 5 笔：容量 1 的通道会合并，但至少要再收到一次
+	before := waitHits(1, time.Second)
+	for i := 0; i < 5; i++ {
+		st.RecordBreakPostponed("short", 300_000)
+	}
+	if n := waitHits(before+1, 2*time.Second); n <= before {
+		t.Fatalf("连续记账没有通知（hits 停在 %d）", n)
+	}
+
+	// 清空也是「变了」
+	before = waitHits(1, time.Second)
+	time.Sleep(50 * time.Millisecond)
+	st.Clear()
+	if n := waitHits(before+1, 2*time.Second); n <= before {
+		t.Fatalf("Clear 之后没有通知（hits 停在 %d）", n)
+	}
+
+	// Stop 之后不再通知（notifier goroutine 退出）
+	st.Stop()
+	time.Sleep(50 * time.Millisecond)
+	afterStop := waitHits(1, 100*time.Millisecond)
+	st.RecordTakeoutAction("ordered")
+	time.Sleep(200 * time.Millisecond)
+	mu.Lock()
+	final := hits
+	mu.Unlock()
+	if final != afterStop {
+		t.Fatalf("Stop 之后仍在通知（%d → %d）", afterStop, final)
 	}
 }

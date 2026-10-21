@@ -261,6 +261,11 @@
     onUpdateStatus: function (cb) {
       on("update:status-changed", cb);
     },
+    // 统计数据变了（Go 侧每次入账后推送今天的快照）：统计报表「今天」卡据此实时刷新。
+    // 回调拿到的就是 DayStats（字段与 GetStats().today 相同）。
+    onStatsChanged: function (cb) {
+      on("stats:changed", cb);
+    },
     // 设置窗口被隐藏（关闭到托盘 / 切换）时前端退出所有提醒内容的编辑态
     onSettingsHidden: function (cb) {
       on("settings:hidden", cb);

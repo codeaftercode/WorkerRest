@@ -2302,12 +2302,10 @@
     return [
       ["\u5DE5\u4F5C\u65F6\u957F", fmtDur(d.workMs)],
       ["\u4F11\u606F\u65F6\u957F", fmtDur(d.breakMs)],
-      ["\u5B8C\u6210\u4F11\u606F", `\u77ED ${d.shortCount} \u6B21 \xB7 \u957F ${d.longCount} \u6B21 \xB7 \u81EA\u5B9A\u4E49 ${d.customCount} \u6B21`],
+      ["\u5B8C\u6210\u4F11\u606F", `\u77ED ${d.shortCount} \u6B21 \xB7 \u957F ${d.longCount} \u6B21`],
       ["\u63A8\u8FDF\u4F11\u606F", `${d.postponeCount} \u6B21 \xB7 \u7D2F\u8BA1 ${fmtDur(d.postponeMs)}`],
       ["\u8DF3\u8FC7\u4F11\u606F", `${d.skipCount} \u6B21 \xB7 \u8DF3\u8FC7 ${fmtDur(d.skipMs)}`],
-      ["\u70B9\u5916\u5356", `${d.takeoutOrdered} \u6B21`],
-      ["\u53D6\u6D88\u70B9\u5916\u5356", `${d.takeoutSkipped} \u6B21`],
-      ["\u63A8\u8FDF\u70B9\u5916\u5356", `${d.takeoutPostponed} \u6B21`]
+      ["\u5916\u5356\u63D0\u9192", `\u70B9 ${d.takeoutOrdered} \u6B21 \xB7 \u53D6\u6D88 ${d.takeoutSkipped} \u6B21 \xB7 \u63A8\u8FDF ${d.takeoutPostponed} \u6B21`]
     ];
   }
   // 「今天」卡的指标说明（悬停指标名或「?」显示）。空闲阈值取「系统空闲 N 分钟后自动暂停」
@@ -2325,14 +2323,32 @@
     return statCells(d).map(([k, v]) => {
       const tip = tips[k];
       const head = tip ? `<div class="k has-tip" data-tip="${tip}">${k}<span class="k-tip" aria-hidden="true">?</span></div>` : `<div class="k">${k}</div>`;
-      return `<div class="status-cell">${head}<div class="v">${v}</div></div>`;
+      return `<div class="status-cell" data-k="${k}">${head}<div class="v">${v}</div></div>`;
     }).join("");
+  }
+  // 「今天」卡：一次画好，之后数据一变就按同一份指标清单重画。
+  // 指标格的数量与顺序没变时只改数值文本 —— 别的都不动，鼠标正悬停的「?」提示不会被卸掉。
+  function renderTodayCard(t) {
+    if (!t) return;
+    const dateEl = $("stats-date");
+    if (dateEl) dateEl.textContent = `\uFF08${t.date}\uFF09`;
+    const box = $("stats-today");
+    if (!box) return;
+    const cells = statCells(t);
+    const nodes = box.querySelectorAll(".status-cell");
+    const sameShape = nodes.length === cells.length && cells.every(([k], i) => nodes[i].dataset.k === k);
+    if (sameShape) {
+      cells.forEach(([, v], i) => {
+        const vn = nodes[i].querySelector(".v");
+        if (vn) vn.textContent = v;
+      });
+      return;
+    }
+    box.innerHTML = statCellsHtml(t);
   }
   async function renderStats() {
     const data = await window.api.getStats();
-    const t = data.today;
-    $("stats-date").textContent = `\uFF08${t.date}\uFF09`;
-    $("stats-today").innerHTML = statCellsHtml(t);
+    renderTodayCard(data.today);
     void renderRestChart();
     void renderTakeoutChart();
     void renderCustomReportChart();
@@ -2815,12 +2831,17 @@
     }
     g += `<text class="tick rc-cap" x="${RC_M.left - 6}" y="10" text-anchor="end">\u6B21\u6570</text><text class="tick rc-cap" x="${RC_W - RC_M.right + 6}" y="10">\u5206\u949F</text>`;
     const withData = buckets.filter((b) => !rcEmptyBucket(b));
+    // 平均线的文字单独攒着，等柱、折线、圆点全画完再追加 —— SVG 按文档顺序绘制，
+    // 早画的会被后画的盖住；这段文字贴着右轴，正好落在末几根柱子的范围里。
+    let avgLabel = "";
     if (withData.length) {
       const avgMs = withData.reduce((s, b) => s + b.breakMs, 0) / withData.length;
       const avgMin = avgMs / 6e4;
       if (avgMin > 0 && avgMin < axM.max) {
         const yy = yMs(avgMs).toFixed(1);
-        g += `<line class="rc-avgline" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/><text class="rc-avglabel" x="${RC_W - RC_M.right - 4}" y="${+yy - 4}" text-anchor="end">\u5E73\u5747 ${fmtDur(avgMs)}</text>`;
+        // 虚线本身仍画在柱后（保持原来的层次），只有文字提到最上层
+        g += `<line class="rc-avgline" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/>`;
+        avgLabel = `<text class="rc-avglabel" x="${RC_W - RC_M.right - 4}" y="${+yy - 4}" text-anchor="end">\u5E73\u5747 ${fmtDur(avgMs)}</text>`;
       }
     }
     const barTop = (x, y, w, h, gid) => {
@@ -2891,6 +2912,8 @@
     if (view.length === 0 || withData.length === 0) {
       g += `<text class="tick" x="${(RC_M.left + iw / 2).toFixed(1)}" y="${(RC_M.top + ih / 2).toFixed(1)}" text-anchor="middle">\u6682\u65E0\u6570\u636E</text>`;
     }
+    // 「平均 x 分 x 秒」最后追加，压在所有图形之上（见上面 avgLabel 的说明）
+    g += avgLabel;
     g += `<line class="rc-cursor" x1="0" y1="${RC_M.top}" x2="0" y2="${(RC_M.top + ih).toFixed(1)}" style="display:none"/>`;
     g += `<rect class="rc-hit" x="${RC_M.left}" y="${RC_M.top}" width="${iw.toFixed(1)}" height="${ih.toFixed(1)}"/>`;
     box.innerHTML = `<svg viewBox="0 0 ${RC_W} ${RC_H}" role="img" tabindex="0" aria-label="\u4F11\u606F\u62A5\u8868\u56FE"${animate ? ' class="anim"' : ""}>${defs}${g}</svg>`;
@@ -5404,6 +5427,9 @@
     }
     await refreshSupervisorPreview();
     window.api.onState((raw) => renderStatus(raw));
+    // 统计入账（工作/休息/离开/休息次数/外卖动作）后 Go 侧会推今天的快照：
+    // 「今天」卡立刻跟着变，不用等切页、切窗口或手动刷新。
+    window.api.onStatsChanged((t) => renderTodayCard(t));
     window.api.onAutostart((v) => {
       $("autostart").checked = v;
     });

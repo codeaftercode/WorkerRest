@@ -322,7 +322,7 @@ def main():
         check((stt.get("marks") or 0) >= 6, "报表图里有真实图形节点（不是空白容器）", stt.get("marks"))
         check(str(stt.get("date") or "").startswith("（") and str(stt.get("date") or "").endswith("）"),
               "统计页日期取自 Go 的 today.date", stt.get("date"))
-        check((stt.get("cells") or 0) == 8, "统计卡渲染出 8 个指标格", stt.get("cells"))
+        check((stt.get("cells") or 0) == 6, "统计卡渲染出 6 个指标格", stt.get("cells"))
         check(not (stt.get("errs") or []), "统计页无未捕获 JS 异常", (stt.get("errs") or [])[:2])
 
         # ---- 主窗口（调试控制台） ----
