@@ -131,22 +131,25 @@
     q.title = title;
     return q;
   }
-  // mountPauseDrop 在宿主里画出「暂停休息时」下拉；重复调用只更新取值。
-  // 原生 <select> 的选项里放不下「?」，所以自己画一个（外观见 settings.css 的 .cdrop）。
-  function mountPauseDrop(host, value) {
-    if (!host) return;
+  // 自绘下拉：「暂停休息时」与「触发方式」共用这一套（外观见 settings.css 的 .cdrop）。
+  // 原生 <select> 的选项由浏览器绘制，缩进改不了、也放不下每项的「?」，所以自己画。
+  // items = [{value,label,hint}]，def = 取值非法时的兜底项，onPick = 用户选中后的回调。
+  // 实例按宿主元素记（WeakMap，见 PAUSE_DROPS）：自定义提醒卡每次重建都换新元素。
+  function mountDrop(host, items, value, def, onPick) {
+    if (!host) return null;
     // 宿主宽度来自 .cdrop-host（180px，与输入框同列同宽）：静态那处写在 HTML 里，
-    // 自定义提醒卡片是 JS 建的，这里统一补上，免得下拉铺满整列。
+    // JS 新建的卡片这里统一补上，免得下拉铺满整列。
     host.classList.add("cdrop-host");
     const exists = PAUSE_DROPS.get(host);
     if (exists) {
       exists.set(value);
-      return;
+      return exists;
     }
+    const norm = (v) => (items.some((i) => i.value === v) ? v : def || items[0].value);
     host.innerHTML = "";
     const root = document.createElement("div");
     root.className = "cdrop";
-    root.dataset.value = pauseActionOf(value);
+    root.dataset.value = norm(value);
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "cdrop-btn";
@@ -161,22 +164,21 @@
     const menu = document.createElement("div");
     menu.className = "cdrop-menu hidden";
     menu.setAttribute("role", "listbox");
-    for (const opt of PAUSE_ACTIONS) {
+    for (const opt of items) {
       const item = document.createElement("button");
       item.type = "button";
       item.className = "cdrop-item";
       item.dataset.value = opt.value;
       item.setAttribute("role", "option");
-      const tick = document.createElement("span");
-      tick.className = "cdrop-tick";
       const label = document.createElement("span");
       label.className = "cdrop-label";
       label.textContent = opt.label;
-      item.append(tick, label, mkQMark("", opt.hint));
+      // 选中标识由 CSS 的 ::before 竖条承担（不再插勾选列，避免把文字顶离左缘）
+      item.append(label, mkQMark("", opt.hint));
       item.addEventListener("click", () => {
         api.set(opt.value);
         close();
-        autoSave();
+        if (onPick) onPick(opt.value);
       });
       menu.appendChild(item);
     }
@@ -201,13 +203,14 @@
       }
     }
     function render() {
-      const opt = PAUSE_ACTIONS.find((a) => a.value === pauseActionOf(root.dataset.value)) || PAUSE_ACTIONS[1];
+      const opt = items.find((a) => a.value === root.dataset.value) || items[0];
       cur.textContent = opt.label;
-      btn.querySelector(".q-mark").title = opt.hint;
+      btn.querySelector(".q-mark").title = opt.hint || "";
+      // 宿主上也留一份取值：探针 / 外部脚本按 dataset.value 读，代替原生 select 的 .value
+      host.dataset.value = opt.value;
       for (const item of menu.children) {
         const on = item.dataset.value === opt.value;
         item.setAttribute("aria-selected", on ? "true" : "false");
-        item.querySelector(".cdrop-tick").textContent = on ? "\u2713" : "";
       }
     }
     btn.addEventListener("click", (e) => {
@@ -218,20 +221,38 @@
       if (e.key === "Escape") close();
     });
     const api = {
-      get: () => pauseActionOf(root.dataset.value),
-      set: (v) => { root.dataset.value = pauseActionOf(v); render(); }
+      get: () => root.dataset.value,
+      set: (v) => { root.dataset.value = norm(v); render(); }
     };
     PAUSE_DROPS.set(host, api);
     render();
+    return api;
   }
-  function pauseDropValue(host) {
+  // 「暂停休息时」：选中即存盘（原生 select 的 change 原来由 bindAutoSaveEl 兜着）。
+  function mountPauseDrop(host, value) {
+    return mountDrop(host, PAUSE_ACTIONS, pauseActionOf(value), "postpone", () => { void autoSave(); });
+  }
+  // 「触发方式」：切换后联动显示「间隔」/「提醒时间」，再重算摘要并存盘。
+  function mountBreakModeDrop(id) {
+    const host = $(`${id}-mode`);
+    if (!host) return null;
+    const c = breakCfg(id);
+    return mountDrop(host, BREAK_MODES, c && c.mode, "countdown", (v) => {
+      const cfg = breakCfg(id);
+      if (!cfg) return;
+      cfg.mode = v === "fixed" ? "fixed" : "countdown";
+      applyBreakModeUI();
+      updateBreakSummary(id);
+      void autoSave();
+    });
+  }
+  function dropValue(host, def) {
     const api = host ? PAUSE_DROPS.get(host) : null;
-    return api ? api.get() : "postpone";
+    return api ? api.get() : def;
   }
-  function setPauseDropValue(host, value) {
-    if (!host) return;
-    const api = PAUSE_DROPS.get(host);
-    if (api) api.set(value); else mountPauseDrop(host, value);
+  function setDropValue(host, value) {
+    const api = host ? PAUSE_DROPS.get(host) : null;
+    if (api) api.set(value);
   }
   function defaultCustomBreakConfig() {
     return {
@@ -1515,13 +1536,9 @@
     // 调度器不重算 ——「倒计时切固定时间且无时刻」后下次提醒与今日时间线
     // 仍显示按倒计时算出的旧时刻（bug 实测来源）。
     for (const el of card.querySelectorAll("input, select")) bindAutoSaveEl(el);
-    $(`${id}-mode`).addEventListener("change", () => {
-      const c = breakCfg(id);
-      if (!c) return;
-      c.mode = $(`${id}-mode`).value === "fixed" ? "fixed" : "countdown";
-      applyBreakModeUI();
-      updateBreakSummary(id);
-    });
+    // 触发方式改成自绘下拉（与「暂停休息时」同款）：整卡是克隆来的，克隆出的
+    // 下拉节点没有事件，这里按新宿主重新挂一遍实例（选中即联动 + 存盘）。
+    mountBreakModeDrop(id);
     $(`${id}-add`).addEventListener("click", async () => {
       const c = breakCfg(id);
       if (!c) return;
@@ -1667,7 +1684,7 @@
     }
     const n = activeSlotCount(id);
     if (n === 0) {
-      el.textContent = "\u56FA\u5B9A\u65F6\u95F4 \xB7 \u8FD8\u6CA1\u6709\u4F11\u606F\u65F6\u523B";
+      el.textContent = "\u56FA\u5B9A\u65F6\u95F4 \xB7 \u8FD8\u6CA1\u6709\u63D0\u9192\u65F6\u523B";
       el.classList.remove("customized");
       return;
     }
@@ -1699,25 +1716,14 @@
     const c = breakCfg(id);
     if (!c) return;
     $(`${id}-enabled`).checked = c.enabled;
-    fillBreakModeSelect($(`${id}-mode`), c.mode);
+    setDropValue($(`${id}-mode`), c.mode);
     $(`${id}-interval`).value = String(Math.round(c.intervalMs / 6e4));
     $(`${id}-duration`).value = id === "long" ? String(Math.round(c.durationMs / 6e4)) : String(Math.round(c.durationMs / 1e3));
     $(`${id}-notify`).value = String(Math.round(c.notifyBeforeMs / 1e3));
     $(`${id}-postpone`).value = String(Math.round(c.postponeMs / 6e4));
     // 「暂停休息时」只有自定义提醒卡片有（短 / 长休息的模板本身没有这行）
-    setPauseDropValue($(`${id}-pause`), c.pauseAction);
+    setDropValue($(`${id}-pause`), c.pauseAction);
     renderBreakList(id);
-  }
-  function fillBreakModeSelect(el, value) {
-    el.innerHTML = "";
-    for (const m of BREAK_MODES) {
-      const o = document.createElement("option");
-      o.value = m.value;
-      o.textContent = m.label;
-      o.title = m.hint;
-      el.appendChild(o);
-    }
-    el.value = value;
   }
   function applyBreakModeUI() {
     for (const id of allBreakIds()) {
@@ -1795,7 +1801,7 @@
       const c = breakCfg(id);
       if (!c) return;
       c.enabled = $(`${id}-enabled`).checked;
-      c.mode = $(`${id}-mode`).value === "fixed" ? "fixed" : "countdown";
+      c.mode = dropValue($(`${id}-mode`), "countdown") === "fixed" ? "fixed" : "countdown";
       c.intervalMs = clampNum($(`${id}-interval`), 1, 480, 10) * 6e4;
       const bySec = id !== "long";
       const dv = clampNum($(`${id}-duration`), bySec ? 5 : 1, bySec ? 600 : 60, 20);
@@ -1804,7 +1810,7 @@
       c.postponeMs = clampNum($(`${id}-postpone`), 0, 120, 2) * 6e4;
       // 暂停休息时：只有自定义提醒卡片有这一行（短 / 长休息不写这个键）
       const pauseHost = $(`${id}-pause`);
-      if (pauseHost) c.pauseAction = pauseDropValue(pauseHost);
+      if (pauseHost) c.pauseAction = dropValue(pauseHost, "postpone");
     };
     for (const id of allBreakIds()) readBreak(id);
     const a = S.appearance;
@@ -1819,7 +1825,7 @@
     S.sound.mode = $("snd-mode").dataset.mode || "single";
     S.supervisor.enabled = $("sup-enabled").checked;
     S.takeout.enabled = $("tk-enabled").checked;
-    S.takeout.pauseAction = pauseDropValue($("tk-pause"));
+    S.takeout.pauseAction = dropValue($("tk-pause"), "postpone");
     S.takeout.leadSec = clampNum($("tk-lead"), TAKEOUT_LEAD_LIMITS[0], TAKEOUT_LEAD_LIMITS[1], TAKEOUT_LEAD_DEFAULT);
     S.takeout.postponeMin = clampNum($("tk-postpone"), TAKEOUT_POSTPONE_LIMITS[0], TAKEOUT_POSTPONE_LIMITS[1], TAKEOUT_POSTPONE_DEFAULT);
     S.shortcuts.postpone = $("sc-postpone").value.trim();
@@ -2304,14 +2310,20 @@
       ["\u63A8\u8FDF\u70B9\u5916\u5356", `${d.takeoutPostponed} \u6B21`]
     ];
   }
-  var STAT_TIPS = {
-    \u5DE5\u4F5C\u65F6\u957F: "\u4E0D\u5728\u4F11\u606F\u4E2D\u3001\u4E5F\u6CA1\u6709\u957F\u65F6\u95F4\u65E0\u952E\u9F20\u8F93\u5165\u7684\u65F6\u95F4\u3002\u624B\u52A8\u6682\u505C\u63D0\u9192 / \u52FF\u6270 / \u6307\u5B9A\u5E94\u7528\u5360\u7528\u671F\u95F4\u4EBA\u4ECD\u5728\u7528\u7535\u8111\uFF0C\u540C\u6837\u8BA1\u5165\uFF1B\u8FDE\u7EED\u65E0\u8F93\u5165\u8D85\u8FC7\u300C\u7CFB\u7EDF\u7A7A\u95F2 N \u5206\u949F\u300D\u7684\u90A3\u6BB5\u4E0E\u7CFB\u7EDF\u7761\u7720\u6574\u6BB5\u90FD\u7B97\u300C\u79BB\u5F00\u300D\uFF0C\u4E0D\u8BA1\u5165\u5DE5\u4F5C\u65F6\u957F\u3002",
-    \u4F11\u606F\u65F6\u957F: "\u6309\u5B9E\u9645\u4F11\u606F\u65F6\u95F4\u7B97\uFF0C\u63D0\u524D\u7ED3\u675F\u53EA\u7B97\u5B9E\u9645\u90E8\u5206\u3002",
-    \u8DF3\u8FC7\u4F11\u606F: "\u8FD9\u91CC\u7684\u65F6\u95F4\u662F\u88AB\u8DF3\u8FC7\u90A3\u51E0\u6B21\u4F11\u606F\u7684\u65F6\u957F\u5408\u8BA1\u3002"
-  };
+  // 「今天」卡的指标说明（悬停指标名或「?」显示）。空闲阈值取「系统空闲 N 分钟后自动暂停」
+  // 的当前值，与「暂停休息时」的「?」同源，改完配置再进统计页即是新数字。
+  function statTips() {
+    const n = Math.max(1, Math.round(Number(S && S.idlePauseMin) || 5));
+    return {
+      "工作时长": "软件运行期间实际使用电脑的时间，已扣除休息与离开。手动暂停、勿扰、指定应用占用期间人仍在用电脑，照常计入；连续无键鼠输入达到空闲阈值（" + n + " 分钟）后的整段、系统睡眠整段，以及软件未运行的时间，均不计入。",
+      "休息时长": "按实际休息时间计算，提前结束只计入实际部分。",
+      "跳过休息": "次数：被跳过的休息次数，含手动跳过与暂停休息期间按「跳过提醒」处理的提醒；时长：各次被跳过休息的原定时长之和，非实际耗时。"
+    };
+  }
   function statCellsHtml(d) {
+    const tips = statTips();
     return statCells(d).map(([k, v]) => {
-      const tip = STAT_TIPS[k];
+      const tip = tips[k];
       const head = tip ? `<div class="k has-tip" data-tip="${tip}">${k}<span class="k-tip" aria-hidden="true">?</span></div>` : `<div class="k">${k}</div>`;
       return `<div class="status-cell">${head}<div class="v">${v}</div></div>`;
     }).join("");
@@ -5088,13 +5100,7 @@
     });
     $("cb-add").addEventListener("click", () => void addCustomBreak());
     for (const t of ["short", "long"]) {
-      $(`${t}-mode`).addEventListener("change", () => {
-        const cfg = breakCfg(t);
-        if (!cfg) return;
-        cfg.mode = $(`${t}-mode`).value === "fixed" ? "fixed" : "countdown";
-        applyBreakModeUI();
-        updateBreakSummary(t);
-      });
+      mountBreakModeDrop(t);
       $(`${t}-add`).addEventListener("click", async () => {
         const cfg = breakCfg(t);
         if (!cfg) return;

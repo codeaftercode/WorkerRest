@@ -1359,17 +1359,25 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   padding: 4px;
 }
 .cdrop-menu.hidden { display: none; }
+/* 选项文字左缘必须与同列其它控件（原生 <select> / 输入框 / 本控件按钮）的内容左缘对齐：
+   三者都是「边框 1px + 内边距 10px」= 11px。菜单自身是「1px 边框 + 4px 内边距」，
+   所以选项左内边距取 6px → 1 + 4 + 6 = 11px。选中标识不能再占一行横向空间
+   （原先左侧 10px 勾选列 + 6px 间距把文字顶到 29px），改为左侧绝对定位的竖条。 */
 .cdrop-item {
+  position: relative;
   display: flex; align-items: center; gap: 6px;
   width: 100%; box-sizing: border-box;
   background: none; border: 0; border-radius: 6px;
   color: var(--text);
-  padding: 7px 8px;
+  padding: 7px 6px;
   font-size: 13px; font-family: inherit; text-align: left;
   cursor: pointer;
 }
 .cdrop-item:hover { background: var(--bg); }
 .cdrop-item[aria-selected='true'] { color: var(--accent); }
-.cdrop-tick { width: 10px; flex-shrink: 0; font-size: 11px; line-height: 1; }
-.cdrop-label { flex: 1; min-width: 0; }
+.cdrop-item[aria-selected='true']::before {
+  content: ''; position: absolute; left: 2px; top: 7px; bottom: 7px; width: 3px;
+  border-radius: 999px; background: currentColor;
+}
+.cdrop-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cdrop-item > .q-mark { margin-left: 0; flex-shrink: 0; }

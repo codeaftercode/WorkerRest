@@ -74,6 +74,8 @@ async function shot(page, name) {
 // 所以这里既要断言「填上了」，也要断言「页面没抛错」。
 const PROBE_SETTINGS = `(function () {
   var val = function (id) { var e = document.getElementById(id); return e ? e.value : null; };
+  // 自绘下拉（.cdrop-host）没有 .value，当前值挂在宿主的 dataset.value 上
+  var dval = function (id) { var e = document.getElementById(id); return e ? (e.dataset.value || null) : null; };
   var txt = function (id) { var e = document.getElementById(id); return e ? e.textContent.trim() : null; };
   var chk = function (id) { var e = document.getElementById(id); return e ? !!e.checked : null; };
   var cnt = function (sel) { return document.querySelectorAll(sel).length; };
@@ -108,12 +110,12 @@ const PROBE_SETTINGS = `(function () {
     apAllScreens: chk('ap-allScreens'),
     sndVolume: val('snd-volume'),
     sndMode: val('snd-mode'),
-    shortMode: val('short-mode'),
+    shortMode: dval('short-mode'),
     shortInterval: val('short-interval'),
     shortDuration: val('short-duration'),
     shortNotify: val('short-notify'),
     shortPostpone: val('short-postpone'),
-    longMode: val('long-mode'),
+    longMode: dval('long-mode'),
     longDuration: val('long-duration'),
     longEveryN: val('longEveryNShort'),
     tkEnabled: chk('tk-enabled'),
