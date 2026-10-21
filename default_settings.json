@@ -81,6 +81,7 @@
     "enabled": true,
     "leadSec": 0,
     "postponeMin": 10,
+    "pauseAction": "postpone",
     "slots": []
   },
   "autostart": false,

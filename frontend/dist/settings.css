@@ -1327,3 +1327,49 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--sb-thumb-hover); }
 ::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
+
+/* 暂停休息时的处置：自绘下拉。原生 <select> 的选项里放不下「?」和逐项说明，
+   所以用按钮 + 绝对定位面板自己画。触发器沿用输入框的底色 / 描边 / 圆角与 180px
+   宽度，保证它与同列其它控件左缘对齐、高度一致。 */
+.cdrop-host { width: 180px; }
+.cdrop { position: relative; }
+.cdrop-btn {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; box-sizing: border-box;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  padding: 7px 10px;
+  font-size: 13px; font-family: inherit; text-align: left;
+  cursor: pointer;
+}
+.cdrop-btn:hover { border-color: var(--accent); }
+.cdrop.open .cdrop-btn { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
+.cdrop-cur { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cdrop-btn > .q-mark { margin-left: 0; flex-shrink: 0; }
+.cdrop-caret { color: var(--text-2); font-size: 10px; line-height: 1; transition: transform 0.15s; }
+.cdrop.open .cdrop-caret { transform: rotate(180deg); }
+.cdrop-menu {
+  position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
+  padding: 4px;
+}
+.cdrop-menu.hidden { display: none; }
+.cdrop-item {
+  display: flex; align-items: center; gap: 6px;
+  width: 100%; box-sizing: border-box;
+  background: none; border: 0; border-radius: 6px;
+  color: var(--text);
+  padding: 7px 8px;
+  font-size: 13px; font-family: inherit; text-align: left;
+  cursor: pointer;
+}
+.cdrop-item:hover { background: var(--bg); }
+.cdrop-item[aria-selected='true'] { color: var(--accent); }
+.cdrop-tick { width: 10px; flex-shrink: 0; font-size: 11px; line-height: 1; }
+.cdrop-label { flex: 1; min-width: 0; }
+.cdrop-item > .q-mark { margin-left: 0; flex-shrink: 0; }

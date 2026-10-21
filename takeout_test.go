@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math/rand"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 )
@@ -128,9 +130,19 @@ func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
 	if info.RedPacketData == nil {
 		t.Fatal("外卖提醒窗口应始终展示外卖优惠券（redPacketData 不应为 nil）")
 	}
-	want := "https://nav.hcctc.cn/api/cps/id=uuid-1234"
-	if info.RedPacketData.URL != want {
-		t.Fatalf("红包地址应含 installId，得到 %q", info.RedPacketData.URL)
+	// 地址 = 固定 base + id=installId + t=毫秒时间戳（每次弹窗动态生成）
+	wantPrefix := "https://www.goodgoodlive.com/cps/index.html?id=uuid-1234&t="
+	url := info.RedPacketData.URL
+	if !strings.HasPrefix(url, wantPrefix) {
+		t.Fatalf("红包地址应含 installId 与时间戳参数，得到 %q", url)
+	}
+	tsStr := strings.TrimPrefix(url, wantPrefix)
+	ts, err := strconv.ParseInt(tsStr, 10, 64)
+	if err != nil || ts <= 0 {
+		t.Fatalf("t 应为毫秒时间戳，得到 %q", tsStr)
+	}
+	if ts < time.Now().Add(-time.Minute).UnixMilli() || ts > time.Now().Add(time.Minute).UnixMilli() {
+		t.Fatalf("t 应接近当前时间，得到 %d", ts)
 	}
 }
 

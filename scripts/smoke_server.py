@@ -346,11 +346,11 @@ def main():
                 if os.path.isfile(rp):
                     rc = read_json(rp)
                     check(sup.get("name") == rc.get("name"),
-                          "督休专员名 == supervisors/<key>/role.json name" % fixed,
+                          "督休专员名 == supervisors/%s/role.json name" % fixed,
                           "%s vs %s" % (sup.get("name"), rc.get("name")))
                     rg = rc.get("geom") or {}
                     check(geom.get("sizePct") == rg.get("sizePct") and geom.get("posXPct") == rg.get("posXPct"),
-                          "督休专员几何 == supervisors/<key>/role.json geom" % fixed,
+                          "督休专员几何 == supervisors/%s/role.json geom" % fixed,
                           "%s vs %s" % (geom, rg))
                     cmds = [i.get("text") for i in ((rc.get("messages") or {}).get("items") or []) if i.get("enabled")]
                     check(lines.get("command") in cmds,
@@ -825,7 +825,7 @@ def main():
             check(isinstance(tk.get("redPacketData"), dict),
                   "外卖会话始终带外卖优惠券（redPacketData 为对象）", tk.get("redPacketData"))
             rd = tk.get("redPacketData") or {}
-            check(str(rd.get("url") or "").startswith("https://nav.hcctc.cn/api/cps/id="),
+            check(str(rd.get("url") or "").startswith("https://www.goodgoodlive.com/cps/index.html?id="),
                   "红包地址指向本机专属领取地址（含 installId）", rd.get("url"))
         # 动作：预览态点「不点了」→ 只关会话，不记真实统计（预览不算次数）
         st, _ = call(base, "TakeoutAction", ["takeout", "skip"], window="takeout")

@@ -37,15 +37,41 @@ var defaultSettingsJSON []byte
 
 // ---------- 从配置里读出来的类型化结构（字段名与磁盘 JSON 逐字一致） ----------
 
+// 暂停休息期间到点的处置（配置键 pauseAction，缺省 PauseActionPostpone）。
+// 自定义提醒存在 config.pauseAction 里，外卖提醒存在 takeout.pauseAction 里；
+// 短 / 长休息不看这个键 —— 暂停期间一律不提醒、也不记账。
+const (
+	// PauseActionRemind 照常提醒：提前提示小窗与提醒窗口照旧弹
+	PauseActionRemind = "remind"
+	// PauseActionPostpone 推迟提醒：按该提醒的「可推迟」时长往后推，推完仍暂停就再推（默认）
+	PauseActionPostpone = "postpone"
+	// PauseActionSkip 跳过提醒：不弹任何窗，直接按「跳过」记账
+	PauseActionSkip = "skip"
+)
+
+// normPauseAction 只认三个合法值，其余（缺失 / 类型不符 / 手改坏）一律按默认「推迟提醒」。
+func normPauseAction(v any) string {
+	if s, ok := v.(string); ok {
+		switch s {
+		case PauseActionRemind, PauseActionPostpone, PauseActionSkip:
+			return s
+		}
+	}
+	return PauseActionPostpone
+}
+
 // BreakConfig 一次休息的配置（mode = countdown | fixed 决定用间隔还是时刻表）
 type BreakConfig struct {
-	Enabled        bool       `json:"enabled"`
-	Mode           string     `json:"mode"`
-	DurationMs     int64      `json:"durationMs"`
-	IntervalMs     int64      `json:"intervalMs"`
-	NotifyBeforeMs int64      `json:"notifyBeforeMs"`
-	PostponeMs     int64      `json:"postponeMs"`
-	Slots          []TimeSlot `json:"slots"`
+	Enabled        bool   `json:"enabled"`
+	Mode           string `json:"mode"`
+	DurationMs     int64  `json:"durationMs"`
+	IntervalMs     int64  `json:"intervalMs"`
+	NotifyBeforeMs int64  `json:"notifyBeforeMs"`
+	PostponeMs     int64  `json:"postponeMs"`
+	// PauseAction 暂停休息期间到点时怎么处置：remind / postpone / skip（缺省 skip，
+	// 见 PauseAction* 常量）。只对自定义提醒有意义；短 / 长休息不看这个字段。
+	PauseAction string     `json:"pauseAction"`
+	Slots       []TimeSlot `json:"slots"`
 }
 
 // AppearanceConfig 外观配置（磁盘结构；比下发给渲染层的 Appearance 多几个字段）
@@ -302,7 +328,9 @@ func breakConfigOf(m map[string]any) BreakConfig {
 		IntervalMs:     600_000,
 		NotifyBeforeMs: 10_000,
 		PostponeMs:     120_000,
-		Slots:          []TimeSlot{},
+		// 缺省：暂停休息期间到点按「推迟提醒」处理（推「可推迟」时长，仍暂停就继续推）
+		PauseAction: PauseActionPostpone,
+		Slots:       []TimeSlot{},
 	}
 	if m == nil {
 		return cfg
@@ -313,6 +341,7 @@ func breakConfigOf(m map[string]any) BreakConfig {
 	cfg.IntervalMs = mapInt(m, "intervalMs", 600_000)
 	cfg.NotifyBeforeMs = mapInt(m, "notifyBeforeMs", 10_000)
 	cfg.PostponeMs = mapInt(m, "postponeMs", 120_000)
+	cfg.PauseAction = normPauseAction(m["pauseAction"])
 	cfg.Slots = normalizeTimeSlots(m["slots"])
 	return cfg
 }
@@ -768,6 +797,12 @@ func normalizeBreakConfigOf(cfg map[string]any) map[string]any {
 	if s, _ := out["mode"].(string); s != "fixed" {
 		out["mode"] = "countdown"
 	}
+	// 暂停休息时的处置：值非法就落回默认；旧键 skipWhenPaused（内测版）顺手清掉。
+	// 只在原本就有这个键时补写 —— 短 / 长休息不写它（它们不受这个开关影响）。
+	if _, has := out["pauseAction"]; has {
+		out["pauseAction"] = normPauseAction(out["pauseAction"])
+	}
+	delete(out, "skipWhenPaused")
 	out["slots"] = slotsToAny(normalizeTimeSlots(out["slots"]))
 	return out
 }
@@ -781,6 +816,7 @@ func defaultCustomBreakConfig() map[string]any {
 		"durationMs":     float64(20_000),
 		"notifyBeforeMs": float64(10_000),
 		"postponeMs":     float64(2 * 60_000),
+		"pauseAction":    PauseActionPostpone,
 		"slots":          []any{},
 	}
 }
@@ -1053,6 +1089,8 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 		"enabled":     o["enabled"] != false,
 		"leadSec":     pick(leadVal, 0, 300, 0),
 		"postponeMin": pick(o["postponeMin"], 0, 120, 10),
+		// 暂停休息时的处置：三个合法值之外一律落回「推迟提醒」（默认）
+		"pauseAction": normPauseAction(o["pauseAction"]),
 		"slots":       slotsToAny(normalizeTimeSlots(o["slots"])),
 	}
 }

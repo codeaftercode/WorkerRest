@@ -269,6 +269,13 @@
             <label class="switch-row"><input type="checkbox" id="tk-enabled" /> 启用</label>
             <button class="btn ghost" id="tk-preview" title="预览外卖提醒">预览</button>
           </div>
+          <!-- 暂停休息期间的处置：正常提醒 / 推迟提醒 / 跳过提醒（默认），每一项带「?」说明。
+               下拉本体由 settings.js 的 mountPauseDrop 画（原生 select 装不下每一项的「?」）；
+               标签上的「?」说明「暂停休息」包括哪几种情况，空闲分钟数由 settings.js 补全 -->
+          <div class="row field">
+            <label>暂停休息时<span class="q-mark pause-scope-help" title="「暂停休息」指：系统空闲 5 分钟自动暂停、系统开启勿扰模式自动暂停、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+            <div class="cdrop-host" id="tk-pause"></div>
+          </div>
           <div class="row field"><label>提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>
           <div class="row field"><label>可推迟（分钟）</label><input type="number" id="tk-postpone" min="0" max="120" title="窗口上点「推迟」后，间隔多久再次提醒；0 = 不显示「推迟」按钮" /></div>
           <div class="slot-fixed">

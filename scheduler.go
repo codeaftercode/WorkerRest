@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strings"
 	"sync"
 	"time"
 )
@@ -52,9 +53,28 @@ type Scheduler struct {
 	// 的判据之一 —— 间隔没变才沿用，改了间隔立刻按新间隔重新起算（见 countdownAnchor）。
 	// 每次 replan 按新池同步（syncAnchorIvLocked）；reanchorCountdown / resetCycle 各自维护。
 	anchorIv map[string]int64
+	// pauseSkipped 暂停期间已按「跳过」记过账的 occurrence（键 = occurrenceKey）。
+	// 暂停态每半秒一跳都会重算「有没有到点的自定义提醒」，没有这份去重会重复记账；
+	// 完全恢复后清空（下一段暂停重新计），键里带时刻本身也不会串到别的 occurrence。
+	pauseSkipped map[string]bool
+	// pauseFired 暂停期间「正常提醒」的自定义提醒已照常弹过的 occurrence
+	//（键 = occurrenceKey；提前提示小窗另加 "|pre" 后缀，与真窗分开去重）。
+	// 与 pauseSkipped 同生命周期：完全恢复时一起清空。
+	pauseFired map[string]bool
+	// postponed 暂停期间被「推迟提醒」推后的 occurrence（键 = occurrenceKey，值 = 推到
+	// 哪一刻）。这份表**不随 resume 清空**：推迟是延后，恢复后还要按推迟后的时刻弹。
+	postponed map[string]*postponedBreak
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
+}
+
+// postponedBreak 暂停期间被「推迟提醒」推后的一次自定义提醒。
+// at = 原始 occurrence 时刻（startBreakAt 的 consumed 去重键用），dueAt = 推迟后的弹出时刻。
+type postponedBreak struct {
+	kind  string
+	at    int64
+	dueAt int64
 }
 
 // nowMs 当前时刻（毫秒时间戳，与 JS 的 Date.now() 同基准）
@@ -67,13 +87,24 @@ func max0(v int64) int64 {
 	return v
 }
 
+// isCustomBreakID 是否是自定义提醒的身份（内置短 / 长休息不算）
+func isCustomBreakID(id string) bool { return strings.HasPrefix(id, customBreakPrefix) }
+
 func newScheduler(a *App) *Scheduler {
 	return newSchedulerWithHost(a)
 }
 
 // newSchedulerWithHost 建一个调度器（单测传假宿主，生产传 *App）
 func newSchedulerWithHost(host schedHost) *Scheduler {
-	s := &Scheduler{host: host, consumed: map[string]bool{}, anchorIv: map[string]int64{}, stopCh: make(chan struct{})}
+	s := &Scheduler{
+		host:         host,
+		consumed:     map[string]bool{},
+		anchorIv:     map[string]int64{},
+		pauseSkipped: map[string]bool{},
+		pauseFired:   map[string]bool{},
+		postponed:    map[string]*postponedBreak{},
+		stopCh:       make(chan struct{}),
+	}
 	s.state = SchedulerState{
 		Phase:        "idle",
 		NextType:     "short",
@@ -121,21 +152,46 @@ const breakCloseDwellMs int64 = 1000
 
 func (s *Scheduler) onTick() {
 	s.mu.Lock()
-	if s.state.Paused {
+	paused := s.state.Paused
+	inBreak := s.state.Phase == "break"
+	breakKind := s.state.NextType
+	// 蓄能容器：到点（能量蓄满）后多停留 breakCloseDwellMs 再关窗
+	breakDue := inBreak && s.state.BreakEndsAt > 0 && nowMs() >= s.state.BreakEndsAt+breakCloseDwellMs
+	// 暂停期间：短 / 长休息保持原状（不提醒、不记账）；自定义提醒按「暂停休息时」的
+	// 处置分派 —— 跳过（pausedSkip 记一笔跳过）、正常提醒（pausedFire 照常弹窗）、
+	// 推迟提醒（pausedPostpone 往后推，推完仍暂停就再推）。
+	if paused {
 		s.mu.Unlock()
+		if inBreak {
+			// 暂停期间弹出来的自定义提醒仍要按点收窗，否则窗口会一直挂着；
+			// 手动 / 自动暂停撞上进行中的短·长休息则保持冻结（恢复时整体平移）。
+			if breakDue && isCustomBreakID(breakKind) {
+				s.finishBreak()
+			}
+			return
+		}
+		s.pausedSkip()
+		s.pausedFire()
+		s.pausedPostpone()
 		return
 	}
-	if s.state.Phase == "break" {
-		// 休息进行中不叠加：固定时刻撞上正在进行的休息时跳过
-		//（不像外卖提醒那样压在休息之上）；到点则收窗。
-		// 蓄能容器：到点（能量蓄满）后多停留 breakCloseDwellMs 再关窗
-		due := s.state.BreakEndsAt > 0 && nowMs() >= s.state.BreakEndsAt+breakCloseDwellMs
+	// 休息进行中不叠加：固定时刻撞上正在进行中的休息时跳过
+	//（不像外卖提醒那样压在休息之上）；到点则收窗。
+	if inBreak {
 		s.mu.Unlock()
-		if due {
+		if breakDue {
 			s.finishBreak()
 		}
 		return
 	}
+	// 暂停期间被「推迟提醒」推到现在的提醒：到点就弹（推迟是延后，不是吞掉）。
+	// flushPostponed 自己加锁，这里先把进入本函数时拿的那把锁放开，之后再拿回来
+	// 继续走下面的正常触发线。
+	s.mu.Unlock()
+	if s.flushPostponed() {
+		return
+	}
+	s.mu.Lock()
 	if s.state.NextAt == 0 {
 		s.mu.Unlock()
 		return
@@ -173,6 +229,265 @@ func (s *Scheduler) onTick() {
 	}
 }
 
+// pausedSkip 暂停期间的「跳过提醒」：自定义提醒在暂停态下到点时不弹任何窗，
+// 直接按「跳过」记一笔（与手动点「跳过本次」同一口径：SkipCount + 被跳过那次的时长），
+// 让统计报表如实反映「这段时间到过点、但被暂停吞掉了」。
+// 「推迟提醒」但「可推迟」填了 0 时也落到这里（没有时长可推，见 pauseDisposition）。
+//
+// 为什么只处理自定义提醒：短 / 长休息按需求保持原状（暂停期间不提醒也不记账）；
+// 外卖不走调度器，它自己的每秒 tick 里做同样的事（见 takeout.go 的 skipTakeoutWhilePaused）。
+//
+// 两条触发线的「到点」判定：
+//   - 固定时刻线：按分钟匹配（isTimeSlotDue），暂停期间每个到点的时刻各记一次；
+//   - 倒计时线：挂起线代表那一跳，At 已过就是到点了。暂停期间计划被冻结（不再往后排），
+//     所以同一段暂停最多记这一跳。
+//
+// 去重键是 occurrenceKey：暂停态每半秒一跳都会重算一次，没有去重会重复记账。
+func (s *Scheduler) pausedSkip() {
+	cfg := s.host.cfgSnapshot()
+	now := nowMs()
+	type hit struct {
+		id     string
+		name   string
+		skipMs int64
+	}
+	var hits []hit
+	s.mu.Lock()
+	for _, c := range cfg.CustomBreakList() {
+		if !c.Config.Enabled || pauseDisposition(c.Config) != PauseActionSkip {
+			continue
+		}
+		if c.Config.Mode == "fixed" {
+			for _, slot := range c.Config.Slots {
+				if !isTimeSlotDue(slot, now, 0) {
+					continue
+				}
+				key := occurrenceKey(c.ID, slotAlertAt(slot, 0, now))
+				if s.pauseSkipped[key] {
+					continue
+				}
+				s.pauseSkipped[key] = true
+				hits = append(hits, hit{id: c.ID, name: c.Name, skipMs: c.Config.DurationMs})
+			}
+			continue
+		}
+		for _, l := range s.state.Lines {
+			if l.Type != c.ID || l.Source != "countdown" || l.At > now {
+				continue
+			}
+			key := occurrenceKey(l.Type, l.At)
+			if s.pauseSkipped[key] {
+				continue
+			}
+			s.pauseSkipped[key] = true
+			hits = append(hits, hit{id: c.ID, name: c.Name, skipMs: c.Config.DurationMs})
+		}
+	}
+	s.mu.Unlock()
+	for _, h := range hits {
+		log.Printf("[scheduler] 暂停休息期间 %s 到点，按跳过处理（%d ms）", h.name, h.skipMs)
+		s.host.onBreakSkipped(h.id, h.skipMs)
+	}
+}
+
+// pauseFirePreSuffix 暂停期间「提前提示小窗」去重键的后缀：同一次 occurrence 的
+// 真窗与提前提示各记一次，互不吞掉。
+const pauseFirePreSuffix = "|pre"
+
+// pausedFire 暂停期间「正常提醒」的自定义提醒照常提醒：固定时刻线到点弹提醒窗口、
+// 落在提前区间弹提前提示小窗，倒计时线到点弹提醒窗口；不进跳过统计（与手动跳过区分开）。
+//
+// 每跳最多弹一条（与正常路径一致：一次只开一个提醒窗口），按到点时刻最早的优先，
+// 其余的等这个窗口收掉后的下一跳再弹。去重表 pauseFired 与 pauseSkipped 同生命周期
+// （完全恢复时一起清空），所以一段暂停里同一个 occurrence 只会弹一次。
+func (s *Scheduler) pausedFire() {
+	cfg := s.host.cfgSnapshot()
+	now := nowMs()
+	type cand struct {
+		id  string
+		at  int64
+		key string
+		pre bool
+		nb  int64
+	}
+	var cands []cand
+	s.mu.Lock()
+	for _, c := range cfg.CustomBreakList() {
+		cc := c.Config
+		if !cc.Enabled || pauseDisposition(cc) != PauseActionRemind {
+			continue
+		}
+		if cc.Mode == "fixed" {
+			for _, slot := range cc.Slots {
+				if !slot.Enabled {
+					continue
+				}
+				at := slotAlertAt(slot, 0, now)
+				if at <= 0 {
+					continue
+				}
+				if isTimeSlotDue(slot, now, 0) {
+					if key := occurrenceKey(c.ID, at); !s.pauseFired[key] {
+						cands = append(cands, cand{id: c.ID, at: at, key: key})
+					}
+					continue
+				}
+				if cc.NotifyBeforeMs > 0 && isTimeSlotDue(slot, now, cc.NotifyBeforeMs) {
+					key := occurrenceKey(c.ID, at) + pauseFirePreSuffix
+					if !s.pauseFired[key] {
+						cands = append(cands, cand{id: c.ID, at: at, key: key, pre: true, nb: cc.NotifyBeforeMs})
+					}
+				}
+			}
+			continue
+		}
+		// 倒计时线：挂起线里这条身份最早的一跳已过点即触发（暂停期间计划被冻结、
+		// 恢复时才整体平移，所以这里认的就是「本来该提醒的那一刻」）。
+		for _, l := range s.state.Lines {
+			if l.Type != c.ID || l.Source != "countdown" || l.At > now {
+				continue
+			}
+			key := occurrenceKey(l.Type, l.At)
+			if s.pauseFired[key] {
+				continue
+			}
+			cands = append(cands, cand{id: c.ID, at: l.At, key: key})
+		}
+	}
+	if len(cands) == 0 {
+		s.mu.Unlock()
+		return
+	}
+	// 取最早的一条（同一时刻时真窗优先于提前提示），只消费这一条的去重键
+	pick := cands[0]
+	for _, c := range cands[1:] {
+		if c.at < pick.at || (c.at == pick.at && pick.pre && !c.pre) {
+			pick = c
+		}
+	}
+	s.pauseFired[pick.key] = true
+	s.mu.Unlock()
+	if pick.pre {
+		log.Printf("[scheduler] 暂停休息期间 %s 进入提前提示区间，照常提醒", pick.id)
+		s.host.onPreNotify(pick.id, pick.nb)
+		return
+	}
+	log.Printf("[scheduler] 暂停休息期间 %s 到点，照常提醒", pick.id)
+	s.startBreakAt(pick.id, pick.at)
+}
+
+// pauseDisposition 这条自定义提醒在暂停休息期间的实际处置。把「推迟但没有推迟时长」
+// 降级成跳过：没有时长可推，硬推会每跳原地打转、永远不弹。未知取值按默认的推迟。
+func pauseDisposition(c BreakConfig) string {
+	switch c.PauseAction {
+	case PauseActionRemind:
+		return PauseActionRemind
+	case PauseActionPostpone:
+		if c.PostponeMs <= 0 {
+			return PauseActionSkip
+		}
+		return PauseActionPostpone
+	case PauseActionSkip:
+		return PauseActionSkip
+	}
+	return PauseActionPostpone
+}
+
+// pausedPostpone 暂停期间的「推迟提醒」：到点不弹窗，按该提醒的「可推迟（分钟）」
+// 把弹出时间往后推；推完再到期时若仍在暂停休息状态，就继续往后推，如此往复。
+// 推迟不是吞掉：恢复后由 flushPostponed 在推迟后的时刻弹出。
+//
+// 「可推迟」填 0 的配置已经被 pauseDisposition 降级成跳过，这里不会看到。
+func (s *Scheduler) pausedPostpone() {
+	cfg := s.host.cfgSnapshot()
+	now := nowMs()
+	type note struct {
+		name  string
+		due   int64
+		again bool
+	}
+	var notes []note
+	s.mu.Lock()
+	for _, c := range cfg.CustomBreakList() {
+		cc := c.Config
+		if !cc.Enabled || pauseDisposition(cc) != PauseActionPostpone {
+			continue
+		}
+		push := func(at int64) {
+			key := occurrenceKey(c.ID, at)
+			if p, ok := s.postponed[key]; ok {
+				// 推后的时刻又到了：还在暂停，就再往后推一段
+				if now >= p.dueAt {
+					p.dueAt = now + cc.PostponeMs
+					notes = append(notes, note{name: c.Name, due: p.dueAt, again: true})
+				}
+				return
+			}
+			p := &postponedBreak{kind: c.ID, at: at, dueAt: now + cc.PostponeMs}
+			s.postponed[key] = p
+			notes = append(notes, note{name: c.Name, due: p.dueAt})
+		}
+		if cc.Mode == "fixed" {
+			for _, slot := range cc.Slots {
+				if !isTimeSlotDue(slot, now, 0) {
+					continue
+				}
+				push(slotAlertAt(slot, 0, now))
+			}
+			continue
+		}
+		// 倒计时线：挂起线里这一跳已过点即算到点（暂停期间计划冻结，就是那一跳）
+		for _, l := range s.state.Lines {
+			if l.Type != c.ID || l.Source != "countdown" || l.At > now {
+				continue
+			}
+			push(l.At)
+		}
+	}
+	s.mu.Unlock()
+	for _, n := range notes {
+		at := time.UnixMilli(n.due).Format("15:04:05")
+		if n.again {
+			log.Printf("[scheduler] 暂停休息期间 %s 推迟后再次到点，继续推迟到 %s", n.name, at)
+			continue
+		}
+		log.Printf("[scheduler] 暂停休息期间 %s 到点，推迟到 %s 再提醒", n.name, at)
+	}
+}
+
+// flushPostponed 弹出「暂停期间被推迟、现在到点」的提醒，返回是否弹了一次。
+// 每跳最多弹一条（与正常路径一致：一次只开一个提醒窗口），其余下一跳继续。
+func (s *Scheduler) flushPostponed() bool {
+	now := nowMs()
+	s.mu.Lock()
+	var pick *postponedBreak
+	pickKey := ""
+	for k, p := range s.postponed {
+		if p.dueAt > now {
+			continue
+		}
+		if pick == nil || p.dueAt < pick.dueAt {
+			pick, pickKey = p, k
+		}
+	}
+	if pick == nil {
+		s.mu.Unlock()
+		return false
+	}
+	delete(s.postponed, pickKey)
+	s.mu.Unlock()
+
+	// 这条提醒可能已经被删 / 关闭：没有窗口可弹，丢掉这一次
+	if c, ok := s.host.cfgSnapshot().BreakByID(pick.kind); !ok || !c.Enabled {
+		log.Printf("[scheduler] 推迟的 %s 已被关闭或删除，丢弃", pick.kind)
+		return false
+	}
+	log.Printf("[scheduler] 推迟的 %s 到点，弹出提醒（原定 %s）", pick.kind,
+		time.UnixMilli(pick.at).Format("15:04:05"))
+	s.startBreakAt(pick.kind, pick.at)
+	return true
+}
+
 // ---------- 对外的动作（托盘 / 设置页 / 快捷键 / 提前提示窗都汇聚到这里） ----------
 
 // resetCycle 重置周期：休息进行中先正常收尾（关窗口、落账），再重置——
@@ -189,6 +504,8 @@ func (s *Scheduler) resetCycle() {
 	// 显式重置周期：挂起线清空，本次重排全部按当前配置重新起算（不保留旧倒计时进度）
 	s.state.Lines = []PlannedBreak{}
 	s.anchorIv = map[string]int64{}
+	// 推迟表也一起清：显式重置就是要按新配置从头来
+	s.postponed = map[string]*postponedBreak{}
 	s.mu.Unlock()
 	s.scheduleNext()
 }
@@ -355,6 +672,10 @@ func (s *Scheduler) resume(reason string) {
 	}
 	delta := nowMs() - st.PausedAt
 	st.Paused = false
+	// 这一段暂停结束了：清掉「已按跳过记账」「已照常弹过」两张 occurrence 表，
+	// 下一段暂停重新计
+	s.pauseSkipped = map[string]bool{}
+	s.pauseFired = map[string]bool{}
 	preType := ""
 	switch {
 	case st.Phase == "break":
@@ -392,6 +713,17 @@ func (s *Scheduler) resume(reason string) {
 			l := &st.Lines[i]
 			if l.Source == "countdown" && l.Type == nextType && l.At == oldAt {
 				l.At = newAt
+			}
+		}
+		// 暂停期间被「推迟提醒」推后的那一条跟线一起平移：occurrence 去重键保持一致，
+		// 推迟后的窗口弹过之后不会再被重排回来弹第二次
+		if newAt != oldAt {
+			for k, p := range s.postponed {
+				if p.kind == nextType && p.at == oldAt {
+					delete(s.postponed, k)
+					p.at = newAt
+					s.postponed[occurrenceKey(p.kind, p.at)] = p
+				}
 			}
 		}
 		sortPlans(st.Lines)
@@ -447,7 +779,9 @@ func (s *Scheduler) remainingMs() int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := nowMs()
-	if s.state.Paused {
+	// 暂停期间剩余时间冻结（锚定到 pausedAt）；但暂停期间照常弹出来的自定义提醒
+	// 本身在正常走时，不能按冻结算
+	if s.state.Paused && !(s.state.Phase == "break" && isCustomBreakID(s.state.NextType)) {
 		now = s.state.PausedAt
 	}
 	if s.state.Phase == "break" {
@@ -657,10 +991,19 @@ func (s *Scheduler) scheduleNext() {
 
 // startBreak 到点（或立即休息）弹一次真实休息，返回会话 id（弹不出来时为空串）
 func (s *Scheduler) startBreak() string {
+	s.mu.Lock()
+	kind := s.state.NextType
+	at := s.state.NextAt
+	s.mu.Unlock()
+	return s.startBreakAt(kind, at)
+}
+
+// startBreakAt 按指定身份与 occurrence 弹一次休息。at 是这次安排的时刻（去重键用），
+// 传 0 表示沿用当前计划的 NextAt；暂停期间到点的自定义提醒也走这里（见 pausedFire）。
+func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	cfg := s.host.cfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
-	kind := st.NextType
 	bcfg, ok := cfg.BreakByID(kind)
 	if !ok {
 		// 计划里的这条休息已被删除：不弹窗，直接重排下一条
@@ -669,11 +1012,17 @@ func (s *Scheduler) startBreak() string {
 		return ""
 	}
 	now := nowMs()
+	if at == 0 {
+		at = st.NextAt
+	}
+	st.NextType = kind
 	st.Phase = "break"
 	st.BreakStartedAt = now
 	st.BreakEndsAt = now + bcfg.DurationMs
 	// 这次安排已消费：无论到点触发还是「立即休息」，replan 都不再排它
-	s.consumed[occurrenceKey(kind, st.NextAt)] = true
+	if at > 0 {
+		s.consumed[occurrenceKey(kind, at)] = true
+	}
 	// 派生视图立即跟上：刚消费掉的那条不再出现在分组倒计时与卡片摘要的「下次」里
 	s.refreshDerivedLocked(cfg, now)
 	s.mu.Unlock()

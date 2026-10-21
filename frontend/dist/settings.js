@@ -97,6 +97,142 @@
     { value: "fixed", label: "\u56FA\u5B9A\u65F6\u95F4", hint: "\u5230\u8BBE\u5B9A\u7684\u65F6\u523B\u63D0\u9192" }
   ];
   var CUSTOM_BREAK_PREFIX = "cb-";
+  // 「暂停休息时」下拉：三种处置，默认「推迟提醒」。每一项都带一个「?」，悬停看该项
+  // 的具体行为；行标签上的「?」解释「暂停休息」包括哪几种情况（空闲分钟数动态取，
+  // 跟着时间规划页的「空闲 N 分钟后自动暂停」走，每次保存后刷新一遍）。
+  var PAUSE_ACTIONS = [
+    { value: "remind", label: "正常提醒",
+      hint: "暂停休息期间到了提醒时间，仍照常弹出提前提示小窗和提醒窗口，不跳过也不推迟。" },
+    { value: "postpone", label: "推迟提醒",
+      hint: "暂停休息期间到了提醒时间不弹窗，按本卡「可推迟（分钟）」填的时长往后推；推迟后到点若仍在暂停休息，就继续往后推，恢复后按推迟后的时刻弹出。" },
+    { value: "skip", label: "跳过提醒",
+      hint: "暂停休息期间到了提醒时间，不弹提前提示小窗、也不弹提醒窗口，直接按「跳过」记一次，计入统计报表的跳过。" }
+  ];
+  // 下拉实例按宿主元素记（WeakMap）：自定义提醒卡片每次重建都换新元素，
+  // 用 id 记会指到已经脱离文档的旧节点。
+  var PAUSE_DROPS = new WeakMap();
+  function pauseActionOf(v) {
+    return PAUSE_ACTIONS.some((a) => a.value === v) ? v : "postpone";
+  }
+  function pauseScopeHint() {
+    const n = Math.max(1, Math.round(Number(S && S.idlePauseMin) || 5));
+    return "\u300C\u6682\u505C\u4F11\u606F\u300D\u6307\uFF1A\u7CFB\u7EDF\u7A7A\u95F2 " + n +
+      " \u5206\u949F\u81EA\u52A8\u6682\u505C\u3001\u7CFB\u7EDF\u5F00\u542F\u52FF\u6270\u6A21\u5F0F\u81EA\u52A8\u6682\u505C\u3001" +
+      "\u6307\u5B9A\u5E94\u7528\u8FD0\u884C\u65F6\u81EA\u52A8\u6682\u505C\uFF0C\u4EE5\u53CA\u624B\u52A8\u6682\u505C\u4F11\u606F\u3002";
+  }
+  function refreshPauseHints() {
+    const text = pauseScopeHint();
+    for (const el of document.querySelectorAll(".pause-scope-help")) el.title = text;
+  }
+  function mkQMark(cls, title) {
+    const q = document.createElement("span");
+    q.className = "q-mark " + cls;
+    q.textContent = "?";
+    q.title = title;
+    return q;
+  }
+  // mountPauseDrop 在宿主里画出「暂停休息时」下拉；重复调用只更新取值。
+  // 原生 <select> 的选项里放不下「?」，所以自己画一个（外观见 settings.css 的 .cdrop）。
+  function mountPauseDrop(host, value) {
+    if (!host) return;
+    // 宿主宽度来自 .cdrop-host（180px，与输入框同列同宽）：静态那处写在 HTML 里，
+    // 自定义提醒卡片是 JS 建的，这里统一补上，免得下拉铺满整列。
+    host.classList.add("cdrop-host");
+    const exists = PAUSE_DROPS.get(host);
+    if (exists) {
+      exists.set(value);
+      return;
+    }
+    host.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "cdrop";
+    root.dataset.value = pauseActionOf(value);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cdrop-btn";
+    btn.setAttribute("aria-haspopup", "listbox");
+    btn.setAttribute("aria-expanded", "false");
+    const cur = document.createElement("span");
+    cur.className = "cdrop-cur";
+    const caret = document.createElement("span");
+    caret.className = "cdrop-caret";
+    caret.textContent = "\u25BE";
+    btn.append(cur, mkQMark("", ""), caret);
+    const menu = document.createElement("div");
+    menu.className = "cdrop-menu hidden";
+    menu.setAttribute("role", "listbox");
+    for (const opt of PAUSE_ACTIONS) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "cdrop-item";
+      item.dataset.value = opt.value;
+      item.setAttribute("role", "option");
+      const tick = document.createElement("span");
+      tick.className = "cdrop-tick";
+      const label = document.createElement("span");
+      label.className = "cdrop-label";
+      label.textContent = opt.label;
+      item.append(tick, label, mkQMark("", opt.hint));
+      item.addEventListener("click", () => {
+        api.set(opt.value);
+        close();
+        autoSave();
+      });
+      menu.appendChild(item);
+    }
+    root.append(btn, menu);
+    host.appendChild(root);
+
+    let outside = null;
+    function open() {
+      root.classList.add("open");
+      menu.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      outside = (e) => { if (!root.contains(e.target)) close(); };
+      document.addEventListener("pointerdown", outside, true);
+    }
+    function close() {
+      root.classList.remove("open");
+      menu.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+      if (outside) {
+        document.removeEventListener("pointerdown", outside, true);
+        outside = null;
+      }
+    }
+    function render() {
+      const opt = PAUSE_ACTIONS.find((a) => a.value === pauseActionOf(root.dataset.value)) || PAUSE_ACTIONS[1];
+      cur.textContent = opt.label;
+      btn.querySelector(".q-mark").title = opt.hint;
+      for (const item of menu.children) {
+        const on = item.dataset.value === opt.value;
+        item.setAttribute("aria-selected", on ? "true" : "false");
+        item.querySelector(".cdrop-tick").textContent = on ? "\u2713" : "";
+      }
+    }
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (root.classList.contains("open")) close(); else open();
+    });
+    btn.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") close();
+    });
+    const api = {
+      get: () => pauseActionOf(root.dataset.value),
+      set: (v) => { root.dataset.value = pauseActionOf(v); render(); }
+    };
+    PAUSE_DROPS.set(host, api);
+    render();
+  }
+  function pauseDropValue(host) {
+    const api = host ? PAUSE_DROPS.get(host) : null;
+    return api ? api.get() : "postpone";
+  }
+  function setPauseDropValue(host, value) {
+    if (!host) return;
+    const api = PAUSE_DROPS.get(host);
+    if (api) api.set(value); else mountPauseDrop(host, value);
+  }
   function defaultCustomBreakConfig() {
     return {
       enabled: true,
@@ -105,6 +241,8 @@
       durationMs: 2e4,
       notifyBeforeMs: 1e4,
       postponeMs: 2 * 6e4,
+      // 暂停休息期间到点：默认推迟（按「可推迟」时长往后推，仍暂停就继续推）
+      pauseAction: "postpone",
       slots: []
     };
   }
@@ -1344,6 +1482,19 @@
         await window.api.previewBreak(cb.id);
       });
     }
+    // 「启用」下一行：暂停休息期间怎么处置（短 / 长休息没有这一行，保持原状）。
+    // 必须跟在克隆之后插：短休息卡片本身没有这个控件，模板只作骨架。
+    // 标签后的「?」说明「暂停休息」包括哪几种情况，下拉每一项自己也带一个「?」。
+    const pauseRow = document.createElement("div");
+    pauseRow.className = "row field";
+    const pauseLabel = document.createElement("label");
+    pauseLabel.append(document.createTextNode("\u6682\u505C\u4F11\u606F\u65F6"),
+      mkQMark("pause-scope-help", pauseScopeHint()));
+    const pauseHost = document.createElement("div");
+    pauseHost.id = `${cb.id}-pause`;
+    pauseRow.append(pauseLabel, pauseHost);
+    card.querySelector(":scope > .row.check.has-btn")?.after(pauseRow);
+    mountPauseDrop(pauseHost, cb.config?.pauseAction);
     card.querySelector(".tk-list").innerHTML = "";
     const msgList = card.querySelector(".msg-list");
     msgList.innerHTML = "";
@@ -1553,6 +1704,8 @@
     $(`${id}-duration`).value = id === "long" ? String(Math.round(c.durationMs / 6e4)) : String(Math.round(c.durationMs / 1e3));
     $(`${id}-notify`).value = String(Math.round(c.notifyBeforeMs / 1e3));
     $(`${id}-postpone`).value = String(Math.round(c.postponeMs / 6e4));
+    // 「暂停休息时」只有自定义提醒卡片有（短 / 长休息的模板本身没有这行）
+    setPauseDropValue($(`${id}-pause`), c.pauseAction);
     renderBreakList(id);
   }
   function fillBreakModeSelect(el, value) {
@@ -1617,12 +1770,15 @@
     fillSupervisorImageName();
     fillGeomControls(normalizeSupGeom(geomOf(currentGeomKey())));
     $("tk-enabled").checked = S.takeout.enabled;
+    mountPauseDrop($("tk-pause"), S.takeout.pauseAction);
     $("tk-lead").value = String(S.takeout.leadSec);
     $("tk-postpone").value = String(S.takeout.postponeMin);
     $("sc-postpone").value = S.shortcuts.postpone;
     $("sc-endEarly").value = S.shortcuts.endEarly;
     $("sc-pause").value = S.shortcuts.pause;
     $("sc-nextBreak").value = S.shortcuts.nextBreak;
+    // 「暂停休息时」行标签的「?」说明里带着当前空闲分钟数，首屏就按配置对齐
+    refreshPauseHints();
   }
   function collectForm() {
     S.theme = document.querySelector("input[name=theme]:checked").value;
@@ -1646,6 +1802,9 @@
       c.durationMs = bySec ? dv * 1e3 : dv * 6e4;
       c.notifyBeforeMs = clampNum($(`${id}-notify`), 0, 300, 10) * 1e3;
       c.postponeMs = clampNum($(`${id}-postpone`), 0, 120, 2) * 6e4;
+      // 暂停休息时：只有自定义提醒卡片有这一行（短 / 长休息不写这个键）
+      const pauseHost = $(`${id}-pause`);
+      if (pauseHost) c.pauseAction = pauseDropValue(pauseHost);
     };
     for (const id of allBreakIds()) readBreak(id);
     const a = S.appearance;
@@ -1660,12 +1819,15 @@
     S.sound.mode = $("snd-mode").dataset.mode || "single";
     S.supervisor.enabled = $("sup-enabled").checked;
     S.takeout.enabled = $("tk-enabled").checked;
+    S.takeout.pauseAction = pauseDropValue($("tk-pause"));
     S.takeout.leadSec = clampNum($("tk-lead"), TAKEOUT_LEAD_LIMITS[0], TAKEOUT_LEAD_LIMITS[1], TAKEOUT_LEAD_DEFAULT);
     S.takeout.postponeMin = clampNum($("tk-postpone"), TAKEOUT_POSTPONE_LIMITS[0], TAKEOUT_POSTPONE_LIMITS[1], TAKEOUT_POSTPONE_DEFAULT);
     S.shortcuts.postpone = $("sc-postpone").value.trim();
     S.shortcuts.endEarly = $("sc-endEarly").value.trim();
     S.shortcuts.pause = $("sc-pause").value.trim();
     S.shortcuts.nextBreak = $("sc-nextBreak").value.trim();
+    // 空闲分钟数可能刚改：把「暂停休息时」行标签的「?」说明同步成新数字
+    refreshPauseHints();
   }
   function clampNum(el, min, max, fallback) {
     const v = parseInt(el.value, 10);

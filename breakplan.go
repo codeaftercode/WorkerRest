@@ -67,9 +67,9 @@ type TimelineItem struct {
 
 // TakeoutPostponed 外卖的待推迟提醒（窗口上点「推迟」时由外卖模块记账）
 type TakeoutPostponed struct {
-	Slot     TimeSlot `json:"slot"`
-	DueAt    int64    `json:"dueAt"`
-	Count    int      `json:"count"`
+	Slot  TimeSlot `json:"slot"`
+	DueAt int64    `json:"dueAt"`
+	Count int      `json:"count"`
 	// PreFired 推迟后的提前通知是否已弹过：leadSec>0 时，推迟线在 DueAt 前 leadMs
 	// 要再弹一次预通知（与原始提前通知线同口径），用这个标记去重，避免每秒 tick 重复弹。
 	PreFired bool `json:"preFired"`
@@ -195,6 +195,12 @@ func (s *Settings) TakeoutLeadSec() int { return clampInt(s.Int(0, "takeout", "l
 // TakeoutPostponeMin 外卖「可推迟」分钟数（0=不显示「推迟」按钮）
 func (s *Settings) TakeoutPostponeMin() int {
 	return clampInt(s.Int(10, "takeout", "postponeMin"), 0, 120)
+}
+
+// TakeoutPauseAction 暂停休息期间外卖到点的处置：
+// remind（照常弹窗）/ postpone（按「可推迟」时长往后推，缺省）/ skip（不弹窗、直接记跳过）。
+func (s *Settings) TakeoutPauseAction() string {
+	return normPauseAction(s.Str(PauseActionPostpone, "takeout", "pauseAction"))
 }
 
 // AppPauseItem 指定应用运行时暂停的一条规则

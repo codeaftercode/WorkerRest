@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -93,9 +94,12 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) 
 	now := time.Now()
 	at := time.Date(now.Year(), now.Month(), now.Day(), slot.Hour, slot.Minute, 0, 0, now.Location())
 	// 红包二维码指向本机专属领取地址：installId 是每台设备一枚的 UUID，
-	// 服务端（nav.hcctc.cn）按 id 区分来源。只要显示外卖提醒窗口就必须展示优惠券，
+	// 服务端（www.goodgoodlive.com）按 id 区分来源。只要显示外卖提醒窗口就必须展示优惠券，
 	// 因此这里无条件带上地址（不再有开关）。
-	redData := &TakeoutRedPacket{URL: "https://nav.hcctc.cn/api/cps/id=" + cfg.Str("", "installId")}
+	// t = 毫秒时间戳：每次弹窗都重新生成地址，供服务端做时效判断 / 缓存刷新，
+	// 与 id 一起追加在查询串上（id 保留）。
+	redData := &TakeoutRedPacket{URL: "https://www.goodgoodlive.com/cps/index.html?id=" +
+		cfg.Str("", "installId") + "&t=" + strconv.FormatInt(now.UnixMilli(), 10)}
 	info := &TakeoutInfo{
 		ID:             takeoutID(),
 		At:             at.UnixMilli(),
@@ -170,8 +174,25 @@ func (a *App) checkTakeoutReminders() {
 		pp = nil
 	}
 	a.mu.Unlock()
+	// 暂停休息期间：按「暂停休息时」的处置走 —— 正常提醒就落下去走正常的触发线；
+	// 推迟提醒就把弹出时间往后推（推完仍暂停就再推）；跳过提醒则不弹提前提示小窗、
+	// 也不弹提醒窗口，直接按「跳过」记账（外卖报表的取消次数）。
+	// 暂停只管短 / 长休息，外卖自己按这份配置决定弹不弹。
 	if a.sched != nil && a.sched.isPaused() {
-		return
+		switch cfg.TakeoutPauseAction() {
+		case PauseActionRemind:
+			// 照常提醒：继续往下走下面的四条触发线
+		case PauseActionPostpone:
+			if a.postponeTakeoutWhilePaused(cfg, pp) {
+				return
+			}
+			// 「可推迟」填了 0：没有时长可推，退化成跳过（否则每跳原地打转、永远不弹）
+			a.skipTakeoutWhilePaused(cfg, pp)
+			return
+		default:
+			a.skipTakeoutWhilePaused(cfg, pp)
+			return
+		}
 	}
 	now := nowMs()
 	leadSec := cfg.TakeoutLeadSec()
@@ -231,6 +252,95 @@ func (a *App) checkTakeoutReminders() {
 	}
 	for _, slot := range toPreNotify {
 		a.showTakeoutPreNotify(slot, 0)
+	}
+}
+
+// postponeTakeoutWhilePaused 暂停休息期间的「推迟提醒」：到点不弹窗，把提醒窗口的弹出
+// 时间往后推「可推迟（分钟）」；推完再到期时若仍在暂停休息状态，就继续往后推（如此往复）。
+// 推迟不是吞掉：恢复后由正常的推迟线在推迟后的时刻弹出。
+//
+// 返回 false 表示这次没法推迟（「可推迟」填了 0，没有时长可推），由调用方退化成跳过。
+// 已有一次推迟在路上时，本分钟到点的其它条目并进那一次（外卖提醒窗口只有一扇，
+// 标题也不区分时刻），记进 takeoutFired 免得恢复后再补弹。
+func (a *App) postponeTakeoutWhilePaused(cfg *Settings, pp *TakeoutPostponed) bool {
+	ms := int64(cfg.TakeoutPostponeMin()) * 60_000
+	if ms <= 0 {
+		return false
+	}
+	now := nowMs()
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if pp != nil {
+		if now >= pp.DueAt {
+			pp.DueAt = now + ms
+			// 推后之后还要再走一遍提前通知线，复位它的去重标记
+			pp.PreFired = false
+			log.Printf("[takeout] 暂停休息期间推迟后再次到点，继续推迟 %d 分钟", ms/60_000)
+		}
+		for _, slot := range cfg.TakeoutSlots() {
+			if !isTimeSlotDue(slot, now, 0) {
+				continue
+			}
+			a.takeoutFired[occurrenceKey("takeout", slotAlertAt(slot, 0, now))] = true
+		}
+		return true
+	}
+	for _, slot := range cfg.TakeoutSlots() {
+		if !isTimeSlotDue(slot, now, 0) {
+			continue
+		}
+		key := occurrenceKey("takeout", slotAlertAt(slot, 0, now))
+		if a.takeoutFired[key] {
+			continue
+		}
+		a.takeoutFired[key] = true
+		a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: now + ms, Count: 1}
+		log.Printf("[takeout] 暂停休息期间 %02d:%02d 到点，推迟 %d 分钟再提醒",
+			slot.Hour, slot.Minute, ms/60_000)
+		return true
+	}
+	// 这一刻没有到点的条目（推迟计划还在路上）：什么都不用做
+	return true
+}
+
+// skipTakeoutWhilePaused 暂停休息期间外卖到点：**不弹**提前提示小窗、**不弹**提醒窗口，
+// 直接把这一次当「不点了（跳过）」记一笔（外卖报表的「取消次数」），并消费该次 occurrence
+// —— 恢复后同一分钟不再补弹。「推迟提醒」但「可推迟」填了 0 时也落到这里（没有时长可推）。
+//
+// 三条线口径：
+//   - 推迟线：到点（pp.DueAt）即记一次跳过并清掉推迟计划（暂停期间不补弹）；
+//   - 固定时刻线：按分钟匹配（与真窗同口径），每个到点的条目各记一次；
+//   - 提前通知线：暂停期间根本不弹小窗，因此不单独记账（到点那一跳已记）。
+func (a *App) skipTakeoutWhilePaused(cfg *Settings, pp *TakeoutPostponed) {
+	now := nowMs()
+	skipped := 0
+	if pp != nil && now >= pp.DueAt {
+		a.mu.Lock()
+		a.takeoutPostponed = nil
+		a.mu.Unlock()
+		skipped++
+		log.Printf("[takeout] 暂停休息期间推迟线到点，按跳过处理")
+	}
+	var hits []TimeSlot
+	a.mu.Lock()
+	for _, slot := range cfg.TakeoutSlots() {
+		if !isTimeSlotDue(slot, now, 0) {
+			continue
+		}
+		key := occurrenceKey("takeout", slotAlertAt(slot, 0, now))
+		if a.takeoutFired[key] {
+			continue
+		}
+		a.takeoutFired[key] = true
+		hits = append(hits, slot)
+	}
+	a.mu.Unlock()
+	for _, slot := range hits {
+		skipped++
+		log.Printf("[takeout] 暂停休息期间 %02d:%02d 到点，按跳过处理", slot.Hour, slot.Minute)
+	}
+	for i := 0; i < skipped; i++ {
+		a.statsStore().RecordTakeoutAction("skip")
 	}
 }
 
