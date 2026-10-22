@@ -363,7 +363,7 @@ const PROBE_STATS = `(async function () {
   var svg = plot ? plot.querySelector('svg') : null;
   var marks = svg ? svg.querySelectorAll('rect, path, line, circle, polyline, text').length : 0;
   var dateEl = document.getElementById('stats-date');
-  // 「今天」卡已并入构成卡：统计页应只剩 3 张卡，且首张标题就是「今天」
+  // 「今天」卡已并入构成卡并改名「今日看板」：统计页应只剩 4 张卡，且首张标题就是「今日看板」
   var cards = document.querySelectorAll('#tab-stats > .card');
   var firstH3 = cards.length ? cards[0].querySelector('h3') : null;
   var comp = (function () {

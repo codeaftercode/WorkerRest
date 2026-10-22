@@ -322,9 +322,12 @@ def main():
         check((stt.get("marks") or 0) >= 6, "报表图里有真实图形节点（不是空白容器）", stt.get("marks"))
         check(str(stt.get("date") or "").startswith("（") and str(stt.get("date") or "").endswith("）"),
               "统计页日期取自 Go 的 today.date", stt.get("date"))
-        check((stt.get("cards") or 0) == 4, "统计页共 4 张卡（今天 / 休息报表 / 外卖报表 / 自定义）", stt.get("cards"))
-        check(str(stt.get("firstTitle") or "").startswith("今天"),
-              "统计页首张卡标题是「今天」", stt.get("firstTitle"))
+        check(any(w in str(stt.get("date") or "") for w in
+                  ("周一", "周二", "周三", "周四", "周五", "周六", "周日")),
+              "日期括号里带星期", stt.get("date"))
+        check((stt.get("cards") or 0) == 4, "统计页共 4 张卡（今日看板 / 休息报表 / 外卖报表 / 自定义）", stt.get("cards"))
+        check(str(stt.get("firstTitle") or "").startswith("今日看板"),
+              "统计页首张卡标题是「今日看板」", stt.get("firstTitle"))
         comp = stt.get("comp") or {}
         check(comp.get("panels") == 3, "今天卡渲染出 3 块面板", comp.get("panels"))
         check(comp.get("segs") == 3, "时间构成画出 3 段堆叠条", comp.get("segs"))

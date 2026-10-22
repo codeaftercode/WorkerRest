@@ -41,6 +41,15 @@
     const w = d.getDay();
     return w === 0 ? 7 : w;
   }
+  // 日期键（YYYY-MM-DD，本地日）→ 「周四」。解析失败返回空串，调用方自己决定退化成什么。
+  // 不用 new Date("2026-10-22")：那是按 UTC 解析的，东八区会退到前一天。
+  function weekdayLabelOf(dateKey) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey || ""));
+    if (!m) return "";
+    const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    const hit = WEEKDAYS.find((w) => w.value === isoWeekday(d));
+    return hit ? hit.label : "";
+  }
   function nextSlotAt(slots, from = Date.now()) {
     let best = null;
     for (const slot of slots) {
@@ -2415,7 +2424,10 @@
     if (!box || !t) return;
     // 日期挂在卡片标题行（原「今天」卡的指标格已删，日期随卡片搬到这里）
     const dateEl = $("stats-date");
-    if (dateEl && t.date) dateEl.textContent = `\uFF08${t.date}\uFF09`;
+    if (dateEl && t.date) {
+      const wd = weekdayLabelOf(t.date);
+      dateEl.textContent = wd ? `\uFF08${t.date} ${wd}\uFF09` : `\uFF08${t.date}\uFF09`;
+    }
     if (box.dataset.built !== "1") {
       buildComposition(box);
       box.dataset.built = "1";
@@ -4244,8 +4256,15 @@
         env = `<span class="rc-tip-d">\u8F83\u4E0A\u4E00\u671F ${p === null ? "\u2014" : p === 0 ? "\u6301\u5E73" : `${p > 0 ? "+" : "\u2212"}${Math.abs(p)}%`}</span>`;
       }
     }
-    const rows = ckSeries.filter((s) => ckVal(b, s.id) > 0).map((s) => `<span style="color:${s.color}">${ckEsc(s.label)} ${ckVal(b, s.id)} \u6B21</span>`).join("");
-    ckTip.innerHTML = `<b>${b.title}</b><span>\u89E6\u53D1 ${ckBucketTotal(b)} \u6B21</span>` + (rows || (ckBucketTotal(b) <= 0 ? "<span>\u8BE5\u5468\u671F\u6CA1\u6709\u89E6\u53D1\u8BB0\u5F55</span>" : "")) + env;
+    // 与图例、表格列对齐：**所有提醒都列**（本期 0 次的用暗色显示）。
+    // 只列 >0 的话，「这一期哪条提醒没触发」在浮层里看不出来，行数还随期数上下跳。
+    const rows = ckSeries.map((s) => {
+      const v = ckVal(b, s.id);
+      return v > 0
+        ? `<span style="color:${s.color}">${ckEsc(s.label)} ${v} \u6B21</span>`
+        : `<span class="ckv-0">${ckEsc(s.label)} 0 \u6B21</span>`;
+    }).join("");
+    ckTip.innerHTML = `<b>${b.title}</b><span>\u89E6\u53D1 ${ckBucketTotal(b)} \u6B21</span>` + (rows || "<span>\u8BE5\u5468\u671F\u6CA1\u6709\u53EF\u7EDF\u8BA1\u7684\u63D0\u9192</span>") + env;
     ckTip.style.display = "block";
     const r = ckTip.getBoundingClientRect();
     ckTip.style.left = `${Math.max(8, Math.min(window.innerWidth - r.width - 8, x + 14))}px`;

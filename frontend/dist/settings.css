@@ -963,6 +963,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .rc-tip b { display: block; font-size: 12px; letter-spacing: 0.5px; }
 .rc-tip span { display: block; font-variant-numeric: tabular-nums; }
 .rc-tip .rc-tip-d { color: rgba(255, 255, 255, 0.72); }
+/* 自定义提醒报表浮层：本期 0 次的提醒也列出来（暗色），保证一行一条不随期数跳动 */
+.rc-tip .ckv-0 { color: rgba(255, 255, 255, 0.45); }
 /* 点击周期弹出的逐日明细浮层（挂在 #rest-chart 内，绝对定位跟随所点的桶） */
 .rc-detail {
   display: none; position: absolute; z-index: 30; width: 292px;
