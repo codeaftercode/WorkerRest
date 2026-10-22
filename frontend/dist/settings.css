@@ -724,35 +724,49 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .status-cell .k { font-size: 12px; color: var(--text-2); }
 .status-cell .v { font-size: 15px; font-weight: 600; margin-top: 3px; }
 /* 「设置窗口」卡片下方的状态 / 下次休息 / 下次提醒小卡片：每个卡片内部改为左右结构
-   （标签在左、值在右），且三个卡片的标签列、值列分别上下对齐。仅作用于 #data-status，
-   不影响统计页 #stats-today 的上下结构。 */
+   （标签在左、值在右），且三个卡片的标签列、值列分别上下对齐。仅作用于 #data-status。 */
 #data-status.status-grid { grid-template-columns: 1fr; gap: 8px; }
 #data-status .status-cell { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 16px; }
 #data-status .status-cell .k { font-size: 12px; color: var(--text-2); margin: 0; }
 #data-status .status-cell .v { font-size: 15px; font-weight: 600; margin: 0; text-align: right; }
-/* 「今天」卡指标说明 tooltip：悬浮在指标名或 ? 图标上显示（原底部整段说明按指标拆分而来） */
-#stats-today .status-cell .k.has-tip { position: relative; cursor: help; }
-#stats-today .k-tip {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 13px; height: 13px; margin-left: 5px; border-radius: 50%;
-  background: var(--border); color: var(--text-2);
-  font-size: 10px; font-weight: 600; line-height: 1; vertical-align: 1px;
-  cursor: help; user-select: none;
-  transition: background 0.15s ease, color 0.15s ease;
+
+/* 「今天」卡：上一条满宽的时间堆叠条 + 下面两块（休息动作次数条形 / 久坐时长条形）。
+   休息动作的条长只表示各自次数，不做部分-整体（推迟是中间动作，不能与其他项相加）；
+   久坐的条长按 45 分钟基准归一，超基准满格标红。 */
+.comp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.comp-grid > .comp-panel:first-child { grid-column: 1 / -1; }
+@media (max-width: 780px) { .comp-grid { grid-template-columns: 1fr; } }
+.comp-panel { background: var(--bg); border-radius: 10px; padding: 12px 14px; }
+.comp-h { position: relative; display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.comp-total { margin-left: auto; font-style: normal; font-size: 11.5px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.comp-stack { display: flex; height: 24px; margin: 10px 0 12px; border-radius: 7px; background: var(--border); overflow: hidden; }
+.comp-stack .seg {
+  display: flex; align-items: center; justify-content: center;
+  flex: 1 1 0; min-width: 2px; overflow: hidden;
+  font-size: 11px; color: #fff; white-space: nowrap;
+  transition: flex-grow 0.4s ease;
 }
-#stats-today .status-cell .k.has-tip:hover .k-tip { background: var(--accent); color: var(--panel); }
-#stats-today .status-cell .k.has-tip::after {
-  content: attr(data-tip);
-  position: absolute; top: calc(100% + 7px); left: 0;
-  width: 260px; padding: 8px 11px; border-radius: 8px;
-  background: var(--panel); border: 1px solid var(--border);
-  color: var(--text); font-size: 11.5px; font-weight: 400; line-height: 1.65;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
-  opacity: 0; visibility: hidden; transform: translateY(-3px);
-  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
-  pointer-events: none; white-space: normal; z-index: 30;
-}
-#stats-today .status-cell .k.has-tip:hover::after { opacity: 1; visibility: visible; transform: none; }
+.comp-stack .seg-lb { padding: 0 6px; text-overflow: ellipsis; overflow: hidden; }
+.comp-keys { display: flex; flex-wrap: wrap; gap: 6px 24px; }
+.comp-keys .ck { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.comp-keys .ck i { width: 8px; height: 8px; border-radius: 2px; }
+.comp-keys .ck span { color: var(--text-2); }
+.comp-keys .ck b { font-weight: 500; font-variant-numeric: tabular-nums; }
+.comp-keys .ck em { font-style: normal; color: var(--text-2); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.comp-bars { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+.comp-bars .cbar { display: grid; grid-template-columns: 34px 1fr 58px; align-items: center; gap: 10px; font-size: 12px; }
+.comp-bars .cbar .bl { color: var(--text-2); }
+.comp-bars .cbar .track { height: 14px; border-radius: 4px; background: var(--border); overflow: hidden; }
+.comp-bars .cbar .track > i { display: block; height: 100%; width: 0; border-radius: 4px; transition: width 0.4s ease; }
+.comp-bars .cbar .bv { font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
+/* 久坐面板：标签三字（最长 / 平均 / 中位数）、值是时长（可能到「1 小时 12 分」），
+   比次数条形要更宽的标签列与值列 */
+.comp-bars.sed .cbar { grid-template-columns: 52px 1fr 76px; }
+.comp-bars.sed .cbar .bv { font-size: 11.5px; }
+/* 休息面板：多了一行四字的「提前结束」，标签列要放宽到能放下四个字 */
+.comp-bars.br .cbar { grid-template-columns: 52px 1fr 58px; }
+.comp-note { margin-top: 10px; font-size: 11px; line-height: 1.5; color: var(--text-2); }
+.comp-note.over { color: #e05555; }
 
 /* 统计页：周期报表 / 历史明细表格（跟随主题变量，与卡片同源） */
 .stats-table {
@@ -865,6 +879,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .rcv-rest { color: #2fa3b5; }
 .rcv-skip { color: #e05555; }
 .rcv-post { color: #e0a23f; }
+.rcv-early { color: #9aa3b2; }
 /* 鼠标指示器：吸附最近时间点的虚线竖线 */
 .rest-chart .rc-cursor { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 4 4; pointer-events: none; }
 .rc-legend-item {
@@ -881,6 +896,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .rc-legend-item i.rc-l-rest { background: #2fa3b5; }
 .rc-legend-item i.rc-l-skip { background: #e05555; }
 .rc-legend-item i.rc-l-post { background: #e0a23f; }
+.rc-legend-item i.rc-l-early { background: #9aa3b2; }
 .rc-plot svg { display: block; width: 100%; height: auto; user-select: none; }
 .rest-chart .grid { stroke: var(--border); stroke-width: 1; }
 .rest-chart .rc-axis { stroke: var(--text-2); stroke-opacity: 0.5; stroke-width: 1; }
@@ -895,6 +911,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .rest-chart .rc-peak.rc-l-rest { fill: #2fa3b5; }
 .rest-chart .rc-peak.rc-l-skip { fill: #e05555; }
 .rest-chart .rc-peak.rc-l-post { fill: #e0a23f; }
+.rest-chart .rc-peak.rc-l-early { fill: #9aa3b2; }
 /* 平均休息参考线：虚线 + 右侧小字标注（用主文本色，弱色看不清） */
 .rest-chart .rc-avgline { stroke: var(--text-2); stroke-opacity: 0.6; stroke-dasharray: 5 4; pointer-events: none; }
 .rest-chart .rc-avglabel { fill: var(--text); font-size: 11px; font-weight: 600; }
@@ -912,9 +929,11 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .rest-chart .rc-l-rest { stroke: #2fa3b5; }
 .rest-chart .rc-l-skip { stroke: #e05555; }
 .rest-chart .rc-l-post { stroke: #e0a23f; }
+.rest-chart .rc-l-early { stroke: #9aa3b2; }
 .rest-chart .rc-dot.rc-l-rest { fill: #2fa3b5; }
 .rest-chart .rc-dot.rc-l-skip { fill: #e05555; }
 .rest-chart .rc-dot.rc-l-post { fill: #e0a23f; }
+.rest-chart .rc-dot.rc-l-early { fill: #9aa3b2; }
 /* 外卖报表系列（与休息报表折线同色系：点外卖=青、取消=红、推迟=琥珀） */
 .rest-chart .tk-l-ord { stroke: #2fa3b5; }
 .rest-chart .tk-l-can { stroke: #e05555; }

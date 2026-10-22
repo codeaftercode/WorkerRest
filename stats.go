@@ -76,15 +76,32 @@ type DayStats struct {
 	TakeoutSkipped int64 `json:"takeoutSkipped"`
 	// TakeoutPostponed 推迟点外卖次数
 	TakeoutPostponed int64 `json:"takeoutPostponed"`
+	// MaxStreakMs 今日最长的一段「连续工作时长」（毫秒）：「今天卡」久坐面板用。
+	// 与 WorkMs 的关系是「max 不是 sum」—— 它不进 statNumKeys，周期汇总不做累加
+	//（跨天聚合取 max 没有业务意义，所以 PeriodStats 里也不带这个字段）。
+	MaxStreakMs int64 `json:"maxStreakMs"`
+	// WorkSegments 今日各段连续工作时长（毫秒）。**最后一项是正在进行中的那段**，每跳实时
+	// 更新；被休息 / 离开 / 睡眠打断后定稿，下一次工作再追加新的一项。
+	// 久坐面板的「平均 / 中位数」靠它算 —— 中位数必须有分布，只有 max 是算不出来的。
+	WorkSegments []int64 `json:"workSegments,omitempty"`
+	// EndEarlyCount 提前结束休息的次数：**只统计短休息 / 长休息**，不含自定义提醒与外卖。
+	// 与两个口径同时相关，别混：
+	//   - 今天卡「完成」= 坐满整次的，**不含**提前结束（见 OnBreakEnd 的 early 分支）；
+	//   - 休息报表「休息次数」= 休息只要开始过就算一次，**包含**提前结束（前端再相加）。
+	EndEarlyCount int64 `json:"endEarlyCount"`
 }
 
 // statNumKeys 与 stats.ts 的 NUM_KEYS 同序：聚合、归一化、周期汇总都按这份清单走。
 // 注意 shortMs / longMs 也在里面 —— 周期汇总的输出里确实带这两个字段。
 var statNumKeys = []string{
 	"workMs", "breakMs", "awayMs", "shortMs", "longMs", "shortCount", "longCount", "customCount",
-	"postponeCount", "postponeMs", "skipCount", "skipMs",
+	"postponeCount", "postponeMs", "skipCount", "skipMs", "endEarlyCount",
 	"takeoutOrdered", "takeoutSkipped", "takeoutPostponed",
 }
+
+// maxSegsPerDay 一天最多记多少段连续工作：正常一天几十段，这个上限只是防御 ——
+// 病态数据 / 手改文件也不至于把 stats.json 撑成无限大。
+const maxSegsPerDay = 500
 
 // numPtr 取某个数值字段的地址（nil = 未知键）
 func numPtr(d *DayStats, key string) *int64 {
@@ -113,6 +130,8 @@ func numPtr(d *DayStats, key string) *int64 {
 		return &d.SkipCount
 	case "skipMs":
 		return &d.SkipMs
+	case "endEarlyCount":
+		return &d.EndEarlyCount
 	case "takeoutOrdered":
 		return &d.TakeoutOrdered
 	case "takeoutSkipped":
@@ -130,12 +149,15 @@ func emptyDay(date string) DayStats {
 	return DayStats{Date: date, CustomCounts: map[string]int64{}}
 }
 
-// clone 深拷贝（CustomCounts 是 map，调用方会在锁外读它）
+// clone 深拷贝（CustomCounts 是 map、WorkSegments 是切片，调用方会在锁外读它）
 func (d DayStats) clone() DayStats {
 	out := d
 	out.CustomCounts = make(map[string]int64, len(d.CustomCounts))
 	for k, v := range d.CustomCounts {
 		out.CustomCounts[k] = v
+	}
+	if d.WorkSegments != nil {
+		out.WorkSegments = append([]int64{}, d.WorkSegments...)
 	}
 	return out
 }
@@ -158,6 +180,22 @@ func normalizeDay(raw any, date string) DayStats {
 			}
 			if v := numFromAny(rv); v > 0 {
 				out.CustomCounts[id] = int64(math.Round(v))
+			}
+		}
+	}
+	// maxStreakMs / workSegments 不在 statNumKeys 里（它们不参与累加聚合：
+	// 最长段是取 max、段数组是分布本身），逐个单独读回
+	if v := numFromAny(o["maxStreakMs"]); v > 0 {
+		out.MaxStreakMs = int64(math.Round(v))
+	}
+	if arr, ok := o["workSegments"].([]any); ok {
+		// 只认正数且限量读入（手改文件塞几十万项进来也不会把内存撑爆）
+		for _, it := range arr {
+			if len(out.WorkSegments) >= maxSegsPerDay {
+				break
+			}
+			if v := numFromAny(it); v > 0 {
+				out.WorkSegments = append(out.WorkSegments, int64(math.Round(v)))
 			}
 		}
 	}
@@ -258,6 +296,13 @@ type StatsStore struct {
 	// 本工作段的起点：软件启动 / 上一次休息结束 / 上一次离开结束时置为当时。用途只有一个
 	// —— 把工作搬去离开（BeginAway）时，检索区间不越过它，免得把上一段的账一起搬走。
 	workSegStartAt int64
+	// streakStartMs 当前「连续工作段」的起点（0 = 当前没有连续工作在进行）。
+	// 只在计时 goroutine 判为「这一跳算工作」时起算，被休息 / 空闲 / 睡眠 / 离开打断时清零。
+	// 每跳把它到现在的长度与当天 MaxStreakMs 取最长（不累加），所以跨天也各归各天。
+	streakStartMs int64
+	// streakDayKey 进行中那段在 WorkSegments 里已经占位的那一天（空 = 还没占位）。
+	// 跨零点时会从「更新末项」切换成「在新的一天追加一项」，靠它判断。
+	streakDayKey string
 	// sleepStartedAt 系统睡眠开始的时刻（0 = 当前没在睡眠）
 	sleepStartedAt int64
 	// sleepEndedAt 最近一次从睡眠中醒来的时刻（0 = 本进程还没睡过）
@@ -409,6 +454,9 @@ func (st *StatsStore) Clear() {
 	st.awaySettledAt = 0
 	st.awayDayKey = ""
 	st.awayCountedMs = 0
+	// 连续工作段也从头起算：清空后「最长连续工作」必须归零
+	st.streakStartMs = 0
+	st.streakDayKey = ""
 	if st.saveTimer != nil {
 		st.saveTimer.Stop()
 		st.saveTimer = nil
@@ -632,8 +680,11 @@ func (st *StatsStore) onBreakTickLocked() int64 {
 // 时长为 0（点开就结束）时也要记这笔「完成了一次」。
 //
 // name 是自定义提醒的名字快照（提醒删掉 / 改名后报表还能对上号）。
+// early 表示这次是**提前结束**（只对短 / 长休息有意义，见 app.closeBreakWindows 的判定）：
+// 提前结束的不计入「完成」，只记 EndEarlyCount —— 时长照实记进 BreakMs / ShortMs / LongMs，
+// 因为那确实是坐过的休息时间。
 // 返回本次休息的类型与总墙钟时长；没有休息在计时时类型为空串。
-func (st *StatsStore) OnBreakEnd(name string) (string, int64) {
+func (st *StatsStore) OnBreakEnd(name string, early bool) (string, int64) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	kind := st.breakLogType
@@ -643,11 +694,23 @@ func (st *StatsStore) OnBreakEnd(name string) (string, int64) {
 	st.onBreakTickLocked()
 	ms := st.nowFn() - st.breakLogStartedAt
 	last := st.touchTodayLocked()
+	// 提前结束只可能是内置短 / 长休息（自定义提醒没有这个按钮，外卖也不走这里）
+	if early && kind != "short" && kind != "long" {
+		early = false
+	}
 	switch kind {
 	case "short":
-		last.ShortCount++
+		if early {
+			last.EndEarlyCount++
+		} else {
+			last.ShortCount++
+		}
 	case "long":
-		last.LongCount++
+		if early {
+			last.EndEarlyCount++
+		} else {
+			last.LongCount++
+		}
 	default:
 		// 自定义提醒（id 为 cb-…）：不并进短/长，单独记一笔，统计页才能如实反映
 		last.CustomCount++
@@ -677,7 +740,9 @@ func (st *StatsStore) BreakLogInfo() (string, int64) {
 	return st.breakLogType, st.nowFn() - st.breakLogStartedAt
 }
 
-// RecordBreakPostponed 推迟一次休息：记次数 + 推后时长
+// RecordBreakPostponed 推迟一次休息：记次数 + 推后时长。
+// **只由短 / 长休息调用**（调用方 App.onBreakPostponed 已过滤自定义提醒）；
+// 自定义提醒与外卖都不进这个口径。
 func (st *StatsStore) RecordBreakPostponed(_ string, postponeMs int64) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -687,7 +752,8 @@ func (st *StatsStore) RecordBreakPostponed(_ string, postponeMs int64) {
 	st.markDirtyLocked()
 }
 
-// RecordBreakSkipped 跳过一次休息：记次数 + 被跳过那次的休息时长
+// RecordBreakSkipped 跳过一次休息：记次数 + 被跳过那次的休息时长。
+// **只由短 / 长休息调用**（调用方 App.onBreakSkipped 已过滤自定义提醒）。
 func (st *StatsStore) RecordBreakSkipped(_ string, skippedMs int64) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -759,6 +825,8 @@ func (st *StatsStore) NotifySlept(fromMs, toMs int64) {
 	if st.awayOpen && st.awaySettledAt < toMs {
 		st.awaySettledAt = toMs
 	}
+	// 睡了一觉 → 连续工作段断在入睡那一刻
+	st.endStreakLocked(fromMs)
 	st.workSegStartAt = toMs
 	if added > 0 {
 		st.markDirtyLocked()
@@ -812,6 +880,8 @@ func (st *StatsStore) BeginAway(sinceTs int64) int64 {
 		return 0
 	}
 	from := max(sinceTs, st.workSegStartAt)
+	// 判为离开 = 人离开工位 → 连续工作段到此为止（以最后一次键鼠输入为终点）
+	st.endStreakLocked(from)
 	st.awayOpen = true
 	st.awayStartedAt = sinceTs
 	st.awaySettledAt = now
@@ -936,6 +1006,95 @@ func AwayPartOf(from, to int64, day string) int64 {
 //     双重封顶，不需要额外的余额变量；
 //   - **系统睡眠 / 休眠**：只算到入睡那一刻，醒来后重新开始（见 countedSpan）；
 //   - 每次计入都**按本地零点切开、各记各天**（见 splitByDay）。
+// ---------- 连续工作段（久坐指标）----------
+//
+// 「最长连续工作」= 今天最长的一段不间断工作时长。口径：
+//   - 计时 goroutine 判为「这一跳算工作」就延续当前段（起算点是这一跳的 a）；
+//   - 休息开始 / 空闲 / 睡眠 / 判为离开 / 清空统计 → 段结束；
+//   - 暂停休息（pause）不算打断 —— 人还坐在电脑前，久坐风险照样存在；
+//   - 跨零点按天切开，各天记自己那一段。
+//
+// 与 WorkMs 的区别只有一点：WorkMs 是累加，MaxStreakMs 取最长。
+
+// streakBeginLocked 不在连续工作段里就在这一跳的起点起算（调用方需持锁）
+func (st *StatsStore) streakBeginLocked(from int64) {
+	if st.streakStartMs == 0 {
+		st.streakStartMs = from
+		// 段数组的占位推迟到第一次 settle（那时才知道这一跳算到哪一天）
+		st.streakDayKey = ""
+	}
+}
+
+// settleStreakLocked 用 [起点, to) 刷新各天的最长连续工作时长与段数组（不动起点，供每跳实时更新）
+func (st *StatsStore) settleStreakLocked(to int64) {
+	if st.streakStartMs == 0 || to <= st.streakStartMs {
+		return
+	}
+	changed := false
+	segs := splitByDay(st.streakStartMs, to)
+	for i, seg := range segs {
+		d := st.dayOfLocked(seg.date)
+		if seg.ms > d.MaxStreakMs {
+			d.MaxStreakMs = seg.ms
+			changed = true
+		}
+		// 最后一段是「到 to 为止的那段」= 进行中：同一天就改写末项（每跳实时涨），
+		// 跨到新的一天就在新的一天追加；更早的段是跨零点切出来的定稿段，只在还没记过
+		// 那一天时才追加（否则每跳都会把同一段重复追加一遍）。
+		last := i == len(segs)-1
+		if last && st.streakDayKey == seg.date && len(d.WorkSegments) > 0 {
+			if d.WorkSegments[len(d.WorkSegments)-1] != seg.ms {
+				d.WorkSegments[len(d.WorkSegments)-1] = seg.ms
+				changed = true
+			}
+			continue
+		}
+		if !last && seg.date <= st.streakDayKey {
+			continue
+		}
+		if len(d.WorkSegments) >= maxSegsPerDay {
+			continue
+		}
+		d.WorkSegments = append(d.WorkSegments, seg.ms)
+		st.streakDayKey = seg.date
+		changed = true
+	}
+	if changed {
+		st.markDirtyLocked()
+	}
+}
+
+// endStreakLocked 结束当前连续工作段：先把 [起点, at) 结算进当天，再清掉起点（调用方需持锁）。
+// 段数组末项已经在 settle 里定稿，这里不追加。
+func (st *StatsStore) endStreakLocked(at int64) {
+	if st.streakStartMs == 0 {
+		return
+	}
+	st.settleStreakLocked(at)
+	st.streakStartMs = 0
+	st.streakDayKey = ""
+}
+
+// endStreakAt 带锁版本的段结束（计时 goroutine / 各通知入口用）
+func (st *StatsStore) endStreakAt(at int64) {
+	st.mu.Lock()
+	st.endStreakLocked(at)
+	st.mu.Unlock()
+}
+
+// accountWorkTick 把 [a, b) 这一跳记成工作，并延续/刷新连续工作段（计时 goroutine 用）。
+// 抽成方法是为了能被单测直接驱动 —— 1 秒一拍的循环体在测试里跑不起来。
+func (st *StatsStore) accountWorkTick(a, b int64) {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	for _, seg := range splitByDay(a, b) {
+		st.dayOfLocked(seg.date).WorkMs += seg.ms
+	}
+	st.streakBeginLocked(a)
+	st.settleStreakLocked(b)
+	st.markDirtyLocked()
+}
+
 func (st *StatsStore) StartWorkAccumulator(isBreak, isIdle func() bool) {
 	st.mu.Lock()
 	st.workSegStartAt = st.nowFn()
@@ -972,6 +1131,7 @@ func (st *StatsStore) StartWorkAccumulator(isBreak, isIdle func() bool) {
 				// 休息 = 这一跳归休息：顺手推进休息计时（休息时长同样是实时入账的，
 				// 否则进行中的休息只能等 break-end 才写盘，断电就整次丢掉）
 				if isBreak() {
+					st.endStreakAt(now)
 					st.OnBreakTick()
 					continue
 				}
@@ -979,19 +1139,17 @@ func (st *StatsStore) StartWorkAccumulator(isBreak, isIdle func() bool) {
 				a, b, ok := countedSpan(from, now, st.sleepStartedAt, st.sleepEndedAt)
 				st.mu.Unlock()
 				if !ok {
+					// 整跳都在睡眠里 → 连续工作段断在这里
+					st.endStreakAt(now)
 					continue
 				}
 				// 空闲（含「大跳时按当时的空闲值归属」这一条）：这一跳不计工作 ——
 				// 那段由离开段负责记进 AwayMs（App 侧的监视会调 BeginAway 搬过去）
 				if isIdle() {
+					st.endStreakAt(now)
 					continue
 				}
-				st.mu.Lock()
-				for _, seg := range splitByDay(a, b) {
-					st.dayOfLocked(seg.date).WorkMs += seg.ms
-				}
-				st.markDirtyLocked()
-				st.mu.Unlock()
+				st.accountWorkTick(a, b)
 			}
 		}
 	}()
@@ -1029,6 +1187,10 @@ type PeriodStats struct {
 	TakeoutOrdered   int64  `json:"takeoutOrdered"`
 	TakeoutSkipped   int64  `json:"takeoutSkipped"`
 	TakeoutPostponed int64  `json:"takeoutPostponed"`
+	// EndEarlyCount 提前结束的休息次数（只统计短 / 长休息）。注意它与休息次数**互不排斥**：
+	// 休息报表的「休息次数」= 短 + 长 + 提前结束 + 自定义（休息只要开始就算一次），
+	// 与今天卡「完成」（坐满整次，不含提前结束）是两个口径。
+	EndEarlyCount int64 `json:"endEarlyCount"`
 }
 
 // mondayOf 所在周的周一（ISO 周，周一起始，0 点）
@@ -1123,6 +1285,11 @@ func (st *StatsStore) aggregateRangeLocked(startKey, endKey string) DayStats {
 		for _, k := range statNumKeys {
 			*numPtr(&out, k) += *numPtr(d, k)
 		}
+		// 最长连续工作是「取最长」而不是累加（周期汇总不展示它，这里只保证聚合结果
+		// 这个字段本身不是错的）
+		if d.MaxStreakMs > out.MaxStreakMs {
+			out.MaxStreakMs = d.MaxStreakMs
+		}
 	}
 	return out
 }
@@ -1149,6 +1316,7 @@ func (st *StatsStore) toPeriodLocked(r PeriodRange) PeriodStats {
 		TakeoutOrdered:   agg.TakeoutOrdered,
 		TakeoutSkipped:   agg.TakeoutSkipped,
 		TakeoutPostponed: agg.TakeoutPostponed,
+		EndEarlyCount:    agg.EndEarlyCount,
 	}
 }
 
@@ -1377,11 +1545,22 @@ func (a *App) statsIsIdle() bool {
 }
 
 // onBreakPostponed / onBreakSkipped 调度器宿主接口的实现（见 scheduler.go 的 schedHost）：
-// 推迟 / 跳过各记一笔统计。对应 上一版的 scheduler.on('postpone' / 'skip')。
+// 推迟 / 跳过各记一笔统计。对应上一版的 scheduler.on('postpone' / 'skip')。
+//
+// **只认短休息 / 长休息**：调度器的 NextType 也可能是自定义提醒（id 形如 cb-…），
+// 手动推迟、手动跳过、暂停休息期间按「跳过」处理的自定义提醒都会走到这两个回调，
+// 但「今天卡 - 休息」这一组四项（完成 / 推迟 / 跳过 / 提前结束）只统计内置短、长休息。
+// 外卖走的是独立的 RecordTakeoutAction，不经过这里。
 func (a *App) onBreakPostponed(kind string, postponeMs int64) {
+	if kind != "short" && kind != "long" {
+		return
+	}
 	a.statsStore().RecordBreakPostponed(kind, postponeMs)
 }
 
 func (a *App) onBreakSkipped(kind string, skippedMs int64) {
+	if kind != "short" && kind != "long" {
+		return
+	}
 	a.statsStore().RecordBreakSkipped(kind, skippedMs)
 }

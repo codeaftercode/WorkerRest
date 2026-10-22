@@ -750,19 +750,43 @@ def main():
                   "周期顺序为 周 → 月 → 季 → 年", pkeys)
             check(all(isinstance(p.get("workMs"), int) for p in periods),
                   "每个周期都带 workMs（聚合字段齐全）", "")
+            # 提前结束次数也要按周期聚合（休息报表那条「提前结束」折线的数据源）
+            check(all(isinstance(p.get("endEarlyCount"), int) for p in periods),
+                  "每个周期都带 endEarlyCount",
+                  [p.get("endEarlyCount") for p in periods])
 
-        # today 的字段清单就是渲染层的读法（statCells 直接遍历它）
+        # today 的字段清单就是渲染层的读法（「今天」卡三块面板直接遍历它）
         STAT_KEYS = ("date", "workMs", "breakMs", "awayMs", "shortMs", "longMs",
                      "shortCount", "longCount", "customCount", "customCounts",
                      "postponeCount", "postponeMs", "skipCount", "skipMs",
-                     "takeoutOrdered", "takeoutSkipped", "takeoutPostponed")
+                     "takeoutOrdered", "takeoutSkipped", "takeoutPostponed",
+                     "maxStreakMs", "workSegments", "endEarlyCount")
         today_date = today_stats.get("date") if isinstance(today_stats, dict) else None
         if isinstance(today_stats, dict):
             missing_keys = [k for k in STAT_KEYS if k not in today_stats]
-            check(not missing_keys, "today 带全部 17 个字段", "缺 %s" % missing_keys)
+            check(not missing_keys, "today 带全部 20 个字段", "缺 %s" % missing_keys)
             # 占位时期这里给的是空数组 —— 契约要的是对象（id → 次数）
             check(isinstance(today_stats.get("customCounts"), dict),
                   "customCounts 是对象（不是数组）", type(today_stats.get("customCounts")).__name__)
+            # 久坐面板的数据源：最长一段是数字，段数组是数字数组（末项是进行中那段）
+            segs = today_stats.get("workSegments")
+            check(isinstance(segs, list) and all(isinstance(x, int) for x in segs),
+                  "workSegments 是数字数组（久坐面板算平均 / 中位数用）",
+                  "%s len=%s" % (type(segs).__name__, len(segs) if isinstance(segs, list) else "-"))
+            check(isinstance(today_stats.get("maxStreakMs"), int) and int(today_stats.get("maxStreakMs") or 0) > 0,
+                  "最长连续工作真的在记（today.maxStreakMs > 0）", today_stats.get("maxStreakMs"))
+            # 前面两次短休息都是 Action(endBreak) 提前结束 → 记 2 次提前结束；
+            # 第 7 段用 StartBreak("cb-snd") 起的自定义提醒也 endBreak 了，
+            # 但自定义提醒不参与这四项口径 → endEarlyCount 仍是 2。
+            check(int(today_stats.get("endEarlyCount") or 0) == 2,
+                  "提前结束 = 2 次（自定义提醒那次不计入）", today_stats.get("endEarlyCount"))
+            # 提前结束不计入完成：今天没有任何一次自然坐满的短 / 长休息
+            check(int(today_stats.get("shortCount") or 0) + int(today_stats.get("longCount") or 0) == 0,
+                  "提前结束不计入完成（shortCount + longCount == 0）",
+                  "%s/%s" % (today_stats.get("shortCount"), today_stats.get("longCount")))
+            # 自定义提醒照常记自己的完成次数（在自定义提醒报表里看），只是不进上面四项
+            check(int(today_stats.get("customCount") or 0) >= 1,
+                  "自定义提醒仍记自己的完成次数（customCount ≥ 1）", today_stats.get("customCount"))
             # 工作累加器每秒一跳：跑到这里至少记了一笔，说明记账链路真的在跑（不是返回空表）
             check(isinstance(today_stats.get("workMs"), int) and today_stats["workMs"] > 0,
                   "工作累加器真的在记账（today.workMs > 0）", today_stats.get("workMs"))
@@ -792,6 +816,8 @@ def main():
                   t2.get("workMs"))
             check(int(t2.get("shortCount") or 0) == 0 and int(t2.get("takeoutOrdered") or 0) == 0,
                   "清空后次数类字段全部归零", t2.get("shortCount"))
+            check(int(t2.get("endEarlyCount") or 0) == 0,
+                  "清空后提前结束次数归零", t2.get("endEarlyCount"))
         check(os.path.exists(os.path.join(ISO, "stats.json")),
               "统计文件真的落了盘（清空会立刻写一次）", os.path.join(ISO, "stats.json"))
 

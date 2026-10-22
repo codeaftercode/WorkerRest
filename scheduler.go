@@ -230,8 +230,10 @@ func (s *Scheduler) onTick() {
 }
 
 // pausedSkip 暂停期间的「跳过提醒」：自定义提醒在暂停态下到点时不弹任何窗，
-// 直接按「跳过」记一笔（与手动点「跳过本次」同一口径：SkipCount + 被跳过那次的时长），
-// 让统计报表如实反映「这段时间到过点、但被暂停吞掉了」。
+// 直接按「跳过」处理（调一次 host.onBreakSkipped）。
+// **但自定义提醒不进统计**：统计页「休息」这一组四项（完成 / 推迟 / 跳过 / 提前结束）
+// 只统计内置短休息与长休息，过滤集中在 App.onBreakSkipped 一处 —— 这里照旧发回调，
+// 免得调度器与宿主各判一次、口径漂移。所以本函数对自定义提醒实际只留下日志与去重。
 // 「推迟提醒」但「可推迟」填了 0 时也落到这里（没有时长可推，见 pauseDisposition）。
 //
 // 为什么只处理自定义提醒：短 / 长休息按需求保持原状（暂停期间不提醒也不记账）；
@@ -553,7 +555,8 @@ func (s *Scheduler) postpone() {
 	oldAt := st.NextAt
 	st.NextAt = nowMs() + ms
 	st.Phase = "idle"
-	// 统计：记一次推迟 + 推后时长（与 上一版的 scheduler.on('postpone') 同一口径）
+	// 统计：记一次推迟 + 推后时长。nextType 也可能是自定义提醒（cb-…），
+	// 但统计页「休息」四项只认短 / 长休息 —— 过滤在 App.onBreakPostponed 里一处做掉。
 	s.host.onBreakPostponed(nextType, ms)
 	// 被推迟的那条线在挂起线表里同步平移（今日时间线读的是这份表）
 	for i := range st.Lines {
@@ -602,7 +605,7 @@ func (s *Scheduler) skip() {
 	// 固定时刻线：不消费的话 replan 会把同一时刻原样排回来，「跳过」等于没跳
 	s.consumed[occurrenceKey(nextType, st.NextAt)] = true
 	s.mu.Unlock()
-	// 统计：记一次跳过 + 被跳过那次的时长（对应 上一版的 scheduler.on('skip')）
+	// 统计：记一次跳过 + 被跳过那次的时长。同样只认短 / 长休息，过滤在 App 侧。
 	s.host.onBreakSkipped(nextType, skippedMs)
 	log.Printf("[scheduler] 跳过 %s（时长 %d ms）", nextType, skippedMs)
 	s.scheduleNext()

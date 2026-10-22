@@ -594,6 +594,10 @@ func (a *App) showBreakSession(kind string, preview bool, forceKey string) strin
 	return info.ID
 }
 
+// endEarlyToleranceMs 「提前结束」判定的容差：结束时刻必须早于计划结束这么多才算提前。
+// 自然到点由调度器的定时器驱动，正常不会早于 EndsAt，这个容差只是不被毫秒级抖动误伤。
+const endEarlyToleranceMs = 1500
+
 // closeBreakWindows 关掉休息窗口并清掉会话（调度器收尾路径用，不经过渲染层）。
 // 目前唯一的调用点是调度器的 finishBreak，所以这里顺带承担「休息结束」的副作用：
 // 播一次提示音（对应 上一版的 break-end → playConfiguredSound）。
@@ -616,7 +620,13 @@ func (a *App) closeBreakWindows() {
 		if cfg := a.cfgSnapshot(); cfg != nil {
 			name = cfg.BreakNameByID(info.Type)
 		}
-		a.statsStore().OnBreakEnd(name)
+		// 提前结束：结束时刻明显早于计划结束。留 1.5 秒容差 —— 自然到点由定时器驱动，
+		// 正常不会早于 EndsAt，但别让抖动被记成「提前结束」。
+		// 口径只含短休息 / 长休息：自定义提醒与外卖不算（它们也不在这个窗口里结束）。
+		early := (info.Type == "short" || info.Type == "long") &&
+			nowMs()+endEarlyToleranceMs < info.EndsAt
+		// 提前结束的那次不计入「完成」，OnBreakEnd 内部按 early 分开记
+		a.statsStore().OnBreakEnd(name, early)
 	}
 	// 休息窗口关闭：把空闲基准清零（无论是否有统计会话 / 是否预览），否则
 	// 「刚休息完、还没动鼠标」进入 idle 后会被立刻误判成离开而暂停

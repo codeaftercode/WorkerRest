@@ -344,22 +344,78 @@ const PROBE_SOUND_PREVIEW = `(async function () {
   } catch (e) { out.error = String(e); }
   return out;
 })()`;
-const PROBE_STATS = `(function () {
+const PROBE_STATS = `(async function () {
+  // 后端 today 原值：用来核对「今天卡」四项（完成 / 推迟 / 跳过 / 提前结束）的渲染口径
+  var bk = { shortCount: 0, longCount: 0, customCount: 0, endEarlyCount: 0, postponeCount: 0, skipCount: 0 };
+  try {
+    var gs = await window.api.getStats();
+    var tt = (gs && gs.today) || {};
+    bk = {
+      shortCount: tt.shortCount || 0,
+      longCount: tt.longCount || 0,
+      customCount: tt.customCount || 0,
+      endEarlyCount: tt.endEarlyCount || 0,
+      postponeCount: tt.postponeCount || 0,
+      skipCount: tt.skipCount || 0
+    };
+  } catch (e) { bk.err = String(e); }
   var plot = document.getElementById('rc-plot');
   var svg = plot ? plot.querySelector('svg') : null;
   var marks = svg ? svg.querySelectorAll('rect, path, line, circle, polyline, text').length : 0;
-  var cells = document.querySelectorAll('#stats-today .status-cell');
-  var vals = [];
-  for (var i = 0; i < cells.length; i++) {
-    var k = cells[i].querySelector('.k');
-    var v = cells[i].querySelector('.v');
-    vals.push((k ? k.textContent.trim() : '?') + '=' + (v ? v.textContent.trim() : '?'));
-  }
   var dateEl = document.getElementById('stats-date');
+  // 「今天」卡已并入构成卡：统计页应只剩 3 张卡，且首张标题就是「今天」
+  var cards = document.querySelectorAll('#tab-stats > .card');
+  var firstH3 = cards.length ? cards[0].querySelector('h3') : null;
+  var comp = (function () {
+    var box = document.getElementById('stats-comp');
+    if (!box) return null;
+    var segs = box.querySelectorAll('.comp-stack .seg');
+    var vis = 0;
+    for (var j = 0; j < segs.length; j++) {
+      if (getComputedStyle(segs[j]).display !== 'none') vis++;
+    }
+    var bars = box.querySelectorAll('.cbar');
+    var bv = [];
+    var bl = [];
+    for (var q = 0; q < bars.length; q++) {
+      var cell = bars[q].querySelector('.bv');
+      bv.push(cell ? cell.textContent.trim() : '?');
+      var lb = bars[q].querySelector('.bl');
+      bl.push(lb ? lb.textContent.trim() : '?');
+    }
+    var tot = document.getElementById('comp-total');
+    return {
+      panels: box.querySelectorAll('.comp-panel').length,
+      segs: segs.length,
+      visibleSegs: vis,
+      bars: bars.length,
+      barVals: bv,
+      barLabels: bl,
+      total: tot ? tot.textContent.trim() : null,
+      // 久坐面板底部的小结（把「最长一段」翻译成有没有坐过头）
+      sedNote: (document.getElementById('comp-sed-note') || {}).textContent || '',
+      // 今天卡的说明图标：用户要求全部删掉（时间构成 / 休息动作 / 久坐），应为 0
+      qmarks: box.querySelectorAll('.comp-h i, .comp-h .q-mark').length
+    };
+  })();
+  // 休息报表：表头列（含排序箭头，判据用 startsWith）与图例项
+  var rcTable = document.getElementById('rc-table');
+  var rcHeads = [];
+  if (rcTable) {
+    var ths = rcTable.querySelectorAll('tr:first-child th');
+    for (var t = 0; t < ths.length; t++) rcHeads.push(ths[t].textContent.trim());
+  }
+  var restLegend = [];
+  var lgItems = document.querySelectorAll('#rc-legend .rc-legend-item');
+  for (var lg = 0; lg < lgItems.length; lg++) restLegend.push(lgItems[lg].textContent.trim());
   return {
+    rcHeads: rcHeads,
+    restLegend: restLegend,
     date: dateEl ? dateEl.textContent : null,
-    cells: cells.length,
-    cellValues: vals,
+    cards: cards.length,
+    firstTitle: firstH3 ? firstH3.textContent.trim() : null,
+    comp: comp,
+    backend: bk,
     svg: !!svg,
     marks: marks,
     tableRows: document.querySelectorAll('.rest-chart table tbody tr').length,

@@ -2298,57 +2298,177 @@
     const d = Math.floor(h / 24);
     return `${d} \u5929 ${h % 24} \u5C0F\u65F6`;
   }
-  function statCells(d) {
-    return [
-      ["\u5DE5\u4F5C\u65F6\u957F", fmtDur(d.workMs)],
-      ["\u4F11\u606F\u65F6\u957F", fmtDur(d.breakMs)],
-      ["\u5B8C\u6210\u4F11\u606F", `\u77ED ${d.shortCount} \u6B21 \xB7 \u957F ${d.longCount} \u6B21`],
-      ["\u63A8\u8FDF\u4F11\u606F", `${d.postponeCount} \u6B21 \xB7 \u7D2F\u8BA1 ${fmtDur(d.postponeMs)}`],
-      ["\u8DF3\u8FC7\u4F11\u606F", `${d.skipCount} \u6B21 \xB7 \u8DF3\u8FC7 ${fmtDur(d.skipMs)}`],
-      ["\u5916\u5356\u63D0\u9192", `\u70B9 ${d.takeoutOrdered} \u6B21 \xB7 \u53D6\u6D88 ${d.takeoutSkipped} \u6B21 \xB7 \u63A8\u8FDF ${d.takeoutPostponed} \u6B21`]
-    ];
+  // ---------- 今天：一条堆叠条 + 两组横向条形 ----------
+  // 为什么不用三个饼图：「工作 / 休息 / 离开」互斥且加总就是今天的软件运行时长，属部分-整体；
+  // 而「推迟」是中间动作 —— 推完这次提醒还会再弹，最终仍会计入完成或跳过（外卖同理），
+  // 「完成+推迟+跳过」「点餐+取消+推迟」相加都不成立，画饼会把同一件事算成两份份额。
+  var COMP_TIME = [
+    { k: "work", label: "工作", color: "var(--accent)" },
+    { k: "break", label: "休息", color: "#34a46f" },
+    { k: "away", label: "离开", color: "#9aa3b2" }
+  ];
+  // 四项都只统计**内置短休息 / 长休息**：自定义提醒与外卖（各有自己的报表）一律不计。
+  // 完成 = 坐满整次的（shortCount + longCount）；提前结束单独一行、**不算完成**。
+  var COMP_BREAK = [
+    { k: "done", label: "完成", color: "#34a46f" },
+    { k: "post", label: "推迟", color: "#e0a23f" },
+    { k: "skip", label: "跳过", color: "#e05555" },
+    { k: "early", label: "提前结束", color: "#9aa3b2" }
+  ];
+  // 久坐（最长一段连续工作）的判定基准：45 分钟。取健康科普里常见的「坐 45~60 分钟
+  // 该起身一次」下沿 —— 不用用户设定的休息间隔，因为间隔是提醒频率（默认才 10 分钟），
+  // 拿它当基准会让条形常年满格标红，反而看不出今天哪一段真的坐久了。
+  var SED_REF_MS = 45 * 6e4;
+  function compPct(v, total) {
+    if (!total || !v) return "0%";
+    const p = (v / total) * 100;
+    if (p < 1) return "<1%";
+    return Math.round(p) + "%";
   }
-  // 「今天」卡的指标说明（悬停指标名或「?」显示）。空闲阈值取「系统空闲 N 分钟后自动暂停」
-  // 的当前值，与「暂停休息时」的「?」同源，改完配置再进统计页即是新数字。
-  function statTips() {
-    const n = Math.max(1, Math.round(Number(S && S.idlePauseMin) || 5));
-    return {
-      "工作时长": "软件运行期间实际使用电脑的时间，已扣除休息与离开。手动暂停、勿扰、指定应用占用期间人仍在用电脑，照常计入；连续无键鼠输入达到空闲阈值（" + n + " 分钟）后的整段、系统睡眠整段，以及软件未运行的时间，均不计入。",
-      "休息时长": "按实际休息时间计算，提前结束只计入实际部分。",
-      "跳过休息": "次数：被跳过的休息次数，含手动跳过与暂停休息期间按「跳过提醒」处理的提醒；时长：各次被跳过休息的原定时长之和，非实际耗时。"
-    };
+  function buildComposition(box) {
+    const segs = COMP_TIME.map((s) => `<i class="seg" data-seg="${s.k}" style="background:${s.color}"><span class="seg-lb"></span></i>`).join("");
+    const keys = COMP_TIME.map((s) => `<div class="ck"><i style="background:${s.color}"></i><span>${s.label}</span><b data-v="${s.k}">0 秒</b><em data-p="${s.k}">0%</em></div>`).join("");
+    const bars = (group, list) => list.map((s) => `<div class="cbar" data-b="${group}-${s.k}"><span class="bl">${s.label}</span><span class="track"><i style="background:${s.color}"></i></span><b class="bv">0 次</b></div>`).join("");
+    box.innerHTML = `
+      <div class="comp-panel">
+        <div class="comp-h">
+          <span>时间构成</span><em class="comp-total" id="comp-total"></em>
+        </div>
+        <div class="comp-stack">${segs}</div>
+        <div class="comp-keys">${keys}</div>
+      </div>
+      <div class="comp-panel">
+        <div class="comp-h">
+          <span>休息</span>
+        </div>
+        <div class="comp-bars br">${bars("br", COMP_BREAK)}</div>
+      </div>
+      <div class="comp-panel">
+        <div class="comp-h">
+          <span>久坐</span>
+        </div>
+        <div class="comp-bars sed">
+          <div class="cbar" data-b="lk-max"><span class="bl">最长</span><span class="track"><i></i></span><b class="bv">0 秒</b></div>
+          <div class="cbar" data-b="lk-avg"><span class="bl">平均</span><span class="track"><i></i></span><b class="bv">0 秒</b></div>
+          <div class="cbar" data-b="lk-med"><span class="bl">中位数</span><span class="track"><i></i></span><b class="bv">0 秒</b></div>
+        </div>
+        <p class="comp-note" id="comp-sed-note"></p>
+      </div>`;
   }
-  function statCellsHtml(d) {
-    const tips = statTips();
-    return statCells(d).map(([k, v]) => {
-      const tip = tips[k];
-      const head = tip ? `<div class="k has-tip" data-tip="${tip}">${k}<span class="k-tip" aria-hidden="true">?</span></div>` : `<div class="k">${k}</div>`;
-      return `<div class="status-cell" data-k="${k}">${head}<div class="v">${v}</div></div>`;
-    }).join("");
-  }
-  // 「今天」卡：一次画好，之后数据一变就按同一份指标清单重画。
-  // 指标格的数量与顺序没变时只改数值文本 —— 别的都不动，鼠标正悬停的「?」提示不会被卸掉。
-  function renderTodayCard(t) {
-    if (!t) return;
-    const dateEl = $("stats-date");
-    if (dateEl) dateEl.textContent = `\uFF08${t.date}\uFF09`;
-    const box = $("stats-today");
-    if (!box) return;
-    const cells = statCells(t);
-    const nodes = box.querySelectorAll(".status-cell");
-    const sameShape = nodes.length === cells.length && cells.every(([k], i) => nodes[i].dataset.k === k);
-    if (sameShape) {
-      cells.forEach(([, v], i) => {
-        const vn = nodes[i].querySelector(".v");
-        if (vn) vn.textContent = v;
-      });
-      return;
+  function fillCompositionBars(box, group, rows) {
+    const max = Math.max(1, ...rows.map((r) => r.v));
+    for (const r of rows) {
+      const row = box.querySelector(`[data-b="${group}-${r.k}"]`);
+      if (!row) continue;
+      const bar = row.querySelector(".track > i");
+      // 非零值给一个下限，避免「1 次 vs 20 次」时小条细到看不见
+      if (bar) bar.style.width = r.v ? `${Math.max((r.v / max) * 100, 3)}%` : "0";
+      const bv = row.querySelector(".bv");
+      if (bv) bv.textContent = `${r.v} 次`;
+      row.title = r.tip || "";
     }
-    box.innerHTML = statCellsHtml(t);
+  }
+  // 久坐的三个指标都来自今天的工作段分布（后端 DayStats.workSegments，末项是进行中那段）：
+  //   平均 = 各段均值；中位数 = 排序后取中间值（比平均值更不受「偶尔坐了两小时」的长尾影响）。
+  // 段数组还没攒起来时（升级当天 / 旧数据）平均退回「工作时长 ÷（休息次数 + 1）」，中位数只能给 0。
+  function segList(t) {
+    return Array.isArray(t.workSegments) ? t.workSegments.filter((v) => v > 0) : [];
+  }
+  function avgSegmentMs(t) {
+    const segs = segList(t);
+    if (segs.length) {
+      return Math.round(segs.reduce((a, b) => a + b, 0) / segs.length);
+    }
+    const rests = (t.shortCount || 0) + (t.longCount || 0) + (t.customCount || 0);
+    return t.workMs ? Math.round(t.workMs / (rests + 1)) : 0;
+  }
+  function medianSegmentMs(t) {
+    const segs = segList(t).slice().sort((a, b) => a - b);
+    if (!segs.length) return 0;
+    const mid = segs.length >> 1;
+    return segs.length % 2 ? segs[mid] : Math.round((segs[mid - 1] + segs[mid]) / 2);
+  }
+  // 久坐面板的降级变体：条长按 45 分钟基准归一，超过基准满格并变红
+  function fillSedentary(box, rows) {
+    for (const r of rows) {
+      const row = box.querySelector(`[data-b="lk-${r.k}"]`);
+      if (!row) continue;
+      const bar = row.querySelector(".track > i");
+      const over = r.v > SED_REF_MS;
+      if (bar) {
+        // 非零值给 3% 下限，避免「刚坐 1 分钟」时条形细到看不见
+        bar.style.width = r.v ? `${Math.min(100, Math.max((r.v / SED_REF_MS) * 100, 3))}%` : "0";
+        bar.style.background = over ? "#e05555" : "#34a46f";
+      }
+      const bv = row.querySelector(".bv");
+      if (bv) bv.textContent = fmtDur(r.v);
+      row.title =
+        r.k === "max"
+          ? `今天最长的一段连续工作；超过 ${Math.round(SED_REF_MS / 6e4)} 分钟标红`
+          : r.k === "avg"
+            ? "今天各段连续工作时长的平均值"
+            : "今天各段连续工作时长排序后的中间值（比平均值更不受偶尔一次超长影响）";
+    }
+  }
+  function renderComposition(t) {
+    const box = $("stats-comp");
+    if (!box || !t) return;
+    // 日期挂在卡片标题行（原「今天」卡的指标格已删，日期随卡片搬到这里）
+    const dateEl = $("stats-date");
+    if (dateEl && t.date) dateEl.textContent = `\uFF08${t.date}\uFF09`;
+    if (box.dataset.built !== "1") {
+      buildComposition(box);
+      box.dataset.built = "1";
+    }
+    const vals = { work: t.workMs || 0, break: t.breakMs || 0, away: t.awayMs || 0 };
+    const total = vals.work + vals.break + vals.away;
+    const tot = $("comp-total");
+    if (tot) tot.textContent = total ? `\u8F6F\u4EF6\u8FD0\u884C ${fmtDur(total)}` : "\u6682\u65E0\u8BB0\u5F55";
+    for (const s of COMP_TIME) {
+      const v = vals[s.k];
+      const seg = box.querySelector(`[data-seg="${s.k}"]`);
+      if (seg) {
+        // 用 flex-grow 表达占比：零值直接隐藏，非零至少留一丝，不会被挤出可视区
+        seg.style.display = v ? "" : "none";
+        seg.style.flexGrow = v ? String(v) : "0";
+        const lb = seg.querySelector(".seg-lb");
+        const p = total ? (v / total) * 100 : 0;
+        if (lb) lb.textContent = p >= 14 ? `${s.label} ${Math.round(p)}%` : "";
+      }
+      const kv = box.querySelector(`[data-v="${s.k}"]`);
+      if (kv) kv.textContent = fmtDur(v);
+      const kp = box.querySelector(`[data-p="${s.k}"]`);
+      if (kp) kp.textContent = compPct(v, total);
+    }
+    const short = t.shortCount || 0;
+    const long = t.longCount || 0;
+    fillCompositionBars(box, "br", [
+      { k: "done", v: short + long, tip: `短休息 ${short} 次 · 长休息 ${long} 次（坐满整次的；提前结束不算）` },
+      { k: "post", v: t.postponeCount || 0, tip: `累计推迟 ${fmtDur(t.postponeMs || 0)}` },
+      { k: "skip", v: t.skipCount || 0, tip: `被跳过休息的原定时长合计 ${fmtDur(t.skipMs || 0)}` },
+      { k: "early", v: t.endEarlyCount || 0, tip: "短 / 长休息在窗口里点「提前结束」的次数（不计入完成）" }
+    ]);
+    fillSedentary(box, [
+      { k: "max", v: t.maxStreakMs || 0 },
+      { k: "avg", v: avgSegmentMs(t) },
+      { k: "med", v: medianSegmentMs(t) }
+    ]);
+    // 面板底部一句人话小结：把「最长」翻译成「有没有坐过头」
+    const maxStreak = t.maxStreakMs || 0;
+    const refMin = Math.round(SED_REF_MS / 6e4);
+    const note = $("comp-sed-note");
+    if (note) {
+      note.classList.toggle("over", maxStreak > SED_REF_MS);
+      note.textContent = !maxStreak
+        ? "今天还没有工作记录"
+        : maxStreak > SED_REF_MS
+          ? `今天最长连续坐了 ${fmtDur(maxStreak)}，超过 ${refMin} 分钟`
+          : `今天最长连续坐了 ${fmtDur(maxStreak)}，还没超过 ${refMin} 分钟`;
+    }
   }
   async function renderStats() {
     const data = await window.api.getStats();
-    renderTodayCard(data.today);
+    renderComposition(data.today);
     void renderRestChart();
     void renderTakeoutChart();
     void renderCustomReportChart();
@@ -2382,7 +2502,10 @@
     { id: "short", label: "\u77ED\u4F11\u606F\u65F6\u95F4", kind: "bar", cls: "rc-short" },
     { id: "rest", label: "\u4F11\u606F\u6B21\u6570", kind: "line", cls: "rc-l-rest" },
     { id: "skip", label: "\u8DF3\u8FC7\u6B21\u6570", kind: "line", cls: "rc-l-skip" },
-    { id: "postpone", label: "\u63A8\u8FDF\u6B21\u6570", kind: "line", cls: "rc-l-post" }
+    { id: "postpone", label: "\u63A8\u8FDF\u6B21\u6570", kind: "line", cls: "rc-l-post" },
+    // 提前结束与休息次数**互不排斥**：休息开始了就算一次休息，提前结束只是没坐满，
+    // 所以这条线不会从「休息次数」里扣掉任何东西（今天卡的「完成」才是坐满整次的次数）。
+    { id: "early", label: "\u63D0\u524D\u7ED3\u675F\u6B21\u6570", kind: "line", cls: "rc-l-early" }
   ];
   var rcUnit = rcLoadStr("unit", "wr-rc-unit") || "";
   if (!RC_WINDOWS[rcUnit]) rcUnit = "day";
@@ -2393,7 +2516,8 @@
       short: true,
       rest: true,
       skip: true,
-      postpone: true
+      postpone: true,
+      early: true
     };
     try {
       const raw = rcLoadStr("on", "wr-rc-on");
@@ -2453,21 +2577,23 @@
     }
     return { start: String(y - (RC_WINDOWS.year - 1)), end: String(y) };
   }
+  // 只有「用户手动设过」的范围才进缓存 / 落 localStorage；**默认范围每次按当前时间现算**。
+  // 否则软件连续运行跨天时，缓存里的 end 一直停在昨天，今天的桶根本不生成，
+  // 今天的柱 / 折线 / 表格行永远画不出来（只有重启软件才会好）。
   var rcRangeCache = {};
   function rcGetRange(unit) {
-    let r = rcRangeCache[unit];
-    if (!r) {
-      try {
-        const raw = JSON.parse(rcLoadStr(`range-${unit}`, `wr-rc-range-${unit}`) || "null");
-        if (raw && typeof raw.start === "string" && typeof raw.end === "string" && raw.start <= raw.end) {
-          r = { start: raw.start, end: raw.end };
-        }
-      } catch {
+    const cached = rcRangeCache[unit];
+    if (cached) return cached;
+    try {
+      const raw = JSON.parse(rcLoadStr(`range-${unit}`, `wr-rc-range-${unit}`) || "null");
+      if (raw && typeof raw.start === "string" && typeof raw.end === "string" && raw.start <= raw.end) {
+        const r = { start: raw.start, end: raw.end };
+        rcRangeCache[unit] = r;
+        return r;
       }
-      if (!r) r = rcDefaultRange(unit);
-      rcRangeCache[unit] = r;
+    } catch {
     }
-    return r;
+    return rcDefaultRange(unit);
   }
   function rcSetRange(unit, r) {
     const norm2 = r.start <= r.end ? { start: r.start, end: r.end } : { start: r.end, end: r.start };
@@ -2548,6 +2674,7 @@
       restCount: 0,
       skipCount: 0,
       postponeCount: 0,
+      endEarlyCount: 0,
       takeoutOrdered: 0,
       takeoutSkipped: 0,
       takeoutPostponed: 0,
@@ -2633,7 +2760,10 @@
       b.shortMs += d.shortMs;
       b.breakMs += d.breakMs;
       b.awayMs += d.awayMs ?? 0;
-      b.restCount += d.shortCount + d.longCount + d.customCount;
+      // 「休息次数」= 休息只要开始过就算一次：短 + 长 + 提前结束 + 自定义提醒。
+      // 与今天卡「完成」（坐满整次、不含提前结束）是两个口径 —— 提前结束在这里**不扣次数**。
+      b.restCount += d.shortCount + d.longCount + (d.endEarlyCount ?? 0) + d.customCount;
+      b.endEarlyCount += d.endEarlyCount ?? 0;
       b.skipCount += d.skipCount;
       b.postponeCount += d.postponeCount;
       b.takeoutOrdered += d.takeoutOrdered;
@@ -2666,6 +2796,7 @@
   async function renderRestChart(animate = false) {
     const seq = ++rcSeq;
     const range = rcGetRange(rcUnit);
+    rcSyncRangeLabel("rc", rcUnit, range);
     const buckets = rcBuckets(rcUnit, range);
     const prevBuckets = rcBuckets(rcUnit, rcPrevRange(rcUnit, range, buckets.length));
     const anchor = rcAnchorToDay(rcUnit, prevBuckets[0]?.start ?? range.start);
@@ -2696,7 +2827,8 @@
     away: (b) => b.awayMs,
     rest: (b) => b.restCount,
     skip: (b) => b.skipCount,
-    post: (b) => b.postponeCount
+    post: (b) => b.postponeCount,
+    early: (b) => b.endEarlyCount
   };
   var RC_TABLE_COLS = [
     { key: "period", label: "\u7EDF\u8BA1\u5468\u671F" },
@@ -2707,7 +2839,8 @@
     { key: "away", label: "\u79BB\u5F00\u65F6\u95F4" },
     { key: "rest", label: "\u4F11\u606F\u6B21\u6570" },
     { key: "skip", label: "\u8DF3\u8FC7\u6B21\u6570" },
-    { key: "post", label: "\u63A8\u8FDF\u6B21\u6570" }
+    { key: "post", label: "\u63A8\u8FDF\u6B21\u6570" },
+    { key: "early", label: "\u63D0\u524D\u7ED3\u675F\u6B21\u6570" }
   ];
   var rcTableSort = { key: "period", dir: "desc" };
   var rcTableData = [];
@@ -2727,10 +2860,10 @@
       const vb = get(b);
       return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
     });
-    const cells = (b) => `<td>${b.title}</td><td class="num rcv-work" data-v="${b.workMs}">${fmtDur(b.workMs)}</td><td class="num" data-v="${b.breakMs}">${fmtDur(b.breakMs)}</td><td class="num rcv-long" data-v="${b.longMs}">${fmtDur(b.longMs)}</td><td class="num rcv-short" data-v="${b.shortMs}">${fmtDur(b.shortMs)}</td><td class="num" data-v="${b.awayMs}">${fmtDur(b.awayMs)}</td><td class="num rcv-rest" data-v="${b.restCount}">${b.restCount}</td><td class="num rcv-skip" data-v="${b.skipCount}">${b.skipCount}</td><td class="num rcv-post" data-v="${b.postponeCount}">${b.postponeCount}</td>`;
-    const body = rows.length ? sorted.map((b) => `<tr>${cells(b)}</tr>`).join("") : '<tr><td colspan="9" class="rc-empty">\u6682\u65E0\u6570\u636E</td></tr>';
+    const cells = (b) => `<td>${b.title}</td><td class="num rcv-work" data-v="${b.workMs}">${fmtDur(b.workMs)}</td><td class="num" data-v="${b.breakMs}">${fmtDur(b.breakMs)}</td><td class="num rcv-long" data-v="${b.longMs}">${fmtDur(b.longMs)}</td><td class="num rcv-short" data-v="${b.shortMs}">${fmtDur(b.shortMs)}</td><td class="num" data-v="${b.awayMs}">${fmtDur(b.awayMs)}</td><td class="num rcv-rest" data-v="${b.restCount}">${b.restCount}</td><td class="num rcv-skip" data-v="${b.skipCount}">${b.skipCount}</td><td class="num rcv-post" data-v="${b.postponeCount}">${b.postponeCount}</td><td class="num rcv-early" data-v="${b.endEarlyCount}">${b.endEarlyCount}</td>`;
+    const body = rows.length ? sorted.map((b) => `<tr>${cells(b)}</tr>`).join("") : '<tr><td colspan="10" class="rc-empty">\u6682\u65E0\u6570\u636E</td></tr>';
     const sum = (f) => rows.reduce((s, b) => s + f(b), 0);
-    const total = rows.length ? `<tr class="total"><td>\u5408\u8BA1</td><td class="num rcv-work">${fmtDur(sum((b) => b.workMs))}</td><td class="num">${fmtDur(sum((b) => b.breakMs))}</td><td class="num rcv-long">${fmtDur(sum((b) => b.longMs))}</td><td class="num rcv-short">${fmtDur(sum((b) => b.shortMs))}</td><td class="num">${fmtDur(sum((b) => b.awayMs))}</td><td class="num rcv-rest">${sum((b) => b.restCount)}</td><td class="num rcv-skip">${sum((b) => b.skipCount)}</td><td class="num rcv-post">${sum((b) => b.postponeCount)}</td></tr>` : "";
+    const total = rows.length ? `<tr class="total"><td>\u5408\u8BA1</td><td class="num rcv-work">${fmtDur(sum((b) => b.workMs))}</td><td class="num">${fmtDur(sum((b) => b.breakMs))}</td><td class="num rcv-long">${fmtDur(sum((b) => b.longMs))}</td><td class="num rcv-short">${fmtDur(sum((b) => b.shortMs))}</td><td class="num">${fmtDur(sum((b) => b.awayMs))}</td><td class="num rcv-rest">${sum((b) => b.restCount)}</td><td class="num rcv-skip">${sum((b) => b.skipCount)}</td><td class="num rcv-post">${sum((b) => b.postponeCount)}</td><td class="num rcv-early">${sum((b) => b.endEarlyCount)}</td></tr>` : "";
     t.innerHTML = head + body + total;
   }
   var rcTip = null;
@@ -2755,7 +2888,7 @@
       const wp = pct(b.workMs, prev.workMs);
       if (bp || wp) env = `<span class="rc-tip-d">\u8F83\u4E0A\u4E00\u671F\u3000\u4F11\u606F ${bp || "\u2014"} \xB7 \u5DE5\u4F5C ${wp || "\u2014"}</span>`;
     }
-    rcTip.innerHTML = `<b>${b.title}</b><span class="rcv-work">\u5DE5\u4F5C\u65F6\u95F4 ${fmtHms(b.workMs)}</span><span>\u4F11\u606F\u603B\u65F6\u95F4 ${fmtHms(b.breakMs)}</span><span class="rcv-long">\u957F\u4F11\u606F\u65F6\u95F4 ${fmtHms(b.longMs)}</span><span class="rcv-short">\u77ED\u4F11\u606F\u65F6\u95F4 ${fmtHms(b.shortMs)}</span><span>\u79BB\u5F00\u65F6\u95F4 ${fmtHms(b.awayMs)}</span><span class="rcv-rest">\u4F11\u606F ${b.restCount} \u6B21</span><span class="rcv-skip">\u8DF3\u8FC7 ${b.skipCount} \u6B21</span><span class="rcv-post">\u63A8\u8FDF ${b.postponeCount} \u6B21</span>` + env;
+    rcTip.innerHTML = `<b>${b.title}</b><span class="rcv-work">\u5DE5\u4F5C\u65F6\u95F4 ${fmtHms(b.workMs)}</span><span>\u4F11\u606F\u603B\u65F6\u95F4 ${fmtHms(b.breakMs)}</span><span class="rcv-long">\u957F\u4F11\u606F\u65F6\u95F4 ${fmtHms(b.longMs)}</span><span class="rcv-short">\u77ED\u4F11\u606F\u65F6\u95F4 ${fmtHms(b.shortMs)}</span><span>\u79BB\u5F00\u65F6\u95F4 ${fmtHms(b.awayMs)}</span><span class="rcv-rest">\u4F11\u606F ${b.restCount} \u6B21</span><span class="rcv-skip">\u8DF3\u8FC7 ${b.skipCount} \u6B21</span><span class="rcv-post">\u63A8\u8FDF ${b.postponeCount} \u6B21</span><span class="rcv-early">\u63D0\u524D\u7ED3\u675F ${b.endEarlyCount} \u6B21</span>` + env;
     rcTip.style.display = "block";
     const r = rcTip.getBoundingClientRect();
     rcTip.style.left = `${Math.max(8, Math.min(window.innerWidth - r.width - 8, x + 14))}px`;
@@ -2807,7 +2940,7 @@
       buckets.reduce((mv, b) => Math.max(mv, b.longMs + b.shortMs), 0) / 6e4
     );
     const maxCnt = buckets.reduce(
-      (mv, b) => Math.max(mv, b.restCount, b.skipCount, b.postponeCount),
+      (mv, b) => Math.max(mv, b.restCount, b.skipCount, b.postponeCount, b.endEarlyCount),
       0
     );
     const axC = rcProbeAxis(maxCnt);
@@ -2819,7 +2952,7 @@
     const showDots = zv <= 60;
     const showPeaks = zv <= 40;
     const grad = (id, color, o0, o1) => `<linearGradient id="${id}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="${color}" stop-opacity="${o0}"/><stop offset="1" stop-color="${color}" stop-opacity="${o1}"/></linearGradient>`;
-    const defs = `<defs>` + grad("rc-g-long", "#9a6bff", 1, 0.72) + grad("rc-g-short", "#34a46f", 1, 0.72) + grad("rc-a-rest", "#2fa3b5", 0.2, 0) + grad("rc-a-skip", "#e05555", 0.2, 0) + grad("rc-a-post", "#e0a23f", 0.2, 0) + `</defs>`;
+    const defs = `<defs>` + grad("rc-g-long", "#9a6bff", 1, 0.72) + grad("rc-g-short", "#34a46f", 1, 0.72) + grad("rc-a-rest", "#2fa3b5", 0.2, 0) + grad("rc-a-skip", "#e05555", 0.2, 0) + grad("rc-a-post", "#e0a23f", 0.2, 0) + grad("rc-a-early", "#9aa3b2", 0.2, 0) + `</defs>`;
     let g = "";
     g += `<line class="rc-axis" x1="${RC_M.left}" y1="${RC_M.top}" x2="${RC_M.left}" y2="${(RC_M.top + ih).toFixed(1)}"/><line class="rc-axis" x1="${RC_W - RC_M.right}" y1="${RC_M.top}" x2="${RC_W - RC_M.right}" y2="${(RC_M.top + ih).toFixed(1)}"/>`;
     for (let v = 0; v <= axC.max; v += axC.step) {
@@ -2868,7 +3001,7 @@
       });
     });
     for (const s of lineParts) {
-      const val = (b) => s.id === "rest" ? b.restCount : s.id === "skip" ? b.skipCount : b.postponeCount;
+      const val = (b) => s.id === "rest" ? b.restCount : s.id === "skip" ? b.skipCount : s.id === "postpone" ? b.postponeCount : b.endEarlyCount;
       const segs = [];
       let pts = [];
       view.forEach((b, i) => {
@@ -3051,7 +3184,7 @@
     }
     const days = rcLastDays.filter((d) => d.date >= b.start && d.date <= b.end).sort((x, y) => x.date < y.date ? -1 : 1);
     const rows = days.map(
-      (d) => `<tr><td>${d.date}</td><td>${fmtDur(d.workMs)}</td><td>${fmtDur(d.breakMs)}</td><td>${fmtDur(d.longMs)}</td><td>${fmtDur(d.shortMs)}</td><td>${fmtDur(d.awayMs ?? 0)}</td><td>${d.shortCount + d.longCount + d.customCount}/${d.skipCount}/${d.postponeCount}</td></tr>`
+      (d) => `<tr><td>${d.date}</td><td>${fmtDur(d.workMs)}</td><td>${fmtDur(d.breakMs)}</td><td>${fmtDur(d.longMs)}</td><td>${fmtDur(d.shortMs)}</td><td>${fmtDur(d.awayMs ?? 0)}</td><td>${d.shortCount + d.longCount}/${d.skipCount}/${d.postponeCount}</td></tr>`
     ).join("");
     rcDetailEl.innerHTML = `<div class="rc-detail-head"><b>${b.title}</b><button type="button" class="rc-detail-x" title="\u5173\u95ED">\u2715</button></div><div class="rc-detail-scroll"><table class="stats-table"><tr><th>\u65E5\u671F</th><th>\u5DE5\u4F5C</th><th>\u4F11\u606F\u603B</th><th>\u957F\u4F11</th><th>\u77ED\u4F11</th><th>\u79BB\u5F00</th><th>\u4F11/\u8DF3/\u63A8</th></tr>` + (rows || '<tr><td colspan="7" class="rc-empty">\u8BE5\u5468\u671F\u6CA1\u6709\u9010\u65E5\u6570\u636E</td></tr>') + "</table></div>";
     rcDetailEl.classList.add("open");
@@ -3200,6 +3333,19 @@
     startCtl?.addEventListener("change", apply);
     endCtl?.addEventListener("change", apply);
   }
+  // 重画报表时把范围标签与日期控件同步到当前范围。默认范围是「现算」的：
+  // 连续运行跨天后 end 会往前推，标签不同步就会出现「表里有今天、标签还写着昨天」。
+  function rcSyncRangeLabel(prefix, unit, r) {
+    const lab = $(`${prefix}-range-label`);
+    if (lab) {
+      const txt = rcRangeLabel(unit, r);
+      if (lab.textContent !== txt) lab.textContent = txt;
+    }
+    const s = $(`${prefix}-rs`);
+    const e = $(`${prefix}-re`);
+    if (s && s.value !== r.start) s.value = r.start;
+    if (e && e.value !== r.end) e.value = r.end;
+  }
   function rcRangeFilePart(unit, r) {
     if (unit === "quarter") {
       const q = (a) => {
@@ -3279,7 +3425,7 @@
     $("rc-exp-csv").addEventListener("click", () => {
       const rows = [...rcTableData].sort((a2, b) => a2.start < b.start ? -1 : 1);
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      const lines = ["\u7EDF\u8BA1\u5468\u671F,\u5F00\u59CB,\u7ED3\u675F,\u5DE5\u4F5C\u65F6\u95F4,\u4F11\u606F\u603B\u65F6\u95F4,\u957F\u4F11\u606F,\u77ED\u4F11\u606F,\u79BB\u5F00\u65F6\u95F4,\u4F11\u606F\u6B21\u6570,\u8DF3\u8FC7\u6B21\u6570,\u63A8\u8FDF\u6B21\u6570"];
+      const lines = ["\u7EDF\u8BA1\u5468\u671F,\u5F00\u59CB,\u7ED3\u675F,\u5DE5\u4F5C\u65F6\u95F4,\u4F11\u606F\u603B\u65F6\u95F4,\u957F\u4F11\u606F,\u77ED\u4F11\u606F,\u79BB\u5F00\u65F6\u95F4,\u4F11\u606F\u6B21\u6570,\u8DF3\u8FC7\u6B21\u6570,\u63A8\u8FDF\u6B21\u6570,\u63D0\u524D\u7ED3\u675F\u6B21\u6570"];
       for (const b of rows) {
         lines.push(
           [
@@ -3293,7 +3439,8 @@
             fmtDur(b.awayMs),
             b.restCount,
             b.skipCount,
-            b.postponeCount
+            b.postponeCount,
+            b.endEarlyCount
           ].map(q).join(",")
         );
       }
@@ -3311,7 +3458,8 @@
             fmtDur(sum((b) => b.awayMs)),
             sum((b) => b.restCount),
             sum((b) => b.skipCount),
-            sum((b) => b.postponeCount)
+            sum((b) => b.postponeCount),
+            sum((b) => b.endEarlyCount)
           ].map(q).join(",")
         );
       }
@@ -3326,7 +3474,7 @@
         const cs = getComputedStyle(document.querySelector(".rest-chart") ?? document.body);
         const v = (name, fb) => cs.getPropertyValue(name).trim() || fb;
         const st = document.createElementNS("http://www.w3.org/2000/svg", "style");
-        st.textContent = `text{fill:${v("--text-2", "#888888")};font-size:11px;font-variant-numeric:tabular-nums;font-family:${cs.fontFamily};}.rc-cap{font-weight:600;}.grid{stroke:${v("--border", "#dddddd")};stroke-width:1;}.rc-axis{stroke:${v("--text-2", "#888888")};stroke-opacity:0.5;}.rc-avgline{stroke:${v("--text-2", "#888888")};stroke-opacity:0.6;stroke-dasharray:5 4;}.rc-avglabel{fill:${v("--text", "#333333")};font-size:11px;font-weight:600;}.rc-peak{font-size:10px;font-weight:600;}.rc-peak.rc-l-rest{fill:#2fa3b5;}.rc-peak.rc-l-skip{fill:#e05555;}.rc-peak.rc-l-post{fill:#e0a23f;}path.rc-line{fill:none;stroke-width:2;}.rc-l-rest{stroke:#2fa3b5;}.rc-l-skip{stroke:#e05555;}.rc-l-post{stroke:#e0a23f;}circle.rc-dot.rc-l-rest{fill:#2fa3b5;}circle.rc-dot.rc-l-skip{fill:#e05555;}circle.rc-dot.rc-l-post{fill:#e0a23f;}.rc-cursor{display:none;}`;
+        st.textContent = `text{fill:${v("--text-2", "#888888")};font-size:11px;font-variant-numeric:tabular-nums;font-family:${cs.fontFamily};}.rc-cap{font-weight:600;}.grid{stroke:${v("--border", "#dddddd")};stroke-width:1;}.rc-axis{stroke:${v("--text-2", "#888888")};stroke-opacity:0.5;}.rc-avgline{stroke:${v("--text-2", "#888888")};stroke-opacity:0.6;stroke-dasharray:5 4;}.rc-avglabel{fill:${v("--text", "#333333")};font-size:11px;font-weight:600;}.rc-peak{font-size:10px;font-weight:600;}.rc-peak.rc-l-rest{fill:#2fa3b5;}.rc-peak.rc-l-skip{fill:#e05555;}.rc-peak.rc-l-post{fill:#e0a23f;}.rc-peak.rc-l-early{fill:#9aa3b2;}path.rc-line{fill:none;stroke-width:2;}.rc-l-rest{stroke:#2fa3b5;}.rc-l-skip{stroke:#e05555;}.rc-l-post{stroke:#e0a23f;}.rc-l-early{stroke:#9aa3b2;}circle.rc-dot.rc-l-rest{fill:#2fa3b5;}circle.rc-dot.rc-l-skip{fill:#e05555;}circle.rc-dot.rc-l-post{fill:#e0a23f;}circle.rc-dot.rc-l-early{fill:#9aa3b2;}.rc-cursor{display:none;}`;
         clone.insertBefore(st, clone.firstChild);
         const xml = new XMLSerializer().serializeToString(clone);
         const img = new Image();
@@ -3396,21 +3544,21 @@
       return def;
     }
   }
+  // 同 rcGetRange：默认范围现算，只有手动范围才缓存（否则跨天后停在昨天）
   var tkRangeCache = {};
   function tkGetRange(unit) {
-    let r = tkRangeCache[unit];
-    if (!r) {
-      try {
-        const raw = JSON.parse(tkLoadStr(`range-${unit}`) || "null");
-        if (raw && typeof raw.start === "string" && typeof raw.end === "string" && raw.start <= raw.end) {
-          r = { start: raw.start, end: raw.end };
-        }
-      } catch {
+    const cached = tkRangeCache[unit];
+    if (cached) return cached;
+    try {
+      const raw = JSON.parse(tkLoadStr(`range-${unit}`) || "null");
+      if (raw && typeof raw.start === "string" && typeof raw.end === "string" && raw.start <= raw.end) {
+        const r = { start: raw.start, end: raw.end };
+        tkRangeCache[unit] = r;
+        return r;
       }
-      if (!r) r = rcDefaultRange(unit);
-      tkRangeCache[unit] = r;
+    } catch {
     }
-    return r;
+    return rcDefaultRange(unit);
   }
   function tkSetRange(unit, r) {
     const norm2 = r.start <= r.end ? { start: r.start, end: r.end } : { start: r.end, end: r.start };
@@ -3449,6 +3597,7 @@
   async function renderTakeoutChart(animate = false) {
     const seq = ++tkSeq;
     const range = tkGetRange(tkUnit);
+    rcSyncRangeLabel("tk", tkUnit, range);
     const buckets = rcBuckets(tkUnit, range);
     const prevBuckets = rcBuckets(tkUnit, rcPrevRange(tkUnit, range, buckets.length));
     const anchor = rcAnchorToDay(tkUnit, prevBuckets[0]?.start ?? range.start);
@@ -3947,21 +4096,21 @@
       return {};
     }
   }
+  // 同 rcGetRange：默认范围现算，只有手动范围才缓存（否则跨天后停在昨天）
   var ckRangeCache = {};
   function ckGetRange(unit) {
-    let r = ckRangeCache[unit];
-    if (!r) {
-      try {
-        const raw = JSON.parse(ckLoadStr(`range-${unit}`) || "null");
-        if (raw && typeof raw.start === "string" && typeof raw.end === "string" && raw.start <= raw.end) {
-          r = { start: raw.start, end: raw.end };
-        }
-      } catch {
+    const cached = ckRangeCache[unit];
+    if (cached) return cached;
+    try {
+      const raw = JSON.parse(ckLoadStr(`range-${unit}`) || "null");
+      if (raw && typeof raw.start === "string" && typeof raw.end === "string" && raw.start <= raw.end) {
+        const r = { start: raw.start, end: raw.end };
+        ckRangeCache[unit] = r;
+        return r;
       }
-      if (!r) r = rcDefaultRange(unit);
-      ckRangeCache[unit] = r;
+    } catch {
     }
-    return r;
+    return rcDefaultRange(unit);
   }
   function ckSetRange(unit, r) {
     const norm2 = r.start <= r.end ? { start: r.start, end: r.end } : { start: r.end, end: r.start };
@@ -4004,6 +4153,7 @@
   async function renderCustomReportChart(animate = false) {
     const seq = ++ckSeq;
     const range = ckGetRange(ckUnit);
+    rcSyncRangeLabel("ck", ckUnit, range);
     const buckets = rcBuckets(ckUnit, range);
     const prevBuckets = rcBuckets(ckUnit, rcPrevRange(ckUnit, range, buckets.length));
     const anchor = rcAnchorToDay(ckUnit, prevBuckets[0]?.start ?? range.start);
@@ -5429,15 +5579,24 @@
     window.api.onState((raw) => renderStatus(raw));
     // 统计入账（工作/休息/离开/休息次数/外卖动作）后 Go 侧会推今天的快照：
     // 「今天」卡立刻跟着变，不用等切页、切窗口或手动刷新。
-    window.api.onStatsChanged((t) => renderTodayCard(t));
+    window.api.onStatsChanged((t) => renderComposition(t));
     window.api.onAutostart((v) => {
       $("autostart").checked = v;
     });
     renderStatus(await window.api.getState());
+    // 连续运行跨天：页面不会自己重画，这里每秒比一次本地日期，变了就重拉统计页。
+    // 默认范围已改成「现算」（见 rcGetRange），所以只要重画，日 / 周 / 月 / 季 / 年的
+    // 最后一个桶就自然推到新的一天；「今天」卡本身靠 stats:changed 每秒推送，不受影响。
+    let lastDayStr = rcDayStr(new Date());
     setInterval(async () => {
       renderStatus(await window.api.getState());
       updateTakeoutSummary();
       for (const t of allBreakIds()) updateBreakSummary(t);
+      const dayStr = rcDayStr(new Date());
+      if (dayStr !== lastDayStr) {
+        lastDayStr = dayStr;
+        if ($("tab-stats")?.classList.contains("active")) void renderStats();
+      }
     }, 1e3);
   }
   init();

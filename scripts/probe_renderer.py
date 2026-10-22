@@ -322,8 +322,60 @@ def main():
         check((stt.get("marks") or 0) >= 6, "报表图里有真实图形节点（不是空白容器）", stt.get("marks"))
         check(str(stt.get("date") or "").startswith("（") and str(stt.get("date") or "").endswith("）"),
               "统计页日期取自 Go 的 today.date", stt.get("date"))
-        check((stt.get("cells") or 0) == 6, "统计卡渲染出 6 个指标格", stt.get("cells"))
+        check((stt.get("cards") or 0) == 4, "统计页共 4 张卡（今天 / 休息报表 / 外卖报表 / 自定义）", stt.get("cards"))
+        check(str(stt.get("firstTitle") or "").startswith("今天"),
+              "统计页首张卡标题是「今天」", stt.get("firstTitle"))
+        comp = stt.get("comp") or {}
+        check(comp.get("panels") == 3, "今天卡渲染出 3 块面板", comp.get("panels"))
+        check(comp.get("segs") == 3, "时间构成画出 3 段堆叠条", comp.get("segs"))
+        check(comp.get("bars") == 7, "休息 4 行 + 久坐 3 行，共 7 行条形", comp.get("bars"))
+        # 今天卡不再挂任何「?」说明（时间构成 / 休息 / 久坐 都不带）
+        check(comp.get("qmarks") == 0, "今天卡没有说明图标", comp.get("qmarks"))
+        check("软件运行" in str(comp.get("total") or ""),
+              "时间构成右上角写「软件运行 …」", comp.get("total"))
+        labels = comp.get("barLabels") or []
+        check(labels[:4] == ["完成", "推迟", "跳过", "提前结束"],
+              "休息四行 = 完成 / 推迟 / 跳过 / 提前结束", labels[:4])
+        check(labels[4:] == ["最长", "平均", "中位数"],
+              "久坐三行 = 最长 / 平均 / 中位数", labels[4:])
+        early_val = str((comp.get("barVals") or [""])[3] or "")
+        check(early_val.endswith("次"), "提前结束显示的是次数", early_val)
+
+        # 四项的数据源 = 后端 today 的四个计数，且「完成」只取短 + 长休息：
+        # 自定义提醒（customCount）绝不能混进完成（这条等式就是防它溜进去的哨兵）。
+        bk = stt.get("backend") or {}
+        check(not bk.get("err"), "统计页能读回后端 today 快照", bk.get("err"))
+        vals = comp.get("barVals") or []
+        want = [
+            ("完成", int(bk.get("shortCount") or 0) + int(bk.get("longCount") or 0)),
+            ("推迟", int(bk.get("postponeCount") or 0)),
+            ("跳过", int(bk.get("skipCount") or 0)),
+            ("提前结束", int(bk.get("endEarlyCount") or 0)),
+        ]
+        for i, (name, n) in enumerate(want):
+            got = str(vals[i] if i < len(vals) else "")
+            check(got == "%d 次" % n,
+                  "「%s」= 后端 %s 计数（自定义提醒 %d 次不计入）" %
+                  (name, name, int(bk.get("customCount") or 0)),
+                  "%s vs %d" % (got, n))
+        # 久坐的值是时长（不是次数）：末尾一定是「秒」或「分」
+        sed_vals = (comp.get("barVals") or [])[4:]
+        check(len(sed_vals) == 3 and all(v.endswith(("秒", "分")) for v in sed_vals),
+              "久坐三行显示的是时长", sed_vals)
+        check("分钟" in str(comp.get("sedNote") or ""),
+              "久坐面板有一句小结（提到 45 分钟基准）", comp.get("sedNote"))
         check(not (stt.get("errs") or []), "统计页无未捕获 JS 异常", (stt.get("errs") or [])[:2])
+
+        # 休息报表：表格最后一列是「提前结束次数」（紧跟在「推迟次数」之后），
+        # 图例也多出「提前结束次数」一条折线。
+        heads = [str(h) for h in (stt.get("rcHeads") or [])]
+        check(len(heads) == 10, "休息报表表格 10 列（新增提前结束）", heads)
+        check(heads[-2].startswith("推迟次数") and heads[-1].startswith("提前结束次数"),
+              "「提前结束次数」列排在「推迟次数」之后", heads[-2:])
+        legend = [str(x) for x in (stt.get("restLegend") or [])]
+        check(len(legend) == 6, "休息报表图例 6 项（2 根柱 + 4 条折线，新增提前结束）", legend)
+        check(legend and legend[-1] == "提前结束次数",
+              "图例最后一项是「提前结束次数」", legend[-1:] if legend else [])
 
         # ---- 主窗口（调试控制台） ----
         idx = m.get("index") or {}
