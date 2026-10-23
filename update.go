@@ -22,13 +22,15 @@ import (
 // 下一项、全失败提示失败。
 //
 // 自动更新流程（Windows 下运行中的 exe 被文件锁占用，不能原地覆盖）：
-//   1. 下载 version.json.url 指向的 7z 包 → 解压到 <运行目录>/update；
-//   2. 读取解压目录及其子目录下所有 json 配置，按「顶层键」增量合并进本地配置
-//      （本地已有键不覆盖、本地无则新增），随后落盘；
-//   3. 把包内的新 exe 暂存为 update/rest.stage.exe，写 pending.json，
-//      启动该 stage 子进程（带 --self-update <pending>），当前进程退出；
-//   4. stage 进程等旧 exe 解锁后将其改名为 .bak、把新 exe 复制到位，再启动
-//      rest.exe --updated <pending> 并显示更新摘要。
+//  1. version.json 的 url 是数组：取第一项补全为完整包地址（不以 .7z 结尾的拼上
+//     /rest.7z，以 / 结尾的只拼 rest.7z）下载 rest.7z；下载失败取下一项、同样
+//     补全后重试，全部失败才报错；
+//  2. 解压到 <运行目录>/update，读取解压目录及其子目录下所有 json 配置，按
+//     「顶层键」增量合并进本地配置（本地已有键不覆盖、本地无则新增），随后落盘；
+//  3. 把包内的新 exe 暂存为 update/rest.stage.exe，写 pending.json，
+//     启动该 stage 子进程（带 --self-update <pending>），当前进程退出；
+//  4. stage 进程等旧 exe 解锁后将其改名为 .bak、把新 exe 复制到位，再启动
+//     rest.exe --updated <pending> 并显示更新摘要。
 // 第 4 步之所以要从「副本」启动，是因为 self-update 进程若直接是旧 exe 镜像就会
 // 锁住自己、无法 rename 旧 exe —— 必须用一个独立的副本文件来干替换的活。
 
@@ -36,6 +38,9 @@ const (
 	updateTimeout = 15 * time.Second
 	// updateDirName 解压 / 暂存目录名（运行目录下）
 	updateDirName = "update"
+	// packageName 更新包文件名：version.json 的 url 数组补全后指向的文件，
+	// 下载到 update 目录下也用这个名字
+	packageName = "rest.7z"
 	// stageExeName 自更新子进程副本名（与旧 exe 是不同的文件，避免锁住自身）
 	stageExeName = "rest.stage.exe"
 	// newExeName 包内新 exe 的名字（解压出来后用于复制到位）
@@ -46,7 +51,7 @@ const (
 type versionInfo struct {
 	Version string   `json:"version"`
 	Date    string   `json:"date"`
-	URL     string   `json:"url"`
+	URL     []string `json:"url"`
 	Sites   []string `json:"sites"`
 	Changes []string `json:"changes"`
 }
@@ -54,10 +59,11 @@ type versionInfo struct {
 // updateCheckResult 一次检查的落库形状（字段名与渲染层读的 st.status / st.current /
 // st.latest / st.url / st.date / st.changes / st.message / st.ignored 对齐）
 type updateCheckResult struct {
-	Status  string   `json:"status"`
-	Current string   `json:"current"`
-	Latest  string   `json:"latest,omitempty"`
-	URL     string   `json:"url,omitempty"`
+	Status  string `json:"status"`
+	Current string `json:"current"`
+	Latest  string `json:"latest,omitempty"`
+	// URLs 下载地址数组（version.json 的 url 字段）：StartUpdate 按顺序补全下载。
+	URLs    []string `json:"url,omitempty"`
 	Date    string   `json:"date,omitempty"`
 	Changes []string `json:"changes,omitempty"`
 	Message string   `json:"message,omitempty"`
@@ -72,8 +78,8 @@ func (r updateCheckResult) toMap() map[string]any {
 	if r.Latest != "" {
 		m["latest"] = r.Latest
 	}
-	if r.URL != "" {
-		m["url"] = r.URL
+	if len(r.URLs) > 0 {
+		m["url"] = r.URLs
 	}
 	if r.Date != "" {
 		m["date"] = r.Date
@@ -298,11 +304,15 @@ func (a *App) checkForUpdate() updateCheckResult {
 		return updateCheckResult{Status: "error", Current: current, Message: "响应里没有版本号"}
 	}
 	if isNewerVersion(current, latest) {
+		// 有新版却拿不到下载地址：直接报错，别等用户点「立即更新」才失败
+		if len(info.URL) == 0 {
+			return updateCheckResult{Status: "error", Current: current, Message: "响应里没有下载地址"}
+		}
 		st := updateCheckResult{
 			Status:  "update-available",
 			Current: current,
 			Latest:  latest,
-			URL:     info.URL,
+			URLs:    info.URL,
 			Date:    info.Date,
 			Changes: info.Changes,
 		}
@@ -346,7 +356,7 @@ func fetchOneVersionJSON(client *http.Client, url string) (versionInfo, error) {
 	if err != nil {
 		return versionInfo{}, err
 	}
-	req.Header.Set("User-Agent", "worker-rest-update-check")
+	req.Header.Set("User-Agent", "rest-update-check")
 	res, err := client.Do(req)
 	if err != nil {
 		return versionInfo{}, err
@@ -501,8 +511,8 @@ func (a *App) StartUpdate() map[string]any {
 	if st == nil || st["status"] != "update-available" {
 		return map[string]any{"status": "error", "message": "当前没有可执行的更新"}
 	}
-	url, _ := st["url"].(string)
-	if url == "" {
+	urls := statusURLs(st)
+	if len(urls) == 0 {
 		return map[string]any{"status": "error", "message": "缺少下载地址"}
 	}
 	latest, _ := st["latest"].(string)
@@ -524,8 +534,8 @@ func (a *App) StartUpdate() map[string]any {
 		return map[string]any{"status": "error", "message": "创建更新目录失败"}
 	}
 
-	archive := filepath.Join(updateDir, "package.7z")
-	if err := downloadFile(url, archive); err != nil {
+	archive := filepath.Join(updateDir, packageName)
+	if err := downloadPackage(urls, archive); err != nil {
 		return map[string]any{"status": "error", "message": "下载更新包失败：" + err.Error()}
 	}
 	if err := extract7z(archive, updateDir); err != nil {
@@ -595,7 +605,7 @@ func downloadFile(url, dest string) error {
 	if err != nil {
 		return err
 	}
-	req.Header.Set("User-Agent", "worker-rest-update")
+	req.Header.Set("User-Agent", "rest-update")
 	res, err := client.Do(req)
 	if err != nil {
 		return err
@@ -613,6 +623,57 @@ func downloadFile(url, dest string) error {
 		return err
 	}
 	return nil
+}
+
+// statusURLs 从更新状态 map 里取出下载地址数组：内存里是 []string，
+// 从配置 JSON 恢复回来会变成 []any，两种形状都认。
+func statusURLs(st map[string]any) []string {
+	switch v := st["url"].(type) {
+	case []string:
+		return append([]string(nil), v...)
+	case []any:
+		return anySliceToStrings(v)
+	}
+	return nil
+}
+
+// normalizePackageURL 把 version.json url 数组里的一项补全为完整的 7z 包地址：
+// 已是以 .7z（忽略大小写）结尾的直接使用；以 / 结尾的只拼 rest.7z；其余拼 /rest.7z。
+func normalizePackageURL(raw string) string {
+	u := strings.TrimSpace(raw)
+	if u == "" {
+		return ""
+	}
+	if strings.HasSuffix(strings.ToLower(u), ".7z") {
+		return u
+	}
+	if strings.HasSuffix(u, "/") {
+		return u + packageName
+	}
+	return u + "/" + packageName
+}
+
+// downloadPackage 按 urls 顺序依次补全地址并下载，任一地址成功即返回；
+// 全部失败返回最后一次的错误（空数组 / 全空白项同样报错）。
+func downloadPackage(urls []string, dest string) error {
+	var lastErr error
+	for _, raw := range urls {
+		u := normalizePackageURL(raw)
+		if u == "" {
+			continue
+		}
+		log.Printf("[update] 尝试下载更新包: %s", u)
+		if err := downloadFile(u, dest); err != nil {
+			log.Printf("[update] 下载更新包失败: %v", err)
+			lastErr = err
+			continue
+		}
+		return nil
+	}
+	if lastErr == nil {
+		lastErr = fmt.Errorf("没有可用的下载地址")
+	}
+	return lastErr
 }
 
 // extract7z 把 7z 包解压到 dest（保留目录结构）
