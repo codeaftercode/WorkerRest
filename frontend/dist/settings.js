@@ -5430,7 +5430,14 @@
     });
     $("d-quit").addEventListener("click", () => void window.api.quit());
     // 版本号规范化：确保恰好一个 v 前缀（version.json 已是 v1.2.3，不要再拼一个 v）
-    const normVer = (v) => (v == null ? "" : "v" + String(v).replace(/^v+/, ""));
+    // 版本号规范成「恰好一个 v 前缀」；非数字开头的（源码占位的 dev）原样显示，
+    // 不拼成 vdev
+    const normVer = (v) => {
+      if (v == null) return "";
+      const s = String(v).trim();
+      if (!/^v?\d/.test(s)) return s;
+      return "v" + s.replace(/^v+/, "");
+    };
     const info = await window.api.appInfo();
     $("d-version-val").textContent = normVer(info.version);
     const goVer = info.goVersion || "";

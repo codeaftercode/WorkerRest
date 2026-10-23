@@ -43,10 +43,21 @@ python scripts/make_portable.py
 python scripts/verify_portable.py
 ```
 
-产出 `release/WorkerRest-<版本>-portable.zip`（约 26 MB，含 22 MB 督休专员立绘）以及同名散装目录。
+产出（`release/`）：
 
-- 版本号默认读 `app.go` 的 `appVersion`（当前 1.0.0）；打包时通过
-  `-ldflags "-X main.appVersion=<版本>"` 注入。也可 `--version <版本>` 覆盖。
+| 文件 | 用途 |
+|---|---|
+| `WorkerRest-<版本>-portable.zip` | 便携目录 zip（约 26 MB，含 22 MB 督休专员立绘），解压即用 |
+| `WorkerRest-<版本>-portable/` | 同名散装目录 |
+| `rest.7z` | 只含 `rest.exe` 的自动更新包（软件下载的就是它） |
+| `version.json` | 自动更新清单（version / date / url / sites / changes） |
+
+- **版本号只认 git tag**（`v主.次.修订`，如 `v0.9.0`）：打包要求**当前提交上有 tag**，
+  没 tag 直接停止并提示先打 tag（同时显示最近一次 tag）。`app.go` 的 `appVersion`
+  只是 `dev` 占位符，真实版本由 `-ldflags "-X main.appVersion=<tag 去掉 v>"` 注入。
+- `python scripts/version.py` 显示最近一次 tag 的版本号（`--bare` 去掉 `v`）。
+- `version.json` 的 `changes` 取「上一个 tag → 当前 tag」的提交标题，按时间顺序自动编号；
+  首个 tag 没有上一个 tag，`changes` 为空。
 - 解压即用，无需安装。**不做 NSIS 安装器**——单二进制天然绿色，便携目录 zip 即交付形态。
 - 便携运行的数据（配置 / 统计 / 用户音频）落在 exe 旁的 `config/` 与 `data/`，跟着程序走；
   直接删掉整个目录就是完全卸载。

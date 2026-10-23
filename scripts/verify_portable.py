@@ -18,7 +18,7 @@
      - 隔离 APPDATA 里没有落下任何 WorkerRest 相关文件（没往 APPDATA 写）。
 
 用法：python scripts/verify_portable.py [--dir <便携目录>] [--seconds 8]
-  --dir 省略时默认 release/WorkerRest-1.0.0-portable/（先跑 make_portable.py）
+  --dir 省略时自动取 release/ 下版本号最大的 WorkerRest-<版本>-portable/（先跑 make_portable.py）
 退出码 0 = 全部通过。
 """
 
@@ -26,6 +26,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -34,9 +35,24 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
 TEMP = os.environ.get("TEMP", ROOT)
-DEFAULT_DIR = os.path.join(ROOT, "release", "WorkerRest-1.0.0-portable")
 LOG = os.path.join(TEMP, "wr_portable_verify.log")
 REPORT = os.path.join(TEMP, "wr_portable_verify_report.txt")
+
+
+def default_dir():
+    """release/ 下版本号最大的 WorkerRest-<版本>-portable/（版本号来自 tag，会变）。"""
+    rel = os.path.join(ROOT, "release")
+    best = None
+    if os.path.isdir(rel):
+        for name in os.listdir(rel):
+            m = re.match(r"^WorkerRest-(v?\d+\.\d+\.\d+)-portable$", name)
+            p = os.path.join(rel, name)
+            if not (m and os.path.isdir(p)):
+                continue
+            key = tuple(int(x) for x in m.group(1).lstrip("v").split("."))
+            if best is None or key > best[0]:
+                best = (key, p)
+    return best[1] if best else os.path.join(rel, "WorkerRest-0.9.0-portable")
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -78,7 +94,7 @@ def check(ok, label, detail=""):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--dir", default=DEFAULT_DIR, help="便携目录路径")
+    ap.add_argument("--dir", default=default_dir(), help="便携目录路径")
     ap.add_argument("--seconds", type=int, default=8, help="观察多久（默认 8 秒）")
     args = ap.parse_args()
 

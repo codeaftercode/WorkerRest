@@ -1112,10 +1112,11 @@ func (a *App) WindowMaximized() bool {
 	return false
 }
 
-// appVersion 与前端 appInfo() 里的版本号保持同一处来源。
-// 用 var 而非 const：打包时可通过 -ldflags "-X main.appVersion=<版本>" 注入，
-// 默认 1.0.0（开发 / 无头验证直接用默认值即可）。
-var appVersion = "1.0.0"
+// appVersion 的唯一来源是 git tag（格式 v主.次.修订）：打包时由
+// scripts/make_portable.py 通过 -ldflags "-X main.appVersion=<tag 去掉 v>" 注入。
+// 用 var 而非 const：源码里只留 "dev" 占位符（开发 / 无头验证跑出来就是 dev），
+// 不在源码里写死真实版本号，避免与 tag 分裂。
+var appVersion = "dev"
 
 // buildTime 打包时通过 -ldflags "-X main.buildTime=<RFC3339>" 注入；
 // 开发 / 无头验证不注入则留空，前端「构建时间」回退显示「本地构建」。
