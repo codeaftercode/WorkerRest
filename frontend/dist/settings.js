@@ -5435,8 +5435,9 @@
     const normVer = (v) => {
       if (v == null) return "";
       const s = String(v).trim();
-      if (!/^v?\d/.test(s)) return s;
-      return "v" + s.replace(/^v+/, "");
+      const core = s.replace(/^v+/, "");
+      if (!/^\d/.test(core)) return s;
+      return "v" + core;
     };
     const info = await window.api.appInfo();
     $("d-version-val").textContent = normVer(info.version);
