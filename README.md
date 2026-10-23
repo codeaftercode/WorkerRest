@@ -49,7 +49,7 @@ python scripts/verify_portable.py
 |---|---|
 | `WorkerRest-<版本>-portable.zip` | 便携目录 zip（约 26 MB，含 22 MB 督休专员立绘），解压即用 |
 | `WorkerRest-<版本>-portable/` | 同名散装目录 |
-| `rest.7z` | 只含 `rest.exe` 的自动更新包（软件下载的就是它） |
+| `rest.zip` | 只含 `rest.exe` 的自动更新包（最大压缩，软件下载的就是它） |
 | `version.json` | 自动更新清单（version / date / url / sites / changes） |
 
 - **版本号只认 git tag**（`v主.次.修订`，如 `v0.9.0`）：打包要求**当前提交上有 tag**，

@@ -7,7 +7,7 @@
 
     release/WorkerRest-<版本>-portable.zip   便携目录 zip（解压即用）
     release/WorkerRest-<版本>-portable/      同名散装目录
-    release/rest.7z                          只含 rest.exe 的自动更新包
+    release/rest.zip                         只含 rest.exe 的自动更新包（最大压缩）
     release/version.json                     自动更新清单
 
 组装结构：
@@ -32,7 +32,7 @@ version.json 的 changes：上一个 tag 到当前 tag 之间的提交标题，�
   --no-build   跳过 go build，直接用 build/bin/rest.exe 组装（已构建过时用）
   --out DIR    交付目录（默认 release/；被锁时可指向别处，脚本会拷回）
 
-退出码 0 = 打包成功且 zip / 7z / version.json 全部校验通过；
+退出码 0 = 打包成功且便携 zip / 更新包 zip / version.json 全部校验通过；
        2 = 当前提交没有版本 tag（未开始构建）；
        1 = 其它失败。
 """
@@ -72,14 +72,18 @@ EMPTY_STATS_JSON = '{\n  "_customNames": {}\n}\n'
 # 交付目录默认 release/（项目内；被 IDE/杀软锁住时用 --out 重定向）
 DEFAULT_OUT = os.path.join(ROOT, "release")
 
-# 自动更新清单里的更新源：url 是目录数组（update.go 补全规则：不以 .7z 结尾就拼
-# /rest.7z），sites 由同一批目录派生（各自 + version.json）。改服务器地址只改这里。
+# 自动更新清单里的更新源：url 是目录数组（update.go 补全规则：不以 .zip 结尾就拼
+# /rest.zip），sites 由同一批目录派生（各自 + version.json）。改服务器地址只改这里。
 UPDATE_BASE_URLS = [
     "https://nav.hcctc.cn/temp/",
     "https://www.goodgoodlive.com/worker-rest/",
 ]
 
-# 7-Zip 命令行：SEVEN_ZIP 环境变量优先，其次 PATH，最后找默认安装目录
+# 自动更新包文件名：必须与 update.go 的 packageName 一致（url 数组项按它补全）
+UPDATE_PACKAGE_NAME = "rest.zip"
+
+# 7-Zip 命令行：只用来生成最大压缩的 zip（SEVEN_ZIP 环境变量优先，其次 PATH，
+# 最后找默认安装目录）；找不到时回退 Python zipfile level 9。
 SEVEN_ZIP_CANDIDATES = [
     os.path.join(os.environ.get("ProgramFiles", r"C:\Program Files"), "7-Zip", "7z.exe"),
     os.path.join(
@@ -200,7 +204,8 @@ def verify_zip(zip_path: str, top: str) -> bool:
 
 
 def find_7z() -> str:
-    """找 7z 命令行：SEVEN_ZIP 环境变量 → PATH → 7-Zip 默认安装目录；都没有返回 ""。"""
+    """找 7-Zip 命令行（只用于生成最大压缩 zip）：
+    SEVEN_ZIP 环境变量 → PATH → 7-Zip 默认安装目录；都没有返回 ""（回退 Python）。"""
     env = os.environ.get("SEVEN_ZIP", "").strip()
     if env and os.path.isfile(env):
         return env
@@ -213,39 +218,57 @@ def find_7z() -> str:
     return ""
 
 
-def make_7z(src_exe: str, dest_7z: str) -> tuple:
-    """把单个 exe 压成 7z（包内只有一层 rest.exe，自动更新解压后直接可用）。
+def make_update_zip(src_exe: str, dest_zip: str) -> tuple:
+    """把单个 exe 压成「最大压缩」的 zip（包内只有一层 rest.exe，自动更新解压后
+    直接可用）。
 
-    返回 (ok, 错误说明)。压缩后回读条目，确认包里只有这一个文件 —— 自动更新按
+    压缩方式：优先 7-Zip CLI 的 deflate 极限档
+    （-tzip -mx=9 -mfb=258 -mpass=15）；找不到 7-Zip 时回退 Python zipfile
+    （ZIP_DEFLATED level 9）。产物都是标准 zip，Go 侧用 archive/zip 解压，两种来源
+    都能读。
+
+    返回 (ok, 错误说明)。压完回读条目，确认包里只有这一个文件 —— 自动更新按
     文件名找新 exe，多一层目录或多一个文件都可能让替换走偏。
     """
-    seven = find_7z()
-    if not seven:
-        return False, "找不到 7z 命令：请安装 7-Zip，或把 7z.exe 加进 PATH / 设 SEVEN_ZIP"
     if not os.path.isfile(src_exe):
         return False, f"找不到待压缩的 exe：{src_exe}"
-    if os.path.exists(dest_7z):
-        os.remove(dest_7z)
+    if os.path.exists(dest_zip):
+        os.remove(dest_zip)
     name = os.path.basename(src_exe)
-    print(f"[make-portable] 7z -> {dest_7z}（仅 {name}）")
-    r = subprocess.run(
-        [seven, "a", "-t7z", "-mx=9", "-y", dest_7z, name],
-        cwd=os.path.dirname(src_exe),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    if r.returncode != 0 or not os.path.exists(dest_7z):
-        out = r.stdout.decode("utf-8", "replace")
-        return False, f"7z 压缩失败（rc={r.returncode}）：\n{out}"
-    # -ba：裸列表（无表头），每行最后一列是包内路径
-    r2 = subprocess.run(
-        [seven, "l", "-ba", dest_7z], stdout=subprocess.PIPE, stderr=subprocess.STDOUT
-    )
-    listing = r2.stdout.decode("utf-8", "replace")
-    entries = [ln.split()[-1] for ln in listing.splitlines() if ln.strip()]
+    seven = find_7z()
+    if seven:
+        print(f"[make-portable] 更新包 zip -> {dest_zip}（7-Zip -mx=9 极限压缩，仅 {name}）")
+        r = subprocess.run(
+            [seven, "a", "-tzip", "-mx=9", "-mfb=258", "-mpass=15", "-y", dest_zip, name],
+            cwd=os.path.dirname(src_exe),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        if r.returncode != 0 or not os.path.exists(dest_zip):
+            out = r.stdout.decode("utf-8", "replace")
+            return False, f"7-Zip 生成 zip 失败（rc={r.returncode}）：\n{out}"
+    else:
+        print(
+            f"[make-portable] 更新包 zip -> {dest_zip}"
+            f"（未找到 7-Zip，回退 Python zipfile level 9，仅 {name}）"
+        )
+        try:
+            with zipfile.ZipFile(dest_zip, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+                zf.write(src_exe, name)
+        except OSError as e:
+            return False, f"Python zipfile 打包失败：{e}"
+    # 回读校验：crc 正常、条目恰好一个、且就是 name（不依赖 7z 列表，两种来源都适用）
+    try:
+        with zipfile.ZipFile(dest_zip, "r") as zf:
+            entries = zf.namelist()
+            bad = zf.testzip()
+    except (OSError, zipfile.BadZipFile) as e:
+        return False, f"更新包 zip 读回失败：{e}"
+    if bad is not None:
+        return False, f"更新包 zip 有损坏条目：{bad}"
     if entries != [name]:
-        return False, f"rest.7z 内容异常：期望只有 {name}，实际 {entries}"
-    print(f"[make-portable] 7z 校验: entries={entries} size={os.path.getsize(dest_7z)}")
+        return False, f"{UPDATE_PACKAGE_NAME} 内容异常：期望只有 {name}，实际 {entries}"
+    print(f"[make-portable] 更新包校验: entries={entries} size={os.path.getsize(dest_zip)}")
     return True, ""
 
 
@@ -369,14 +392,14 @@ def main() -> int:
         print(f"[make-portable] 交付 zip: {final_zip} ({os.path.getsize(final_zip)} bytes)")
         print(f"[make-portable] 交付目录: {final_dir}")
 
-    # 6. 自动更新包 rest.7z（只含 rest.exe，自动更新下载的就是它）
+    # 6. 自动更新包 rest.zip（只含 rest.exe，最大压缩；自动更新下载的就是它）
     if ok:
-        stage_7z = os.path.join(stage_parent, "rest.7z")
-        made, why = make_7z(EXE_SRC, stage_7z)
+        stage_pkg = os.path.join(stage_parent, UPDATE_PACKAGE_NAME)
+        made, why = make_update_zip(EXE_SRC, stage_pkg)
         if made:
-            final_7z = os.path.join(out_dir, "rest.7z")
-            shutil.copy2(stage_7z, final_7z)
-            print(f"[make-portable] 更新包: {final_7z} ({os.path.getsize(final_7z)} bytes)")
+            final_pkg = os.path.join(out_dir, UPDATE_PACKAGE_NAME)
+            shutil.copy2(stage_pkg, final_pkg)
+            print(f"[make-portable] 更新包: {final_pkg} ({os.path.getsize(final_pkg)} bytes)")
         else:
             ok = False
             print(f"[make-portable] FAIL: {why}")

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"encoding/json"
 	"net/http"
@@ -89,7 +90,7 @@ func TestUpdateCheckResultToMap(t *testing.T) {
 
 // TestFetchVersionJSONFallback 验证 sites 容错：第一项失败取第二项，全失败报错。
 func TestFetchVersionJSONFallback(t *testing.T) {
-	okBody := `{"version":"v2.0.0","date":"2026.10.18","url":["http://x/pkg.7z"],"changes":["a","b"]}`
+	okBody := `{"version":"v2.0.0","date":"2026.10.18","url":["http://x/pkg.zip"],"changes":["a","b"]}`
 	srvOK := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(okBody))
@@ -108,7 +109,7 @@ func TestFetchVersionJSONFallback(t *testing.T) {
 	if info.Version != "v2.0.0" {
 		t.Fatalf("version 不符：%v", info.Version)
 	}
-	if len(info.URL) != 1 || info.URL[0] != "http://x/pkg.7z" {
+	if len(info.URL) != 1 || info.URL[0] != "http://x/pkg.zip" {
 		t.Fatalf("url 数组不符：%v", []string(info.URL))
 	}
 	if len(info.Changes) != 2 {
@@ -151,8 +152,8 @@ func TestCheckForUpdateURLArray(t *testing.T) {
 	if got := statusURLs(st.toMap()); !reflect.DeepEqual(got, want) {
 		t.Fatalf("statusURLs 回读不符：%v", got)
 	}
-	// 补全规则：目录项 → <目录>/rest.7z
-	if got := normalizePackageURL(want[1]); got != "https://www.goodgoodlive.com/worker-rest/rest.7z" {
+	// 补全规则：目录项 → <目录>/rest.zip
+	if got := normalizePackageURL(want[1]); got != "https://www.goodgoodlive.com/worker-rest/rest.zip" {
 		t.Fatalf("补全结果不符：%s", got)
 	}
 }
@@ -204,7 +205,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 	a := &App{cfg: cfg, mu: sync.Mutex{}}
 
 	// 1) 发布/持久化一次「有更新」结果
-	st := updateCheckResult{Status: "update-available", Current: appVersion, Latest: "9999.0.0", URLs: []string{"http://x/pkg.7z"}, Changes: []string{"新功能"}}
+	st := updateCheckResult{Status: "update-available", Current: appVersion, Latest: "9999.0.0", URLs: []string{"http://x/pkg.zip"}, Changes: []string{"新功能"}}
 	a.publishUpdateStatus(st)
 
 	// 2) 内存态与落盘都应反映该结果
@@ -303,27 +304,27 @@ func TestPendingUpdateReturnsSettingsState(t *testing.T) {
 // TestVersionInfoURLIsArray 验证 url 只接受数组写法（软件尚未发布，不做旧单字符串兼容）。
 func TestVersionInfoURLIsArray(t *testing.T) {
 	var info versionInfo
-	if err := json.Unmarshal([]byte(`{"version":"1.0.1","url":["http://a/dir","http://b/pkg.7z"]}`), &info); err != nil {
+	if err := json.Unmarshal([]byte(`{"version":"1.0.1","url":["http://a/dir","http://b/pkg.zip"]}`), &info); err != nil {
 		t.Fatalf("数组写法应能解析: %v", err)
 	}
-	if !reflect.DeepEqual(info.URL, []string{"http://a/dir", "http://b/pkg.7z"}) {
+	if !reflect.DeepEqual(info.URL, []string{"http://a/dir", "http://b/pkg.zip"}) {
 		t.Fatalf("url 数组不符：%v", info.URL)
 	}
 	// 旧的单字符串写法不再兼容：解析直接失败，而不是把整串当目录再拼出畸形地址
-	if err := json.Unmarshal([]byte(`{"version":"1.0.1","url":"http://a/pkg.7z"}`), &info); err == nil {
+	if err := json.Unmarshal([]byte(`{"version":"1.0.1","url":"http://a/pkg.zip"}`), &info); err == nil {
 		t.Fatalf("单字符串 url 应当解析失败")
 	}
 }
 
-// TestNormalizePackageURL 验证 url 数组项的补全规则：.7z 结尾直接用、
-// / 结尾只拼 rest.7z、其余拼 /rest.7z。
+// TestNormalizePackageURL 验证 url 数组项的补全规则：.zip 结尾直接用、
+// / 结尾只拼 rest.zip、其余拼 /rest.zip。
 func TestNormalizePackageURL(t *testing.T) {
 	cases := []struct{ in, want string }{
-		{"http://x/dir", "http://x/dir/rest.7z"},
-		{"http://x/dir/", "http://x/dir/rest.7z"},
-		{"http://x/pkg.7z", "http://x/pkg.7z"},
-		{"http://x/PKG.7Z", "http://x/PKG.7Z"},       // 后缀大小写不敏感
-		{"  http://x/dir  ", "http://x/dir/rest.7z"}, // 首尾空白剥掉
+		{"http://x/dir", "http://x/dir/rest.zip"},
+		{"http://x/dir/", "http://x/dir/rest.zip"},
+		{"http://x/pkg.zip", "http://x/pkg.zip"},
+		{"http://x/PKG.ZIP", "http://x/PKG.ZIP"},      // 后缀大小写不敏感
+		{"  http://x/dir  ", "http://x/dir/rest.zip"}, // 首尾空白剥掉
 		{"", ""},
 		{"   ", ""},
 	}
@@ -358,11 +359,11 @@ func TestStatusURLsShapes(t *testing.T) {
 }
 
 // TestDownloadPackageFallback 验证 url 数组的下载容错：第一项失败自动取下一项
-// （目录项会先补全为 /rest.7z），全部失败才报错，空数组直接报错。
+// （目录项会先补全为 /rest.zip），全部失败才报错，空数组直接报错。
 func TestDownloadPackageFallback(t *testing.T) {
-	body := []byte("fake-7z-bytes")
+	body := []byte("fake-zip-bytes")
 	srvOK := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/rest.7z" {
+		if r.URL.Path != "/rest.zip" {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
@@ -375,9 +376,9 @@ func TestDownloadPackageFallback(t *testing.T) {
 	defer srvFail.Close()
 
 	dir := t.TempDir()
-	dest := filepath.Join(dir, "rest.7z")
+	dest := filepath.Join(dir, "rest.zip")
 
-	// 第一项 500、第二项是目录（需拼 /rest.7z）→ 应容错成功
+	// 第一项 500、第二项是目录（需拼 /rest.zip）→ 应容错成功
 	if err := downloadPackage([]string{srvFail.URL, srvOK.URL}, dest); err != nil {
 		t.Fatalf("应容错下载成功，却报错: %v", err)
 	}
@@ -394,9 +395,78 @@ func TestDownloadPackageFallback(t *testing.T) {
 	if err := downloadPackage(nil, dest); err == nil {
 		t.Fatalf("空地址数组应报错")
 	}
-	// 第一项直接是完整 .7z 地址 → 不拼后缀直接下
-	if err := downloadPackage([]string{srvOK.URL + "/rest.7z"}, dest); err != nil {
-		t.Fatalf("完整 .7z 地址应直接下载: %v", err)
+	// 第一项直接是完整 .zip 地址 → 不拼后缀直接下
+	if err := downloadPackage([]string{srvOK.URL + "/rest.zip"}, dest); err != nil {
+		t.Fatalf("完整 .zip 地址应直接下载: %v", err)
+	}
+}
+
+// TestExtractZip 验证更新包解压：普通文件与子目录都还原、findNewExe 能定位，
+// 且含 ../ 的恶意条目被拒绝（不能写到解压目录之外）。
+func TestExtractZip(t *testing.T) {
+	dir := t.TempDir()
+	pkg := filepath.Join(dir, packageName)
+	f, err := os.Create(pkg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zw := zip.NewWriter(f)
+	add := func(name, body string) {
+		w, err := zw.Create(name)
+		if err != nil {
+			t.Fatalf("建条目 %s 失败: %v", name, err)
+		}
+		if _, err := w.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	add("rest.exe", "EXE")
+	add("config/settings.json", `{"a":1}`)
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := f.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	out := filepath.Join(dir, "out")
+	if err := os.MkdirAll(out, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := extractZip(pkg, out); err != nil {
+		t.Fatalf("解压失败: %v", err)
+	}
+	if b, err := os.ReadFile(filepath.Join(out, "rest.exe")); err != nil || string(b) != "EXE" {
+		t.Fatalf("rest.exe 内容不符: %v %q", err, b)
+	}
+	if b, err := os.ReadFile(filepath.Join(out, "config", "settings.json")); err != nil || string(b) != `{"a":1}` {
+		t.Fatalf("子目录文件内容不符: %v %q", err, b)
+	}
+	if got := findNewExe(out); got != filepath.Join(out, "rest.exe") {
+		t.Fatalf("findNewExe = %q，期望包内 rest.exe", got)
+	}
+
+	// 目录穿越条目必须被拒
+	bad := filepath.Join(dir, "bad.zip")
+	bf, err := os.Create(bad)
+	if err != nil {
+		t.Fatal(err)
+	}
+	bw := zip.NewWriter(bf)
+	if w, err := bw.Create("../evil.txt"); err == nil {
+		_, _ = w.Write([]byte("x"))
+	}
+	if err := bw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := bf.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := extractZip(bad, out); err == nil {
+		t.Fatalf("含 ../ 的包应被拒绝")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "evil.txt")); err == nil {
+		t.Fatalf("恶意条目被写到解压目录之外")
 	}
 }
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,8 +14,6 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
-	"github.com/bodgit/sevenzip"
 )
 
 // 检查更新 + 自动更新：更新源由配置里的 `sites` 数组给出，每一项都是 http/https
@@ -22,8 +21,8 @@ import (
 // 下一项、全失败提示失败。
 //
 // 自动更新流程（Windows 下运行中的 exe 被文件锁占用，不能原地覆盖）：
-//  1. version.json 的 url 是数组：取第一项补全为完整包地址（不以 .7z 结尾的拼上
-//     /rest.7z，以 / 结尾的只拼 rest.7z）下载 rest.7z；下载失败取下一项、同样
+//  1. version.json 的 url 是数组：取第一项补全为完整包地址（不以 .zip 结尾的拼上
+//     /rest.zip，以 / 结尾的只拼 rest.zip）下载 rest.zip；下载失败取下一项、同样
 //     补全后重试，全部失败才报错；
 //  2. 解压到 <运行目录>/update，读取解压目录及其子目录下所有 json 配置，按
 //     「顶层键」增量合并进本地配置（本地已有键不覆盖、本地无则新增），随后落盘；
@@ -40,7 +39,7 @@ const (
 	updateDirName = "update"
 	// packageName 更新包文件名：version.json 的 url 数组补全后指向的文件，
 	// 下载到 update 目录下也用这个名字
-	packageName = "rest.7z"
+	packageName = "rest.zip"
 	// stageExeName 自更新子进程副本名（与旧 exe 是不同的文件，避免锁住自身）
 	stageExeName = "rest.stage.exe"
 	// newExeName 包内新 exe 的名字（解压出来后用于复制到位）
@@ -497,7 +496,7 @@ type updatePending struct {
 	ActiveTab       string `json:"activeTab"`
 }
 
-// StartUpdate 执行自动更新：下载 7z → 解压 → 增量合并配置 → 暂存新 exe →
+// StartUpdate 执行自动更新：下载 zip → 解压 → 增量合并配置 → 暂存新 exe →
 // 启动 self-update 子进程替换并重启。任何一步失败都在退出前返回 error 形状，
 // 只有全部就绪、子进程拉起后才 os.Exit（前端在此之前已显示「正在更新」遮罩）。
 func (a *App) StartUpdate() map[string]any {
@@ -538,7 +537,7 @@ func (a *App) StartUpdate() map[string]any {
 	if err := downloadPackage(urls, archive); err != nil {
 		return map[string]any{"status": "error", "message": "下载更新包失败：" + err.Error()}
 	}
-	if err := extract7z(archive, updateDir); err != nil {
+	if err := extractZip(archive, updateDir); err != nil {
 		return map[string]any{"status": "error", "message": "解压更新包失败：" + err.Error()}
 	}
 
@@ -637,14 +636,14 @@ func statusURLs(st map[string]any) []string {
 	return nil
 }
 
-// normalizePackageURL 把 version.json url 数组里的一项补全为完整的 7z 包地址：
-// 已是以 .7z（忽略大小写）结尾的直接使用；以 / 结尾的只拼 rest.7z；其余拼 /rest.7z。
+// normalizePackageURL 把 version.json url 数组里的一项补全为完整的 zip 包地址：
+// 已是以 .zip（忽略大小写）结尾的直接使用；以 / 结尾的只拼 rest.zip；其余拼 /rest.zip。
 func normalizePackageURL(raw string) string {
 	u := strings.TrimSpace(raw)
 	if u == "" {
 		return ""
 	}
-	if strings.HasSuffix(strings.ToLower(u), ".7z") {
+	if strings.HasSuffix(strings.ToLower(u), ".zip") {
 		return u
 	}
 	if strings.HasSuffix(u, "/") {
@@ -676,15 +675,23 @@ func downloadPackage(urls []string, dest string) error {
 	return lastErr
 }
 
-// extract7z 把 7z 包解压到 dest（保留目录结构）
-func extract7z(archive, dest string) error {
-	r, err := sevenzip.OpenReader(archive)
+// extractZip 把 zip 包解压到 dest（保留目录结构）。
+// 用标准库 archive/zip：更新包改 zip 后不再依赖第三方 7z reader。
+func extractZip(archive, dest string) error {
+	r, err := zip.OpenReader(archive)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
 	for _, f := range r.File {
-		target := filepath.Join(dest, f.Name)
+		// 包内路径统一按 / 归一（Windows 压出来的 zip 可能带反斜杠）
+		name := strings.ReplaceAll(f.Name, "\\", "/")
+		target := filepath.Join(dest, filepath.FromSlash(name))
+		// 防目录穿越：解压出来的路径必须仍在 dest 内
+		if rel, err := filepath.Rel(dest, target); err != nil || rel == ".." ||
+			strings.HasPrefix(rel, ".."+string(os.PathSeparator)) {
+			return fmt.Errorf("更新包含非法路径：%s", f.Name)
+		}
 		if f.FileInfo().IsDir() {
 			if err := os.MkdirAll(target, 0o755); err != nil {
 				return err
@@ -698,7 +705,11 @@ func extract7z(archive, dest string) error {
 		if err != nil {
 			return err
 		}
-		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, f.Mode())
+		mode := f.Mode().Perm()
+		if mode == 0 {
+			mode = 0o644
+		}
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
 		if err != nil {
 			rc.Close()
 			return err
