@@ -407,7 +407,7 @@ func (s *Settings) normSelection(v string) string {
 func (s *Settings) AppearanceCfg() AppearanceConfig {
 	return AppearanceConfig{
 		Color:        s.Str("#4f7cff", "appearance", "color"),
-		Transparency: math.Min(0.5, math.Max(0, s.Num(0.15, "appearance", "transparency"))),
+		Transparency: math.Min(0.5, math.Max(0, s.Num(0.05, "appearance", "transparency"))),
 		Blur:         s.Flag(true, "appearance", "blur"),
 		Fullscreen:   s.Flag(false, "appearance", "fullscreen"),
 		AlwaysOnTop:  s.Flag(true, "appearance", "alwaysOnTop"),

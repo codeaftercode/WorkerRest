@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/exec"
@@ -45,6 +46,55 @@ const (
 	// newExeName 包内新 exe 的名字（解压出来后用于复制到位）
 	newExeName = "rest.exe"
 )
+
+// 出厂兜底更新源 / 兜底更新包地址：打包进程序里的最后一道保险。
+//
+// 配置里的 sites 会被远程 version.json 整体覆盖（服务端可随时换源），所以这里把官方地址
+// 额外固定排在候选链**最后**：只要它还在，软件就永远留有一条官方更新通道。其他源（如
+// nav.hcctc.cn）都是**可选项** —— version.json 给了就用、没给就不用，程序里不硬编码任何
+// 第三方地址。声明成 var 而不是 const：单测要能把它们置空，避免真的去访问公网。
+var (
+	defaultUpdateSite = "https://www.goodgoodlive.com/worker-rest/version.json"
+	defaultPackageURL = "https://www.goodgoodlive.com/worker-rest/rest.zip"
+)
+
+// withFallbackSite 把兜底更新源补到候选链末尾：去空白、去重，兜底已存在则不重复追加。
+// 配置为空时返回的仍是「只有兜底」这一条，因此「没配更新源就完全查不了」不会发生。
+func withFallbackSite(sites []string) []string {
+	out := make([]string, 0, len(sites)+1)
+	seen := make(map[string]struct{}, len(sites)+1)
+	for _, s := range sites {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			continue
+		}
+		if _, dup := seen[s]; dup {
+			continue
+		}
+		seen[s] = struct{}{}
+		out = append(out, s)
+	}
+	if fb := strings.TrimSpace(defaultUpdateSite); fb != "" {
+		if _, dup := seen[fb]; !dup {
+			out = append(out, fb)
+		}
+	}
+	return out
+}
+
+// withFallbackPackage 把兜底更新包地址补到下载候选末尾（downloadPackage 会再按规则补全）。
+func withFallbackPackage(urls []string) []string {
+	out := make([]string, 0, len(urls)+1)
+	for _, u := range urls {
+		if u = strings.TrimSpace(u); u != "" {
+			out = append(out, u)
+		}
+	}
+	if fb := strings.TrimSpace(defaultPackageURL); fb != "" {
+		out = append(out, fb)
+	}
+	return out
+}
 
 // versionInfo 远程 version.json 的结构
 type versionInfo struct {
@@ -274,11 +324,12 @@ func copyAnyMap(m map[string]any) map[string]any {
 	return out
 }
 
-// checkForUpdate 按配置里的 sites 依次容错拉取 version.json 并比对版本。
+// checkForUpdate 按「配置里的 sites + 出厂兜底源」依次容错拉取 version.json 并比对版本。
+// 兜底源永远排在最后，配置被改坏 / 被远程换成别的源也不会失去官方通道。
 // latest 严格大于 current 才算有新版。
 func (a *App) checkForUpdate() updateCheckResult {
 	current := appVersion
-	sites := a.cfg.UpdateSites()
+	sites := withFallbackSite(a.cfg.UpdateSites())
 	if len(sites) == 0 {
 		return updateCheckResult{
 			Status:  "error",
@@ -434,9 +485,79 @@ func todayStr() string {
 	return time.Now().Format("2006-01-02")
 }
 
-// startAutoUpdateCheck 实现「自动检查更新」：勾选了才跑；当天已查过则跳过
-// （不重复联网）；真正触发点是「启动后第一次检测到系统非空闲」——
-// 即用户真的回来操作电脑（idle.IsActive 连续 3 秒有输入），而不是启动那一瞬间。
+const (
+	// autoCheckWindow 当天第一次检测到键鼠活动后，在这么长的时间窗内随机取一刻检查
+	autoCheckWindow = 3 * time.Hour
+	// autoCheckRetry 到点却处于「暂停休息」时，在这么长的时间窗内再随机取一刻重试，
+	// 仍暂停就再取一刻，如此反复
+	autoCheckRetry = 30 * time.Minute
+	// autoCheckPoll 调度轮询粒度（判断是否跨天 / 是否已有键鼠活动 / 是否到点）
+	autoCheckPoll = 2 * time.Second
+)
+
+// 时间源与随机源注入点：生产直接用真实实现，单测换成假时钟/定值。
+var (
+	autoUpdateNow   = time.Now
+	autoUpdateSleep = time.Sleep
+	// autoUpdateRand 在 [0, max) 里取一个随机时长
+	autoUpdateRand = func(max time.Duration) time.Duration {
+		if max <= 0 {
+			return 0
+		}
+		return time.Duration(rand.Int63n(int64(max)))
+	}
+)
+
+// 调度动作
+const (
+	autoActNone  = ""      // 继续等
+	autoActCheck = "check" // 现在去检查更新
+)
+
+// autoUpdateState 自动检查更新的调度状态（只保存「当天」这一份，跨天整体重置）。
+type autoUpdateState struct {
+	day     string    // 本次调度所属的本地日期
+	armedAt time.Time // 该日期内的目标时刻；零值＝还没排期（在等当天第一次键鼠活动）
+}
+
+// autoUpdateTick 推进一次调度状态机，返回这一拍该做什么。规则：
+//  1. 当天首次检测到键鼠活动 → 在 0~3 小时内随机取一个时刻（armedAt）；
+//  2. 到点时若不在「暂停休息」状态 → 去检查更新；
+//  3. 到点时正处于「暂停休息」→ 在 0~30 分钟内再随机取一个时刻，到点再判，反复；
+//  4. 跨天（含排期或重试期间跨过零点）一律整体重置，当天有没有查成都不影响第二天；
+//  5. 当天已经查过（done）→ 不再排期。
+//
+// 纯逻辑，不碰时钟、不碰 IO，时间由参数给、随机由 randDur 给，方便单测。
+func autoUpdateTick(st *autoUpdateState, today string, now time.Time,
+	active, paused, done bool, randDur func(time.Duration) time.Duration) string {
+	if st.day != today {
+		*st = autoUpdateState{day: today}
+	}
+	if done {
+		st.armedAt = time.Time{}
+		return autoActNone
+	}
+	if st.armedAt.IsZero() {
+		// 还在等这一天的第一次键鼠活动；没活动就不排期
+		if !active {
+			return autoActNone
+		}
+		st.armedAt = now.Add(randDur(autoCheckWindow))
+		return autoActNone
+	}
+	if now.Before(st.armedAt) {
+		return autoActNone
+	}
+	if paused {
+		st.armedAt = now.Add(randDur(autoCheckRetry))
+		return autoActNone
+	}
+	st.armedAt = time.Time{}
+	return autoActCheck
+}
+
+// startAutoUpdateCheck 实现「自动检查更新」：勾选了才跑；当天已查过则跳过（不重复联网）。
+// 真正的触发时机由 autoUpdateLoop + autoUpdateTick 决定（见那里的规则说明），
 // 失败不打扰用户（结果仍会推给设置页，由它显示）。
 func (a *App) startAutoUpdateCheck() {
 	if serverMode {
@@ -447,41 +568,58 @@ func (a *App) startAutoUpdateCheck() {
 		log.Printf("[update] 自动检查更新已关闭，跳过")
 		return
 	}
-	if a.cfg.LastUpdateCheck() == todayStr() {
-		log.Printf("[update] 今天已检查过更新，跳过自动检查")
+	if a.idle == nil {
+		log.Printf("[update] 读不到系统空闲状态，跳过自动检查")
 		return
 	}
-	go func() {
-		// 等到「启动后第一次非空闲」；idle 未启动（读不到系统 tick）时不触发。
-		const pollEvery = 2 * time.Second
-		const maxWait = 6 * time.Hour // 长时间无操作则放弃本次自动检查，等下次启动
-		deadline := time.Now().Add(maxWait)
-		for {
-			if time.Now().After(deadline) {
-				log.Printf("[update] 启动后长时间无活动，本次自动检查延后")
-				return
-			}
-			if a.idle != nil && a.idle.IsActive() {
-				break
-			}
-			time.Sleep(pollEvery)
-		}
-		// 轮询期间可能别处已查过，再确认一次当日去重
-		if a.cfg.LastUpdateCheck() == todayStr() {
+	if a.cfg.LastUpdateCheck() == todayStr() {
+		log.Printf("[update] 今天已检查过更新，等明天再自动检查")
+	}
+	go a.autoUpdateLoop()
+}
+
+// autoUpdateLoop 常驻调度循环：进程活多久就转多久，跨天自动进入下一天。
+func (a *App) autoUpdateLoop() {
+	var st autoUpdateState
+	for {
+		// 用户中途关掉「自动检查更新」就不再排期（重新打开需重启软件才生效，
+		// 与「开关只在启动时读一次」的既有口径一致）
+		if !a.cfg.Flag(true, "checkUpdateOnStart") {
+			log.Printf("[update] 自动检查更新已关闭，停止调度")
 			return
 		}
-		st := a.checkForUpdate()
-		a.publishUpdateStatus(st)
-		// 当天去重：只有真正判定出结果（已是最新 / 有更新）才记今天查过了；
-		// error（如网络抖动）不记，让用户当天重启还能再试一次。
-		if st.Status != "error" {
-			a.cfg.SetLastUpdateCheck(todayStr())
-			if err := a.cfg.Save(); err != nil {
-				log.Printf("[update] 写入上次检查日期失败: %v", err)
-			}
+		today := autoUpdateNow().Format("2006-01-02")
+		now := autoUpdateNow()
+		done := a.cfg.LastUpdateCheck() == today
+		action := autoUpdateTick(&st, today, now,
+			a.idle != nil && a.idle.IsActive(), a.schedPaused(), done, autoUpdateRand)
+		if action == autoActCheck {
+			a.runAutoUpdateCheck(today)
+			continue // 立刻下一拍：成功则 done 生效，失败则重新按当天规则排期
 		}
-		log.Printf("[update] 启动自动检查: %s", st.Status)
-	}()
+		autoUpdateSleep(autoCheckPoll)
+	}
+}
+
+// schedPaused 当前是否处于「暂停休息」状态（手动暂停 / 勿扰 / 指定应用占用 / 空闲
+// 自动暂停都算）。此时不去检查更新，等 30 分钟内的随机时刻再试。
+func (a *App) schedPaused() bool {
+	return a.sched != nil && a.sched.isPaused()
+}
+
+// runAutoUpdateCheck 真正联网检查一次，并把「今天查过」落库。
+func (a *App) runAutoUpdateCheck(today string) {
+	st := a.checkForUpdate()
+	a.publishUpdateStatus(st)
+	// 当天去重：只有真正判定出结果（已是最新 / 有更新）才记今天查过了；
+	// error（如网络抖动）不记，当天后面还会按规则再排一次。
+	if st.Status != "error" {
+		a.cfg.SetLastUpdateCheck(today)
+		if err := a.cfg.Save(); err != nil {
+			log.Printf("[update] 写入上次检查日期失败: %v", err)
+		}
+	}
+	log.Printf("[update] 自动检查: %s", st.Status)
 }
 
 // updatePending 自更新阶段落盘的元数据（供 --updated 启动后展示摘要 / 清理）
@@ -510,7 +648,7 @@ func (a *App) StartUpdate() map[string]any {
 	if st == nil || st["status"] != "update-available" {
 		return map[string]any{"status": "error", "message": "当前没有可执行的更新"}
 	}
-	urls := statusURLs(st)
+	urls := withFallbackPackage(statusURLs(st))
 	if len(urls) == 0 {
 		return map[string]any{"status": "error", "message": "缺少下载地址"}
 	}

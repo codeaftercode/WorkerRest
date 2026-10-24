@@ -2,8 +2,10 @@ package main
 
 import (
 	"encoding/json"
+	"math"
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 )
 
@@ -367,5 +369,57 @@ func TestNormalizeSoundDefaultsSingleId(t *testing.T) {
 	normalizeSound(raw3)
 	if got := jsStr(raw3["sound"].(map[string]any)["singleId"]); got != "" {
 		t.Fatalf("全部停用应尊重用户选择保持 singleId 空，得到 %q", got)
+	}
+}
+
+// TestAppearanceTransparencyDefault 提醒窗口透明度的缺省值。
+// 用户 2026-10-23 定为 0.05，且滑条步长 0.01 —— 这里盯两处容易各自漂移的值：
+// 代码兜底（AppearanceCfg 的 s.Num 缺省）与出厂默认（内嵌 default_settings.json）。
+func TestAppearanceTransparencyDefault(t *testing.T) {
+	const want = 0.05
+	near := func(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
+
+	// 1) 配置里没有 appearance.transparency 时走代码兜底
+	s := &Settings{raw: map[string]any{}}
+	if got := s.AppearanceCfg().Transparency; !near(got, want) {
+		t.Fatalf("缺键时透明度缺省应为 %v，实得 %v", want, got)
+	}
+
+	// 2) 出厂默认（内嵌 JSON）必须同值，否则新装用户与老配置用户看到的透明度不一致
+	def := defaultSettingsMap()
+	if got := (&Settings{raw: def}).AppearanceCfg().Transparency; !near(got, want) {
+		t.Fatalf("出厂默认透明度应为 %v，实得 %v", want, got)
+	}
+
+	// 3) 越界仍夹紧在 0 ~ 0.5（滑条范围，与前端 min/max 一致）
+	for _, c := range []struct{ in, out float64 }{{-1, 0}, {0.9, 0.5}} {
+		raw := map[string]any{"appearance": map[string]any{"transparency": c.in}}
+		if got := (&Settings{raw: raw}).AppearanceCfg().Transparency; !near(got, c.out) {
+			t.Fatalf("transparency=%v 应夹紧到 %v，实得 %v", c.in, c.out, got)
+		}
+	}
+}
+
+// TestEmbeddedDefaultMatchesFile 内嵌的出厂默认必须与仓库根的 default_settings.json 一致。
+//
+// 两份默认值分别喂给两条路径：`//go:embed` 的这份是「恢复默认设置」的数据源；
+// 仓库根的这份被 make_portable.py 复制成便携包的 config/settings.json（新装首跑读它）。
+// 一旦分叉，用户首装看到的值与点「恢复默认」后的值就不一样，而且界面上完全看不出来。
+// go:embed 取的是编译那一刻的快照，这条用例把快照钉在工作区文件上。
+func TestEmbeddedDefaultMatchesFile(t *testing.T) {
+	disk, err := os.ReadFile("default_settings.json")
+	if err != nil {
+		t.Fatalf("读 default_settings.json 失败: %v", err)
+	}
+	var fromDisk, fromEmbed any
+	if err := json.Unmarshal(disk, &fromDisk); err != nil {
+		t.Fatalf("default_settings.json 解析失败: %v", err)
+	}
+	if err := json.Unmarshal(defaultSettingsJSON, &fromEmbed); err != nil {
+		t.Fatalf("内嵌默认解析失败: %v", err)
+	}
+	// 比语义而非字节：CRLF/LF、缩进差异不算分叉（embed 存的是编译时的工作区字节）
+	if !reflect.DeepEqual(fromDisk, fromEmbed) {
+		t.Fatal("内嵌的出厂默认与 default_settings.json 内容不一致（改动后没重新编译？）")
 	}
 }

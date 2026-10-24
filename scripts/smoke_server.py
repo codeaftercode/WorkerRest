@@ -53,8 +53,8 @@ except Exception:
 
 # 内置督休专员的固定出场顺序（与 历史源码/supervisor.ts 的 BUILTIN_ROLE_META 同源）
 BUILTIN_ROLE_ORDER = [
-    "supervisor_default", "role_instructor", "role_executive", "role_mentor",
-    "role_doctor", "role_coach", "role_warden", "role_shopkeeper", "role_ai",
+    "supervisor_default", "role_mentor", "role_doctor",
+    "role_coach", "role_shopkeeper",
 ]
 
 def role_dir(root, key):

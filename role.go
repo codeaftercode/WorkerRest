@@ -47,16 +47,14 @@ type RoleFile struct {
 // builtinRoleMeta 内置督休专员的固定顺序与兜底名字（与 历史源码/supervisor.ts 的
 // BUILTIN_ROLE_META 逐字一致）。顺序**不是**按目录名排的 —— 它就是「立绘库磁贴」与
 // 「顺序轮换」的出场次序，改成字典序会让内置督休专员的出场顺序与 上一版不同。
+// 2026-10-23 起随包只带 5 个督休专员：魔鬼教官 / 宿管大爷 / 赛博监考官 / 冷面上司
+// 已下架（目录一并删除）。删掉的 key 不再出现在清单里，磁盘上也就不会按内置顺序出现。
 var builtinRoleMeta = []struct{ key, name string }{
 	{"supervisor_default", "眼镜主管"},
-	{"role_instructor", "魔鬼教官"},
-	{"role_executive", "冷面上司"},
 	{"role_mentor", "温柔学姐"},
 	{"role_doctor", "值班医生"},
 	{"role_coach", "体能教练"},
-	{"role_warden", "宿管大爷"},
 	{"role_shopkeeper", "古风掌柜"},
-	{"role_ai", "赛博监考官"},
 }
 
 // roleFallbackName role.json 里没写 name 时的兜底名
@@ -71,7 +69,7 @@ func roleFallbackName(key string) string {
 
 // isImageName 图片文件名合法性（与 supervisor.ts 的 isImageName 同口径）：
 // 只要名字合法就先用着，文件在不在由调用方另外判断——「名字非法」与「文件缺失」
-// 是两件事，上一版 用前者决定要不要回落到 figure.png。
+// 是两件事，上一版 用前者决定要不要回落到 figure.*（见 roleAsset）。
 func isImageName(name string) bool {
 	if name == "" || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") {
 		return false
@@ -124,7 +122,7 @@ func normalizeRoleFile(raw map[string]any) RoleFile {
 	out := RoleFile{
 		Name:     name,
 		Enabled:  raw["enabled"] != false,
-		Image:    "figure.png",
+		Image:    defaultFigureName,
 		Geom:     normalizeSupGeom(asMap(raw["geom"])),
 		Messages: normalizeRoleMessages(asMap(raw["messages"])),
 	}
@@ -185,6 +183,45 @@ var imageExtMIME = map[string]string{
 	".jpeg": "image/jpeg",
 	".webp": "image/webp",
 	".gif":  "image/gif",
+}
+
+// 立绘 / 预览图的**主名**（扩展名换过多少次都按它兜底找）与默认文件名：role.json 里
+// 没写 image 时用 defaultFigureName。2026-10-23 起随包立绘统一为 webp，所以默认值也
+// 换成 webp；自定义督休专员目录里遗留的 png 由 roleAsset 的扩展名兜底读到，
+// 不会因为换了默认值就显示不出来。
+const (
+	roleFigureBase    = "figure"
+	rolePreviewBase   = "preview"
+	defaultFigureName = roleFigureBase + ".webp"
+)
+
+// roleAssetExts 立绘可接受的扩展名，按尝试优先级排列（roleAsset 兜底时依次找）
+var roleAssetExts = []string{".webp", ".png", ".jpg", ".jpeg", ".gif"}
+
+// roleAsset 在督休专员目录里定位一张图：先按 role.json 里写的名字找，找不到再拿同一
+// 主名换其他图片扩展名找。返回**实际文件名**（相对目录名），找不到返回空串。
+//
+// 需要扩展名兜底的原因：立绘格式换过（png → webp），而 role.json 是数据、可能比磁盘
+// 落一拍（用户自己转换了格式、或老配置里写死 figure.png）。只认单一扩展名会让
+// 「图明明在、却显示不出来」变成最难排查的那类问题。base 是 name 不可用时的主名。
+func roleAsset(dir, name, base string) string {
+	if name != "" && isImageName(name) {
+		if isRegularFile(filepath.Join(dir, name)) {
+			return name
+		}
+		if b := strings.TrimSuffix(name, filepath.Ext(name)); b != "" {
+			base = b
+		}
+	}
+	if base == "" {
+		return ""
+	}
+	for _, ext := range roleAssetExts {
+		if isRegularFile(filepath.Join(dir, base+ext)) {
+			return base + ext
+		}
+	}
+	return ""
 }
 
 // validRoleKey 目录名合法性：与 上一版 isValidRoleKey 同口径
@@ -250,15 +287,15 @@ func scanRoles(root string) []Role {
 			Geom:     cfg.Geom,
 			Messages: cfg.Messages,
 		}
-		if p := filepath.Join(dir, cfg.Image); isRegularFile(p) {
-			r.FigurePath = p
+		// 立绘 / 预览按**实际文件**定位：role.json 写的扩展名可能和磁盘上不一致
+		// （格式从 png 换成 webp 时最容易漏改的就是 role.json）。
+		if name := roleAsset(dir, cfg.Image, roleFigureBase); name != "" {
+			r.Image = name
+			r.FigurePath = filepath.Join(dir, name)
 		}
-		prevName := cfg.Preview
-		if prevName == "" {
-			prevName = "preview.png"
-		}
-		if p := filepath.Join(dir, prevName); isRegularFile(p) {
-			r.Thumb = toDataURL(p)
+		if name := roleAsset(dir, cfg.Preview, rolePreviewBase); name != "" {
+			r.Preview = name
+			r.Thumb = toDataURL(filepath.Join(dir, name))
 		}
 		recs = append(recs, rec{role: r, dirName: e.Name()})
 	}

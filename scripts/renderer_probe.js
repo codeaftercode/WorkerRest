@@ -103,7 +103,34 @@ const PROBE_SETTINGS = `(function () {
       return el ? el.value : null;
     })(),
     bodyClass: document.body.className,
+    // 侧栏状态格（下次外卖/自定义提醒）：名称在左、时间在右，两段都必须单行显示。
+    // 采集每格的实际字号、高度与溢出量，供 probe 断言「没换行 / 没裁字 / 没挤出卡片」。
+    statusCells: Array.prototype.map.call(
+      document.querySelectorAll('#data-status .status-cell'),
+      function (c) {
+        var k = c.querySelector('.k'), v = c.querySelector('.v');
+        var kcs = k ? getComputedStyle(k) : null;
+        return {
+          k: k ? k.textContent : '',
+          v: v ? v.textContent : '',
+          kOver: k ? k.scrollWidth - k.clientWidth : 0,
+          vOver: v ? v.scrollWidth - v.clientWidth : 0,
+          cellOver: c.scrollWidth - c.clientWidth,
+          kH: k ? Math.round(k.getBoundingClientRect().height * 10) / 10 : 0,
+          kFs: kcs ? parseFloat(kcs.fontSize) : 0,
+          width: Math.round(c.getBoundingClientRect().width),
+        };
+      }
+    ),
     apOpacity: val('ap-opacity'),
+    apOpacityStep: (function () {
+      var el = document.getElementById('ap-opacity');
+      return el ? String(el.step) : null;
+    })(),
+    apOpacityRange: (function () {
+      var el = document.getElementById('ap-opacity');
+      return el ? [String(el.min), String(el.max)] : null;
+    })(),
     apWidthPct: val('ap-widthPct'),
     apHeightPct: val('ap-heightPct'),
     apFullscreen: chk('ap-fullscreen'),
@@ -264,7 +291,8 @@ const PROBE_BREAK = `(function () {
     viewportW: window.innerWidth,
     viewportH: window.innerHeight,
     figureHidden: document.getElementById('figure').classList.contains('hidden'),
-    figureSrcPrefix: img ? String(img.src).slice(0, 22) : null,
+    // 前缀留长一点：立绘可能是 png 也可能是 webp，22 字符会把 ";base64," 截掉
+    figureSrcPrefix: img ? String(img.src).slice(0, 40) : null,
     figureNatural: img ? (img.naturalWidth + 'x' + img.naturalHeight) : null,
     speaker: line ? (line.dataset.speaker || null) : null,
     lineText: line ? line.textContent : null,
@@ -532,6 +560,63 @@ async function run() {
   metrics.settings.consoleErrors = sErr;
   await shot(set, "settings");
   console.log("[probe] settings:", JSON.stringify(metrics.settings));
+
+  // ---- 0a. 侧栏状态格超长名称压力：注入 20 字名字，验证「缩字号 → 中间省略」链路。
+  //      三条底线：不换行、不裁半截字（scrollWidth 不超 clientWidth）、不溢出卡片。
+  //      测完把原文还原，免得影响后面的截图与页签断言。
+  await set.evaluate(() => {
+    const cells = document.querySelectorAll("#data-status .status-cell");
+    const cell = cells[cells.length - 1];
+    const k = cell.querySelector(".k"), v = cell.querySelector(".v");
+    window.__wrStress = { k: k.textContent, v: v.textContent };
+    k.style.fontSize = ""; v.style.fontSize = ""; cell.style.columnGap = "";
+    delete cell.dataset.fitDone;
+    delete k.dataset.full;
+    delete k.dataset.truncated;
+    k.textContent = "下次一二三四五六七八九十一二三四五六提醒"; // 20 字
+    v.textContent = "今日已无提醒";
+  });
+  await delay(400);
+  metrics.statusStress = await set.evaluate(() => {
+    const cells = document.querySelectorAll("#data-status .status-cell");
+    const cell = cells[cells.length - 1];
+    const k = cell.querySelector(".k"), v = cell.querySelector(".v");
+    const r = {
+      text: k.textContent,
+      kFs: parseFloat(getComputedStyle(k).fontSize),
+      kOver: k.scrollWidth - k.clientWidth,
+      vOver: v.scrollWidth - v.clientWidth,
+      cellOver: cell.scrollWidth - cell.clientWidth,
+      kH: Math.round(k.getBoundingClientRect().height * 10) / 10,
+      title: k.getAttribute("title") || "",
+    };
+    k.textContent = window.__wrStress.k;
+    v.textContent = window.__wrStress.v;
+    delete cell.dataset.fitDone;
+    return r;
+  });
+  console.log("[probe] statusStress:", JSON.stringify(metrics.statusStress));
+  await delay(300);
+
+  // ---- 0a2. 暂停态文案：手动暂停、自动暂停（空闲 / 勿扰 / 应用占用）在状态格里
+  //      统一显示「暂停休息」，原因只留在 title 上（用户 2026-10-24 要求去掉长尾巴）。
+  await set.evaluate(() => window.api.action("pauseToggle"));
+  await delay(700);
+  metrics.pauseStatus = await set.evaluate(() => {
+    const cell = document.querySelector("#data-status .status-cell");
+    return {
+      k: cell.querySelector(".k").textContent,
+      v: cell.querySelector(".v").textContent,
+      title: cell.getAttribute("title") || "",
+    };
+  });
+  console.log("[probe] pauseStatus:", JSON.stringify(metrics.pauseStatus));
+  await set.evaluate(() => window.api.action("pauseToggle")); // 复原，别影响后续断言
+  await delay(600);
+  metrics.pauseResumed = await set.evaluate(
+    () => document.querySelector("#data-status .status-cell .v").textContent,
+  );
+  console.log("[probe] pauseResumed:", JSON.stringify(metrics.pauseResumed));
 
   // ---- 0b. 逐个切换页签 ----
   metrics.tabs = {};

@@ -725,10 +725,14 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .status-cell .v { font-size: 15px; font-weight: 600; margin-top: 3px; }
 /* 「设置窗口」卡片下方的状态 / 下次休息 / 下次提醒小卡片：每个卡片内部改为左右结构
    （标签在左、值在右），且三个卡片的标签列、值列分别上下对齐。仅作用于 #data-status。 */
-#data-status.status-grid { grid-template-columns: 1fr; gap: 8px; }
-#data-status .status-cell { display: grid; grid-template-columns: auto 1fr; align-items: baseline; column-gap: 16px; }
-#data-status .status-cell .k { font-size: 12px; color: var(--text-2); margin: 0; }
-#data-status .status-cell .v { font-size: 15px; font-weight: 600; margin: 0; text-align: right; }
+#data-status.status-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+/* 每个小卡片：标签在左、值在右，两端对齐。两列都强制单行 —— 侧栏只有 240px，
+   「下次报警日报提醒」+「今日已无提醒」在 12/15px 下就超出可用宽，会换行。字号由
+   脚本 fitStatusCells() 按实测宽度等比缩小（12→8 / 15→10，再收列间距），保证不换行、
+   不截字、不把文字挤出卡片；overflow 只作为最后一道兜底。 */
+#data-status .status-cell { display: flex; align-items: baseline; justify-content: space-between; column-gap: 16px; min-width: 0; overflow: hidden; }
+#data-status .status-cell .k { font-size: 12px; color: var(--text-2); margin: 0; white-space: nowrap; min-width: 0; flex: 0 1 auto; overflow: hidden; }
+#data-status .status-cell .v { font-size: 15px; font-weight: 600; margin: 0; text-align: right; white-space: nowrap; flex: 0 0 auto; }
 
 /* 「今天」卡：上一条满宽的时间堆叠条 + 下面两块（休息动作次数条形 / 久坐时长条形）。
    休息动作的条长只表示各自次数，不做部分-整体（推迟是中间动作，不能与其他项相加）；

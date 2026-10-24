@@ -30,7 +30,7 @@
   "theme": "light",
   "appearance": {
     "color": "#4f7cff",
-    "transparency": 0.15,
+    "transparency": 0.05,
     "blur": true,
     "fullscreen": false,
     "alwaysOnTop": true,
@@ -88,5 +88,5 @@
   "startMinimized": false,
   "installId": "",
   "checkUpdateOnStart": true,
-  "sites": ["http://39.107.32.124:10002/worker-rest/version.json"]
+  "sites": ["https://www.goodgoodlive.com/worker-rest/version.json"]
 }

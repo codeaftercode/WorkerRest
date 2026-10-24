@@ -2175,6 +2175,86 @@
     return out;
   }
   var LAST_STATE = null;
+  // 侧栏状态格字号自适应：名称（左）与时间（右）都必须单行，但侧栏只有 240px，
+  // 「下次报警日报提醒」+「今日已无提醒」在 12/15px 下就超出卡片内宽。这里按实测宽度
+  // 逐档缩字号（名称 12→8px、时间 15→10px，两者同步缩以保持层级），缩到底再收窄列间距
+  // （16→6px）；8px 仍放不下就中间省略 + title 显示全名（240px 装不下 20 个以上的中文字）。
+  // 全程不换行、不裁半截字、不把文字挤出卡片。
+  // force=true 用于 resize（可用宽变了要重算）；MutationObserver 走默认值，每格只算一次。
+  function fitStatusCells(force) {
+    const host = $("data-status");
+    if (!host) return;
+    for (const cell of host.querySelectorAll(".status-cell")) {
+      const k = cell.querySelector(".k");
+      const v = cell.querySelector(".v");
+      if (!k || !v) continue;
+      // 每个节点只算一次：省略要改 textContent，改完会再触发一次 MutationObserver，
+      // 不设这道闸就会在「还原全名 → 又溢出 → 再省略」之间无限抖动（实测直接把页面卡死）。
+      // renderStatus 重建节点时标记自然消失，所以不会漏算。
+      if (!force && cell.dataset.fitDone === "1") continue;
+      cell.dataset.fitDone = "1";
+      const cs = getComputedStyle(cell);
+      const avail = Math.round(cell.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+      delete k.dataset.truncated;
+      // 全名永远从 dataset.full 取（renderStatus 重建节点时它自然丢掉，重新开始）
+      const full = k.dataset.full || k.textContent;
+      k.dataset.full = full;
+      k.textContent = full;
+      k.removeAttribute("title");
+      // 复位：resize 重入时必须从基准字号重新量
+      k.style.fontSize = "";
+      v.style.fontSize = "";
+      cell.style.columnGap = "";
+      const kBase = parseFloat(getComputedStyle(k).fontSize) || 12;
+      const vBase = parseFloat(getComputedStyle(v).fontSize) || 15;
+      const kMin = Math.min(kBase, 8);
+      const vMin = Math.min(vBase, 10);
+      let kf = kBase, vf = vBase, gap = 16, guard = 0;
+      const need = () => k.scrollWidth + v.scrollWidth + gap;
+      while (need() > avail && guard++ < 80) {
+        if (kf > kMin || vf > vMin) {
+          kf = Math.max(kMin, kf - 0.5);
+          vf = Math.max(vMin, vf - 0.5);
+          k.style.fontSize = kf + "px";
+          v.style.fontSize = vf + "px";
+        } else if (gap > 6) {
+          gap -= 2;
+          cell.style.columnGap = gap + "px";
+        } else {
+          break; // 缩到下限仍放不下 → 走下面的省略
+        }
+      }
+      if (k.scrollWidth > k.clientWidth + 1 && full.length > 3) {
+        k.title = full;
+        // 中间省略：保留「下次…提醒」首尾，二分找能放下的最长长度
+        let lo = 2, hi = full.length - 1, best = "\u2026";
+        while (lo <= hi) {
+          const mid = (lo + hi) >> 1;
+          const head = Math.ceil(mid / 2);
+          const tail = mid - head;
+          const cand = full.slice(0, head) + "\u2026" + (tail > 0 ? full.slice(full.length - tail) : "");
+          k.textContent = cand;
+          if (k.scrollWidth <= k.clientWidth + 1) { best = cand; lo = mid + 1; } else { hi = mid - 1; }
+        }
+        k.textContent = best;
+        k.dataset.truncated = "1";
+      }
+    }
+  }
+  window.addEventListener("resize", () => {
+    clearTimeout(fitStatusCells._t);
+    fitStatusCells._t = setTimeout(() => fitStatusCells(true), 120);
+  });
+  // 侧栏状态格的内容会随提醒名变化（renderStatus 重建节点、名称被改写），
+  // 只监听 childList 会漏掉「文本在原地变长」，所以连 characterData 一起盯。
+  // options 里不放 attributes：fitStatusCells 自己会改 style，否则会自激。
+  (function watchStatusCells() {
+    const host = $("data-status");
+    if (!host || !window.MutationObserver) return;
+    new MutationObserver(() => fitStatusCells()).observe(host, {
+      childList: true, subtree: true, characterData: true,
+    });
+  })();
   function renderStatus(st) {
     LAST_STATE = st;
     // 「暂停休息/恢复休息」互斥显示：暂停中只显示「恢复休息」，否则只显示「暂停休息」
@@ -2188,13 +2268,13 @@
       qaPostpone.classList.toggle("hidden", !(cfg && cfg.postponeMs > 0));
     }
     const phaseText = st.phase === "break" ? "\u4F11\u606F\u4E2D" : st.phase === "pre" ? "\u5373\u5C06\u4F11\u606F" : "\u52AA\u529B\u5DE5\u4F5C\u4E2D";
-    // 系统空闲（键鼠长时间无操作、人已离开工位）触发的是「离开」而非普通暂停：
-    // 这种暂停不显示「努力工作中（已暂停：系统空闲）」，而是明确标成「已离开」，
-    // 与统计里的离开时长口径一致（离开 = 连续无键鼠输入超过空闲阈值那段）。
-    const idlePaused = st.paused && st.pauseReasons.includes("idle");
-    const phaseVal = idlePaused
-      ? "\u5DF2\u79BB\u5F00"
-      : (st.paused ? `${phaseText}\uFF08\u5DF2\u6682\u505C${st.pauseReasons.length ? "\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001") : ""}\uFF09` : phaseText);
+    // 暂停统一显示「暂停休息」：不论是手动暂停、系统空闲（人离开工位）、系统勿扰
+    // 还是指定应用占用运行，状态格只给一个结论；具体原因挂到该格的 title 上悬停可看
+    // （托盘 tooltip 里照旧是「已暂停：原因」）。
+    const phaseVal = st.paused ? "\u6682\u505C\u4F11\u606F" : phaseText;
+    const pauseTitle = st.paused && st.pauseReasons.length
+      ? "\u6682\u505C\u539F\u56E0\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001")
+      : "";
     const now = st.paused ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("\u63D0\u9192") ? `\u4E0B\u6B21${name}` : `\u4E0B\u6B21${name}\u63D0\u9192`;
     const todayOnly = (at) => dayDiffOf(at) > 0 ? "\u4ECA\u65E5\u5DF2\u65E0\u63D0\u9192" : fmtRemain(Math.max(0, at - now));
@@ -2203,7 +2283,7 @@
     const otherCell = st.other && dayDiffOf(st.other.at) === 0
       ? [otherKey(st.other.name), todayOnly(st.other.at)]
       : null;
-    const cells = [["\u72B6\u6001", phaseVal]];
+    const cells = [["\u72B6\u6001", phaseVal, pauseTitle]];
     if (st.phase === "break") {
       cells.push(["\u6B63\u5728\u4F11\u606F", fmtRemain(Math.max(0, st.breakEndsAt - now))]);
       if (otherCell) cells.push(["\u4E0B\u6B21\u63D0\u9192", "\u2014"]);
@@ -2213,7 +2293,8 @@
       );
       if (otherCell) cells.push(otherCell);
     }
-    $("data-status").innerHTML = cells.map(([k, v]) => `<div class="status-cell"><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    $("data-status").innerHTML = cells.map(([k, v, t]) => `<div class="status-cell"${t ? ` title="${String(t).replace(/"/g, "&quot;")}"` : ""}><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    fitStatusCells();
     updateTakeoutSummary();
     for (const t of allBreakIds()) updateBreakSummary(t);
     renderTimeline(st);

@@ -18,7 +18,7 @@
      - 隔离 APPDATA 里没有落下任何 WorkerRest 相关文件（没往 APPDATA 写）。
 
 用法：python scripts/verify_portable.py [--dir <便携目录>] [--seconds 8]
-  --dir 省略时自动取 release/ 下版本号最大的 WorkerRest-<版本>-portable/（先跑 make_portable.py）
+  --dir 省略时自动取 release/WorkerRest-<tag>/WorkerRest-portable/（先跑 make_portable.py）
 退出码 0 = 全部通过。
 """
 
@@ -34,25 +34,46 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
+
+# 同目录的 version.py（release 子目录名里带 tag，按 tag 拼路径最准）
+if HERE not in sys.path:
+    sys.path.insert(0, HERE)
+import version as gitver  # noqa: E402
+from make_portable import dump_embedded_defaults  # noqa: E402  （打包侧同一套导出逻辑）
 TEMP = os.environ.get("TEMP", ROOT)
 LOG = os.path.join(TEMP, "wr_portable_verify.log")
 REPORT = os.path.join(TEMP, "wr_portable_verify_report.txt")
 
 
 def default_dir():
-    """release/ 下版本号最大的 WorkerRest-<版本>-portable/（版本号来自 tag，会变）。"""
+    """release/WorkerRest-<tag>/WorkerRest-portable/（tag 取最近一次，目录名会变）。
+
+    先按 git tag 拼路径；拼出来的不存在时，扫 release/WorkerRest-*/WorkerRest-portable/
+    取版本号最大的那个兜底。"""
     rel = os.path.join(ROOT, "release")
+    try:
+        tag = gitver.latest_tag() or ""
+    except Exception:  # noqa: BLE001
+        tag = ""
+    if tag:
+        p = os.path.join(rel, "WorkerRest-" + tag, "WorkerRest-portable")
+        if os.path.isdir(p):
+            return p
     best = None
     if os.path.isdir(rel):
         for name in os.listdir(rel):
-            m = re.match(r"^WorkerRest-(v?\d+\.\d+\.\d+)-portable$", name)
-            p = os.path.join(rel, name)
-            if not (m and os.path.isdir(p)):
+            m = re.match(r"^WorkerRest-(v?\d+\.\d+\.\d+)$", name)
+            if not m:
+                continue
+            p = os.path.join(rel, name, "WorkerRest-portable")
+            if not os.path.isdir(p):
                 continue
             key = tuple(int(x) for x in m.group(1).lstrip("v").split("."))
             if best is None or key > best[0]:
                 best = (key, p)
-    return best[1] if best else os.path.join(rel, "WorkerRest-0.9.0-portable")
+    if best:
+        return best[1]
+    return os.path.join(rel, "WorkerRest-v0.9.0", "WorkerRest-portable")
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -170,6 +191,46 @@ def main():
             check("installId" in data and data.get("installId"), "首次运行的 installId 已写入落点配置", "")
         except Exception as e:  # noqa: BLE001
             check(False, "落点配置可解析", repr(e))
+
+    # 3b. 出厂默认更新源：预置配置的 sites 必须与同版本 version.json 的 sites 一致。
+    #     version.json 下发的 sites 会整体覆盖客户端本地 sites，两边不一致就会出现
+    #     「装完查 A、检查一次更新后又跳回 B」。
+    vj = os.path.join(os.path.dirname(src), "version.json")  # release/WorkerRest-<tag>/
+    cfg_sites = []
+    try:
+        with open(cfg_side, encoding="utf-8") as f:
+            cfg_sites = [str(x).strip() for x in (json.load(f).get("sites") or [])]
+    except Exception as e:  # noqa: BLE001
+        check(False, "预置配置能读出 sites", repr(e))
+    if os.path.isfile(vj):
+        try:
+            with open(vj, encoding="utf-8") as f:
+                vj_sites = [str(x).strip() for x in (json.load(f).get("sites") or [])]
+            check(cfg_sites == vj_sites,
+                  "预置配置的 sites == version.json 的 sites（发布更新源不漂移）",
+                  "%s vs %s" % (cfg_sites, vj_sites))
+        except Exception as e:  # noqa: BLE001
+            check(False, "version.json 可解析", repr(e))
+    else:
+        check(False, "同版本 version.json 在便携目录的上级目录里", vj)
+
+    # 3c. 「恢复默认设置」用的 exe 内嵌默认，必须与随包的预置配置一致。
+    #     不一致时，新装看到的是预置文件的值、点「恢复默认」跳回 exe 里的旧值，
+    #     界面上完全看不出来（--no-build 用上一轮 exe 时就会这样）。
+    #     比的是**原始**预置文件（src/ 下那份），不是 iso 里已被首跑改写的副本。
+    try:
+        embedded = json.loads(dump_embedded_defaults(exe).decode("utf-8"))
+        with open(os.path.join(src, "config", "settings.json"), encoding="utf-8") as f:
+            shipped = json.load(f)
+        same = embedded == shipped
+        diff = ""
+        if not same:
+            keys = sorted(set(embedded) | set(shipped))
+            diff = [k for k in keys if embedded.get(k) != shipped.get(k)][:6]
+        check(same, "exe 内嵌出厂默认 == 随包预置 config/settings.json",
+              "（一致）" if same else "不一致的顶层键：%s" % diff)
+    except Exception as e:  # noqa: BLE001
+        check(False, "能取出 exe 内嵌出厂默认并与预置配置比对", repr(e))
 
     # 4. 没往 APPDATA 写**配置**（隔离 APPDATA 里不该出现任何 settings.json）。
     #    注意：WebView2 会自己在 APPDATA 下建 <exe名>/EBWebView 浏览器缓存目录，

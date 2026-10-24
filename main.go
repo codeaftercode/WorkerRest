@@ -33,6 +33,18 @@ func main() {
 			if i+1 < len(os.Args) {
 				pendingUpdatePath = os.Args[i+1]
 			}
+		case "--dump-default-settings":
+			// 打包脚本用：把内嵌的出厂默认原样写到文件后立刻退出（不建窗口、不进单例）。
+			// 「恢复默认设置」用的就是内嵌这份，便携包里的 config/settings.json 必须与它
+			// 同源 —— 让 exe 自己吐出来核对，比「假设刚编译过」可靠（--no-build 拿旧 exe
+			// 时，包里是新值、恢复默认还是旧值，用户测不出来）。
+			if i+1 < len(os.Args) {
+				if err := os.WriteFile(os.Args[i+1], defaultSettingsJSON, 0o644); err != nil {
+					log.Printf("[defaults] 导出内嵌默认失败: %v", err)
+					os.Exit(1)
+				}
+				os.Exit(0)
+			}
 		}
 	}
 

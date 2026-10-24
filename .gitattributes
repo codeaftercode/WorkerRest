@@ -5,5 +5,6 @@
 *.go text eol=lf
 
 *.png binary
+*.webp binary
 *.ico binary
 *.wav binary

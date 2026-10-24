@@ -58,9 +58,11 @@ ISO = os.path.join(TEMP, "wr_probe_iso")
 # 内置督休专员的固定出场顺序（与 历史源码/supervisor.ts 的 BUILTIN_ROLE_META 同源）。
 # 画廊磁贴顺序与「顺序轮换」都按它来 —— 写成按目录名字典序就是回归。
 BUILTIN_ROLE_ORDER = ",".join((
-    "supervisor_default", "role_instructor", "role_executive", "role_mentor",
-    "role_doctor", "role_coach", "role_warden", "role_shopkeeper", "role_ai",
+    "supervisor_default", "role_mentor", "role_doctor",
+    "role_coach", "role_shopkeeper",
 ))
+# 期望的督休专员数：从内置清单现算（清单增减不用再改断言）
+EXPECTED_ROLE_COUNT = len(BUILTIN_ROLE_ORDER.split(","))
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -243,7 +245,8 @@ def main():
         check(stg.get("themeSet"), "设置页已应用主题（data-theme 已写入）", stg.get("themeSet"))
         check((stg.get("navCount") or 0) >= 6, "侧栏页签渲染出来（>=6 个）", stg.get("navCount"))
         check((stg.get("tabCount") or 0) >= 6, "各页签内容区都在 DOM 里", stg.get("tabCount"))
-        check((stg.get("supGallery") or 0) == 9, "督休专员画廊渲染出 9 个督休专员（ListRoles → DOM）",
+        check((stg.get("supGallery") or 0) == EXPECTED_ROLE_COUNT,
+              "督休专员画廊渲染出 %d 个督休专员（ListRoles → DOM）" % EXPECTED_ROLE_COUNT,
               stg.get("supGallery"))
         check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个「新建督休专员」磁贴",
               stg.get("supGalleryAdd"))
@@ -291,6 +294,54 @@ def main():
         check(same_num(stg.get("apWidthPct"), (cfg.get("appearance") or {}).get("widthPct")),
               "提醒窗口宽度百分比 == 配置 appearance.widthPct",
               "%s vs %s" % (stg.get("apWidthPct"), (cfg.get("appearance") or {}).get("widthPct")))
+        # 透明度滑条：步长必须 0.01（用户 2026-10-23 要求「每次最少可以调 0.01」），
+        # 范围仍是 0 ~ 0.5。默认值 0.05 属配置层口径，由 Go 侧用例覆盖。
+        check(stg.get("apOpacityStep") == "0.01",
+              "透明度滑条步长 = 0.01", stg.get("apOpacityStep"))
+        check(stg.get("apOpacityRange") == ["0", "0.5"],
+              "透明度滑条范围 = 0 ~ 0.5", stg.get("apOpacityRange"))
+        # 侧栏状态格（下次外卖 / 自定义提醒）：名称在左、时间在右，两段都必须单行 ——
+        # 名字长时由 fitStatusCells 缩字号，这里守住「不换行 / 不裁字 / 不挤出卡片」三条底线。
+        cells = stg.get("statusCells") or []
+        check(len(cells) >= 2, "侧栏状态格已渲染（状态 + 下次提醒）", "%d 个" % len(cells))
+        for c in cells:
+            cell_label = c.get("k") or ""
+            cell_detail = "kOver=%s vOver=%s cellOver=%s 宽=%s 字号=%s" % (
+                c.get("kOver"), c.get("vOver"), c.get("cellOver"), c.get("width"), c.get("kFs"))
+            check((c.get("kOver") or 0) <= 1 and (c.get("vOver") or 0) <= 1
+                  and (c.get("cellOver") or 0) <= 1,
+                  "侧栏状态格《%s》不裁字、不溢出卡片" % cell_label, cell_detail)
+            kfs = c.get("kFs") or 12
+            check((c.get("kH") or 0) <= kfs * 1.9,
+                  "侧栏状态格《%s》名称保持单行" % cell_label,
+                  "高=%s 字号=%s" % (c.get("kH"), kfs))
+        # 压力测试：注入 20 字名字后必须缩字号/中间省略，仍然不裁字、不溢出、不换行
+        ss = m.get("statusStress") or {}
+        if ss:
+            ss_detail = "显示=%s 字号=%s kOver=%s cellOver=%s title=%s" % (
+                ss.get("text"), ss.get("kFs"), ss.get("kOver"), ss.get("cellOver"),
+                (ss.get("title") or "")[:12])
+            check((ss.get("kOver") or 0) <= 1,
+                  "侧栏状态格·20 字名称不裁字（缩字号/省略生效）", ss_detail)
+            check((ss.get("cellOver") or 0) <= 0,
+                  "侧栏状态格·20 字名称不溢出卡片", ss_detail)
+            check((ss.get("kH") or 0) <= (ss.get("kFs") or 12) * 1.9,
+                  "侧栏状态格·20 字名称仍单行", ss_detail)
+        else:
+            check(False, "侧栏状态格压力采集到数据（statusStress）", "缺失")
+        # 暂停态文案：手动暂停 / 系统空闲 / 勿扰 / 应用占用一律显示「暂停休息」，
+        # 原因只挂在 title 上（用户 2026-10-24 要求去掉「（已暂停：…）」长尾巴）。
+        ps = m.get("pauseStatus") or {}
+        if ps:
+            pv = ps.get("v") or ""
+            check(pv == "暂停休息", "暂停时状态格显示「暂停休息」",
+                  "%s | title=%s" % (pv, ps.get("title")))
+            check("努力工作中" not in pv and "已暂停" not in pv,
+                  "暂停时状态格不再出现「努力工作中（已暂停：…）」", pv)
+        else:
+            check(False, "暂停态采集到数据（pauseStatus）", "缺失")
+        check(bool(m.get("pauseResumed")) and "暂停休息" not in (m.get("pauseResumed") or ""),
+              "恢复后状态格回到工作状态文案", m.get("pauseResumed"))
         check(same_num(stg.get("tkLead"), (cfg.get("takeout") or {}).get("leadSec")),
               "外卖提前通知秒数 == 配置 takeout.leadSec",
               "%s vs %s" % (stg.get("tkLead"), (cfg.get("takeout") or {}).get("leadSec")))
@@ -383,7 +434,9 @@ def main():
         # ---- 主窗口（调试控制台） ----
         idx = m.get("index") or {}
         check(idx.get("shim") == "go", "页面确认跑在 Go 后端上（window.__WR_SHIM=go）", idx.get("shim"))
-        check(idx.get("roles") == 9, "主窗口渲染出 9 个督休专员磁贴（ListRoles → DOM）", idx.get("roles"))
+        check(idx.get("roles") == EXPECTED_ROLE_COUNT,
+              "主窗口渲染出 %d 个督休专员磁贴（ListRoles → DOM）" % EXPECTED_ROLE_COUNT,
+              idx.get("roles"))
         check(idx.get("rolesLoaded") == idx.get("roles") and idx.get("roles"),
               "全部督休专员预览图以 data URL 成功装载", "%s/%s" % (idx.get("rolesLoaded"), idx.get("roles")))
         check((idx.get("optCount") or 0) == (idx.get("roles") or 0) + 1, "督休专员下拉选项 = 督休专员数 + 1 个默认项", idx.get("optCount"))
@@ -401,7 +454,8 @@ def main():
             check(b.get("shim") == "go", "%s提醒窗口：shim 生效" % label, b.get("shim"))
             check(b.get("hasSupervisor") is True, "%s提醒窗口：进入 has-supervisor 版式" % label, b.get("hasSupervisor"))
             check(b.get("figureHidden") is False, "%s提醒窗口：立绘已显示" % label, b.get("figureHidden"))
-            check(str(b.get("figureSrcPrefix", "")).startswith("data:image/png;base64,"),
+            figprefix = str(b.get("figureSrcPrefix", ""))
+            check(figprefix.startswith("data:image/") and ";base64," in figprefix,
                   "%s提醒窗口：立绘来自 Go 的 data URL" % label, b.get("figureSrcPrefix"))
             nat = str(b.get("figureNatural") or "0x0")
             try:

@@ -2,8 +2,8 @@
   "key": "role_shopkeeper",
   "name": "古风掌柜",
   "enabled": true,
-  "image": "figure.png",
-  "preview": "preview.png",
+  "image": "figure.webp",
+  "preview": "preview.webp",
   "geom": {
     "sizePct": 72,
     "posXPct": 4,

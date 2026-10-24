@@ -43,21 +43,43 @@ python scripts/make_portable.py
 python scripts/verify_portable.py
 ```
 
-产出（`release/`）：
+产出（`release/WorkerRest-<tag>/`，tag 形如 `v0.9.1`）：
 
 | 文件 | 用途 |
 |---|---|
-| `WorkerRest-<版本>-portable.zip` | 便携目录 zip（约 26 MB，含 22 MB 督休专员立绘），解压即用 |
-| `WorkerRest-<版本>-portable/` | 同名散装目录 |
+| `WorkerRest-portable.zip` | 便携目录 zip（含约 1 MB 督休专员立绘），解压即用 |
+| `WorkerRest-portable/` | 同名散装目录 |
 | `rest.zip` | 只含 `rest.exe` 的自动更新包（最大压缩，软件下载的就是它） |
 | `version.json` | 自动更新清单（version / date / url / sites / changes） |
+
+同一版本的四种产物都落在 `release/WorkerRest-<tag>/` 里；目录名与压缩包名**不带版本号**，
+版本只体现在父目录名与 `version.json` 里。
 
 - **版本号只认 git tag**（`v主.次.修订`，如 `v0.9.0`）：打包要求**当前提交上有 tag**，
   没 tag 直接停止并提示先打 tag（同时显示最近一次 tag）。`app.go` 的 `appVersion`
   只是 `dev` 占位符，真实版本由 `-ldflags "-X main.appVersion=<tag 去掉 v>"` 注入。
 - `python scripts/version.py` 显示最近一次 tag 的版本号（`--bare` 去掉 `v`）。
+- **出厂默认只有一份源文件** `default_settings.json`：`//go:embed` 进 exe 的是它（「恢复默认
+  设置」用的就是这份），便携包的 `config/settings.json` 也是它（新装首跑读这份）。两份必须
+  一致，否则「首装看到的值」与「点恢复默认后的值」会不同。打包时 `make_portable.py` 先让
+  exe 用 `--dump-default-settings <文件>` 把内嵌那份吐出来、与仓库文件逐项比对，不一致直接
+  停止（`--no-build` 用上一轮 exe 时最容易踩），再用导出的内容写进便携包；发布后
+  `verify_portable.py` 用包里的 exe 再复核一次。单测 `TestEmbeddedDefaultMatchesFile`
+  另钉住「编译时快照 == 工作区文件」。
+- **默认检查更新地址 = `https://www.goodgoodlive.com/worker-rest/version.json`**，同时是
+  **出厂兜底源**：写在 `default_settings.json` 的 `sites` 里（便携包的 `config/settings.json`
+  是它的副本），`update.go` 里还有一份 `defaultUpdateSite` 常量，永远排在候选链**最后**。
+  因此配置被改坏、或被远程换成别的源，软件都还留有一条官方更新通道；配置里一条源都没有时
+  也照样能查。
+- `version.json` 的两个地址字段口径不同：`url` 是**下载**地址数组（按顺序容错，第一项失败
+  取下一项），`sites` 是**检查更新**地址数组（远程下发会整体覆盖客户端本地 `sites`）。
+  **其他地址（含 `nav.hcctc.cn`）都是可选项**：发布清单里给了就用、没给就不用，程序不针对
+  任何具体域名做特殊处理。`scripts/make_portable.py` 里的 `UPDATE_SITES` 必须与
+  `default_settings.json` 的 `sites` 逐字一致——打包前会校验，不一致直接停止；发布后
+  `verify_portable.py` 还会核对便携包的 `sites` 与同版本 `version.json` 的 `sites` 相同。
 - `version.json` 的 `changes` 取「上一个 tag → 当前 tag」的提交标题，按时间顺序自动编号；
-  首个 tag 没有上一个 tag，`changes` 为空。
+  首个 tag 没有上一个 tag，`changes` 为空。这是机械摘要，脚本跑完最后会提示**手动改写
+  `release/WorkerRest-<tag>/version.json` 的 `changes`**，改成面向用户的发布说明。
 - 解压即用，无需安装。**不做 NSIS 安装器**——单二进制天然绿色，便携目录 zip 即交付形态。
 - 便携运行的数据（配置 / 统计 / 用户音频）落在 exe 旁的 `config/` 与 `data/`，跟着程序走；
   直接删掉整个目录就是完全卸载。
@@ -66,7 +88,7 @@ python scripts/verify_portable.py
 
 ```powershell
 go test ./...                  # 单元测试：契约 / shim 一致性 / 归一化 / 状态机 / 系统能力 / 提示音 / 统计 / 督休专员迁移 / 外卖 / 更新 / 睡眠检测
-python scripts/smoke_server.py   # 绑定层无头冒烟：166 项断言
+python scripts/smoke_server.py   # 绑定层无头冒烟：169 项断言
 python scripts/probe_renderer.py # 渲染层探针：120 项断言 + 12 张截图（需先 npm install）
 python scripts/probe_gui_boot.py # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
 ```
@@ -81,7 +103,7 @@ python scripts/probe_gui_boot.py # GUI 启动探针：16 项断言（系统能�
   *.go                    后端源码（App 窗口/会话 + 调度器/计划 + 统计 + 系统能力 + 各窗口）
   main.go                 入口：注册服务 + 主窗口（= 设置窗口）
   contract.go             前端绑定「契约表」：wiredCalls 列表 + 启动自检
-  supervisors/            内置督休专员模板（22MB 立绘，随包分发；子目录用专员名称命名，key 存于 role.json）
+  supervisors/            内置督休专员模板（5 个专员，立绘均为 webp，约 1 MB，随包分发；子目录用专员名称命名，key 存于 role.json）
   sounds/                 内置提示音源文件（四个 wav，打包时预置进便携包）
   manual/操作手册.html     随包操作手册（自包含 HTML）
   frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）

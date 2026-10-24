@@ -2,8 +2,8 @@
   "key": "role_doctor",
   "name": "值班医生",
   "enabled": true,
-  "image": "figure.png",
-  "preview": "preview.png",
+  "image": "figure.webp",
+  "preview": "preview.webp",
   "geom": {
     "sizePct": 72,
     "posXPct": 4,

@@ -99,7 +99,7 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 			cfg = RoleFile{
 				Name:     roleFallbackName(e.Key),
 				Enabled:  true,
-				Image:    "figure.png",
+				Image:    defaultFigureName,
 				Geom:     supGeomDefault,
 				Messages: RoleMessages{Order: "fixed", Items: []RoleMessageItem{}},
 			}

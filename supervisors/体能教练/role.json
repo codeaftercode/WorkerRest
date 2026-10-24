@@ -2,8 +2,8 @@
   "key": "role_coach",
   "name": "体能教练",
   "enabled": true,
-  "image": "figure.png",
-  "preview": "preview.png",
+  "image": "figure.webp",
+  "preview": "preview.webp",
   "geom": {
     "sizePct": 72,
     "posXPct": 4,

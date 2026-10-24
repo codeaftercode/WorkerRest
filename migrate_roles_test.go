@@ -11,11 +11,11 @@ import (
 // 分工同 settings_test.go：这里拦「规则写错」，与 上一版的逐字段对拍交给
 // verify_settings_parity.py（或将来新增的 verify_roles_parity）。
 
-// seedBuiltinRoles 在 rolesRoot 下铺一份最小模板：只放 role_coach 与 role_ai 两个
+// seedBuiltinRoles 在 rolesRoot 下铺一份最小模板：只放 role_coach 与 role_shopkeeper 两个
 // 内置督休专员（各带一份可解析的 role.json），模拟「模板目录已就位」。
 func seedBuiltinRoles(t *testing.T, root string) {
 	t.Helper()
-	for _, key := range []string{"role_coach", "role_ai"} {
+	for _, key := range []string{"role_coach", "role_shopkeeper"} {
 		dir := filepath.Join(root, key)
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			t.Fatal(err)
@@ -69,7 +69,7 @@ func TestMigrateLegacyRolesFreshInstall(t *testing.T) {
 		t.Fatal("应置 rolesMigrated=true")
 	}
 	// 内置目录没被删（短路保护：不能把「旧配置没这督休专员」误判成「用户删过」）
-	for _, key := range []string{"role_coach", "role_ai"} {
+	for _, key := range []string{"role_coach", "role_shopkeeper"} {
 		dir, ok := resolveRoleDir(root, key)
 		if !ok || !isRegularFile(filepath.Join(dir, "role.json")) {
 			t.Fatalf("全新安装不该删内置目录 %s", key)
@@ -105,7 +105,7 @@ func TestMigrateLegacyRolesBuiltinOverride(t *testing.T) {
 		"supervisor": map[string]any{
 			"roles": []any{
 				map[string]any{"key": "role_coach.png", "name": "  魔鬼教练改名 ", "enabled": false},
-				map[string]any{"key": "role_ai", "name": "赛博改", "enabled": true},
+				map[string]any{"key": "role_shopkeeper", "name": "古风改", "enabled": true},
 			},
 			"geom": map[string]any{
 				"role_coach": map[string]any{"sizePct": 55.0, "posXPct": 10.0, "posYPct": 5.0},
@@ -141,10 +141,10 @@ func TestMigrateLegacyRolesBuiltinOverride(t *testing.T) {
 	if len(items) != 1 || items[0].(map[string]any)["text"] != "站起来！" {
 		t.Fatalf("台词应覆盖: %v", items)
 	}
-	// role_ai 的名字也覆盖了
-	ai := readRoleJSON(t, root, "role_ai")
-	if ai["name"] != "赛博改" {
-		t.Fatalf("role_ai 名字应覆盖: %q", ai["name"])
+	// role_shopkeeper 的名字也覆盖了
+	shop := readRoleJSON(t, root, "role_shopkeeper")
+	if shop["name"] != "古风改" {
+		t.Fatalf("role_shopkeeper 名字应覆盖: %q", shop["name"])
 	}
 }
 
@@ -154,7 +154,7 @@ func TestMigrateLegacyRolesBuiltinDeleted(t *testing.T) {
 	seedBuiltinRoles(t, root)
 	raw := map[string]any{
 		"supervisor": map[string]any{
-			// 只有 role_coach，没有 role_ai → role_ai 目录应被删
+			// 只有 role_coach，没有 role_shopkeeper → role_shopkeeper 目录应被删
 			"roles": []any{
 				map[string]any{"key": "role_coach.png", "name": "体能教练", "enabled": true},
 			},
@@ -163,8 +163,8 @@ func TestMigrateLegacyRolesBuiltinDeleted(t *testing.T) {
 	if !migrateLegacyRoles(raw, root) {
 		t.Fatal("应发生迁移")
 	}
-	if _, ok := resolveRoleDir(root, "role_ai"); ok {
-		t.Fatal("role_ai 在旧配置中不存在，目录应被删除")
+	if _, ok := resolveRoleDir(root, "role_shopkeeper"); ok {
+		t.Fatal("role_shopkeeper 在旧配置中不存在，目录应被删除")
 	}
 	if dir, ok := resolveRoleDir(root, "role_coach"); !ok || !isRegularFile(filepath.Join(dir, "role.json")) {
 		t.Fatal("role_coach 目录应保留")
@@ -243,7 +243,7 @@ func TestMigrateLegacyRolesFixedKeyInvalid(t *testing.T) {
 		"supervisor": map[string]any{
 			"roles": []any{
 				map[string]any{"key": "role_coach.png", "name": "体能教练", "enabled": true},
-				map[string]any{"key": "role_ai", "name": "赛博监考官", "enabled": true},
+				map[string]any{"key": "role_shopkeeper", "name": "古风掌柜", "enabled": true},
 			},
 			// 指向一个迁移后不存在的督休专员
 			"fixedKey": "role_mentor",

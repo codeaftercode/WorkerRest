@@ -5,13 +5,17 @@
 把构建好的发布版 exe 与随包资源组装成对外发布的便携目录、打成 zip，并生成
 自动更新用的单文件包与版本清单：
 
-    release/WorkerRest-<版本>-portable.zip   便携目录 zip（解压即用）
-    release/WorkerRest-<版本>-portable/      同名散装目录
-    release/rest.zip                         只含 rest.exe 的自动更新包（最大压缩）
-    release/version.json                     自动更新清单
+    release/WorkerRest-<tag>/                本次发布的交付目录（tag 形如 v0.9.1）
+        WorkerRest-portable/                   便携散装目录（解压即用，不带版本号）
+        WorkerRest-portable.zip                便携目录 zip（不带版本号）
+        rest.zip                               只含 rest.exe 的自动更新包（最大压缩）
+        version.json                           自动更新清单
+
+所有产物先落在 release/WorkerRest-<tag>/ 里再交付：同一版本的东西不会和别的版本
+混在一起，目录名 / 压缩包名本身不带版本号（版本只在父目录名与 version.json 里）。
 
 组装结构：
-  - rest.exe + supervisors/（22 MB 内置督休专员模板，子目录按专员名称命名）；
+  - rest.exe + supervisors/（约 1 MB 内置督休专员模板，立绘已转 webp，子目录按专员名称命名）；
   - 预置三件套（运行数据随包分发，首跑直接在预置文件上继续写）：
       sounds/               四个内置提示音（源文件在模块根 sounds/，不再 embed 进二进制）
       config/settings.json  出厂默认配置（与 go:embed 的 default_settings.json 同一
@@ -30,7 +34,7 @@ version.json 的 changes：上一个 tag 到当前 tag 之间的提交标题，�
 
 用法：python scripts/make_portable.py [--no-build] [--out DIR]
   --no-build   跳过 go build，直接用 build/bin/rest.exe 组装（已构建过时用）
-  --out DIR    交付目录（默认 release/；被锁时可指向别处，脚本会拷回）
+  --out DIR    交付根目录（默认 release/；产物落在其下 WorkerRest-<tag>/ 里）
 
 退出码 0 = 打包成功且便携 zip / 更新包 zip / version.json 全部校验通过；
        2 = 当前提交没有版本 tag（未开始构建）；
@@ -72,12 +76,25 @@ EMPTY_STATS_JSON = '{\n  "_customNames": {}\n}\n'
 # 交付目录默认 release/（项目内；被 IDE/杀软锁住时用 --out 重定向）
 DEFAULT_OUT = os.path.join(ROOT, "release")
 
-# 自动更新清单里的更新源：url 是目录数组（update.go 补全规则：不以 .zip 结尾就拼
-# /rest.zip），sites 由同一批目录派生（各自 + version.json）。改服务器地址只改这里。
+# 自动更新清单里的更新源，两个字段口径不同：
+#   - url   更新包**下载**目录数组（update.go 补全规则：不以 .zip 结尾就拼 /rest.zip），
+#           按顺序容错，第一项失败取下一项。
+#   - sites **检查更新**地址数组（各指向一份 version.json）。客户端启动时先查本地
+#           config/settings.json 的 sites，一旦远程 version.json 下发了非空 sites 就整体
+#           覆盖本地。所以这里必须与 default_settings.json 的 sites 逐字一致，否则会出现
+#           「装完查 A，检查一次更新后又跳回 B」。
+# 官方地址只有 goodgoodlive 一个（软件里也把它当兜底源）。要加镜像就在这儿往数组里追加，
+# 或者发布后直接改 version.json 的 url —— 程序按顺序容错，不针对任何具体域名做特殊处理。
 UPDATE_BASE_URLS = [
-    "https://nav.hcctc.cn/temp/",
     "https://www.goodgoodlive.com/worker-rest/",
 ]
+UPDATE_SITES = [
+    "https://www.goodgoodlive.com/worker-rest/version.json",
+]
+
+# 便携散装目录 / 便携 zip 的名字：固定不带版本号（版本只体现在父目录名里）
+PORTABLE_DIR_NAME = "WorkerRest-portable"
+PORTABLE_ZIP_NAME = "WorkerRest-portable.zip"
 
 # 自动更新包文件名：必须与 update.go 的 packageName 一致（url 数组项按它补全）
 UPDATE_PACKAGE_NAME = "rest.zip"
@@ -141,7 +158,15 @@ def assemble(dest: str, version: str) -> bool:
     # Go 侧 ensureInstallID 补生成并回写）。
     shutil.copytree(SOUNDS_SRC, os.path.join(dest, "sounds"))
     os.makedirs(os.path.join(dest, "config"), exist_ok=True)
-    shutil.copy2(DEFAULT_SETTINGS_SRC, os.path.join(dest, "config", "settings.json"))
+    # 预置配置写「exe 内嵌的那份」而不是直接拷仓库文件：点「恢复默认设置」拿到的就是内嵌
+    # 那份，字节同源才不会有「首装看到 A、恢复默认回 B」这种界面上看不出来的错位。
+    try:
+        cfg_bytes = dump_embedded_defaults(os.path.join(dest, EXE_NAME))
+    except RuntimeError as e:  # noqa: BLE001
+        print(f"[make-portable] FAIL: {e}")
+        return False
+    with open(os.path.join(dest, "config", "settings.json"), "wb") as f:
+        f.write(cfg_bytes)
     os.makedirs(os.path.join(dest, "data"), exist_ok=True)
     with open(os.path.join(dest, "data", "stats.json"), "w", encoding="utf-8", newline="\n") as f:
         f.write(EMPTY_STATS_JSON)
@@ -149,7 +174,7 @@ def assemble(dest: str, version: str) -> bool:
 
 
 def zip_dir(zip_path: str, src_dir: str) -> bool:
-    """打 zip（含顶层目录：解压得到 WorkerRest-<版本>-portable/）。
+    """打 zip（含顶层目录：解压得到 WorkerRest-portable/，目录名不带版本号）。
 
     arcname 必须显式用正斜杠拼：解压工具对 zip 条目分隔符的口径不一，
     反斜杠条目会被当成文件名的一部分，解压后文件散落一地。
@@ -179,7 +204,12 @@ def verify_zip(zip_path: str, top: str) -> bool:
     has_exe = f"{top}/{EXE_NAME}" in names
     has_roles = any(n.startswith(f"{top}/supervisors/") for n in names)
     has_role_json = any(n.endswith("/role.json") for n in names)
-    n_roles = sum(1 for n in names if n.startswith(f"{top}/supervisors/") and n.endswith(".png"))
+    # 立绘可能是 png 也可能是 webp（2026-10 起随包统一 webp），两种都算
+    n_roles = sum(
+        1 for n in names
+        if n.startswith(f"{top}/supervisors/")
+        and n.lower().endswith((".png", ".webp", ".jpg", ".jpeg", ".gif"))
+    )
     # 预置三件套：四个内置提示音 + 出厂默认配置 + 空统计表
     n_sounds = sum(1 for n in names if n.startswith(f"{top}/sounds/") and n.endswith(".wav"))
     has_cfg = f"{top}/config/settings.json" in names
@@ -193,7 +223,7 @@ def verify_zip(zip_path: str, top: str) -> bool:
     )
     print(
         f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} supervisors={has_roles}"
-        f" role_json={has_role_json} png={n_roles} sounds={n_sounds} cfg={has_cfg}"
+        f" role_json={has_role_json} img={n_roles} sounds={n_sounds} cfg={has_cfg}"
         f" stats={has_stats} escaped={len(escaped)} crc={test is None}"
     )
     if escaped:
@@ -278,7 +308,7 @@ def write_version_json(dest: str, tag: str, changes, date_text: str = "") -> boo
         "version": tag,
         "date": date_text or datetime.now().strftime("%Y.%m.%d"),
         "url": list(UPDATE_BASE_URLS),
-        "sites": [u + "version.json" for u in UPDATE_BASE_URLS],
+        "sites": list(UPDATE_SITES),
         "changes": list(changes),
     }
     try:
@@ -317,13 +347,117 @@ def find_role_json(root: str, key: str):
     return None
 
 
+def check_default_sites() -> str:
+    """出厂默认配置的 sites 必须与 UPDATE_SITES 逐字一致，返回空串表示通过。
+
+    便携包里的 config/settings.json 就是 default_settings.json 的副本，而 version.json
+    下发的 sites 会整体覆盖客户端本地 sites —— 两边不一致就会出现「装完查 A、检查一次
+    更新后又跳回 B」。发布前在这里挡住，比发出去再发现便宜。
+    """
+    try:
+        with open(DEFAULT_SETTINGS_SRC, encoding="utf-8") as f:
+            doc = json.load(f)
+    except (OSError, ValueError) as e:
+        return f"读 default_settings.json 失败：{e}"
+    got = doc.get("sites")
+    if not isinstance(got, list):
+        return f"default_settings.json 的 sites 不是数组：{got!r}"
+    if [str(x).strip() for x in got] != list(UPDATE_SITES):
+        return (f"default_settings.json 的 sites 与 UPDATE_SITES 不一致：\n"
+                f"    default_settings.json = {got}\n"
+                f"    UPDATE_SITES         = {list(UPDATE_SITES)}")
+    return ""
+
+
+# ---- 「恢复默认设置」的内嵌默认 vs 随包预置配置 ----
+# 两条路径吃的是两份可能不同的东西：exe 内嵌的 default_settings.json（go:embed，恢复默认
+# 的数据源）与便携包里的 config/settings.json（新装首跑读它，由本脚本从仓库根复制）。
+# 正常流程（每次 go build 后再组装）两者天然同源，但 `--no-build` 用上一轮 exe 时就会分叉：
+# 包里是新值、点「恢复默认」回旧值，界面上完全看不出来。所以组装前必须让 exe 自己吐出来核对。
+_DUMP_CACHE = {}
+
+
+def dump_embedded_defaults(exe: str) -> bytes:
+    """让 exe 把内嵌的出厂默认原样写到临时文件并读回（`--dump-default-settings <out>`）。
+
+    失败抛 RuntimeError。最常见原因是 exe 是旧构建（还不认识这个参数，会当普通参数直接
+    启动 GUI 挂着），因此带超时 + 「文件是否真的写到」两重判断。"""
+    if exe in _DUMP_CACHE:
+        return _DUMP_CACHE[exe]
+    out = os.path.join(TEMP, "wr-embedded-default.json")
+    if os.path.exists(out):
+        os.remove(out)
+    try:
+        subprocess.run(
+            [exe, "--dump-default-settings", out],
+            cwd=os.path.dirname(exe), timeout=30,
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError("exe 对 --dump-default-settings 无响应（很可能是没重新构建的旧版本）")
+    except OSError as e:  # noqa: BLE001
+        raise RuntimeError(f"无法执行 {exe}：{e}")
+    if not os.path.exists(out):
+        raise RuntimeError("exe 没有导出内嵌默认（旧版本不支持该参数？先重新构建 exe）")
+    with open(out, "rb") as f:
+        data = f.read()
+    _DUMP_CACHE[exe] = data
+    return data
+
+
+def _flatten(v, prefix=""):
+    """把嵌套 JSON 摊成 {键路径: 值}，用于打印「到底哪一项不一致」。"""
+    if isinstance(v, dict):
+        out = {}
+        for k, vv in v.items():
+            out.update(_flatten(vv, f"{prefix}.{k}" if prefix else str(k)))
+        return out
+    return {prefix: v}
+
+
+def diff_defaults(a, b, limit: int = 8) -> str:
+    fa, fb = _flatten(a), _flatten(b)
+    lines = []
+    for k in sorted(set(fa) | set(fb)):
+        va, vb = fa.get(k, "<缺>"), fb.get(k, "<缺>")
+        if va != vb:
+            lines.append(f"    {k}: exe内嵌={va!r}  文件={vb!r}")
+            if len(lines) >= limit:
+                lines.append("    …（只列前 %d 处）" % limit)
+                break
+    return "\n".join(lines)
+
+
+def check_embedded_defaults(exe: str) -> str:
+    """exe 内嵌的出厂默认必须与仓库根 default_settings.json 语义一致，返回空串表示通过。"""
+    try:
+        mine = json.loads(dump_embedded_defaults(exe).decode("utf-8"))
+    except (RuntimeError, ValueError, UnicodeDecodeError) as e:  # noqa: BLE001
+        return f"取 exe 内嵌默认失败：{e}"
+    try:
+        with open(DEFAULT_SETTINGS_SRC, encoding="utf-8") as f:
+            disk = json.load(f)
+    except (OSError, ValueError) as e:  # noqa: BLE001
+        return f"读 default_settings.json 失败：{e}"
+    if mine != disk:
+        return ("exe 内嵌的出厂默认与 default_settings.json 不一致（exe 是旧构建？"
+                "--no-build 最容易踩这个）：\n" + diff_defaults(mine, disk))
+    return ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Go 版便携目录打包")
     ap.add_argument("--no-build", action="store_true", help="跳过 go build，直接用已有 exe")
-    ap.add_argument("--out", default="", help="交付目录（默认 release/）")
+    ap.add_argument("--out", default="", help="交付根目录（默认 release/，其下再建 WorkerRest-<tag>/）")
     args = ap.parse_args()
 
     out_dir = os.path.abspath(args.out) if args.out else DEFAULT_OUT
+
+    # 出厂默认更新源必须与发布清单的 sites 一致，不一致直接停（别产出会「跳源」的包）
+    why = check_default_sites()
+    if why:
+        print("[make-portable] FAIL: " + why)
+        return 1
 
     # 0. 版本号只认 tag：当前提交没打 tag 就停下，别产出「没版本号」的包
     tag = gitver.tag_at_head()
@@ -354,9 +488,17 @@ def main() -> int:
         print(f"[make-portable] FAIL: 找不到 {EXE_SRC}（先构建，或用 --no-build 前先 go build）")
         return 1
 
+    # 1b. exe 里「恢复默认设置」用的内嵌默认，必须与要进包的 default_settings.json 一致。
+    #     不构建（--no-build）拿上一轮 exe 时最容易在这里翻车，所以卡在组装之前。
+    why = check_embedded_defaults(EXE_SRC)
+    if why:
+        print("[make-portable] FAIL: " + why)
+        return 1
+    print("[make-portable] 内嵌出厂默认 == default_settings.json")
+
     # 2. 组装（在系统临时目录做，避免 release/ 历史产物被锁）
     stage_parent = os.path.join(TEMP, "wr-portable-build")
-    dest = os.path.join(stage_parent, f"WorkerRest-{version}-portable")
+    dest = os.path.join(stage_parent, PORTABLE_DIR_NAME)
     assemble(dest, version)
 
     # 3. 结构核验
@@ -375,20 +517,22 @@ def main() -> int:
         print(f"[make-portable] {name}: {'ok' if has else 'MISSING'}（{p}）")
 
     # 4. 打 zip + 校验
-    zip_path = os.path.join(stage_parent, f"WorkerRest-{version}-portable.zip")
+    zip_path = os.path.join(stage_parent, PORTABLE_ZIP_NAME)
     if ok and zip_dir(zip_path, dest):
-        ok = ok and verify_zip(zip_path, f"WorkerRest-{version}-portable")
+        ok = ok and verify_zip(zip_path, PORTABLE_DIR_NAME)
 
-    # 5. 交付：拷回项目 release/（含 zip 与散装目录）
-    os.makedirs(out_dir, exist_ok=True)
-    final_zip = os.path.join(out_dir, f"WorkerRest-{version}-portable.zip")
+    # 5. 交付：本次版本一个子目录 release/WorkerRest-<tag>/，四种产物都放进去
+    release_dir = os.path.join(out_dir, f"WorkerRest-{tag}")
+    final_zip = os.path.join(release_dir, PORTABLE_ZIP_NAME)
     if ok:
+        os.makedirs(release_dir, exist_ok=True)
         shutil.copy2(zip_path, final_zip)
         # 散装目录也拷回（用户可直接解压/拷贝使用，不依赖 zip）
-        final_dir = os.path.join(out_dir, f"WorkerRest-{version}-portable")
+        final_dir = os.path.join(release_dir, PORTABLE_DIR_NAME)
         if os.path.exists(final_dir):
             shutil.rmtree(final_dir, ignore_errors=True)
         shutil.copytree(dest, final_dir)
+        print(f"[make-portable] 交付根: {release_dir}")
         print(f"[make-portable] 交付 zip: {final_zip} ({os.path.getsize(final_zip)} bytes)")
         print(f"[make-portable] 交付目录: {final_dir}")
 
@@ -397,7 +541,7 @@ def main() -> int:
         stage_pkg = os.path.join(stage_parent, UPDATE_PACKAGE_NAME)
         made, why = make_update_zip(EXE_SRC, stage_pkg)
         if made:
-            final_pkg = os.path.join(out_dir, UPDATE_PACKAGE_NAME)
+            final_pkg = os.path.join(release_dir, UPDATE_PACKAGE_NAME)
             shutil.copy2(stage_pkg, final_pkg)
             print(f"[make-portable] 更新包: {final_pkg} ({os.path.getsize(final_pkg)} bytes)")
         else:
@@ -405,10 +549,12 @@ def main() -> int:
             print(f"[make-portable] FAIL: {why}")
 
     # 7. 自动更新清单 version.json（changes = 上一个 tag 到当前 tag 的提交标题）
+    version_json = ""
     if ok:
         changes = [f"{i}. {c}" for i, c in enumerate(gitver.commits_between(prev, tag), 1)]
-        vj = os.path.join(out_dir, "version.json")
+        vj = os.path.join(release_dir, "version.json")
         if write_version_json(vj, tag, changes):
+            version_json = vj
             print(f"[make-portable] 版本清单: {vj}")
             for c in changes:
                 print(f"    {c}")
@@ -418,6 +564,16 @@ def main() -> int:
     # 清掉临时组装目录
     shutil.rmtree(stage_parent, ignore_errors=True)
     print(f"[make-portable] {'DONE' if ok else 'FAILED'}")
+
+    # 收尾提醒：changes 是提交标题的机械摘要，发布前通常要人工改写
+    if ok and version_json:
+        print("[make-portable] " + "-" * 60)
+        print("[make-portable] 下一步：修改 version.json 里的 changes")
+        print("[make-portable]   上面列出的条目是「上一个 tag..当前 tag」的提交标题，")
+        print("[make-portable]   面向用户发布前请手动改写成可读的变更说明，例如")
+        print("[make-portable]     \"changes\": [\"1. 修复了一些已知问题\"]")
+        print(f"[make-portable]   待编辑文件：{version_json}")
+        print("[make-portable] " + "-" * 60)
     return 0 if ok else 1
 
 
