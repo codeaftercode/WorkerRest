@@ -18,6 +18,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -261,8 +262,16 @@ def main():
               "items=%s empty=%s" % (stg.get("supMsgItems"), stg.get("supMsgEmpty")))
         check(stg.get("supMsgRole") == want_role, "台词面板标题 == 当前督休专员名",
               "%s vs %s" % (stg.get("supMsgRole"), want_role))
-        check("Wails" in str(stg.get("dVersion") or ""), "版本卡显示 Go 引擎（不再含旧版标识）",
-              stg.get("dVersion"))
+        # 关于页「软件信息」卡 2026-10 改版：当前版本 / 构建时间 / 运行环境三行。
+        # 版本值由 -ldflags 注入（源码里是 dev 占位），所以只断言「形如 v1.2.3 或 dev」，
+        # 不钉具体版本号 —— 否则每次发版都要改探针。
+        ver = str(stg.get("dVersion") or "").strip()
+        check(bool(re.match(r"^(v\d+\.\d+\.\d+|dev)$", ver)),
+              "关于页显示当前版本（v<主>.<次>.<修订> 或 dev）", ver)
+        check(bool(str(stg.get("dBuildTime") or "").strip()), "关于页显示构建时间",
+              stg.get("dBuildTime"))
+        check("Go" in str(stg.get("dRuntime") or ""), "关于页运行环境显示 Go 引擎",
+              stg.get("dRuntime"))
 
         # 关键值 vs 配置文件（类型对齐：输入框是字符串，配置里可能是数字）
         def same_num(got, want):
@@ -443,9 +452,18 @@ def main():
         check(idx.get("rolesLoaded") == idx.get("roles") and idx.get("roles"),
               "全部督休专员预览图以 data URL 成功装载", "%s/%s" % (idx.get("rolesLoaded"), idx.get("roles")))
         check((idx.get("optCount") or 0) == (idx.get("roles") or 0) + 1, "督休专员下拉选项 = 督休专员数 + 1 个默认项", idx.get("optCount"))
-        envtxt = " ".join(idx.get("env") or [])
-        check("go+wails3" in envtxt, "环境卡片显示引擎 go+wails3", (idx.get("env") or [])[:2])
-        check("roles" in envtxt or "督休专员" in envtxt, "环境卡片显示督休专员目录", envtxt[:80])
+        # 环境卡片是 dt（标签）/dd（值）成对出现：把「标签 → 值」折成 dict 再核对，
+        # 比在一大串文本里找关键字靠谱（旧写法只收 dd，标签永远匹配不上）
+        envpairs = idx.get("env") or []
+        envmap = {}
+        for k, v in zip(envpairs[0::2], envpairs[1::2]):
+            envmap[str(k).strip()] = str(v).strip()
+        check(envmap.get("引擎") == "go+wails3", "环境卡片：引擎 = go+wails3", envmap.get("引擎"))
+        check(envmap.get("督休专员数") == str(EXPECTED_ROLE_COUNT),
+              "环境卡片：督休专员数 = %d" % EXPECTED_ROLE_COUNT, envmap.get("督休专员数"))
+        check(bool(envmap.get("督休专员目录")), "环境卡片：显示督休专员目录路径",
+              envmap.get("督休专员目录"))
+        check(bool(envmap.get("配置文件")), "环境卡片：显示配置文件落点", envmap.get("配置文件"))
 
         # ---- 会话 ----
         sid = m.get("sessionId") or ""

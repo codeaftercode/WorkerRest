@@ -85,7 +85,10 @@ const PROBE_SETTINGS = `(function () {
     title: document.title,
     tbTitle: txt('tb-title'),
     appName: val('appName'),
-    dVersion: txt('d-version'),
+    // 关于页「软件信息」卡：当前版本 / 构建时间 / 运行环境（2026-10 改版后的三个 id）
+    dVersion: txt('d-version-val'),
+    dBuildTime: txt('d-build-time'),
+    dRuntime: txt('d-runtime'),
     navCount: cnt('#nav .nav-item'),
     tabCount: cnt('#content .tab'),
     activeTabs: cnt('#content .tab.active'),
@@ -173,16 +176,18 @@ const PROBE_MAIN = `(function () {
   var imgs = document.querySelectorAll('#roles img');
   var loaded = 0;
   for (var i = 0; i < imgs.length; i++) if (imgs[i].src.indexOf('data:image') === 0) loaded++;
-  var dds = document.querySelectorAll('#env dd');
+  // 环境卡片：dt 是标签、dd 是值。两者都收 —— 断言要能同时核对「有哪些项」
+  // 和「值是什么」（只收 dd 时「督休专员目录」这个标签永远匹配不上）。
+  var envNodes = document.querySelectorAll('#env dt, #env dd');
   var env = [];
-  for (var j = 0; j < dds.length; j++) env.push(dds[j].textContent);
+  for (var j = 0; j < envNodes.length; j++) env.push(envNodes[j].textContent);
   return {
     shim: window.__WR_SHIM || null,
     hasByName: !!(window.go === undefined),
     roles: imgs.length,
     rolesLoaded: loaded,
     firstRoleName: imgs.length ? (imgs[0].alt || '') : '',
-    envRows: dds.length,
+    envRows: envNodes.length / 2,
     env: env,
     optCount: document.querySelectorAll('#rolePick option').length
   };
