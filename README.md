@@ -47,7 +47,7 @@ python scripts/verify_portable.py
 
 | 文件 | 用途 |
 |---|---|
-| `WorkerRest-portable.zip` | 便携目录 zip（含约 1 MB 督休专员立绘），解压即用 |
+| `WorkerRest-portable.zip` | 便携目录 zip（含约 4.5 MB 督休专员立绘），解压即用 |
 | `WorkerRest-portable/` | 同名散装目录 |
 | `rest.zip` | 只含 `rest.exe` 的自动更新包（最大压缩，软件下载的就是它） |
 | `version.json` | 自动更新清单（version / date / url / sites / changes） |
@@ -87,13 +87,18 @@ python scripts/verify_portable.py
 ## 测试与验证
 
 ```powershell
-go test ./...                  # 单元测试：契约 / shim 一致性 / 归一化 / 状态机 / 系统能力 / 提示音 / 统计 / 督休专员迁移 / 外卖 / 更新 / 睡眠检测
-python scripts/smoke_server.py   # 绑定层无头冒烟：169 项断言
-python scripts/probe_renderer.py # 渲染层探针：120 项断言 + 12 张截图（需先 npm install）
-python scripts/probe_gui_boot.py # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
+go test -tags server ./...         # 单元测试（220 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
+                                   # 系统能力 / 提示音 / 统计 / 督休专员迁移 / 外卖 / 更新 / 睡眠检测
+python scripts/smoke_server.py     # 绑定层无头冒烟：169 项断言
+python scripts/probe_renderer.py   # 渲染层探针：231 项断言 + 截图（需先 npm install）
+python scripts/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
+python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
+python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）
 ```
 
-- 三个脚本都能无头运行，报告写在 `%TEMP%`（`wr_go_smoke_report.txt` 等），退出码 0 = 全通过。
+- **单测必须带 `-tags server`**：不带时「提前提示窗」用例会因 `a.app == nil` panic（无头形态
+  没有原生窗口），这是既有约束，不是回归。
+- 上述脚本全部无头运行，报告写在 `%TEMP%`（`wr_go_smoke_report.txt` 等），退出码 0 = 全通过。
 - 冒烟 / 探针会**隔离配置**（拷真实配置进 `%TEMP%` + `WR_SETTINGS_PATH` 独占），绝不改动
   运行目录里的真实配置与统计。
 
@@ -103,7 +108,7 @@ python scripts/probe_gui_boot.py # GUI 启动探针：16 项断言（系统能�
   *.go                    后端源码（App 窗口/会话 + 调度器/计划 + 统计 + 系统能力 + 各窗口）
   main.go                 入口：注册服务 + 主窗口（= 设置窗口）
   contract.go             前端绑定「契约表」：wiredCalls 列表 + 启动自检
-  supervisors/            内置督休专员模板（5 个专员，立绘均为 webp，约 1 MB，随包分发；子目录用专员名称命名，key 存于 role.json）
+  supervisors/            内置督休专员模板（17 个专员，立绘均为 webp，约 4.5 MB，随包分发；子目录用专员名称命名，key 存于 role.json；无 role.json 的目录只作素材、不进包）
   sounds/                 内置提示音源文件（四个 wav，打包时预置进便携包）
   manual/操作手册.html     随包操作手册（自包含 HTML）
   frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）
