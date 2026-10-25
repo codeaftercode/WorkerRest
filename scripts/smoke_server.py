@@ -470,26 +470,29 @@ def main():
             check(st3.get("paused") is False, "再次 pauseToggle → paused == false", st3.get("paused"))
             check(st3.get("pauseReasons") == [], "恢复后 pauseReasons 清空", st3.get("pauseReasons"))
 
-        # ③ 推迟：nextAt 应重锚到「现在 + 该身份的 postponeMs」（不是原地不动）
+        # ③ 推迟：nextAt = 「原定时刻 + 该身份的 postponeMs」——推迟只能往后推，
+        # 基准是原定时刻而不是「现在」（否则还剩 10 分钟的提醒会被拉到 2 分钟后，P2-1）
         if isinstance(st3, dict) and st3.get("nextAt"):
             pm = _postpone_ms(cfg, st3.get("nextType"))
             t0 = int(time.time() * 1000)
+            orig = int(st3.get("nextAt") or 0)
             call(base, "Action", ["settings", "postpone"])
             st, st4 = call(base, "GetState", [])
             check(st == 200 and isinstance(st4, dict), "postpone 后仍能取到状态", str(st4)[:120])
             if isinstance(st4, dict) and pm is not None:
-                delta = int(st4.get("nextAt") or 0) - t0
+                want = max(t0, orig) + pm
+                got = int(st4.get("nextAt") or 0)
                 # 全局 nextAt = min(倒计时线, 固定时刻线)，postpone 只推迟倒计时线。
-                # 若某条固定线恰落在 (t0, t0+pm] 内，重锚后的全局 next 会被它接管——
-                # 这时 nextAt ≠ now+pm 是产品合法行为（隔离副本来自真实配置，
+                # 若某条固定线恰落在 (t0, want] 内，推迟后的全局 next 会被它接管——
+                # 这时 nextAt ≠ want 是产品合法行为（隔离副本来自真实配置，
                 # 固定线时刻会随一天中的运行时间变化），豁免之。
                 ats = {int(v) for v in (st3.get("fixedNext") or {}).values()
                        if isinstance(v, (int, float))}
-                took_over = (int(st4.get("nextAt") or 0) in ats
-                             and any(t0 < a <= t0 + pm for a in ats))
-                check(abs(delta - pm) <= 3000 or took_over,
-                      "postpone 把 nextAt 推到「现在 + %s 的 postponeMs」（固定线接管时除外）" % st3.get("nextType"),
-                      "delta=%d want=%d ats=%s" % (delta, pm, sorted(ats)))
+                took_over = got in ats and any(t0 < a <= want for a in ats)
+                check(abs(got - want) <= 3000 or took_over,
+                      "postpone 把 nextAt 推到「原定时刻 + %s 的 postponeMs」（只往后推；固定线接管时除外）"
+                      % st3.get("nextType"),
+                      "got=%d want=%d orig=%d ats=%s" % (got, want, orig, sorted(ats)))
 
         # ④ 重置周期：长短交替计数归零
         call(base, "Action", ["settings", "resetCycle"])
@@ -600,18 +603,25 @@ def main():
         check(isinstance(pb_resumed, dict) and pb_resumed.get("paused") is False,
               "再次 PreBreakAction(pause) → 恢复", (pb_resumed or {}).get("paused"))
 
-        # 推迟：nextAt 重锚到「现在 + short.postponeMs」
+        # 推迟：nextAt = 「原定时刻 + short.postponeMs」（提前提示窗弹出时原定时刻还在
+        # 未来，基准必须取原定时刻，否则推迟会把提醒提前到「现在」附近）
         arm_prebreak()
         mapi_short = _postpone_ms(read_json(iso_settings), "short")
+        st, gs_pb_before = call(base, "GetState", [])
+        orig_pb = int((gs_pb_before or {}).get("nextAt") or 0)
         t_pb = int(time.time() * 1000)
         call(base, "PreBreakAction", ["postpone"])
         st, gs_post = call(base, "GetState", [])
-        if isinstance(gs_post, dict) and mapi_short is not None:
+        if isinstance(gs_post, dict) and mapi_short is not None and orig_pb:
             check(gs_post.get("phase") == "idle", "推迟后 phase 回到 idle", gs_post.get("phase"))
-            delta = int(gs_post.get("nextAt") or 0) - t_pb
-            check(abs(delta - mapi_short) <= 3000,
-                  "PreBreakAction(postpone) 把 nextAt 推到「现在 + short.postponeMs」",
-                  "delta=%d want=%d" % (delta, mapi_short))
+            want_pb = max(t_pb, orig_pb) + mapi_short
+            got_pb = int(gs_post.get("nextAt") or 0)
+            ats_pb = {int(v) for v in ((gs_pb_before or {}).get("fixedNext") or {}).values()
+                      if isinstance(v, (int, float))}
+            took_over_pb = got_pb in ats_pb and any(t_pb < a <= want_pb for a in ats_pb)
+            check(abs(got_pb - want_pb) <= 3000 or took_over_pb,
+                  "PreBreakAction(postpone) 把 nextAt 推到「原定时刻 + short.postponeMs」",
+                  "got=%d want=%d orig=%d" % (got_pb, want_pb, orig_pb))
 
         # 跳过：重排下一条、且不进入休息。
         # phase 只断言 != "break"：arm_prebreak 的配置（间隔 60s = 提前 60s）下，

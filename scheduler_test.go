@@ -46,7 +46,7 @@ func (h *fakeHost) cfgSnapshot() *Settings                      { return h.cfg }
 func (h *fakeHost) onSchedulerState()                           { h.states++ }
 func (h *fakeHost) onPreNotify(kind string, _ int64)            { h.pre = append(h.pre, kind) }
 func (h *fakeHost) onPaused()                                   { h.pauses++ }
-func (h *fakeHost) closePreBreak()                               {}
+func (h *fakeHost) closePreBreak()                              {}
 func (h *fakeHost) closeBreakWindows()                          { h.closed++ }
 func (h *fakeHost) takeoutPostponedSnapshot() *TakeoutPostponed { return h.pp }
 func (h *fakeHost) takeoutFiredSnapshot() map[string]bool       { return nil }
@@ -255,12 +255,14 @@ func TestSchedulerPostponeShiftsPlan(t *testing.T) {
 
 	s.postpone()
 	got := s.stateCopy()
-	want := nowMs() + 120_000
+	// 推迟是「在原定时刻基础上往后推」：原定 10 分钟后 + 可推迟 2 分钟。
+	// （旧实现写 now+ms，会把还剩 10 分钟的提醒直接拉到 2 分钟后 —— P2-1）
+	want := origAt + 120_000
 	if diff := got.NextAt - want; diff < -2000 || diff > 2000 {
-		t.Fatalf("推迟后应是现在+2 分钟，want=%d got=%d", want, got.NextAt)
+		t.Fatalf("推迟后应是原定时刻+2 分钟，want=%d got=%d", want, got.NextAt)
 	}
-	if got.NextAt == origAt {
-		t.Fatal("推迟后时刻不该还是原值")
+	if got.NextAt < origAt {
+		t.Fatalf("推迟不该把提醒提前：orig=%d got=%d", origAt, got.NextAt)
 	}
 	// 被推迟的那条线要跟着平移（今日时间线读的是 lines）
 	if len(got.Lines) != 1 || got.Lines[0].At != got.NextAt {
@@ -272,6 +274,23 @@ func TestSchedulerPostponeShiftsPlan(t *testing.T) {
 	}
 	if got.Phase != "idle" {
 		t.Fatalf("推迟后应回到 idle，得到 %q", got.Phase)
+	}
+}
+
+// 原定时刻已经过去（例如系统刚从睡眠里醒、tick 还没跟上）时，推迟仍要保证往后走：
+// 基准退化成「现在」，不能算出比现在更早的时刻。
+func TestSchedulerPostponeFromOverdue(t *testing.T) {
+	s, _ := newTestSched(t, shortCountdown)
+	s.replan()
+	s.mu.Lock()
+	s.state.NextAt = nowMs() - 60_000 // 已经过期 1 分钟
+	s.mu.Unlock()
+
+	s.postpone()
+	got := s.stateCopy()
+	want := nowMs() + 120_000
+	if diff := got.NextAt - want; diff < -2000 || diff > 2000 {
+		t.Fatalf("过期后推迟应是现在+2 分钟，want=%d got=%d", want, got.NextAt)
 	}
 }
 
@@ -358,6 +377,35 @@ func TestSchedulerLongBreakResetsCounter(t *testing.T) {
 	s.endBreak()
 	if got := s.stateCopy().ShortsSinceLong; got != 0 {
 		t.Fatalf("长休息结束应把计数清零，得到 %d", got)
+	}
+}
+
+// 休息进行中点「跳过 / 提前结束」：必须真的结束这次休息，而不是静默 return。
+// 设置页侧栏、托盘、快捷键都走 skip 这一个入口（P3）。
+func TestSchedulerSkipWhileBreakingEndsBreak(t *testing.T) {
+	s, host := newTestSched(t, shortCountdown)
+	s.replan()
+	if id := s.breakNowOf(""); id == "" {
+		t.Fatal("应能开始一次休息")
+	}
+	if got := s.stateCopy().Phase; got != "break" {
+		t.Fatalf("phase 应为 break，得到 %q", got)
+	}
+
+	s.skip()
+	st := s.stateCopy()
+	if st.Phase == "break" {
+		t.Fatal("休息中点跳过应结束本次休息")
+	}
+	if host.closed != 1 {
+		t.Fatalf("应关一次休息窗口，得到 %d", host.closed)
+	}
+	if st.Phase != "idle" {
+		t.Fatalf("结束后应回到 idle，得到 %q", st.Phase)
+	}
+	// 与 endBreak 同一条路径：本次照常消费掉（短休息计数 +1），不会排回同一条
+	if st.ShortsSinceLong != 1 {
+		t.Fatalf("跳过结束也应消费本次，计数 +1，得到 %d", st.ShortsSinceLong)
 	}
 }
 
@@ -715,9 +763,9 @@ func TestStateForRendererTakeoutPostpone(t *testing.T) {
 	s.replan()
 	due := nowMs() + 30*60_000
 	host.pp = &TakeoutPostponed{
-		Slot:   TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true},
-		DueAt:  due,
-		Count:  0,
+		Slot:  TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true},
+		DueAt: due,
+		Count: 0,
 	}
 	st := s.stateForRenderer()
 	if st.Other == nil || st.Other.Name != TAKEOUT_NAME {

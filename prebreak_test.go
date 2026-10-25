@@ -301,9 +301,14 @@ func TestPreBreakActionPostponeAndSkip(t *testing.T) {
 	if after.Phase != "idle" {
 		t.Fatalf("推迟后应回到 idle，得到 %q", after.Phase)
 	}
-	want := nowMs() + 120_000 // shortCountdown 的 postponeMs
+	// 推迟 = 在原定时刻上往后推（不是「从现在起算」）：提前提示窗弹出时原定时刻还在
+	// 未来，若写 now+postponeMs 会把提醒提前到现在（P2-1，实测 1798s→299s）。
+	want := before + 120_000 // shortCountdown 的 postponeMs
 	if diff := after.NextAt - want; diff < -2000 || diff > 2000 {
-		t.Fatalf("推迟应重锚到「现在 + postponeMs」，want=%d got=%d（原值 %d）", want, after.NextAt, before)
+		t.Fatalf("推迟应在原定时刻上+postponeMs，want=%d got=%d（原值 %d）", want, after.NextAt, before)
+	}
+	if after.NextAt <= before {
+		t.Fatalf("推迟不该把提醒提前：before=%d after=%d", before, after.NextAt)
 	}
 
 	if err := a.PreBreakAction("skip"); err != nil {

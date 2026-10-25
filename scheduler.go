@@ -553,7 +553,14 @@ func (s *Scheduler) postpone() {
 	}
 	ms := bcfg.PostponeMs
 	oldAt := st.NextAt
-	st.NextAt = nowMs() + ms
+	// 基准取「现在」与「原定时刻」的较晚者：推迟只能是往后推。
+	// 早先直接写 now+ms，工作态里点一次「推迟」会把 30 分钟后的提醒拉到 5 分钟后
+	// （既违反「推迟」的语义，也把统计里的「推后时长」记成了负数般的假值）。
+	base := nowMs()
+	if oldAt > base {
+		base = oldAt
+	}
+	st.NextAt = base + ms
 	st.Phase = "idle"
 	// 统计：记一次推迟 + 推后时长。nextType 也可能是自定义提醒（cb-…），
 	// 但统计页「休息」四项只认短 / 长休息 —— 过滤在 App.onBreakPostponed 里一处做掉。
@@ -584,12 +591,22 @@ func (s *Scheduler) postpone() {
 	s.emitState()
 }
 
-// skip 跳过当前休息，直接进入下一周期
+// skip 跳过当前休息，直接进入下一周期。
+//
+// 休息进行中点「跳过 / 提前结束」（设置页侧栏、托盘、快捷键都汇聚到这里）：
+// 语义上就是立刻结束这次休息，落 endBreak 路径——早先直接 return，
+// 界面上点了没反应，用户只能去休息窗口里另找入口。
 func (s *Scheduler) skip() {
 	cfg := s.host.cfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
-	if st.Phase == "break" || st.Paused || st.NextAt == 0 {
+	if st.Phase == "break" {
+		s.mu.Unlock()
+		log.Printf("[scheduler] 休息中「跳过」→ 提前结束本次休息")
+		s.finishBreak()
+		return
+	}
+	if st.Paused || st.NextAt == 0 {
 		s.mu.Unlock()
 		return
 	}
