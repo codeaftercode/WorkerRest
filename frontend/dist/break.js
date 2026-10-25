@@ -773,9 +773,17 @@
       revealed = true;
       document.documentElement.style.opacity = "1";
     };
-    const info = await api.breakCurrent();
-    if (!info) { reveal(); return; }
-    const data = info;
+    // 会话拉取要能扛住「窗口已建、会话还在路上」的空档：主进程是**先写会话再建窗**，
+    // 但若上一次预览的窗口正在关闭、或主进程正在换会话，首帧这一次可能读到 nil。
+    // 此前直接 reveal + return，窗口就停在只剩背景的空壳上 —— 用户看到的就是
+    // 「预览窗口不显示督休专员」，再点一次预览又好（那次读到了会话）。
+    // 所以这里重试几次，真读不到才退回空窗（并保留兜底揭示）。
+    let data = await api.breakCurrent();
+    for (let i = 0; i < 5 && !data; i++) {
+      await new Promise((r) => setTimeout(r, 120));
+      data = await api.breakCurrent();
+    }
+    if (!data) { reveal(); return; }
     document.documentElement.style.setProperty("--accent", data.appearance.color);
     // 液体颜色随背景（accent）自适配：同色相协调、提亮高饱和明显
     applyAdaptiveLiquid(data.appearance.color);
@@ -889,9 +897,12 @@
       document.getElementById("preview-badge").classList.remove("hidden");
       document.body.addEventListener("click", () => api.closeWindow());
     }
-    // 兜底：任何异常导致立绘既没 load 也没 error 时，最多 1.5s 后强制揭示，
+    // 兜底：任何异常导致立绘既没 load 也没 error 时，最多 4s 后强制揭示，
     // 避免窗口一直透明不可见。
-    window.setTimeout(reveal, 1500);
+    // 为什么不是 1.5s：1.5s 到点时立绘（webp + data URL）常常还在解码，窗口会先以
+    // 「没有督休专员」的样子露出来 —— 正是用户报的「有时候预览窗里没有督休专员」。
+    // 宁可变透明多等一会儿，也不要露出空窗。
+    window.setTimeout(reveal, 4000);
   }
   main();
 })();

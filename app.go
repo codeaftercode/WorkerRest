@@ -30,11 +30,23 @@ type App struct {
 	// breakWins 休息提醒窗口（每块目标屏一个，见 ShowBreakWindow；a.mu 保护）。
 	// 不进 wins map：wins 的键按窗口名寻址，而多屏下每块屏一个窗、同名会互相覆盖。
 	breakWins []*application.WebviewWindow
-	sess      *BreakInfo
-	start     time.Time
+	// breakSessID breakWins 里的窗口是为**哪个会话**建的（= a.sess.ID 的快照）。
+	// 预览每点一次就是一个新会话：会话一变必须重建窗口，不能复用还在场上的旧窗口 ——
+	// 旧窗口里的页面渲染的是上一次会话（旧立绘 / 旧倒计时，甚至上一次会话本来
+	// 就没有立绘，看起来就像「没显示督休专员」）。
+	breakSessID string
+	// breakWinSess 窗口 → 建它时的会话 id：窗口被关掉时据此判断它是不是**当前**
+	// 会话的窗口。迟到的 WindowClosing（上一次会话的窗）不许清掉刚建好的新会话，
+	// 否则新窗口首帧 breakCurrent() 拿到 nil，页面上只剩背景。
+	breakWinSess map[*application.WebviewWindow]string
+	// breakWinMu 串行化「建休息窗口」这一段：连点两下「预览」会并发建窗，
+	// 两批窗户怼在一起时后注册的会覆盖前者、前者变成没人管的野窗。
+	breakWinMu sync.Mutex
+	sess       *BreakInfo
+	start      time.Time
 
 	cfg       *Settings // 整份配置（见 settings.go 的说明；保存时会整体替换指针）
-	rolesRoot string     // 督休专员目录落点（随包 supervisors/，见 resourcesRoot）
+	rolesRoot string    // 督休专员目录落点（随包 supervisors/，见 resourcesRoot）
 	sched     *Scheduler
 
 	// 台词选取：random 用 rng（测试可固定种子），sequence 的游标按 key 记忆
@@ -402,6 +414,17 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 	}
 
 	var picked *Role
+	pickByKey := func(rs []Role, key string) *Role {
+		if key == "" {
+			return nil
+		}
+		for i := range rs {
+			if rs[i].Key == key {
+				return &rs[i]
+			}
+		}
+		return nil
+	}
 	switch {
 	case forceKey != "":
 		// 预览指定的督休专员：无视 enabled（预览要能看到已关闭督休专员的效果）
@@ -437,12 +460,20 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 			}
 		}
 	}
+	// 兜底（2026-10-25 修）：指定/固定的那个督休专员找不到时（库里改过名、刚被删掉，
+	// 或设置页传来的是过期的 key），按「固定项 → 第一个可用」逐级退让。
+	// 曾经这里直接 return nil：预览窗于是变成一个既没有立绘、也没有对话框的空壳，
+	// 用户只能反复点「预览」撞运气。
 	if picked == nil {
-		return nil
+		picked = pickByKey(usable, cfg.FixedKey)
+	}
+	if picked == nil {
+		picked = &usable[0]
 	}
 
-	image := toDataURL(picked.FigurePath)
-	if image == "" {
+	picked, image := pickRoleWithImage(usable, picked)
+	if picked == nil || image == "" {
+		// 真的一张立绘都读不出来：退回无督休专员版式（渲染层会立即显示立绘以外的内容）
 		return nil
 	}
 	name := picked.Name
@@ -462,6 +493,28 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 			Command: pickRoleLine(picked.Messages, picked.Key, a.cursor, a.rng),
 		},
 	}
+}
+
+// pickRoleWithImage 在可用督休专员里挑一个**立绘真能读出来**的：
+// 优先 prefer，读不出来（磁盘瞬时抖动 / 文件被占用 / 正被替换成新图）就按顺序找下一个。
+//
+// 为什么要有它：曾经首选角色的 toDataURL 返回空串就直接返回 nil，提醒窗口于是变成
+// 一个既没有立绘也没有对话框的空壳；用户只能反复点「预览」撞运气。
+func pickRoleWithImage(usable []Role, prefer *Role) (*Role, string) {
+	if prefer != nil {
+		if img := toDataURL(prefer.FigurePath); img != "" {
+			return prefer, img
+		}
+	}
+	for i := range usable {
+		if prefer != nil && usable[i].Key == prefer.Key {
+			continue
+		}
+		if img := toDataURL(usable[i].FigurePath); img != "" {
+			return &usable[i], img
+		}
+	}
+	return nil, ""
 }
 
 // SupervisorPreview 设置页的立绘预览：返回一次「督休专员会话」而不是弹窗
@@ -605,6 +658,10 @@ func (a *App) closeBreakWindows() {
 	a.mu.Lock()
 	ws := a.breakWins
 	a.breakWins = nil
+	a.breakSessID = ""
+	for _, w := range ws {
+		delete(a.breakWinSess, w)
+	}
 	info := a.sess
 	a.sess = nil
 	a.mu.Unlock()
@@ -719,14 +776,27 @@ func breakBoundsFor(wa application.Rect, cfg AppearanceConfig) (x, y, w, h int) 
 // 因此无头构建可以完整验证「绑定 → 会话 JSON」这条链路。
 //
 // 多屏：按「在所有屏幕显示」开关对每块目标屏各建一个窗（与外卖窗口同策略，
-// 见 targetDisplays）。已有窗口在场时只唤起不重建。
+// 见 targetDisplays）。
+//
+// 复用规则（2026-10-25 修）：**只有窗口就是为当前会话建的**才复用（用户按托盘
+// 「立即休息」重复点同一会话时不该叠窗）；会话换了就整组关掉重建。曾经的
+// 「有窗口就复用」会让「切换督休专员 → 点预览」读到上一个会话的页面，
+// 表现为预览窗里没有（或还是上一个）督休专员。
 func (a *App) ShowBreakWindow(kind string) {
 	if serverMode {
 		log.Printf("[win] server 模式无原生窗口，跳过创建 break 窗口（会话已就绪）")
 		return
 	}
+	// 建窗要几百毫秒：串行化，避免连点「预览」时两批窗口互相覆盖（野窗）
+	a.breakWinMu.Lock()
+	defer a.breakWinMu.Unlock()
+	curID := ""
 	a.mu.Lock()
-	if len(a.breakWins) > 0 {
+	if a.sess != nil {
+		curID = a.sess.ID
+	}
+	var stale []*application.WebviewWindow
+	if breakWinReusable(a.breakSessID, curID, len(a.breakWins)) {
 		ws := a.breakWins
 		a.mu.Unlock()
 		for _, w := range ws {
@@ -735,7 +805,19 @@ func (a *App) ShowBreakWindow(kind string) {
 		}
 		return
 	}
+	if len(a.breakWins) > 0 {
+		stale = a.breakWins
+		a.breakWins = nil
+		a.breakSessID = ""
+	}
+	// 先认领会话：建窗要几百毫秒，这期间旧窗口的 WindowClosing 可能迟到 ——
+	// 认领之后 removeBreakWindow 能认出「那是上一个会话的窗」，不会把会话清掉。
+	a.breakSessID = curID
 	a.mu.Unlock()
+	// 旧会话的窗口先关（它们的页面内容已经过期，留着只会让人看到旧立绘/旧倒计时）
+	for _, w := range stale {
+		w.Close()
+	}
 
 	// 把「督休专员-启用」状态经 URL query 下发，让提醒窗口首帧就定好布局，
 	// 避免先显示无立绘窗口、立绘加载完再切换的闪烁（frontend 据此决定整窗先
@@ -781,26 +863,61 @@ func (a *App) ShowBreakWindow(kind string) {
 	}
 
 	a.mu.Lock()
+	if a.breakWinSess == nil {
+		a.breakWinSess = make(map[*application.WebviewWindow]string)
+	}
+	for _, w := range wins {
+		a.breakWinSess[w] = curID
+	}
 	a.breakWins = wins
+	a.breakSessID = curID
 	a.mu.Unlock()
 }
 
 // removeBreakWindow 单个休息窗口被直接关掉（Alt+F4）时从切片摘除；
-// 全部摘光时清掉会话（与「最后一个窗口被关闭」语义对齐）。
+// 最后一个属于**当前会话**的窗口被关掉时清掉会话（与「最后一个窗口被关闭」语义对齐）。
 func (a *App) removeBreakWindow(w *application.WebviewWindow) {
 	a.mu.Lock()
-	ws := a.breakWins
-	for i, x := range ws {
-		if x == w {
-			a.breakWins = append(ws[:i], ws[i+1:]...)
-			break
+	sid := a.breakWinSess[w]
+	delete(a.breakWinSess, w)
+	if ws := a.breakWins; len(ws) > 0 {
+		for i, x := range ws {
+			if x == w {
+				a.breakWins = append(ws[:i], ws[i+1:]...)
+				break
+			}
 		}
 	}
-	gone := len(a.breakWins) == 0
-	if gone {
+	cur := ""
+	if a.sess != nil {
+		cur = a.sess.ID
+	}
+	if breakSessEndsOn(len(a.breakWins), sid, cur) {
 		a.sess = nil
+		a.breakSessID = ""
 	}
 	a.mu.Unlock()
+}
+
+// breakWinReusable 现有休息窗口能不能直接复用：必须「确实有窗口」且
+// 「这些窗口就是为当前会话建的」。curSess 为空（没有会话）时一律不复用。
+func breakWinReusable(winSess, curSess string, n int) bool {
+	return n > 0 && curSess != "" && winSess == curSess
+}
+
+// breakSessEndsOn 关掉一个窗口后要不要结束会话：
+//   - 还剩窗口（多屏）→ 不结束；
+//   - 关掉的是**上一次会话**的窗（closedSess 与当前会话不符）→ 也不结束。
+//     这是「预览窗时不时空壳」的根因之一：旧窗口的 WindowClosing 迟到一步，
+//     把刚建好的新会话清掉了，新窗口首帧 breakCurrent() 拿到 nil。
+func breakSessEndsOn(remaining int, closedSess, curSess string) bool {
+	if remaining > 0 {
+		return false
+	}
+	if curSess != "" && closedSess != curSess {
+		return false
+	}
+	return true
 }
 
 // settingsWindow 取设置窗口（按名字查，避免跨 tick 持有已销毁的窗口引用 ——
@@ -846,6 +963,10 @@ func (a *App) CloseWindow(win string) {
 		a.mu.Lock()
 		ws := a.breakWins
 		a.breakWins = nil
+		a.breakSessID = ""
+		for _, w := range ws {
+			delete(a.breakWinSess, w)
+		}
 		a.sess = nil
 		a.mu.Unlock()
 		for _, w := range ws {
@@ -924,16 +1045,16 @@ func (a *App) Action(win, name string) error {
 				w.Maximise()
 			}
 		}
-		case "winClose":
-			// 关闭 = 隐藏到托盘（不是销毁）：托盘「设置…」/ 双击要能重新唤起。
-			// Wails 的 Window.Close() 会销毁窗口并从注册表移除，之后 GetByName 拿不到、
-			// ShowSettingsWindow 就无法再显示 —— 所以这里用 Hide 保留窗口对象。
-			if w := a.settingsWindow(); w != nil {
-				w.Hide()
-				if a.app != nil && a.app.Event != nil {
-					a.app.Event.Emit("settings:hidden", nil)
-				}
+	case "winClose":
+		// 关闭 = 隐藏到托盘（不是销毁）：托盘「设置…」/ 双击要能重新唤起。
+		// Wails 的 Window.Close() 会销毁窗口并从注册表移除，之后 GetByName 拿不到、
+		// ShowSettingsWindow 就无法再显示 —— 所以这里用 Hide 保留窗口对象。
+		if w := a.settingsWindow(); w != nil {
+			w.Hide()
+			if a.app != nil && a.app.Event != nil {
+				a.app.Event.Emit("settings:hidden", nil)
 			}
+		}
 	default:
 		log.Printf("[action] 设置窗口未实现的动作 %q", name)
 	}
