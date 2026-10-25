@@ -220,7 +220,6 @@ body {
 #tab-about .note { margin: 14px 0 0; padding: 11px 13px; background: var(--accent-weak); border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--border)); border-radius: 10px; display: flex; flex-direction: column; gap: 9px; }
 #tab-about .note-row { display: flex; align-items: flex-start; gap: 9px; font-size: 12px; line-height: 1.5; color: var(--text-2); }
 #tab-about .note-row svg { flex: none; margin-top: 1px; color: var(--accent); }
-#tab-about .note-row b { color: var(--text); font-weight: 600; }
 
 /* 数据管理按钮行（软按钮：描边风格，区别于主/次按钮） */
 #tab-about .data-actions { display: flex; gap: 10px; margin-top: 14px; }
