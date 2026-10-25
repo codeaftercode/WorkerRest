@@ -161,6 +161,10 @@
         </div>
       </section>
 
+      <!-- 数值框的区间**只写在 input 的 min/max 上**：settings.js 的 clampNum() 直接读这两个
+           属性、越界时就地回写，代码里不再另写一套区间（两处各写一遍必然跑偏）。
+           改上下限只改这里。短 / 长休息的间隔上限同为 480 分钟：与历史版本实际能存进
+           配置的范围一致，收紧上限会把老配置里已存的更小间隔悄悄截断。 -->
       <!-- 时间规划（休息节奏 + 外卖提醒） -->
       <section class="tab" id="tab-timing">
         <!-- 今日提醒时间线：综合全部提醒设置推算当天未触发的提醒，自动跟随调度更新（默认折叠） -->
@@ -186,10 +190,10 @@
             <button class="btn ghost" id="short-preview" title="预览短休息">预览</button>
           </div>
           <div class="row field"><label>触发方式</label><div class="cdrop-host" id="short-mode"></div></div>
-          <div class="row field bk-countdown" data-break="short"><label>间隔（分钟）</label><input type="number" id="short-interval" min="1" max="240" /></div>
+          <div class="row field bk-countdown" data-break="short"><label>间隔（分钟）</label><input type="number" id="short-interval" min="1" max="480" /></div>
           <div class="row field"><label>时长（秒）</label><input type="number" id="short-duration" min="5" max="600" /></div>
           <div class="row field"><label>提前通知（秒）</label><input type="number" id="short-notify" min="0" max="300" /></div>
-          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="short-postpone" min="0" max="60" title="推迟一次把休息往后推多少分钟；0 = 不显示「推迟」按钮" /></div>
+          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="short-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示「推迟」按钮" /></div>
           <!-- 提醒时间列表：固定时间方式的时刻表，默认折叠（与提醒内容面板同一套外观；
                行不可拖动、无单选框，只有行首的启停勾选框）。「＋」新增放标题行右侧 -->
           <div class="slot-fixed" data-break="short">
@@ -390,7 +394,9 @@
       <!-- 快捷键 -->
       <section class="tab" id="tab-shortcuts">
         <div class="card">
-          <p class="hint">点击输入框后按下组合键即可录入；留空表示禁用。</p>
+          <p class="hint">点击输入框后按下组合键即可录入（至少要带一个修饰键：Ctrl / Alt / Shift / Super）；按 Esc 清空；留空表示禁用。</p>
+          <!-- 录入不合规（缺修饰键 / 和别的动作撞车）时在这里汇总说明，平时隐藏 -->
+          <p class="hint hidden" id="sc-warn"></p>
           <div class="row field"><label>推迟当前休息</label><input type="text" class="shortcut" id="sc-postpone" readonly placeholder="点击后按键录入" /></div>
           <div class="row field"><label>提前结束休息</label><input type="text" class="shortcut" id="sc-endEarly" readonly placeholder="点击后按键录入" /></div>
           <div class="row field"><label>暂停 / 恢复休息</label><input type="text" class="shortcut" id="sc-pause" readonly placeholder="点击后按键录入" /></div>

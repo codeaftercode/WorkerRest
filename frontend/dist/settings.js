@@ -68,9 +68,8 @@
     }
     return best;
   }
-  var TAKEOUT_LEAD_LIMITS = [0, 300];
+  // 外卖两项的默认值（区间不在这里：一律读输入框自己的 min/max，见 clampNum）
   var TAKEOUT_LEAD_DEFAULT = 0;
-  var TAKEOUT_POSTPONE_LIMITS = [0, 120];
   var TAKEOUT_POSTPONE_DEFAULT = 10;
   var APP_PAUSE_PRESETS = [
     { exe: "WeMeetApp.exe", label: "\u817E\u8BAF\u4F1A\u8BAE" },
@@ -979,8 +978,8 @@
     applySupGeometry(g);
   }
   function clampGeom(el, key) {
-    const [min, max] = SUP_GEOM_LIMITS[key];
-    return clampNum(el, min, max, SUP_GEOM_DEFAULT[key]);
+    // 区间由 range 自己的 min/max 决定（与 SUP_GEOM_LIMITS 同值），越界已回写
+    return clampNum(el, SUP_GEOM_DEFAULT[key]);
   }
   function readGeomFromForm() {
     return {
@@ -1363,13 +1362,11 @@
     const mmText = document.createElement("span");
     mmText.textContent = "\u5206";
     hh.addEventListener("change", () => {
-      slot.hour = clampNum(hh, 0, 23, 12);
-      hh.value = String(slot.hour);
+      slot.hour = clampNum(hh, 12); // 区间读 hh.min/max（0~23），越界已回写
       opts.onChange();
     });
     mm.addEventListener("change", () => {
-      slot.minute = clampNum(mm, 0, 59, 0);
-      mm.value = String(slot.minute);
+      slot.minute = clampNum(mm, 0); // 区间读 mm.min/max（0~59），越界已回写
       opts.onChange();
     });
     time.append(hh, hhText, mm, mmText);
@@ -1792,6 +1789,8 @@
     $("sc-endEarly").value = S.shortcuts.endEarly;
     $("sc-pause").value = S.shortcuts.pause;
     $("sc-nextBreak").value = S.shortcuts.nextBreak;
+    // 回填后立刻判一次：配置文件里被手改出来的「裸键 / 两个动作同键」也要显形
+    markShortcuts();
     // 「暂停休息时」行标签的「?」说明里带着当前空闲分钟数，首屏就按配置对齐
     refreshPauseHints();
   }
@@ -1799,8 +1798,8 @@
     S.theme = document.querySelector("input[name=theme]:checked").value;
     S.appName = ($("appName").value.trim() || "\u5403\u997C\u4EBA\u4E5F\u6562\u4F11\u606F\uFF1F").slice(0, 30);
     $("tb-title").textContent = S.appName;
-    S.idlePauseMin = clampNum($("idlePauseMin"), 1, 120, 5);
-    S.longEveryNShort = clampNum($("longEveryNShort"), 1, 20, 2);
+    S.idlePauseMin = clampNum($("idlePauseMin"), 5);
+    S.longEveryNShort = clampNum($("longEveryNShort"), 2);
     S.autostart = $("autostart").checked;
     S.startMinimized = $("startMinimized").checked;
     S.dndPause = $("dndPause").checked;
@@ -1811,12 +1810,12 @@
       if (!c) return;
       c.enabled = $(`${id}-enabled`).checked;
       c.mode = dropValue($(`${id}-mode`), "countdown") === "fixed" ? "fixed" : "countdown";
-      c.intervalMs = clampNum($(`${id}-interval`), 1, 480, 10) * 6e4;
+      c.intervalMs = clampNum($(`${id}-interval`), 10) * 6e4;
       const bySec = id !== "long";
-      const dv = clampNum($(`${id}-duration`), bySec ? 5 : 1, bySec ? 600 : 60, 20);
+      const dv = clampNum($(`${id}-duration`), 20);
       c.durationMs = bySec ? dv * 1e3 : dv * 6e4;
-      c.notifyBeforeMs = clampNum($(`${id}-notify`), 0, 300, 10) * 1e3;
-      c.postponeMs = clampNum($(`${id}-postpone`), 0, 120, 2) * 6e4;
+      c.notifyBeforeMs = clampNum($(`${id}-notify`), 10) * 1e3;
+      c.postponeMs = clampNum($(`${id}-postpone`), 2) * 6e4;
       // 暂停休息时：只有自定义提醒卡片有这一行（短 / 长休息不写这个键）
       const pauseHost = $(`${id}-pause`);
       if (pauseHost) c.pauseAction = dropValue(pauseHost, "postpone");
@@ -1824,8 +1823,8 @@
     for (const id of allBreakIds()) readBreak(id);
     const a = S.appearance;
     a.transparency = parseFloat($("ap-opacity").value);
-    a.widthPct = clampNum($("ap-widthPct"), 20, 100, 60);
-    a.heightPct = clampNum($("ap-heightPct"), 20, 100, 60);
+    a.widthPct = clampNum($("ap-widthPct"), 60);
+    a.heightPct = clampNum($("ap-heightPct"), 60);
     a.fullscreen = $("ap-fullscreen").checked;
     a.alwaysOnTop = $("ap-alwaysOnTop").checked;
     S.allScreens = $("ap-allScreens").checked;
@@ -1835,8 +1834,8 @@
     S.supervisor.enabled = $("sup-enabled").checked;
     S.takeout.enabled = $("tk-enabled").checked;
     S.takeout.pauseAction = dropValue($("tk-pause"), "postpone");
-    S.takeout.leadSec = clampNum($("tk-lead"), TAKEOUT_LEAD_LIMITS[0], TAKEOUT_LEAD_LIMITS[1], TAKEOUT_LEAD_DEFAULT);
-    S.takeout.postponeMin = clampNum($("tk-postpone"), TAKEOUT_POSTPONE_LIMITS[0], TAKEOUT_POSTPONE_LIMITS[1], TAKEOUT_POSTPONE_DEFAULT);
+    S.takeout.leadSec = clampNum($("tk-lead"), TAKEOUT_LEAD_DEFAULT);
+    S.takeout.postponeMin = clampNum($("tk-postpone"), TAKEOUT_POSTPONE_DEFAULT);
     S.shortcuts.postpone = $("sc-postpone").value.trim();
     S.shortcuts.endEarly = $("sc-endEarly").value.trim();
     S.shortcuts.pause = $("sc-pause").value.trim();
@@ -1844,10 +1843,27 @@
     // 空闲分钟数可能刚改：把「暂停休息时」行标签的「?」说明同步成新数字
     refreshPauseHints();
   }
-  function clampNum(el, min, max, fallback) {
-    const v = parseInt(el.value, 10);
-    if (Number.isNaN(v)) return fallback;
-    return Math.min(max, Math.max(min, v));
+  // 数值框取值：区间**只认输入框自己的 min/max**（HTML 属性是唯一真相，代码不再各写
+  // 一份区间——早先 short-interval 的 DOM 是 1~240、代码钳 1~480，两边打架）。
+  // 越界或留空时钳到区间并**回写**输入框：否则会出现「框里显示 999999、配置里存 240」，
+  // 用户看到的值和真正生效的值不一致（P3-1）。
+  // 回写发生在 change（失焦 / 回车）或别的控件触发保存时，不打断正在键入的过程。
+  function clampNum(el, fallback) {
+    if (!el) return fallback;
+    let lo = -Infinity;
+    let hi = Infinity;
+    if (el.min !== "") {
+      const n = Number(el.min);
+      if (!Number.isNaN(n)) lo = n;
+    }
+    if (el.max !== "") {
+      const n = Number(el.max);
+      if (!Number.isNaN(n)) hi = n;
+    }
+    const raw = parseInt(el.value, 10);
+    const v = Number.isNaN(raw) ? fallback : Math.min(hi, Math.max(lo, raw));
+    if (el.value !== String(v)) el.value = String(v);
+    return v;
   }
   var MSG_KINDS = ["short", "long", "takeout"];
   var MSG_KIND_LABEL = { short: "\u77ED\u4F11\u606F", long: "\u957F\u4F11\u606F", takeout: "\u5916\u5356\u63D0\u9192" };
@@ -2140,8 +2156,56 @@
     parts.push(k);
     return parts.join("+");
   }
+  // 快捷键四行的 id / 显示名 / 录入提示。顺序 = Go 侧 hotkeyDefs 的注册次序：
+  // 撞车时先注册的那个能生效，后面的注册失败（所以「重复」只标后一行）。
+  var SHORTCUT_IDS = ["sc-postpone", "sc-endEarly", "sc-pause", "sc-nextBreak"];
+  var SHORTCUT_LABELS = {
+    "sc-postpone": "\u63A8\u8FDF\u5F53\u524D\u4F11\u606F",
+    "sc-endEarly": "\u63D0\u524D\u7ED3\u675F\u4F11\u606F",
+    "sc-pause": "\u6682\u505C / \u6062\u590D\u4F11\u606F",
+    "sc-nextBreak": "\u8DF3\u8F6C\u5230\u4E0B\u4E00\u6B21\u4F11\u606F"
+  };
+  var SHORTCUT_MODS = ["Ctrl", "Alt", "Shift", "Super"];
+  var SHORTCUT_TITLE_OK = "\u70B9\u51FB\u540E\u6309\u4E0B\u7EC4\u5408\u952E\u5F55\u5165\uFF1B\u7559\u7A7A\u8868\u793A\u7981\u7528\uFF1BEsc \u6E05\u7A7A";
+  var SHORTCUT_NO_MOD = "\u9700\u8981\u81F3\u5C11\u4E00\u4E2A\u4FEE\u9970\u952E\uFF08Ctrl / Alt / Shift / Super\uFF09";
+  // 一道判断两处用：录入时挡下、回填后标红。裸键（A / F5 / 空格）注册成全局热键会把
+  // 正常打字全吃掉，Go 侧 parseAccelerator 本来就拒绝 —— 这里必须当场说清楚，
+  // 而不是让用户录进去一个永远不生效的键（P3-4）。
+  function shortcutIssue(id) {
+    const input = $(id);
+    const acc = input ? input.value.trim() : "";
+    if (!acc) return "";
+    const parts = acc.split("+");
+    if (parts.length < 2 || !SHORTCUT_MODS.includes(parts[0])) return SHORTCUT_NO_MOD;
+    for (const other of SHORTCUT_IDS) {
+      if (other === id) continue;
+      if (SHORTCUT_IDS.indexOf(other) > SHORTCUT_IDS.indexOf(id)) continue;
+      if (($(other)?.value ?? "").trim() === acc) {
+        return `\u548C\u300C${SHORTCUT_LABELS[other]}\u300D\u7528\u4E86\u540C\u4E00\u4E2A\u7EC4\u5408\u952E\uFF08\u53EA\u6709\u5B83\u751F\u6548\uFF09`;
+      }
+    }
+    return "";
+  }
+  // 标红 + 汇总说明。录入时、失焦改值、以及从配置回填后各跑一次：
+  // 手改过 settings.json 弄出的重复 / 裸键也能被看见，而不是「配了却没反应」。
+  function markShortcuts() {
+    const msgs = [];
+    for (const id of SHORTCUT_IDS) {
+      const input = $(id);
+      if (!input) continue;
+      const issue = shortcutIssue(id);
+      input.classList.toggle("bad", !!issue);
+      input.title = issue || SHORTCUT_TITLE_OK;
+      if (issue) msgs.push(`\u300C${SHORTCUT_LABELS[id]}\u300D${issue}`);
+    }
+    const warn = $("sc-warn");
+    if (warn) {
+      warn.textContent = msgs.join("\uFF1B");
+      warn.classList.toggle("hidden", msgs.length === 0);
+    }
+  }
   function setupShortcutCapture() {
-    for (const id of ["sc-postpone", "sc-endEarly", "sc-pause", "sc-nextBreak"]) {
+    for (const id of SHORTCUT_IDS) {
       const input = $(id);
       input.addEventListener("keydown", (e) => {
         e.preventDefault();
@@ -2149,16 +2213,30 @@
         if (e.key === "Escape") {
           input.value = "";
           input.blur();
+          markShortcuts();
           autoSave();
           return;
         }
         const acc = acceleratorFromEvent(e);
-        if (acc) {
-          input.value = acc;
-          input.blur();
-          autoSave();
+        if (!acc) return; // 只按住了修饰键：继续等主键
+        // 不合法的组合键**整条拒收**（框里保持原值）而不是写进去再标红：
+        // 后者会把它顺手存进配置，等于给了用户一个永远不生效的键。
+        // 拒收时用 toast 说清原因，录入框保持聚焦，直接重按即可。
+        const prev = input.value;
+        input.value = acc;
+        const issue = shortcutIssue(id);
+        if (issue) {
+          input.value = prev;
+          markShortcuts();
+          toast(issue);
+          return;
         }
+        markShortcuts();
+        input.blur();
+        autoSave();
       });
+      // 失焦 / 粘贴改值也要重新判定：否则红框和说明会停在旧状态
+      input.addEventListener("change", markShortcuts);
     }
   }
   function fmtRemain(ms) {
@@ -2262,10 +2340,19 @@
     if (qaPause) qaPause.textContent = st.paused ? "\u6062\u590D\u4F11\u606F" : "\u6682\u505C\u4F11\u606F";
     // 「推迟休息」按钮：当前下次提醒的「可推迟」为 0 分钟时不显示 —— 推迟 0 分钟
     // 等于立即再弹一次，没有意义。提前提示窗 / 外卖窗口的「推迟」按钮同样按此显隐。
+    // 休息进行中也不显示（已经在休息了，没有「再往后推」这回事）。
+    const inBreak = st.phase === "break";
+    // 休息中：「立即休息」无从谈起，禁用而不是让点了没反应；
+    // 「跳过本次」在休息中等价于提前结束（与托盘「提前结束休息」同义，
+    // 判定落在 scheduler.skip：休息相位直接结束本次休息）。
+    const qaBreak = $("qa-break");
+    if (qaBreak) qaBreak.disabled = inBreak;
+    const qaSkip = $("qa-skip");
+    if (qaSkip) qaSkip.textContent = inBreak ? "\u63D0\u524D\u7ED3\u675F" : "\u8DF3\u8FC7\u672C\u6B21";
     const qaPostpone = $("qa-postpone");
     if (qaPostpone) {
       const cfg = st.nextType ? breakCfg(st.nextType) : null;
-      qaPostpone.classList.toggle("hidden", !(cfg && cfg.postponeMs > 0));
+      qaPostpone.classList.toggle("hidden", inBreak || !(cfg && cfg.postponeMs > 0));
     }
     const phaseText = st.phase === "break" ? "\u4F11\u606F\u4E2D" : st.phase === "pre" ? "\u5373\u5C06\u4F11\u606F" : "\u52AA\u529B\u5DE5\u4F5C\u4E2D";
     // 暂停统一显示「暂停休息」：不论是手动暂停、系统空闲（人离开工位）、系统勿扰

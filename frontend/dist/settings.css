@@ -717,6 +717,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 
 .shortcut { text-align: center; letter-spacing: 1px; }
+/* 快捷键录入不合规（缺修饰键 / 和别的动作撞车）：红框 + 说明行，颜色走主题变量 */
+.shortcut.bad { border-color: var(--danger); background: var(--danger-weak); }
+#sc-warn { color: var(--danger); }
 
 .status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .status-cell { background: var(--bg); border-radius: 10px; padding: 10px 14px; }
