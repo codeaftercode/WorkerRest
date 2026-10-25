@@ -454,6 +454,40 @@ const PROBE_STATS = `(async function () {
     errs: window.__WR_ERRORS || []
   };
 })()`;
+const NOZOOM_PROBE = `(function () {
+  // 禁缩放守卫（frontend/dist/nozoom.js）：提醒 / 预览窗口不许手势或滚轮缩放。
+  // 这里验三件事：脚本装上了（window.__WR_NOZOOM）、touch-action 里去掉了
+  // pinch-zoom、各类缩放入口都被拦下但普通滚轮没被拦死（活动上报还指着它）。
+  var out = {
+    loaded: window.__WR_NOZOOM === true,
+    touchAction: "",
+    bodyTouchAction: null,
+    ctrlWheelBlocked: false,
+    plainWheelPassed: false,
+    ctrlKeyBlocked: false,
+    multiTouchBlocked: false
+  };
+  out.touchAction = getComputedStyle(document.documentElement).touchAction;
+  out.bodyTouchAction = document.body ? getComputedStyle(document.body).touchAction : null;
+  // 合成事件派发到 <html>：document 上的 capture 监听器一定会走到。
+  var wheel = function (init) {
+    var e = new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: init.deltaY, ctrlKey: !!init.ctrlKey });
+    document.documentElement.dispatchEvent(e);
+    return e;
+  };
+  out.ctrlWheelBlocked = wheel({ ctrlKey: true, deltaY: -120 }).defaultPrevented === true;
+  out.plainWheelPassed = wheel({ deltaY: -120 }).defaultPrevented === false;
+  var k = new KeyboardEvent("keydown", { key: "=", ctrlKey: true, bubbles: true, cancelable: true });
+  document.documentElement.dispatchEvent(k);
+  out.ctrlKeyBlocked = k.defaultPrevented === true;
+  // 双指触摸：TouchEvent 在无触屏的无头浏览器里构造不出来，用一个普通 Event
+  // 挂上 touches 即可触发守卫里的 touches.length > 1 分支。
+  var t = new Event("touchmove", { bubbles: true, cancelable: true });
+  t.touches = [{}, {}];
+  document.documentElement.dispatchEvent(t);
+  out.multiTouchBlocked = t.defaultPrevented === true;
+  return out;
+})()`;
 const PROBE_TAKEOUT = `(async function () {
 ` + FIG_VISIBLE_FN + `
   // 量布局前等字体加载 + 两帧：红包框 width:max-content 的宽度依赖 .rp-info 文字
@@ -670,6 +704,10 @@ async function run() {
   metrics.preBreak.consoleErrors = pbErr;
   await shot(pre, "prebreak");
   console.log("[probe] preBreak:", JSON.stringify(metrics.preBreak));
+  // 禁缩放守卫（提醒窗口 / 预览窗口通用，见 frontend/dist/nozoom.js）
+  metrics.nozoom = {};
+  metrics.nozoom.prebreak = await pre.evaluate(NOZOOM_PROBE);
+  console.log("[probe] nozoom/prebreak:", JSON.stringify(metrics.nozoom.prebreak));
 
   // ---- 1c. 提前提示窗：自定义提醒版式 ----
   // supervisor:{enabled:true}：探针断言（has-supervisor 版式 / 立绘解码）以「启用」为前提，
@@ -710,6 +748,8 @@ async function run() {
   metrics.breakWide = await wide.evaluate(PROBE_BREAK);
   await shot(wide, "break_wide");
   console.log("[probe] breakWide:", JSON.stringify(metrics.breakWide));
+  metrics.nozoom.break = await wide.evaluate(NOZOOM_PROBE);
+  console.log("[probe] nozoom/break:", JSON.stringify(metrics.nozoom.break));
 
   // ---- 4. 提醒窗口：竖屏版式 ----
   const tall = await open(browser, BASE + "/break.html", 760, 980);
@@ -727,6 +767,8 @@ async function run() {
   metrics.takeout.consoleErrors = tkErr;
   await shot(tk, "takeout");
   console.log("[probe] takeout:", JSON.stringify(metrics.takeout));
+  metrics.nozoom.takeout = await tk.evaluate(NOZOOM_PROBE);
+  console.log("[probe] nozoom/takeout:", JSON.stringify(metrics.nozoom.takeout));
 
   // ---- 5b. 「可推迟」为 0：提前提示窗与外卖窗口都不显示「推迟」按钮 ----
   await main.evaluate(

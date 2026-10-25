@@ -68,7 +68,18 @@ func main() {
 			// WebView2 默认拦截「无用户手势的有声自动播放」：休息提示音由定时器触发、
 			// 在从无点击交互的宿主窗口里 new Audio().play() 会被静默拒绝（.catch 吞掉），
 			// 表现为「试听能响、真休息不响」。全局放开 autoplay 策略，对所有窗口生效。
-			AdditionalBrowserArgs: []string{"--autoplay-policy=no-user-gesture-required"},
+			//
+			// --disable-pinch：关掉触屏两指捏合的页面缩放（WebView2 的 Page Scale）。
+			// 提醒 / 预览窗口是按固定版式排的小窗，捏合放大后文字溢出、按钮错位；
+			// 而 IsPinchZoomEnabled 默认 true 且 Wails v3 没有暴露这个开关，只能用
+			// Chromium 开关堵。⚠️ 浏览器参数是**按环境（整进程）**生效的，没法只对某个
+			// 窗口关，所以对所有窗口一起关 —— 这个 App 里没有任何窗口需要捏合缩放。
+			// 页面侧另有 frontend/dist/nozoom.js 做同目的的兜底（touch-action + 拦
+			// Ctrl+滚轮），两层叠加。
+			AdditionalBrowserArgs: []string{
+				"--autoplay-policy=no-user-gesture-required",
+				"--disable-pinch",
+			},
 		},
 		// 单例运行：第二个实例立即退出（ExitCode），第一个实例收到回调后把
 		// 设置窗口唤到前台 —— 与托盘「双击二次启动唤起窗口」同一条入口。

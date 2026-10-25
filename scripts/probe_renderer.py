@@ -786,6 +786,31 @@ def main():
               "可推迟为 0：外卖窗口页面无控制台错误",
               (tkz.get("consoleErrors") or [])[:2])
 
+        # ---- 禁缩放守卫（提醒窗口 / 预览窗口）----
+        # 2026-10-25 用户报障：触屏两指捏合会把窗口内容放大缩小。三个页面都引了
+        # frontend/dist/nozoom.js（touch-action 去 pinch-zoom + 拦 Ctrl 滚轮/键盘），
+        # Go 侧另有 --disable-pinch（浏览器进程级，无头探针验不到，只能在真机看）。
+        # 这里锁住「守卫装上了、入口都堵住、普通滚轮没被误伤」这三件事。
+        nz = m.get("nozoom") or {}
+        if not nz:
+            check(False, "禁缩放守卫采集到数据（nozoom）", "缺失")
+        for key, label in (("prebreak", "提前提示窗"), ("break", "提醒窗口"), ("takeout", "外卖窗口")):
+            d = nz.get(key) or {}
+            check(d.get("loaded") is True, "%s：已加载禁缩放守卫（__WR_NOZOOM）" % label, d.get("loaded"))
+            # touch-action 里不能有 pinch-zoom：pan-x pan-y 允许平移/滚动，禁掉捏合
+            check(d.get("touchAction") == "pan-x pan-y",
+                  "%s：<html> 的 touch-action 去掉了 pinch-zoom" % label, d.get("touchAction"))
+            check(d.get("ctrlWheelBlocked") is True,
+                  "%s：Ctrl+滚轮（触控板捏合）被拦下" % label, d.get("ctrlWheelBlocked"))
+            # 普通滚轮必须放行：break.js / takeout.js 靠 wheel 记用户活动，
+            # 拦死会让倒计时把「还在用电脑」误判成「离开」
+            check(d.get("plainWheelPassed") is True,
+                  "%s：普通滚轮照旧放行（活动上报不受影响）" % label, d.get("plainWheelPassed"))
+            check(d.get("ctrlKeyBlocked") is True,
+                  "%s：Ctrl+'+' 键盘缩放被拦下" % label, d.get("ctrlKeyBlocked"))
+            check(d.get("multiTouchBlocked") is True,
+                  "%s：双指触摸（捏合的原始输入）被拦下" % label, d.get("multiTouchBlocked"))
+
         # ---- 截图 ----
         # 提前提示窗是 400x240 / 400x172 的小窗，字节数天然比整页截图少，阈值单独给
         for name, min_sz in (

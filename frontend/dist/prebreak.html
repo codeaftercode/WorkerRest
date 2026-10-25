@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <!-- 禁缩放守卫：必须在页面脚本之前执行（外链，内联会被上面的 CSP 拦掉） -->
+  <script src="./nozoom.js"></script>
   <title>即将休息</title>
   <link rel="stylesheet" href="./prebreak.css" />
 </head>

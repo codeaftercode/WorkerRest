@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <!-- 禁缩放守卫：必须在页面脚本之前执行（外链，内联会被上面的 CSP 拦掉） -->
+  <script src="./nozoom.js"></script>
   <title>休息一下</title>
   <link rel="stylesheet" href="./break.css" />
   <!-- 早期脚本：首帧渲染前根据 ?sup 决定窗口初始可见性。sup=1（启用督休专员）时
