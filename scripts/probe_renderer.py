@@ -60,6 +60,9 @@ ISO = os.path.join(TEMP, "wr_probe_iso")
 BUILTIN_ROLE_ORDER = ",".join((
     "supervisor_default", "role_mentor", "role_doctor",
     "role_coach", "role_shopkeeper",
+    "role_emperor", "role_hacker", "role_pilot", "role_judge",
+    "role_economist", "role_magician", "role_painter", "role_warrior",
+    "role_panda", "role_lieutenant", "role_girlfriend", "role_frenemy",
 ))
 # 期望的督休专员数：从内置清单现算（清单增减不用再改断言）
 EXPECTED_ROLE_COUNT = len(BUILTIN_ROLE_ORDER.split(","))

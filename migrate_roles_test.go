@@ -171,6 +171,52 @@ func TestMigrateLegacyRolesBuiltinDeleted(t *testing.T) {
 	}
 }
 
+// TestMigrateLegacyRolesNewBuiltinKept 2026-10-25 新增的内置督休专员不会因「旧配置里没有」
+// 被当成用户删过而删掉：旧版的 roles[] 根本不可能出现这些 key。
+func TestMigrateLegacyRolesNewBuiltinKept(t *testing.T) {
+	root := t.TempDir()
+	seedBuiltinRoles(t, root)
+	// 新内置专员：目录已随包就位，role.json 自带出厂台词
+	newKey := "role_emperor"
+	newDir := filepath.Join(root, "始皇帝")
+	if err := os.MkdirAll(newDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := RoleFile{
+		Key:      newKey,
+		Name:     "始皇帝",
+		Enabled:  true,
+		Image:    "figure.png",
+		Geom:     supGeomDefault,
+		Messages: RoleMessages{Order: "random", Items: []RoleMessageItem{{ID: "m0", Text: "起身。", Enabled: true}}},
+	}
+	if err := writeRoleFile(root, newKey, cfg); err != nil {
+		t.Fatal(err)
+	}
+	raw := map[string]any{
+		"supervisor": map[string]any{
+			"roles": []any{
+				map[string]any{"key": "role_coach.png", "name": "体能教练", "enabled": true},
+			},
+		},
+	}
+	if !migrateLegacyRoles(raw, root) {
+		t.Fatal("应发生迁移")
+	}
+	// 老内置 role_shopkeeper 不在旧配置里 → 仍按「用户删过」删除
+	if _, ok := resolveRoleDir(root, "role_shopkeeper"); ok {
+		t.Fatal("role_shopkeeper 在旧配置中不存在，目录应被删除")
+	}
+	// 新内置 role_emperor 旧版没有这个 key → 必须保留，台词不动
+	dir, ok := resolveRoleDir(root, newKey)
+	if !ok || !isRegularFile(filepath.Join(dir, "role.json")) {
+		t.Fatal("新版新增的内置督休专员不该被迁移删掉")
+	}
+	if got := readRoleJSON(t, root, newKey); got["name"] != "始皇帝" {
+		t.Fatalf("新增内置督休专员的台词/名称不该被旧配置覆盖: %v", got["name"])
+	}
+}
+
 // TestMigrateLegacyRolesCustomRole 自定义督休专员：按旧 key 建目录搬图
 func TestMigrateLegacyRolesCustomRole(t *testing.T) {
 	root := t.TempDir()

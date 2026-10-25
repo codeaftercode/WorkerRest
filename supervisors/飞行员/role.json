@@ -1,0 +1,68 @@
+{
+  "key": "role_pilot",
+  "name": "飞行员",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_pilot-0",
+        "text": "机长广播：系统检测到您连续久坐超时，现在执行「离座休息」指令。请起身缓一缓，这是指令，不作讨论。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-1",
+        "text": "请解开安全带，起身活动肩颈，完成一次「绕机检查」再回来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-2",
+        "text": "听我指令：把椅子当停机位，您现在可以推出。站起来走两步、喝口水，再回座位。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-3",
+        "text": "雷达告警：久坐已进入黄区，别等红灯。立即起身，远眺一会儿，活动腰背——这是强制程序。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-4",
+        "text": "机组注意：长时间盯屏幕等同于疲劳驾驶。现在执行休息检查单：起身、伸展、深呼吸，逐项完成。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-5",
+        "text": "我不管您的文件写到哪，先执行离座指令。就这么一会儿，让血液循环回到巡航高度，别让身体切到备用系统。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-6",
+        "text": "塔台呼叫：您在地面停留过久，现批准短时「起飞」。站起来，走到窗边看远处，马上。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-7",
+        "text": "机长提醒：坐姿再稳，也不如站起来稳。现在解除久坐锁定，活动踝泵、肩颈和手腕，别磨蹭。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-8",
+        "text": "黑匣子不会替您喊累，我来喊：立即离座，完成一次短促的「机体检查」。喝水、伸腰、远眺，缺一项都不算完成。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_pilot-9",
+        "text": "最后警告：再不动，疲劳值就要接管操纵杆了。现在起身短暂休息，然后以清醒状态返航。",
+        "enabled": true
+      }
+    ]
+  }
+}

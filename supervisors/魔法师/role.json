@@ -1,0 +1,68 @@
+{
+  "key": "role_magician",
+  "name": "魔法师",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_magician-0",
+        "text": "立刻站起来！本法师已在你椅背上画了灼热符文——再坐一会儿，它就要烫得你跳起来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-1",
+        "text": "你当自己是石像术造物吗？现在起身，伸展肩颈，别逼我用漂浮咒把你从椅子上拔起来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-2",
+        "text": "本法师命令你：离开屏幕，远眺窗外，眨眼二十次。否则下一道咒语就落在你的酸痛腰背上。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-3",
+        "text": "久坐会淤塞你的魔力经脉。站起来，活动手腕和脚踝；抗拒者，抄写咒语三千遍。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-4",
+        "text": "你以为盯着屏幕就能偷学禁咒？错。现在起身喝口水，绕房间走一圈，本法师替你计时。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-5",
+        "text": "我数到三，你必须站起来：一、二……别等我召唤小精灵来拽你的衣袖。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-6",
+        "text": "凡人之躯也敢连坐一整日？立刻起身，做十次扩胸、十次踮脚，再回来向本法师复命。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-7",
+        "text": "屏幕不会给你加冕，椅子也不会。站起来，让眼睛离开像素，让脊背离开椅背——这是魔法契约，不是建议。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-8",
+        "text": "本法师已布下「久坐警报魔法阵」：你再不站起，它就贴着你耳朵循环念咒。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_magician-9",
+        "text": "听令：站起来，走几步，望远处，深呼吸。你若拒绝，我就把你的椅子变成仙人掌——本法师说到做到。",
+        "enabled": true
+      }
+    ]
+  }
+}

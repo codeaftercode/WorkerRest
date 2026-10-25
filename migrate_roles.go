@@ -86,7 +86,10 @@ func migrateLegacyRoles(raw map[string]any, rolesRoot string) bool {
 			legacyKey = e.Key + ".png"
 		}
 		if !legacyPresent[legacyKey] {
-			if removeRoleDir(rolesRoot, e.Key) {
+			// 「旧配置里没有」只对**目录化之前就存在**的内置专员代表「用户删过」。
+			// 2026-10-25 新增的 12 个内置专员在旧版里压根没有，迁移不能把它们当成
+			// 「用户删过」删掉（否则老用户从旧版升级就少一批专员，且无从察觉）。
+			if legacyBuiltinKeys[e.Key] && removeRoleDir(rolesRoot, e.Key) {
 				log.Printf("[supervisor] 迁移：内置督休专员 %s 在旧配置中已被删除，目录一并移除", e.Key)
 			}
 			continue
@@ -194,6 +197,17 @@ func isBuiltinRole(key string) bool {
 		}
 	}
 	return false
+}
+
+// legacyBuiltinKeys 目录化之前（督休专员数据还存 settings.json 的旧版）就存在的内置 key。
+// 迁移里「内置目录在旧配置中查不到 → 用户删过 → 连目录一起删」只对这些 key 成立；
+// 2026-10-25 新增的 12 个（role_emperor 起）在旧版里没有，只能保留。
+var legacyBuiltinKeys = map[string]bool{
+	"supervisor_default": true,
+	"role_mentor":        true,
+	"role_doctor":        true,
+	"role_coach":         true,
+	"role_shopkeeper":    true,
 }
 
 // findOldRole 在旧 roles[] 里找 key 匹配的那条（找不到给空 map）

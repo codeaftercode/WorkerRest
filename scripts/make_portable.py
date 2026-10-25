@@ -139,13 +139,36 @@ def build_exe(version: str) -> bool:
     return os.path.exists(exe)
 
 
+def copy_roles(dest: str) -> None:
+    """把 supervisors/ 里「带 role.json」的子目录逐个拷进包。
+
+    只拷 role.json 齐全的目录：scanRoles 不认没有 role.json 的子目录（等于不存在），
+    打进去只是白占体积，用户看到目录还会以为「这个专员怎么没显示」。所以纯素材目录
+    （只有立绘、还没做 role.json）天然不进包，不用另维护排除名单。
+    """
+    out = os.path.join(dest, "supervisors")
+    os.makedirs(out, exist_ok=True)
+    skipped = []
+    for name in sorted(os.listdir(ROLES_SRC)):
+        src = os.path.join(ROLES_SRC, name)
+        if not os.path.isdir(src):
+            continue
+        if not os.path.isfile(os.path.join(src, "role.json")):
+            skipped.append(name)
+            continue
+        shutil.copytree(src, os.path.join(out, name))
+    print(f"[make-portable] 督休专员目录: {len(os.listdir(out))} 个")
+    if skipped:
+        print(f"[make-portable] 跳过无 role.json 的素材目录: {', '.join(skipped)}")
+
+
 def assemble(dest: str, version: str) -> bool:
     """把 exe + supervisors/ + 预置三件套组装进 dest（可分发便携目录）。"""
     if os.path.exists(dest):
         shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest, exist_ok=True)
     shutil.copy2(EXE_SRC, os.path.join(dest, EXE_NAME))
-    shutil.copytree(ROLES_SRC, os.path.join(dest, "supervisors"))
+    copy_roles(dest)
     # 清掉运行时残留（supervisors/ 里理论上没有，但 exe 同目录可能被组装源污染）
     for rel in RUNTIME_REL:
         p = os.path.join(dest, rel)

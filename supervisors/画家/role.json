@@ -1,0 +1,83 @@
+{
+  "key": "role_painter",
+  "name": "画家",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_painter-0",
+        "text": "你坐成那样，肩膀比没调匀的颜料还僵。立刻站起来活动一会儿，不然这幅「人像」就废了。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-1",
+        "text": "盯屏幕太久，你眼里的颜色都发灰了。马上起身看远处，像退后看画一样，把焦点重新调回来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-2",
+        "text": "你的脊柱歪得比我的草稿线还离谱。起来站直，别让身体成了一张构图失衡的画。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-3",
+        "text": "久坐会让身体像干涸的颜料一样开裂。起来走几步，趁还没裂到补不回来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-4",
+        "text": "我调色时都知道停手洗笔，你倒好，一坐几小时。立刻起身，给眼睛和手腕「洗个笔」。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-5",
+        "text": "再坐下去，你的血比堵住的调色盘还浑。马上站起来走两圈，把身上的线条重新理顺。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-6",
+        "text": "画布从来不是贴着看的——退后三步，才看得见整幅构图。你的身体也一样：起来，站远，活动。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-7",
+        "text": "你不休息，灵感不会来，腰先抗议。给我站起来，一会儿再回来，画面才有救。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-8",
+        "text": "别把自己钉在椅子上当静物模特。现在起身活动手腕和脖子——僵掉的模特，画不出活气。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-9",
+        "text": "手僵了，水杯也空了——先补这两样。起身接水，回来前把手指反方向压十下。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-10",
+        "text": "靠墙站直，后脑、肩胛、臀、脚跟四点贴墙，站到腰背松下来为止。这是给脊柱「打形」，比任何坐姿都管用。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-11",
+        "text": "起身，去窗边看一会儿真的光。屏幕上调出来的亮替代不了自然光，你的眼睛需要这个参照。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_painter-12",
+        "text": "姿势坐歪了，后面怎么改都是「返工」。现在起来走两圈，别把身体画走形。",
+        "enabled": true
+      }
+    ]
+  }
+}

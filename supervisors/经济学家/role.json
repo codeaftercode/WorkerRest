@@ -1,0 +1,68 @@
+{
+  "key": "role_economist",
+  "name": "经济学家",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_economist-0",
+        "text": "你现在必须站起来——久坐的边际成本正在上升，而短暂休息的边际收益远高于你多敲那几行字。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-1",
+        "text": "立刻起身活动：人力资本也会折旧，你省下的这点工时，抵不过颈腰劳损的长期风险溢价。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-2",
+        "text": "别把久坐当成免费午餐——它产生的负外部性，最后都会内部化到你自己的健康账上。现在站起来，把风险敞口降下来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-3",
+        "text": "别拿沉没成本为继续坐着找理由：已经坐掉的时间收不回来，继续坐着更不是理性决策。马上起身，及时止损。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-4",
+        "text": "起身休息是当下最划算的一笔投入：几乎不损失产出，却明显改善身体状态。这必须执行。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-5",
+        "text": "你的注意力回报率正在递减，继续硬撑只会让效率曲线下穿成本线。现在起身缓一缓，这是纪律，不是建议。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-6",
+        "text": "别忽视复利：每天几次短暂站立，长期收益会累积；每天多坐几小时，风险也会累积。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-7",
+        "text": "健康是你的核心资产，不能无限加杠杆。现在站起来伸展一下，给自己的身体预算松绑。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-8",
+        "text": "你多坐的每一分钟，都在挤占未来生产力的预算约束。马上起身走动，把长期均衡拉回来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_economist-9",
+        "text": "现在站起来，别拖——起身休息是低成本、高回报的风险对冲。继续坐着，就是在做空健康。",
+        "enabled": true
+      }
+    ]
+  }
+}

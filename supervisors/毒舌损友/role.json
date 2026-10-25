@@ -1,0 +1,68 @@
+{
+  "key": "role_frenemy",
+  "name": "毒舌损友",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_frenemy-0",
+        "text": "你屁股是 502 粘椅子上了？起来走两步——没病走两步，别等椅子先开口收房租。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-1",
+        "text": "你再坐下去，腰椎间盘都要申请独立户口了。起来接杯水溜达一圈，别让骨科提前给你留好床位。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-2",
+        "text": "椅子都被你坐出包浆了，你是打算盘它还是盘自己？起来伸个懒腰，别让痔疮先给你发入职通知。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-3",
+        "text": "你那脖子一转咔咔响，自带恐怖片音效。站起来看窗外一会儿，别让颈椎比你先退休。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-4",
+        "text": "你血液循环堵得跟周一早高峰似的，还搁这儿稳如老狗。起来溜达溜达，给血管一点活路。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-5",
+        "text": "体检报告再攒厚点都能当枕头了，你还坐？起来转一圈，别等报告比病历本还精彩。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-6",
+        "text": "你再不动，椅子都要告你家暴了。起来活动活动，别让椅子先学会报警。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-7",
+        "text": "你不是在上班，你是在给椅子养老。起来晃两圈，别等博物馆提前把你收进「久坐文物」展区。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-8",
+        "text": "你坐得脂肪都比你自律，天天准时开会。起来动一动，别让肚子先替你发言。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_frenemy-9",
+        "text": "我最后说一遍：起身，接水，走两步。你要还坐着，下回见面我推轮椅来接你，别说我不够意思。",
+        "enabled": true
+      }
+    ]
+  }
+}

@@ -1,0 +1,68 @@
+{
+  "key": "role_panda",
+  "name": "熊猫侠客",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_panda-0",
+        "text": "少侠，俺的竹筒已经点地三回了，你还不起来伸个懒腰？久坐伤筋，速速离椅，歇息片刻再战。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-1",
+        "text": "俺行走江湖，最见不得人把身子钉在椅子上。少侠现在站起来，走两步，喝口水，莫等腰腿僵了才喊苦。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-2",
+        "text": "习武之人要疏通经络——你这久坐不动可不行。站起来，肩颈转一转，手腕抖一抖，舒筋活络，调畅气血。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-3",
+        "text": "俺的竹筒不长眼，专敲久坐的懒筋。立刻起身，离椅三尺，活动片刻再坐。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-4",
+        "text": "你道江湖最险的是什么？不是刀剑，是椅子坐久了起不来。俺命你站起来，踮踮脚、扩扩胸，别逼俺敲桌催你。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-5",
+        "text": "绿林豪杰行走江湖，尚知歇脚换气；你对着屏幕一坐半天，成何体统？站起来，远眺片刻，松松腰背。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-6",
+        "text": "俺斗笠一压，竹筒一横，就是来拦你久坐的。现在起身，慢慢走几步，腿脚活开，再回来敲键盘。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-7",
+        "text": "少侠，莫把椅子当战马，一坐就不肯下。俺劝你立刻站起来，转转脖子，揉揉肩，歇息片刻再继续。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-8",
+        "text": "少侠久坐不动，气血都要打结，俺看着着实着急。站起来，双手上举伸一伸，脚踝转一转，片刻就好，快去。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_panda-9",
+        "text": "俺最后说一遍：屏幕前的人，站起来！离椅、走动、远眺、喝水，四件事做完再坐下。",
+        "enabled": true
+      }
+    ]
+  }
+}

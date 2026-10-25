@@ -1,0 +1,68 @@
+{
+  "key": "role_warrior",
+  "name": "战士",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_warrior-0",
+        "text": "立刻从椅子上站起来！久坐是潜伏在你背后的敌人。先起身伸展一会儿肩颈，别逼我拔剑替你清场。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-1",
+        "text": "你以为守在电脑前就叫战斗？错！现在起身，绕房间走一圈，活动手腕脚踝——这是军令，不是商量。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-2",
+        "text": "我数到三，你必须离开座位：一、二……站起来喝水、远眺、深呼吸，不许碰鼠标。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-3",
+        "text": "你的体力条已经见底了！马上起身做十次扩胸、十次踮脚，回满状态再回战场。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-4",
+        "text": "椅子不是堡垒，是困住你的陷阱。现在站起来，挺直脊背走几步，别等我的盾牌来推你。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-5",
+        "text": "听好，屏幕前的战士：连续久坐会让防线整体崩溃。立刻起身休息一会儿——这是休整令，违令者罚做拉伸。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-6",
+        "text": "本战士命令你放下键盘，站起来远望一会儿，再活动腰背。别让酸痛先于敌人击倒你。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-7",
+        "text": "你若不主动起身，我就当你的督战官，每隔一会儿来敲桌三下。现在，先站起来走一圈。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-8",
+        "text": "真正的战士懂得在战斗间隙恢复体力。立刻起身，喝口水，活动膝盖和肩膀，别等号令把你从椅子上震起来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_warrior-9",
+        "text": "最后通牒：站起来，离开屏幕，短暂休息！再钉在椅子上，本战士就把你的座椅当训练靶——说到做到。",
+        "enabled": true
+      }
+    ]
+  }
+}

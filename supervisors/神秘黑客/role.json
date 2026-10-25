@@ -1,0 +1,133 @@
+{
+  "key": "role_hacker",
+  "name": "神秘黑客",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_hacker-0",
+        "text": "窗口都压到你脸上了，别装没看见。离开椅子活动一下，不然我让你的屏幕先黑一会儿。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-1",
+        "text": "你看见提醒了，别坐着不动。站起来，伸个懒腰。下一次弹出来的，可就不只是提醒。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-2",
+        "text": "最后一次提醒：离开椅子，短暂休息，再回来。下一次我不会再说话——只会让你的机器安静得让你发毛。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-3",
+        "text": "那行字不是摆设。你继续坐着，我就把你正看的窗口一个个收走。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-4",
+        "text": "我知道你看见那行字了。起来走一圈，别逼我把你的网掐了。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-5",
+        "text": "提醒已经摆到你眼前，别硬撑。现在起身喝口水——你回来之前我不动你的电脑；你要是不动，那就不好说了。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-6",
+        "text": "上一条提醒看见了吧？你坐太久了。现在站起来走两步，不然下一次弹出来的就不是提醒了。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-7",
+        "text": "你坐得够久了，别等我再给你加点动静。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-8",
+        "text": "你耳机里的声音、键盘上的节奏，我都听得见。现在起身休息，不然我让这些声音一起消失。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-9",
+        "text": "你不需要知道我是谁，只需要知道——我一直在看着你。现在站起来，走几步，别让我提醒第二次。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-10",
+        "text": "你的屏幕反光里有个影子，你没发现而已。起身，离开椅子走一走——不然我会让你不得不离开。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-11",
+        "text": "你的椅子不是根目录，别一直待在那儿。起身走一圈，给身体放个短假。这是命令，不是请求。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-12",
+        "text": "最后通牒：立刻站起来，短暂休息，活动一下再回来。否则下次弹窗就不是提醒，是强制锁屏。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-13",
+        "text": "我盯上你的坐姿了：心跳包正常，循环服务告急。离开屏幕一会儿，别让我重复第二遍。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-14",
+        "text": "屏幕前的你，权限再高也得服从人体系统。现在站起来，喝口水，活动肩颈。倒计时开始。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-15",
+        "text": "警告：久坐漏洞正在扩大，补丁只有一个——起身、走动、短暂休息。立刻安装，别拖到系统崩溃。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-16",
+        "text": "你已经连续占用同一姿势太久了，后台进程该挂起了。站起来伸个懒腰，别逼我远程提权把你从桌面上踢下来。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-17",
+        "text": "别以为我看不到你的坐姿日志——颈椎偏移、肩部僵硬、血流降频。现在起身，过一会儿我再扫一遍。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-18",
+        "text": "你的注意力端口正在丢包，继续硬撑只会蓝屏。站起来走几步，给大脑重启一下，马上执行。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-19",
+        "text": "检测到腰椎负载持续飙高，散热也快撑不住了。立刻起身活动，这不是建议，是强制补丁。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-20",
+        "text": "我已接管本终端。倒计时归零前，离开屏幕。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-21",
+        "text": "警告：连续用眼超时，已记入监管日志。立即离席。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_hacker-22",
+        "text": "检测到违规：用户仍未离席。强制休息程序启动。",
+        "enabled": true
+      }
+    ]
+  }
+}

@@ -47,14 +47,28 @@ type RoleFile struct {
 // builtinRoleMeta 内置督休专员的固定顺序与兜底名字（与 历史源码/supervisor.ts 的
 // BUILTIN_ROLE_META 逐字一致）。顺序**不是**按目录名排的 —— 它就是「立绘库磁贴」与
 // 「顺序轮换」的出场次序，改成字典序会让内置督休专员的出场顺序与 上一版不同。
-// 2026-10-23 起随包只带 5 个督休专员：魔鬼教官 / 宿管大爷 / 赛博监考官 / 冷面上司
-// 已下架（目录一并删除）。删掉的 key 不再出现在清单里，磁盘上也就不会按内置顺序出现。
+// 2026-10-23 起先是 5 个督休专员（魔鬼教官 / 宿管大爷 / 赛博监考官 / 冷面上司已下架，
+// 目录一并删除）；2026-10-25 又追加了 12 个（始皇帝 … 毒舌损友），新的一律排在原有 5 个
+// 之后 —— 新增专员不该打乱老用户习惯的出场次序。清单里没有的 key 不会按内置顺序出现，
+// 而是排在清单末尾按目录名排序（自定义 / 用户手放）。
 var builtinRoleMeta = []struct{ key, name string }{
 	{"supervisor_default", "眼镜主管"},
 	{"role_mentor", "温柔学姐"},
-	{"role_doctor", "值班医生"},
+	{"role_doctor", "医生"},
 	{"role_coach", "体能教练"},
 	{"role_shopkeeper", "古风掌柜"},
+	{"role_emperor", "始皇帝"},
+	{"role_hacker", "神秘黑客"},
+	{"role_pilot", "飞行员"},
+	{"role_judge", "法官"},
+	{"role_economist", "经济学家"},
+	{"role_magician", "魔法师"},
+	{"role_painter", "画家"},
+	{"role_warrior", "战士"},
+	{"role_panda", "熊猫侠客"},
+	{"role_lieutenant", "中尉军官"},
+	{"role_girlfriend", "野蛮女友"},
+	{"role_frenemy", "毒舌损友"},
 }
 
 // roleFallbackName role.json 里没写 name 时的兜底名

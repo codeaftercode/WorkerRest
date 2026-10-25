@@ -1,0 +1,73 @@
+{
+  "key": "role_girlfriend",
+  "name": "野蛮女友",
+  "enabled": true,
+  "image": "figure.webp",
+  "preview": "preview.webp",
+  "geom": {
+    "sizePct": 72,
+    "posXPct": 4,
+    "posYPct": 0,
+    "flip": false
+  },
+  "messages": {
+    "order": "random",
+    "items": [
+      {
+        "id": "builtin-cmd-role_girlfriend-0",
+        "text": "喂，电脑前那个！给我站起来伸个懒腰，就一会儿，少一点都不行。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-1",
+        "text": "你还坐得挺稳？起来走两步，劳资蜀道山！",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-2",
+        "text": "久坐很舒服是吧？限你马上起身走两圈，不然我就当你在故意气我。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-3",
+        "text": "别装忙，鼠标先放下。站起来活动肩颈——我可不想以后天天听你喊腰疼。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-4",
+        "text": "现在、立刻、马上，起来喝水！水不端起来，我就当你默认想被我念叨一整天。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-5",
+        "text": "眼睛还盯着屏幕？抬头看远处一会儿，再站起来走几步。别逼我过去关你电脑。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-6",
+        "text": "你给我听好了：坐久了必须起来一次。这是规矩，不是商量。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-7",
+        "text": "腰背绷那么紧给谁看？站起来扩扩胸、转转脚踝，动作认真点，我盯着呢。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-8",
+        "text": "电脑又不会跑，你急什么？起身休息一会儿，回来再干活——效率归效率，身体归我管。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-9",
+        "text": "再不起来，我就当你默认想被拧耳朵。快去走动一下，顺便把水喝了。",
+        "enabled": true
+      },
+      {
+        "id": "builtin-cmd-role_girlfriend-10",
+        "text": "最后警告一次：现在站起来，伸伸胳膊踢踢腿，休息完再坐回去。你要是还不动，我可真生气了。",
+        "enabled": true
+      }
+    ]
+  }
+}

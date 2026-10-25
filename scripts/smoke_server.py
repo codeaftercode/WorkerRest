@@ -55,6 +55,9 @@ except Exception:
 BUILTIN_ROLE_ORDER = [
     "supervisor_default", "role_mentor", "role_doctor",
     "role_coach", "role_shopkeeper",
+    "role_emperor", "role_hacker", "role_pilot", "role_judge",
+    "role_economist", "role_magician", "role_painter", "role_warrior",
+    "role_panda", "role_lieutenant", "role_girlfriend", "role_frenemy",
 ]
 
 def role_dir(root, key):
