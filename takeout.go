@@ -632,8 +632,13 @@ type supWatchInfo struct {
 	Pulses  int    `json:"pulses"`
 }
 
-// ensureSupActivityWatch 启动系统级键鼠活动轮询（已在跑则忽略）。有提醒窗口在场时调用。
+// ensureSupActivityWatch 启动系统级键鼠活动轮询（已在跑则忽略）。有提醒在**场**时调用：
+// 休息会话一建立（app.showBreakSession，含预览）与外卖窗口一创建（ShowTakeoutWindow）。
 // 用户在**任意应用**里敲了键或动了鼠标 → 广播 sup:active（与窗口焦点无关）。
+//
+// 为什么休息会话也要开：休息窗口里的二阶段（督休专员改成命令语气）原本只监听窗口内的
+// mousemove / keydown，用户切到别的应用继续干活时完全检测不到 —— 用户报的就是这条
+// 「不能只在提醒窗口上检测，要在整个操作系统层面做全局检测」。
 //
 // 与 上一版的差异：只有 GetLastInputInfo 一个来源，读不到 tick 时整段不启动。
 func (a *App) ensureSupActivityWatch() {
@@ -649,7 +654,7 @@ func (a *App) ensureSupActivityWatch() {
 			return
 		}
 	}
-	a.supWatch = supWatchInfo{Mode: "tick"}
+	a.supWatch = supWatchInfo{Running: true, Mode: "tick"}
 	ch := make(chan struct{})
 	a.supWatchStop = ch
 	a.mu.Unlock()
@@ -691,7 +696,7 @@ func (a *App) ensureSupActivityWatch() {
 				first := a.supWatch.Pulses == 1
 				a.mu.Unlock()
 				if first {
-					log.Printf("[smoke] global input pulse: mode=tick to=%d", n)
+					log.Printf("[sup-watch] global input pulse: mode=tick to=%d", n)
 				}
 			}
 		}
@@ -700,12 +705,16 @@ func (a *App) ensureSupActivityWatch() {
 
 // broadcastSupActive 把「用户仍在操作键鼠」广播给所有提醒窗口，返回实际广播的次数。
 // Go 侧用 Event.Emit("sup:active") 全局广播（不按窗口定向，见文件头注释）。
+// 单测里没有 Wails 应用对象（a.app == nil）：计数照走、广播跳过，不让后台 goroutine 炸测试进程。
 func (a *App) broadcastSupActive() int {
+	if a.app == nil {
+		return 0
+	}
 	a.app.Event.Emit("sup:active")
 	return 1
 }
 
-// releaseSupActivityWatch 全部提醒窗口都收掉了才停止轮询
+// releaseSupActivityWatch 提醒彻底收场了才停止轮询
 func (a *App) releaseSupActivityWatch() {
 	a.mu.Lock()
 	ch := a.supWatchStop
@@ -713,14 +722,22 @@ func (a *App) releaseSupActivityWatch() {
 		a.mu.Unlock()
 		return
 	}
-	if a.hasTakeoutWindowsLocked() || a.hasBreakWindowLocked() {
+	if a.reminderPresentLocked() {
 		a.mu.Unlock()
 		return
 	}
 	a.supWatchStop = nil
 	a.supWatch.Mode = "off"
+	a.supWatch.Running = false
 	a.mu.Unlock()
 	close(ch)
+}
+
+// reminderPresentLocked 还有没有「需要盯全局输入」的提醒在场。
+// 窗口之外还要看**会话**：无头 server 模式没有原生窗口，只有会话；
+// 有会话在跑就说明休息还没结束，轮询不能停。
+func (a *App) reminderPresentLocked() bool {
+	return a.hasBreakWindowLocked() || a.hasTakeoutWindowsLocked() || a.sess != nil
 }
 
 func (a *App) hasTakeoutWindowsLocked() bool {

@@ -211,7 +211,13 @@
       window.addEventListener("keydown", () => noteActivity(3, true), { passive: true });
       window.addEventListener("wheel", () => noteActivity(3, true), { passive: true });
       window.addEventListener("touchstart", () => noteActivity(3, true), { passive: true });
-      supApi?.onSupActivity?.(() => noteActivity(3, false));
+      // 系统级键鼠活动：Go 侧轮询 user32!GetLastInputInfo，用户在**任意应用**里敲键 /
+      // 动鼠标都会广播过来（与窗口焦点无关）。页面侧留一个诊断计数，探针据此确认
+      // 「全局事件真的到达本页」，而不是靠 data-stage 反推（窗口内事件也会升级，会掩盖）。
+      supApi?.onSupActivity?.(() => {
+        window.__WR_SUP_ACTIVE = (window.__WR_SUP_ACTIVE || 0) + 1;
+        noteActivity(3, false);
+      });
     }
     if (!sup.gaze) return;
     gaze.style.transformOrigin = "50% 100%";

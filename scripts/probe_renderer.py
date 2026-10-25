@@ -786,6 +786,23 @@ def main():
               "可推迟为 0：外卖窗口页面无控制台错误",
               (tkz.get("consoleErrors") or [])[:2])
 
+        # ---- 全局键鼠活动 → 督休专员二阶段（系统级检测的可观测端）----
+        # 二阶段的触发源必须是「系统级键鼠活动」，不能只在提醒窗口内监听：
+        # Go 侧 sup:active 广播（takeout.go 轮询 user32!GetLastInputInfo）→ shim on()
+        # → break.js noteActivity。断言分两步：
+        #   ① 事件真的到达页面（__WR_SUP_ACTIVE 计数增加）—— 这条是链路证明；
+        #   ② 页面把它当二阶段处理（data-stage 升到 2）。
+        # 不校验「触发前一阶段」：探针跑在真机上，用户自己的键鼠活动也会产生
+        # sup:active（这正是本功能要的），先验状态不可控。
+        ga = m.get("globalActivity") or {}
+        check(not ga.get("error"), "提醒窗口：SupActivity 绑定调用成功", ga.get("error"))
+        n0 = ga.get("pulsesBefore")
+        n1 = ga.get("pulsesAfter")
+        check(isinstance(n0, int) and isinstance(n1, int) and n1 > n0,
+              "提醒窗口：全局键鼠活动广播（sup:active）真的到达页面", "%s -> %s" % (n0, n1))
+        check(ga.get("stage") == "2",
+              "提醒窗口：全局键鼠活动把督休专员推进二阶段", ga.get("stage"))
+
         # ---- 禁缩放守卫（提醒窗口 / 预览窗口）----
         # 2026-10-25 用户报障：触屏两指捏合会把窗口内容放大缩小。三个页面都引了
         # frontend/dist/nozoom.js（touch-action 去 pinch-zoom + 拦 Ctrl 滚轮/键盘），

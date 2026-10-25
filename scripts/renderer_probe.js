@@ -748,6 +748,22 @@ async function run() {
   metrics.breakWide = await wide.evaluate(PROBE_BREAK);
   await shot(wide, "break_wide");
   console.log("[probe] breakWide:", JSON.stringify(metrics.breakWide));
+  // 全局键鼠活动 → 二阶段：Go 侧广播的 sup:active 必须能把督休专员推到二阶段。
+  // 这条链路（Go Event.Emit → runtime → shim on() → break.js noteActivity）里
+  // **没有任何页内键鼠事件**，正是「不能只在提醒窗口上检测」缺的那一段。
+  // 必须排在 NOZOOM_PROBE 之前：那一段会合成 wheel / keydown，页内事件本身也会升级。
+  metrics.globalActivity = await wide.evaluate(`(async function () {
+    var app = document.getElementById("app");
+    var n0 = window.__WR_SUP_ACTIVE || 0;
+    try { await window.api.supActivity(); } catch (e) { return { error: String(e) }; }
+    var n1 = n0;
+    for (var i = 0; i < 20 && n1 === n0; i++) {
+      await new Promise(function (r) { setTimeout(r, 100); });
+      n1 = window.__WR_SUP_ACTIVE || 0;
+    }
+    return { pulsesBefore: n0, pulsesAfter: n1, stage: app.dataset.stage };
+  })()`);
+  console.log("[probe] globalActivity:", JSON.stringify(metrics.globalActivity));
   metrics.nozoom.break = await wide.evaluate(NOZOOM_PROBE);
   console.log("[probe] nozoom/break:", JSON.stringify(metrics.nozoom.break));
 

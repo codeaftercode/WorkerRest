@@ -633,6 +633,13 @@ func (a *App) showBreakSession(kind string, preview bool, forceKey string) strin
 	a.sess = info
 	a.mu.Unlock()
 
+	// 系统级键鼠活动轮询：休息窗口在场期间必须能发现「用户在**别的应用**里还在敲键 /
+	// 动鼠标」，否则督休专员的二阶段只能靠窗口内的本地 mousemove / keydown 触发 ——
+	// 用户报的就是这个：「只在提醒窗口上检测」。
+	// 放在会话建好之后、弹窗之前：会话一旦存在就该开始盯全局输入，与窗口是否已就绪无关
+	// （无头 server 模式也走这里，冒烟据此断言轮询真的起来了）。
+	a.ensureSupActivityWatch()
+
 	// 休息真的开始了：顺手收掉右下角的提前提示窗
 	//（对应 上一版 在 break-start 事件里调 closePreBreakWindow）。
 	a.closePreBreakWindow()
@@ -668,6 +675,9 @@ func (a *App) closeBreakWindows() {
 	for _, w := range ws {
 		w.Close()
 	}
+	// 窗口和会话都没了：全局键鼠轮询该收了（若还有外卖窗口在场则继续跑，
+	// 判断在 releaseSupActivityWatch 里）
+	a.releaseSupActivityWatch()
 	a.playConfiguredSound()
 	// 统计：休息结束（唯一调用点是调度器的 finishBreak，所以这里就是 break-end）。
 	// 类型取自会话本身 —— 休息结束时调度器状态可能已经翻篇，而记录要用**刚刚结束的那次**；
@@ -897,6 +907,8 @@ func (a *App) removeBreakWindow(w *application.WebviewWindow) {
 		a.breakSessID = ""
 	}
 	a.mu.Unlock()
+	// 最后一个休息窗口被直接关掉（Alt+F4）：全局键鼠轮询按「还有没有提醒窗口」决定收不收
+	a.releaseSupActivityWatch()
 }
 
 // breakWinReusable 现有休息窗口能不能直接复用：必须「确实有窗口」且
@@ -972,6 +984,8 @@ func (a *App) CloseWindow(win string) {
 		for _, w := range ws {
 			w.Close()
 		}
+		// 预览 / 点任意处关闭：窗口与会话都清了，全局键鼠轮询一并收掉
+		a.releaseSupActivityWatch()
 		return
 	}
 	a.mu.Lock()
