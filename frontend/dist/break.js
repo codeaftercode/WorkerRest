@@ -240,8 +240,8 @@
   // renderer/supervisorLayout.ts —— 游戏对话画面版式
   // .content 已是底部全宽对话框（CSS 定版），这里只负责把倒计时环浮到
   // 「立绘可见右缘~窗口右缘」与「立绘可见上缘~对话框上边缘」两个中点的交点上
-  // （环中心对准；「提前结束」在 bar 内跟随环居中下沉）。摆位结果写入
-  // supMetrics 供探针断言。
+  // （环中心对准；「提前结束」已固定在窗口顶部，不参与这里的摆位）。
+  // 摆位结果写入 supMetrics 供探针断言。
   var CD_EDGE = 10;
   var frozenFig = null;          // 立绘可见边（去透明）的冻结锚点（窗口坐标）
   var lastLayoutKey = "";        // 仅在窗口/立绘盒（含位置）/trim 就绪变化时重算，避免二阶段缩放导致倒计时位移
@@ -323,8 +323,8 @@
     // 包含块就是它——所以摆位全部用实测 rect 换算，不假设贴边。两个锚点中点：
     //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
     //   垂直 midY = (立绘可见上缘 + 对话框上边缘) / 2（二者实测，偏移自动跟随）
-    // bar 是 column flex（名称在上、环居中、skip 在下），环中心距 bar 底用
-    // ring-wrap 的 offsetTop 实测反推，让环中心（而非 bar 中心）落在 midY 上。
+    // bar 是 column flex（名称在上、环在下），环中心距 bar 底用 ring-wrap 的
+    // offsetTop 实测反推，让环中心（而非 bar 中心）落在 midY 上。
     const bar = content.querySelector(".bar");
     const boxRect = content.getBoundingClientRect();
     const boxH = boxRect.height;
@@ -340,7 +340,7 @@
       const barW = bar.offsetWidth || 84;
       const ringH = (ringWrap && ringWrap.offsetHeight) || 84;
       const barH = bar.offsetHeight || ringH;
-      // bar 是 column flex：提醒名称在环上、「提前结束」在环下。环在中间，
+      // bar 是 column flex：提醒名称在环上（「提前结束」已经移出 bar、固定到窗口顶部）。
       // 用 ring-wrap 的实际布局位置（距 bar 顶的 offsetTop）反推「环中心距 bar 底」，
       // 这样无论环上下各放了什么，环中心都能精确落在 midY 上（名称移到环上方后，
       // 旧式「barH - ringH 当作环下占位」会把环整体抬高，故改为实测 offsetTop）。
@@ -372,6 +372,25 @@
       midY: Math.round(midY),
       src: haveTrim ? "trim" : "figure"
     });
+    layoutMessages(content, cRect);
+  }
+
+  // layoutMessages 把「提醒内容」的垂直中心摆到（督休专员名称中心 ↔ 窗口下边缘）的中点。
+  // messages 留在文档流里（它和台词一起撑着对话框高度），所以只做 translateY 微调；
+  // 每次都先把上一轮的位移清掉再量，否则位移会被当成新基准、逐次累加而漂移。
+  // 名称是 absolute 凸在对话框顶边上的标签，高度随字号变，中心只能实测。
+  function layoutMessages(content, cRect) {
+    const msg = content.querySelector(".messages");
+    if (!msg) return;
+    msg.style.transform = "";
+    if (!msg.offsetHeight) return; // 内置短/长休息会把提醒内容整块隐藏，没有高度就不摆
+    const name = content.querySelector(".dialog-name");
+    const nameRect = name && !name.classList.contains("hidden") ? name.getBoundingClientRect() : null;
+    const nameCy = nameRect ? nameRect.top + nameRect.height / 2 : cRect.top;
+    const bottomEdge = cRect.top + cRect.height;
+    const m = msg.getBoundingClientRect();
+    const dy = Math.round((nameCy + bottomEdge) / 2 - (m.top + m.height / 2));
+    if (dy) msg.style.transform = `translateY(${dy}px)`;
   }
   function bindSupContentLayout(figure, content, measure) {
     const relayout = () => layoutSupDialog(figure, content, measure);
@@ -846,7 +865,9 @@
       window.setTimeout(() => api.closeWindow(), Math.max(0, data.endsAt - Date.now()) + 1000);
     }
     const skip = document.getElementById("skip-link");
-    skip.classList.remove("hidden");
+    // 顶部那个位置留给「预览模式 · 点击任意处关闭」：预览本来就点任意处关闭，再挂一个
+    // 「提前结束」既重复、又会和 badge 叠在同一处。
+    if (!data.preview) skip.classList.remove("hidden");
     // 文案随「设置 → 快捷键」的 endEarly 走：配置了就显示「提前结束（Ctrl+Alt+X）」，
     // 没配置（禁用）就只显示「提前结束」。
     skip.textContent = data.endEarlyShortcut

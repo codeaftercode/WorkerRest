@@ -21,6 +21,10 @@
   <div id="app">
     <div id="vignette"></div>
     <div id="preview-badge" class="hidden">预览模式 · 点击任意处关闭</div>
+    <!-- 「提前结束」固定在窗口顶部正中，与 #preview-badge 同一位置。两者互斥显示：
+         预览时只显示 badge（点任意处即可关），真实休息时只显示它。
+         文案（含快捷键）由 break.js 按「设置 → 快捷键」的 endEarly 动态填充。 -->
+    <a href="#" id="skip-link" class="skip-link hidden">提前结束</a>
     <div class="stage">
       <!-- 督休专员：立绘锚定左下（贴底、不贴边）。
            .trim 负责抵消立绘自带的透明边距（见 renderer/figureTrim.ts），
@@ -37,9 +41,10 @@
       <!-- 有督休专员时 .content 由脚本/样式变身「游戏对话画面」的底部全宽对话框：
            名字标签在左上角凸出，台词大字、提醒内容次要；倒计时环（.bar）脱离
            文档流，中心落在「立绘右缘~窗口右缘」「对话框顶~窗口顶」两个中点的
-           交点上（位置由脚本写入），「提前结束」在环内跟随环居中下沉。
-           无督休专员时倒计时环精确居中于屏幕正中央，提醒名称在环正上方、提前结束
-           在环正下方、提醒内容落在环下方到窗口底边的区域中央（均以环心为基准）。 -->
+           交点上（位置由脚本写入）。
+           无督休专员时倒计时环精确居中于屏幕正中央，提醒名称在环正上方、
+           提醒内容落在环下方到窗口底边的区域中央（均以环心为基准）。
+           「提前结束」两种版式都不在环附近，固定挂在窗口顶部正中（见上方 #skip-link）。 -->
       <div class="content" id="content">
         <div class="dialog-name hidden" id="dialog-name"></div>
         <div class="supervisor-line hidden" id="supervisor-line"></div>
@@ -108,9 +113,6 @@
               </div>
             </div>
           </div>
-          <!-- 「提前结束」放进 bar 内跟随环：环被脚本摆到哪，它就居中挂在环下方。
-               文案（含快捷键）由 break.js 按「设置 → 快捷键」的 endEarly 动态填充 -->
-          <a href="#" id="skip-link" class="skip-link hidden">提前结束</a>
         </div>
       </div>
     </div>

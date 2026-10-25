@@ -284,6 +284,8 @@ const PROBE_BREAK = `(function () {
   var ringRect = ringWrap ? ringWrap.getBoundingClientRect() : null;
   var skipEl = document.getElementById('skip-link');
   var skipRect = skipEl ? skipEl.getBoundingClientRect() : null;
+  var nameEl = document.getElementById('dialog-name');
+  var nameRect = nameEl ? nameEl.getBoundingClientRect() : null;
   return {
     shim: window.__WR_SHIM || null,
     hasSupervisor: document.body.classList.contains('has-supervisor'),
@@ -328,6 +330,8 @@ const PROBE_BREAK = `(function () {
       rectLeft: Math.round(skipRect.left), rectTop: Math.round(skipRect.top),
       rectRight: Math.round(skipRect.right), rectBottom: Math.round(skipRect.bottom),
     } : null,
+    // 名字标签：横屏 left:56px、竖屏 left:46px（与外卖窗口同口径）
+    dialogNameLeft: nameRect ? Math.round(nameRect.left) : null,
     errors: window.__WR_ERRORS || []
   };
 })()`;

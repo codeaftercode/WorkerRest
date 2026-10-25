@@ -520,6 +520,13 @@ def main():
                 check(b.get("dialogName") == want_role and b.get("dialogNameShown") is True,
                       "%s提醒窗口：名字标签亮在对话框左上角" % label,
                       "%r / %s" % (b.get("dialogName"), b.get("dialogNameShown")))
+            # 名字标签距窗口左缘：横屏 56px、竖屏 46px（2026-10-24 从 26/16 右移，
+            # 与外卖提醒窗口同口径；锁住数值，防止样式被改回去）
+            bw, bh = b.get("viewportW") or 0, b.get("viewportH") or 0
+            want_left = 46 if (bw and bh and bw < bh) else 56
+            check(b.get("dialogNameLeft") == want_left,
+                  "%s提醒窗口：督休专员名称距左缘 %dpx" % (label, want_left),
+                  "%s" % b.get("dialogNameLeft"))
             ci = b.get("contentInline") or {}
             check((ci.get("rectW") or 0) > 0 and (ci.get("rectH") or 0) > 0,
                   "%s提醒窗口：对话框有实际占位" % label, "%sx%s" % (ci.get("rectW"), ci.get("rectH")))
@@ -572,15 +579,17 @@ def main():
                           "%s提醒窗口：环中心 == 立绘上缘与对话框顶的中间" % label,
                           "%s vs %s" % (round(cy), round(want_cy)))
             sk = b.get("skipInline") or {}
-            if sk.get("shown") and ri.get("rectBottom") is not None:
-                check(sk.get("rectTop", 0) >= ri.get("rectBottom", 0) - 2,
-                      "%s提醒窗口：「提前结束」在倒计时环的下方" % label,
-                      "skip_top=%s ring_bottom=%s" % (sk.get("rectTop"), ri.get("rectBottom")))
-                skip_cx = (sk.get("rectLeft", 0) + sk.get("rectRight", 0)) / 2
-                ring_cx = (ri.get("rectLeft", 0) + ri.get("rectRight", 0)) / 2
-                check(abs(skip_cx - ring_cx) <= 3,
-                      "%s提醒窗口：「提前结束」与环中心水平对齐" % label,
-                      "%s vs %s" % (round(skip_cx), round(ring_cx)))
+            if sk.get("shown"):
+                # 「提前结束」固定在窗口顶部正中，与预览模式的 #preview-badge 同一位置
+                # （top:18px 是元素顶边），不再跟随倒计时环。
+                check(abs((sk.get("rectTop") or 0) - 18) <= 2,
+                      "%s提醒窗口：「提前结束」贴在窗口顶部（与预览提示同位）" % label,
+                      "rectTop=%s" % sk.get("rectTop"))
+                if vpw:
+                    skip_cx = ((sk.get("rectLeft") or 0) + (sk.get("rectRight") or 0)) / 2
+                    check(abs(skip_cx - vpw / 2) <= 3,
+                          "%s提醒窗口：「提前结束」水平居中" % label,
+                          "%s vs %s" % (round(skip_cx), vpw / 2))
             if bi.get("rectBottom") is not None and ci.get("rectBottom") is not None:
                 check(bi.get("rectBottom") <= ci.get("rectBottom"),
                       "%s提醒窗口：倒计时环挂在对话框上方（不压台词）" % label,

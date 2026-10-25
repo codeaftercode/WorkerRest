@@ -208,11 +208,12 @@ body.has-supervisor .content {
   border-radius: 0 0 var(--app-radius) var(--app-radius);
 }
 
-/* 名字标签：对话框左上角凸出（经典 VN 名字牌） */
+/* 名字标签：对话框左上角凸出（经典 VN 名字牌）。2026-10-24 从 26px 往右挪到 56px：
+   原来是贴着窗口左缘、压在立绘身上，现在留出呼吸位。 */
 .dialog-name {
   position: absolute;
   top: 0;
-  left: 26px;
+  left: 56px;
   transform: translateY(-55%);
   padding: 5px 20px 6px;
   background: var(--accent);
@@ -358,15 +359,8 @@ body:not(.has-supervisor) .remind-name {
   bottom: 50%;
   transform: translate(-50%, calc(-1 * (var(--ring-half) + var(--ctrl-gap))));
 }
-/* 提前结束：环正下方、水平居中——top:50% 锚到屏幕中线，再下移「半环 + 间距」 */
-body:not(.has-supervisor) .skip-link {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, calc(var(--ring-half) + var(--ctrl-gap)));
-}
-/* 提醒内容：环下方、窗口底边之间的剩余区域里垂直居中（≈ 提前结束与窗口下边框的
-   中点），水平居中不变；稳定占据下区域中央，消除上下失衡。 */
+/* 提醒内容：环下方、窗口底边之间的剩余区域里垂直居中，水平居中；稳定占据下区域
+   中央，消除上下失衡。 */
 body:not(.has-supervisor) .messages {
   position: absolute;
   left: 50%;
@@ -590,13 +584,23 @@ body.has-supervisor .progress-pct { font-size: clamp(16px, 2.6vh, 28px); }
 }
 body.has-supervisor .particles { display: none; }
 
+/* 「提前结束」固定在窗口顶部正中 —— 与预览模式的 #preview-badge 同一位置（同 top、
+   同内边距、同水平居中），两者互斥显示所以不会叠在一起。用 fixed 而不是跟随环：
+   环在两种版式下位置不同，按钮却始终待在同一个地方，用户不用找。 */
 .skip-link {
+  position: fixed;
+  top: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 11;
+  padding: 6px 16px;
   color: rgba(255, 255, 255, 0.75);
   font-size: 14px;
   text-decoration: underline;
   text-underline-offset: 4px;
   cursor: pointer;
   white-space: nowrap;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
 }
 .skip-link:hover { color: #fff; }
 
@@ -620,7 +624,7 @@ body.has-supervisor .particles { display: none; }
   body.has-supervisor .countdown { font-size: clamp(40px, 15vw, 80px); }
   body.has-supervisor .progress-pct { font-size: clamp(13px, 3.6vw, 24px); }
   body.has-supervisor .ins-line { font-size: clamp(11px, 3vw, 18px); }
-  body.has-supervisor .dialog-name { left: 16px; }
+  body.has-supervisor .dialog-name { left: 46px; }
   body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
 }
 

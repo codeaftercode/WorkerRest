@@ -316,11 +316,12 @@ body.has-supervisor .content {
   border-radius: 0 0 var(--app-radius) var(--app-radius);
 }
 
-/* 名字标签：对话框左上角凸出（经典 VN 名字牌，与休息窗口同款） */
+/* 名字标签：对话框左上角凸出（经典 VN 名字牌，与休息窗口同款）。
+   2026-10-24 从 26px 往右挪到 56px（与休息窗口同步）。 */
 .dialog-name {
   position: absolute;
   top: 0;
-  left: 26px;
+  left: 56px;
   transform: translateY(-55%);
   padding: 5px 20px 6px;
   background: var(--accent);
@@ -364,7 +365,7 @@ body:not(.has-supervisor) .supervisor-line { display: none !important; }
 /* 竖屏窗口（高 > 宽）：立绘占宽比例大，红包区与名字标签收小一档 */
 @media (max-aspect-ratio: 1/1) {
   body.has-supervisor .rp-qr { width: 92px; height: 92px; }
-  body.has-supervisor .dialog-name { left: 16px; }
+  body.has-supervisor .dialog-name { left: 46px; }
   body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
 }
 
