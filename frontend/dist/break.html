@@ -9,15 +9,10 @@
   <link rel="stylesheet" href="./break.css" />
   <!-- 早期脚本：首帧渲染前根据 ?sup 决定窗口初始可见性。sup=1（启用督休专员）时
        整窗先透明，等立绘加载完成再淡入，避免「先无立绘、后有立绘」闪烁；sup=0
-       或缺失时立即显示（无立绘即正确态）。 -->
-  <script>
-    (function () {
-      try {
-        var p = new URLSearchParams(location.search);
-        if (p.get("sup") !== "1") document.documentElement.style.opacity = "1";
-      } catch (e) {}
-    })();
-  </script>
+       或缺失时立即显示（无立绘即正确态）。
+       必须是外链：上面 CSP 的 default-src 'self' 会拦掉内联脚本 —— 这段以前就是内联，
+       从加上 CSP 起一直被拦、从未执行过（2026-10-25 修复）。说明见 break-early.js。 -->
+  <script src="./break-early.js"></script>
 </head>
 <body>
   <div id="app">
