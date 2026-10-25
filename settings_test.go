@@ -275,7 +275,7 @@ func TestUpdateSites(t *testing.T) {
 			map[string]any{"sites": []any{
 				"http://a/version.json",
 				"https://b/version.json",
-				"ftp://c/x", // 非法 scheme
+				"ftp://c/x",         // 非法 scheme
 				"",                  // 空串
 				"  http://d/x.json", // 带空白仍保留（调用方 trim 后下发）
 			}},

@@ -21,13 +21,13 @@ func newTakeoutApp(t *testing.T, cfgJSON string) *App {
 	t.Helper()
 	t.Setenv("WR_STATS_PATH", filepath.Join(t.TempDir(), "stats.json"))
 	return &App{
-		cfg:          testSettings(t, cfgJSON),
-		rolesRoot:    t.TempDir(),
-		rng:          rand.New(rand.NewSource(1)),
-		cursor:         make(map[string]int),
+		cfg:             testSettings(t, cfgJSON),
+		rolesRoot:       t.TempDir(),
+		rng:             rand.New(rand.NewSource(1)),
+		cursor:          make(map[string]int),
 		takeoutFired:    map[string]bool{},
 		takeoutPreFired: map[string]bool{},
-		idle:           NewIdleState(),
+		idle:            NewIdleState(),
 	}
 }
 
