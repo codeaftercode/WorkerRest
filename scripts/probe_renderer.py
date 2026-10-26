@@ -820,6 +820,15 @@ def main():
               "提醒窗口：全局键鼠活动广播（sup:active）真的到达页面", "%s -> %s" % (n0, n1))
         check(ga.get("stage") == "2",
               "提醒窗口：全局键鼠活动把督休专员推进二阶段", ga.get("stage"))
+        # 二阶段的命令台词比一阶段的提醒内容长，但对话框高度必须恒定：以前是
+        # min-height，台词换行就把框撑高、倒计时环跟着位移（用户报障 2026-10-25）。
+        check(abs((ga.get("boxHAfter") or 0) - (ga.get("boxHBefore") or 0)) <= 0.5,
+              "提醒窗口：进入二阶段后对话框高度不变",
+              "%s -> %s（台词 %s 字）" % (ga.get("boxHBefore"), ga.get("boxHAfter"), ga.get("lineChars")))
+        # 台词在框内居中偏上：负偏移＝文字中心高于框中心（不允许压到框底）
+        off = ga.get("lineOffset")
+        check(isinstance(off, (int, float)) and -40 <= off <= 0,
+              "提醒窗口：台词落在对话框中线以上且不贴底", "偏移 %spx" % off)
 
         # ---- 禁缩放守卫（提醒窗口 / 预览窗口）----
         # 2026-10-25 用户报障：触屏两指捏合会把窗口内容放大缩小。三个页面都引了

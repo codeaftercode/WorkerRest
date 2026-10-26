@@ -759,6 +759,11 @@ async function run() {
   // 必须排在 NOZOOM_PROBE 之前：那一段会合成 wheel / keydown，页内事件本身也会升级。
   metrics.globalActivity = await wide.evaluate(`(async function () {
     var app = document.getElementById("app");
+    var box = document.querySelector(".content");
+    var line = document.getElementById("supervisor-line");
+    var rect = function (el) { var r = el.getBoundingClientRect();
+      return { h: +r.height.toFixed(1), top: +r.top.toFixed(1) }; };
+    var box0 = rect(box), line0 = rect(line);
     var n0 = window.__WR_SUP_ACTIVE || 0;
     try { await window.api.supActivity(); } catch (e) { return { error: String(e) }; }
     var n1 = n0;
@@ -766,7 +771,17 @@ async function run() {
       await new Promise(function (r) { setTimeout(r, 100); });
       n1 = window.__WR_SUP_ACTIVE || 0;
     }
-    return { pulsesBefore: n0, pulsesAfter: n1, stage: app.dataset.stage };
+    // 二阶段换成督休专员的命令台词（通常比一阶段的提醒内容长）：对话框高度必须不变，
+    // 否则「进入二阶段」这一瞬间整块框会长高、倒计时环跟着上移，整屏跳一下。
+    var box2 = rect(box), line2 = rect(line);
+    return {
+      pulsesBefore: n0, pulsesAfter: n1, stage: app.dataset.stage,
+      boxHBefore: box0.h, boxHAfter: box2.h,
+      lineHBefore: line0.h, lineHAfter: line2.h,
+      lineChars: line ? line.textContent.length : 0,
+      // 台词中心相对对话框中心的偏移：负＝偏上（要求文字落在框中线以上，不得压到框底）
+      lineOffset: +((line2.top + line2.h / 2) - (box2.top + box2.h / 2)).toFixed(1),
+    };
   })()`);
   console.log("[probe] globalActivity:", JSON.stringify(metrics.globalActivity));
   metrics.nozoom.break = await wide.evaluate(NOZOOM_PROBE);
