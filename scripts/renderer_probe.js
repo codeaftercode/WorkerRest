@@ -678,6 +678,78 @@ async function run() {
     await shot(set, "settings_" + tab);
   }
   console.log("[probe] tabs:", JSON.stringify(metrics.tabs));
+
+  // ---- 0b2. 关于页「检查更新」：点下去必须立刻有反馈 ----
+  // 真实的 checkUpdate 在无头模式下瞬间返回，观察不到加载态；这里把它临时换成一个
+  // 受控 Promise：点完在**同一个 tick 内**读 DOM（证明"点了就有反应"），再放行 Promise，
+  // 确认按钮文案与状态条都收敛回结果。
+  metrics.updateLoading = await set.evaluate(() => new Promise((resolve) => {
+    const btn = document.getElementById("d-checkupdate");
+    const pill = document.getElementById("d-update-pill-text");
+    const pillBox = document.getElementById("d-update-pill");
+    const orig = window.api.checkUpdate;
+    let release = null;
+    window.api.checkUpdate = () => new Promise((r) => { release = r; });
+    const snap = () => ({
+      btnText: btn.textContent,
+      disabled: btn.disabled,
+      pill: pill.textContent,
+      pillClass: pillBox.className,
+    });
+    btn.click();
+    const right = snap();
+    setTimeout(() => {
+      const during = snap();
+      if (release) release({ status: "up-to-date", current: "probe" });
+      setTimeout(() => {
+        window.api.checkUpdate = orig;
+        resolve({ right: right, during: during, after: snap() });
+      }, 150);
+    }, 150);
+  }));
+  console.log("[probe] updateLoading:", JSON.stringify(metrics.updateLoading));
+
+  // ---- 0b3. 手动检查发现新版本必须弹窗（与自动检查的门控不同）----
+  // 手动点的语义是「用户主动问了，必须给结果」：即使该版本已被忽略（ignored=true）、
+  // 或本次会话里已经为同一版本弹过一次，再点仍要弹。这里连点两次同版本模拟这两种情况。
+  metrics.updateModalForce = await set.evaluate(async () => {
+    const btn = document.getElementById("d-checkupdate");
+    const modal = document.getElementById("update-modal");
+    const verEl = document.getElementById("up-version");
+    const chgEl = document.getElementById("up-changes");
+    const orig = window.api.checkUpdate;
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    window.api.checkUpdate = () =>
+      Promise.resolve({
+        status: "update-available",
+        current: "probe",
+        latest: "9.9.9",
+        date: "2026-10-26",
+        changes: ["probe one", "probe two"],
+        ignored: true,
+      });
+    const round = async () => {
+      btn.click();
+      await sleep(250);
+      const out = {
+        shown: !modal.classList.contains("hidden"),
+        ver: (verEl.textContent || "").trim(),
+        items: chgEl ? chgEl.children.length : -1,
+        visible: modal.offsetHeight > 0,
+        btnText: btn.textContent,
+      };
+      document.getElementById("up-later").click();
+      await sleep(80);
+      out.closed = modal.classList.contains("hidden");
+      return out;
+    };
+    const first = await round();
+    const second = await round();
+    window.api.checkUpdate = orig;
+    return { first: first, second: second };
+  });
+  console.log("[probe] updateModalForce:", JSON.stringify(metrics.updateModalForce));
+
   metrics.settings.consoleErrorsAfterTabs = sErr.slice();
 
   // ---- 0c. 声音试听 ----

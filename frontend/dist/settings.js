@@ -5619,6 +5619,7 @@
     const updatePill = $("d-update-pill");
     const updatePillText = $("d-update-pill-text");
     let updateModalShownFor = ""; // 防止同一版本重复自动弹窗
+    let checking = false; // 手动「检查更新」进行中：这段时间保持加载态，忽略事件推送
     const setPill = (kind, text) => {
       updatePill.className = `pill ${kind}`;
       updatePillText.textContent = text;
@@ -5652,13 +5653,15 @@
     };
     // autoModal=false 时只显示「有更新」状态（按钮+状态条），不自动弹窗——
     // 用于「未勾选自动检查更新」时打开设置页，避免把上次残留的更新提示又弹出来。
-    const renderUpdate = (st, autoModal = true) => {
+    // force=true 只给「手动点检查更新」用：用户主动问了，只要发现有新版本就必须弹窗给出
+    // 结果，不受「同一版本本次已弹过」「该版本被忽略过」两条限制（那两条只为自动检查去重）。
+    const renderUpdate = (st, autoModal = true, force = false) => {
       if (st.status === "update-available") {
         updateGo.classList.remove("hidden");
         setPill("warn", `发现新版本 ${normVer(st.latest)}`);
         // 被用户忽略的版本：仍显示「立即更新」按钮，但不再自动弹窗
         // （直到发现比被忽略版本更大的版本号才恢复弹窗）
-        if (!st.ignored && autoModal && updateModalShownFor !== st.latest) {
+        if (force || (!st.ignored && autoModal && updateModalShownFor !== st.latest)) {
           updateModalShownFor = st.latest;
           showUpdateModal(st);
         }
@@ -5677,20 +5680,43 @@
     // 否则只显示「有更新」状态（按钮+状态条），不弹提示——避免把上次
     // 残留的「发现新版本」又弹出来打扰用户。
     renderUpdate(await window.api.updateStatus(), S.checkUpdateOnStart);
-    window.api.onUpdateStatus(renderUpdate);
+    window.api.onUpdateStatus((st) => {
+      // 手动检查进行中：保持「正在检查更新…」，结果以 checkUpdate 的返回值为准，
+      // 避免后台推送的旧结果把加载态盖掉。
+      if (checking) return;
+      renderUpdate(st);
+    });
     window.api.onSettingsHidden(() => exitAllMsgEditing());
-    $("d-checkupdate").addEventListener("click", async () => {
-      const btn = $("d-checkupdate");
-      btn.disabled = true;
-      try {
-        const st = await window.api.checkUpdate();
-        renderUpdate(st);
-        if (st.status === "update-available") toast(`\u53D1\u73B0\u65B0\u7248\u672C ${normVer(st.latest)}`);
-        else if (st.status === "up-to-date") toast("\u5DF2\u662F\u6700\u65B0\u7248\u672C");
-        else toast(`\u68C0\u67E5\u66F4\u65B0\u5931\u8D25\uFF08${st.message ?? "\u66F4\u65B0\u6E90\u4E0D\u53EF\u8FBE"}\uFF09`);
-      } finally {
-        btn.disabled = false;
-      }
+    // 「检查更新」：点下去必须立刻有反馈（状态条变「正在检查更新…」+ 按钮置灰改文案），
+    // 否则联网要等几秒甚至十几秒，用户以为没点上会反复点。
+    const checkBtn = $("d-checkupdate");
+    const checkBtnLabel = checkBtn.textContent;
+    const setChecking = (on) => {
+      checking = on;
+      checkBtn.disabled = on;
+      checkBtn.textContent = on ? "检查中…" : checkBtnLabel;
+      if (on) setPill("loading", "正在检查更新…");
+    };
+    checkBtn.addEventListener("click", () => {
+      if (checking) return; // 双保险：disabled 之外的重复点击一律吞掉
+      setChecking(true);
+      void (async () => {
+        try {
+          const st = await window.api.checkUpdate();
+          // 手动检查：发现新版本必须弹窗（force），不受忽略/去重限制；
+          // 其余两种结果没有弹窗，用 toast 明确告知。
+          renderUpdate(st, true, true);
+          if (st.status === "up-to-date") toast("\u5DF2\u662F\u6700\u65B0\u7248\u672C");
+          else if (st.status !== "update-available")
+            toast(`\u68C0\u67E5\u66F4\u65B0\u5931\u8D25\uFF08${st.message ?? "\u66F4\u65B0\u6E90\u4E0D\u53EF\u8FBE"}\uFF09`);
+        } catch (e) {
+          // 绑定调用本身出错（非 status=error）：也要收敛成一个明确的结果，别停在「检查中」
+          setPill("err", "更新检查失败");
+          toast(`\u68C0\u67E5\u66F4\u65B0\u5931\u8D25\uFF08${e?.message ?? "\u672A\u77E5\u9519\u8BEF"}\uFF09`);
+        } finally {
+          setChecking(false);
+        }
+      })();
     });
     // 「立即更新」（在「检查更新」左侧）：直接执行更新
     updateGo.addEventListener("click", () => {

@@ -84,13 +84,43 @@ python scripts/verify_portable.py
 - 便携运行的数据（配置 / 统计 / 用户音频）落在 exe 旁的 `config/` 与 `data/`，跟着程序走；
   直接删掉整个目录就是完全卸载。
 
+## 检查更新：自动 vs 手动
+
+两条路径共用同一套联网逻辑（`checkForUpdate`）与同一套落库（`publishUpdateStatus`：
+写内存 → 推 `update:status-changed` → 持久化 `lastUpdateResult`）。差别只在**什么时候查**
+和**查到之后怎么告诉用户**。
+
+| 维度 | 自动检查 | 手动检查 |
+|---|---|---|
+| 入口 | 启动时 `startAutoUpdateCheck` → 常驻 `autoUpdateLoop`（仅在勾选「自动检查更新」时运行） | 关于页「检查更新」按钮 → 绑定 `CheckUpdate()` |
+| 时机 | 当天**首次键鼠活动**后 0~3 小时内随机一刻；到点若处于「暂停休息」，再在 0~30 分钟内随机一刻，反复直到不再暂停 | 点击立即联网，最长等 `updateTimeout` × 更新源个数 |
+| 频率 | 一天一次：`lastUpdateCheck == 今天` 就不再查；`error` 不记当天，当天稍后还会再排；跨天整体重置，当天没查成不影响次日 | 不限次；**不写** `lastUpdateCheck`，不占自动检查当天的名额 |
+| 界面反馈 | 静默，只改关于页状态条与「立即更新」按钮 | 立刻进加载态（按钮「检查中…」置灰 + 状态条「正在检查更新…」），`finally` 复原 |
+| 发现新版本 | **有条件弹窗**：① 勾选了「自动检查更新」（初始渲染传 `autoModal = S.checkUpdateOnStart`）；② 该版本没被忽略（`st.ignored` 为假）；③ 本次会话没为同一版本弹过（`updateModalShownFor`） | **一律弹窗**（`renderUpdate(st, true, true)` 的 `force`）：忽略过、已弹过都照弹 |
+| 已是最新 | 无提示，状态条显示「已是最新版本」 | 状态条 + toast「已是最新版本」 |
+| 检查失败 | 无提示（状态条「更新检查失败」），当天稍后按规则重试 | 状态条 + toast「检查更新失败（原因）」 |
+
+其他约定：
+
+- 「忽略本版本」（`ignoreVersion`）**只压制自动弹窗**：按钮仍显示「立即更新」；当发现比被忽略
+  版本更大的版本号时会自动解除忽略、恢复自动弹窗；用户手动点检查则始终能看到弹窗。
+- 检查结果会持久化（`lastUpdateResult`），重启后打开关于页仍显示「发现新版本 x.y.z」；
+  但只有勾了自动检查时才会在打开设置页那一刻自动弹窗，否则只显示状态条。
+- 手动检查期间前端会丢弃 `update:status-changed` 推送（`if (checking) return`），以免后台
+  推来的旧结果把加载态盖掉；结果以 `CheckUpdate()` 的返回值为准。
+- 「自动检查更新」开关只在启动时读一次：中途关掉会停掉排期，重新打开需重启软件。
+- 无头模式（`-tags server`）不联网：`CheckUpdate` 返回确定性的 `error`，自动检查直接跳过。
+
+回归覆盖见「测试与验证」里的渲染层探针：`metrics.updateLoading`（点击即进入加载态）、
+`metrics.updateModalForce`（同版本 + `ignored: true` 连点两次都必须弹窗）。
+
 ## 测试与验证
 
 ```powershell
 go test -tags server ./...         # 单元测试（220 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
                                    # 系统能力 / 提示音 / 统计 / 督休专员迁移 / 外卖 / 更新 / 睡眠检测
 python scripts/smoke_server.py     # 绑定层无头冒烟：169 项断言
-python scripts/probe_renderer.py   # 渲染层探针：233 项断言 + 截图（需先 npm install）
+python scripts/probe_renderer.py   # 渲染层探针：246 项断言 + 截图（需先 npm install）
 python scripts/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
 python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
 python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）

@@ -229,6 +229,16 @@ body {
 #tab-about .btn-soft svg { display: block; }
 #tab-about .btn-soft.btn-danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 40%, var(--border)); }
 #tab-about .btn-soft.btn-danger:hover { background: var(--danger-weak); border-color: var(--danger); color: var(--danger); }
+/* 检查中：按钮置灰 + 进度光标，配合状态条的脉冲点，点下去立刻有反馈 */
+#tab-about .btn-soft:disabled { cursor: progress; opacity: .6; }
+#tab-about .btn-soft:disabled:hover { background: var(--panel); border-color: var(--border); color: var(--text); }
+/* 状态条「正在检查更新…」 */
+#tab-about .pill.loading { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+#tab-about .pill.loading i { background: var(--accent); animation: pillPulse 1.1s ease-in-out infinite; }
+@keyframes pillPulse {
+  0%, 100% { opacity: 1; box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 20%, transparent); }
+  50% { opacity: .4; box-shadow: 0 0 0 6px color-mix(in srgb, var(--accent) 6%, transparent); }
+}
 
 /* 底栏：版权 + 退出软件 */
 #tab-about .bottom-bar { margin-top: 18px; display: flex; align-items: center; justify-content: space-between; }

@@ -369,6 +369,50 @@ def main():
         check(not (stg.get("consoleErrorsAfterTabs") or []), "切换页签期间无控制台错误",
               (stg.get("consoleErrorsAfterTabs") or [])[:2])
 
+        # 「检查更新」点下去必须立刻有反馈（2026-10-26：原先点了毫无动静，用户会反复点）
+        ul = m.get("updateLoading") or {}
+        if ul:
+            rt = ul.get("right") or {}
+            du = ul.get("during") or {}
+            af = ul.get("after") or {}
+            check(rt.get("btnText") == "检查中…" and rt.get("disabled") is True,
+                  "点「检查更新」后按钮立刻变「检查中…」并禁用",
+                  "btnText=%r disabled=%s" % (rt.get("btnText"), rt.get("disabled")))
+            check(rt.get("pill") == "正在检查更新…" and "loading" in str(rt.get("pillClass")),
+                  "点「检查更新」后状态条立刻显示「正在检查更新…」",
+                  "%r class=%r" % (rt.get("pill"), rt.get("pillClass")))
+            check(du.get("btnText") == "检查中…" and du.get("pill") == "正在检查更新…",
+                  "检查未返回前一直保持加载态",
+                  "btnText=%r pill=%r" % (du.get("btnText"), du.get("pill")))
+            check(af.get("btnText") == "检查更新" and af.get("disabled") is False,
+                  "检查结束后按钮文案与可点状态复原",
+                  "btnText=%r disabled=%s" % (af.get("btnText"), af.get("disabled")))
+            check(af.get("pill") == "已是最新版本" and "loading" not in str(af.get("pillClass")),
+                  "检查结束后状态条显示结果、不再是加载态",
+                  "%r class=%r" % (af.get("pill"), af.get("pillClass")))
+        else:
+            check(False, "采集到「检查更新」加载态数据（updateLoading）", "缺失")
+
+        # 手动检查发现新版本 → 必须弹窗，且不受「该版本已被忽略」「本会话已为同版本弹过」
+        # 的限制（这两条门控只服务自动检查；用户主动点了就必须拿到结果）
+        uf = m.get("updateModalForce") or {}
+        if uf:
+            for tag, label in (("first", "首次手动检查"),
+                               ("second", "同版本再次手动检查")):
+                r = uf.get(tag) or {}
+                check(r.get("shown") is True and r.get("visible") is True,
+                      "%s发现新版本时弹出更新说明弹窗" % label,
+                      "shown=%s visible=%s" % (r.get("shown"), r.get("visible")))
+                check(str(r.get("ver") or "") == "v9.9.9",
+                      "%s弹窗版本号按 normVer 显示" % label, r.get("ver"))
+                check(r.get("items") == 2,
+                      "%s弹窗里列出更新条目" % label, r.get("items"))
+                check(r.get("closed") is True and r.get("btnText") == "检查更新",
+                      "%s关闭弹窗后按钮复原" % label,
+                      "closed=%s btnText=%r" % (r.get("closed"), r.get("btnText")))
+        else:
+            check(False, "采集到手动检查弹窗数据（updateModalForce）", "缺失")
+
         # 声音试听：URL 算对还不够，要浏览器真能解码它 —— 这一条把 /sounds/ 资源服务
         # 与渲染层的 <audio> 串起来（真发声由 probe_gui_boot.py 覆盖）。
         sp = m.get("soundPreview") or {}
