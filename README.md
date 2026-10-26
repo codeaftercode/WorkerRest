@@ -90,7 +90,7 @@ python scripts/verify_portable.py
 go test -tags server ./...         # 单元测试（220 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
                                    # 系统能力 / 提示音 / 统计 / 督休专员迁移 / 外卖 / 更新 / 睡眠检测
 python scripts/smoke_server.py     # 绑定层无头冒烟：169 项断言
-python scripts/probe_renderer.py   # 渲染层探针：231 项断言 + 截图（需先 npm install）
+python scripts/probe_renderer.py   # 渲染层探针：233 项断言 + 截图（需先 npm install）
 python scripts/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
 python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
 python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）
