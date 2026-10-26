@@ -398,8 +398,18 @@ func TestRaiseStateBookkeeping(t *testing.T) {
 
 // futureSlot 造一个「原定时刻在现在之后约 2 小时」的外卖条目，避免测试跑在槽位已过的时刻
 // （真实预通知只会在原定时刻之前弹出，preTargetAt 一定是未来时刻，这里复刻该前提）。
+//
+// ⚠️ TimeSlot 只存 hour/minute，slotAlertAt 一律按**当天**解释：20:00 之后再 +2h 会跨到
+// 明天，时分落回 0 点附近，按今天算就成了「已经过去 22 小时」的时刻 —— 于是剩余被钳成 0、
+// 今日时间线也不展开，测试在晚上必红（2026-10-25 22:05 踩到）。跨天时改取「现在 → 今天
+// 23:59」的中点，保证时分仍属今天且在未来。
 func futureSlot() TimeSlot {
-	ft := time.Now().Add(2 * time.Hour)
+	now := time.Now()
+	ft := now.Add(2 * time.Hour)
+	if ft.Year() != now.Year() || ft.YearDay() != now.YearDay() {
+		end := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, now.Location())
+		ft = now.Add(end.Sub(now) / 2)
+	}
 	return TimeSlot{ID: "s1", Hour: ft.Hour(), Minute: ft.Minute(), Repeat: "daily", Enabled: true}
 }
 
@@ -426,6 +436,10 @@ func TestTakeoutPreNotifyState(t *testing.T) {
 	at := slotAlertAt(slot, 0, nowMs())
 	remain, _ := st["remainMs"].(int64)
 	want := at - nowMs()
+	if want < 0 {
+		// 23:59 之后无法构造「今天、且在未来」的时刻（TimeSlot 只有时分）：剩余按 0 说
+		want = 0
+	}
 	if remain < want-2000 || remain > want+2000 {
 		t.Fatalf("预通知倒计时应≈原定时刻剩余 %d，得到 %d", want, remain)
 	}
@@ -502,6 +516,11 @@ func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
 	a.sched = nil
 	s := a.cfgSnapshot()
 	wantAt := slotAlertAt(slot, 0, nowMs())
+	if wantAt <= nowMs() {
+		// 23:59 之后构造不出「今天、且在未来」的槽位（TimeSlot 只有时分），今日时间线
+		// 本来就不展开已过去的条目 —— 这是产品语义，不是缺陷，跳过而不是误报。
+		t.Skip("当前时刻已到 23:59，无法构造今天的未来外卖槽位")
+	}
 	tl := todayTimeline(s, nowMs(), TimelineOptions{TakeoutFired: map[string]bool{}})
 	found := false
 	for _, it := range tl {
