@@ -369,6 +369,26 @@ def main():
         check(not (stg.get("consoleErrorsAfterTabs") or []), "切换页签期间无控制台错误",
               (stg.get("consoleErrorsAfterTabs") or [])[:2])
 
+        # ---- 右边缘拖动带：滚动条不许贴住窗口最外缘 ----
+        # 无边框窗口是 WS_THICKFRAME + 整窗 extend-frame，系统给的拖动带只有
+        # SM_CXSIZEFRAME ≈ 4px（各 DPI 都是 4 DIP）；WebView 的垂直滚动条 10px 宽、正好
+        # 盖在这 4px 上，于是「页面一出现滚动条，右边框就再也拖不动窗口」（2026-10-26）。
+        # 修复点：给 #content 加 6px 透明右边框，Chrome 会把滚动条排到边框内侧。
+        eg = m.get("edgeGutter") or {}
+        if eg:
+            egd = "viewport=%s contentRight=%s borderRight=%s padRight=%s scrolls=%s" % (
+                eg.get("viewport"), eg.get("contentRight"), eg.get("borderRight"),
+                eg.get("padRight"), eg.get("scrolls"))
+            check(eg.get("scrolls") is True, "督休专员页出现垂直滚动条（拖动带压力前提）", egd)
+            check((eg.get("borderRight") or 0) >= 6,
+                  "内容区右侧留出 ≥6px 边（滚动条不贴窗口最外缘）", egd)
+            check(abs((eg.get("contentRight") or 0) - (eg.get("viewport") or 0)) <= 1,
+                  "内容区右边框落在视口内（最外 6px 真的属于这条边）", egd)
+            check((eg.get("borderColor") or "").replace(" ", "") in ("rgba(0,0,0,0)", "transparent"),
+                  "右侧留边是透明的（不引入可见色带）", egd)
+        else:
+            check(False, "采集到右边缘拖动带数据（edgeGutter）", "缺失")
+
         # 「检查更新」点下去必须立刻有反馈（2026-10-26：原先点了毫无动静，用户会反复点）
         ul = m.get("updateLoading") or {}
         if ul:

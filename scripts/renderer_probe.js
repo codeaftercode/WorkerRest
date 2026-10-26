@@ -676,6 +676,26 @@ async function run() {
       " text: t ? (t.innerText || '').slice(0, 60) : ''};})()",
     );
     await shot(set, "settings_" + tab);
+    if (tab === "supervisor") {
+      // 右边缘拖动带：页面一出现垂直滚动条，Scrollbar 就贴在窗口最外缘，把无边框窗口
+      // 那 4px 的系统拖动带整条盖住 —— 右边框从此拖不动窗口大小（用户实测反馈）。
+      // 断言 #content 有一条 ≥6px 的**透明**右边框把滚动条顶进来，而且这条边框真的落在
+      // 视口内（contentRight == 视口宽），最外 6px 才回到普通背景、拖动带才命中得回来。
+      metrics.edgeGutter = await set.evaluate(() => {
+        const c = document.getElementById("content");
+        const cs = getComputedStyle(c);
+        const r = c.getBoundingClientRect();
+        return {
+          viewport: window.innerWidth,
+          contentRight: Math.round(r.right * 10) / 10,
+          borderRight: parseFloat(cs.borderRightWidth) || 0,
+          borderColor: cs.borderRightColor,
+          padRight: parseFloat(cs.paddingRight) || 0,
+          scrolls: c.scrollHeight > c.clientHeight + 1,
+        };
+      });
+      console.log("[probe] edgeGutter:", JSON.stringify(metrics.edgeGutter));
+    }
   }
   console.log("[probe] tabs:", JSON.stringify(metrics.tabs));
 
