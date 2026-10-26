@@ -145,6 +145,10 @@
     const line = document.getElementById("supervisor-line");
     document.body.classList.add("has-supervisor");
     figure.classList.remove("hidden");
+    // 不显示台词的场景（自定义提醒）：框里只剩 messages，长度不可控，
+    // 由 .content.no-line 退回「随内容长高」，不能被固定高度裁掉。
+    const dialogBox = document.querySelector(".content");
+    if (dialogBox) dialogBox.classList.toggle("no-line", !showLine);
     if (showLine) {
       line.classList.remove("hidden");
       if (sup.name) line.dataset.speaker = sup.name;
@@ -183,6 +187,8 @@
       stage = next;
       app.dataset.stage = String(next);
       if (showLine) line.textContent = next === 2 ? sup.lines.command || stage1 : stage1;
+      // 框高固定后文本换行数变化不再触发 ResizeObserver，这里显式做一次兜底缩字号
+      fitDialogText(document.getElementById("content"));
     };
     app.dataset.stage = "1";
     if (showLine) line.textContent = stage1;
@@ -378,6 +384,7 @@
       midY: Math.round(midY),
       src: haveTrim ? "trim" : "figure"
     });
+    fitDialogText(content);
     layoutMessages(content, cRect);
   }
 
@@ -398,6 +405,28 @@
     const dy = Math.round((nameCy + bottomEdge) / 2 - (m.top + m.height / 2));
     if (dy) msg.style.transform = `translateY(${dy}px)`;
   }
+
+  // 对话框高度固定（break.css 的 height: 22vh）之后，一阶段 / 二阶段来回切换不会再
+  // 把框撑高，代价是极端超长文本（用户把「提醒内容」写成一整段）可能溢出框底。
+  // 这里做纯兜底：先归位到 CSS 基准字号，仍装不下才逐级缩 1px（下限 13px），
+  // 保证整段都能读完、也不让文字跑到对话框外面去。
+  var FIT_MIN_FONT = 13;
+  function fitDialogText(content) {
+    if (!content) return;
+    const line = content.querySelector(".supervisor-line");
+    if (!line || line.classList.contains("hidden")) return;
+    line.style.fontSize = "";
+    const cs = getComputedStyle(content);
+    const avail = content.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (!(avail > 0)) return;
+    let fs = parseFloat(getComputedStyle(line).fontSize);
+    let guard = 0;
+    while (line.offsetHeight > avail + 1 && fs > FIT_MIN_FONT && guard++ < 30) {
+      fs -= 1;
+      line.style.fontSize = `${fs}px`;
+    }
+  }
+
   function bindSupContentLayout(figure, content, measure) {
     const relayout = () => layoutSupDialog(figure, content, measure);
     if (!figure || !content) return relayout;
