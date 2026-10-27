@@ -8,7 +8,7 @@
     "sizePct": 72,
     "posXPct": 4,
     "posYPct": 0,
-    "flip": false
+    "flip": true
   },
   "messages": {
     "order": "random",

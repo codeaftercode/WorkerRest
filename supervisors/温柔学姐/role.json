@@ -5,10 +5,10 @@
   "image": "figure.webp",
   "preview": "preview.webp",
   "geom": {
-    "sizePct": 72,
+    "sizePct": 80,
     "posXPct": 4,
     "posYPct": 0,
-    "flip": false
+    "flip": true
   },
   "messages": {
     "order": "random",
