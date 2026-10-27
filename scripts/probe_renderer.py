@@ -148,6 +148,24 @@ def check(ok, label, detail=""):
     return ok
 
 
+def _rel_lum_hex(hexs):
+    """WCAG 相对亮度（提前提示窗的深浅档位判定与 Go / JS 侧同口径）。
+    返回 None = 不是合法的 6 位十六进制。"""
+    h = str(hexs or "").lstrip("#")
+    if len(h) != 6:
+        return None
+    try:
+        c = [int(h[i:i + 2], 16) for i in (0, 2, 4)]
+    except ValueError:
+        return None
+
+    def ch(v):
+        v /= 255.0
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+
+    return 0.2126 * ch(c[0]) + 0.7152 * ch(c[1]) + 0.0722 * ch(c[2])
+
+
 def free_port(preferred):
     for cand in (preferred, 0):
         with socket.socket() as s:
@@ -397,6 +415,16 @@ def main():
         check(stg.get("dndPause") == bool(cfg.get("dndPause")),
               "勿扰暂停勾选态 == 配置 dndPause",
               "%s vs %s" % (stg.get("dndPause"), cfg.get("dndPause")))
+        check(stg.get("fullscreenPause") == bool(cfg.get("fullscreenPause")),
+              "全屏独占暂停勾选态 == 配置 fullscreenPause",
+              "%s vs %s" % (stg.get("fullscreenPause"), cfg.get("fullscreenPause")))
+        fsrt = m.get("fsPauseRoundTrip") or {}
+        check(fsrt.get("on") is True,
+              "全屏独占开关：页面勾上后配置真的是 true",
+              fsrt.get("on"))
+        check(fsrt.get("off") is False,
+              "全屏独占开关：页面取消后配置回到 false（探针自己还原）",
+              fsrt.get("off"))
         check(stg.get("supSelection") == (cfg.get("supervisor") or {}).get("selection"),
               "督休专员选择方式 == 配置 supervisor.selection",
               "%s vs %s" % (stg.get("supSelection"), (cfg.get("supervisor") or {}).get("selection")))
@@ -890,6 +918,46 @@ def main():
               (pbc.get("consoleErrors") or [])[:2])
         check((pbc.get("appHeight") or 0) >= 140, "自定义提醒版式：172 高窗口里内容铺得开",
               pbc.get("appHeight"))
+
+        # ---- 提前提示窗：底色跟随「提醒窗口 → 背景颜色」+ 文字自动配色 ----
+        # 底色由主进程下发（PreBreakInfo.BgColor ← appearance.color），渲染层再按它的
+        # 亮度决定浅底深字 / 深底浅字。只断言「颜色变了」拦不住「深字配深底」，
+        # 所以这里按 WCAG 真算对比度。
+        pb_lum = _rel_lum_hex(pb.get("bgSource"))
+        check(bool(pb.get("bgSource")) and pb_lum is not None,
+              "提前提示窗：底色取自「提醒窗口 → 背景颜色」（不是写死的深色）", pb.get("bgSource"))
+        check(pb_lum is not None and pb.get("lumMode") == ("light" if pb_lum >= 0.45 else "dark"),
+              "提前提示窗：深浅档位与底色亮度自洽", [pb.get("lumMode"), pb_lum])
+        pb_ct = pb.get("contrast") or {}
+        check((pb_ct.get("text") or 0) >= 4.5, "提前提示窗：标题文字对底色对比度 ≥4.5", pb_ct.get("text"))
+        check((pb_ct.get("textTop") or 0) >= 4.5, "提前提示窗：渐变上端文字同样看得清", pb_ct.get("textTop"))
+        check((pb_ct.get("num") or 0) >= 3.5, "提前提示窗：倒计时数字对底色对比度 ≥3.5", pb_ct.get("num"))
+        # 两行说明是固定的红 / 绿语义色，只在深浅两档之间换 —— 深底上糊成一片就等于没有
+        check((pb_ct.get("tipBad") or 0) >= 4.0, "提前提示窗：红字说明对底色对比度 ≥4", pb_ct.get("tipBad"))
+        check((pb_ct.get("tipGood") or 0) >= 4.0, "提前提示窗：绿字说明对底色对比度 ≥4", pb_ct.get("tipGood"))
+        # 主按钮是主色当底、文字按底色亮度反选：按钮自己必须“从面板里跳出来”，
+        # 上面的字也得读得清（浅色配置下这条最容易翻车）
+        check((pb_ct.get("primaryBtn") or 0) >= 3.5,
+              "提前提示窗：主按钮文字对按钮底对比度 ≥3.5", pb_ct.get("primaryBtn"))
+
+        # 亮色配置（亮黄）：必须整窗换成浅底 + 深字，而不是继续沿用深底那套浅色文字
+        pbl = m.get("preBreakLightBg") or {}
+        check(pbl.get("bgSource") == "#ffd400", "浅色背景色：底色就是配置里的颜色", pbl.get("bgSource"))
+        check(pbl.get("lumMode") == "light", "浅色背景色：判成浅底（走深字那一档）", pbl.get("lumMode"))
+        check(pbl.get("tipsShown") is True,
+              "浅色背景色：内置版式的两行说明仍在（这条就是要验它们看得清）", pbl.get("tipsShown"))
+        check(pbl.get("textColor") != pb.get("textColor"),
+              "浅色背景色：文字色跟着反转（与深底那一档不同）",
+              [pbl.get("textColor"), pb.get("textColor")])
+        pbl_ct = pbl.get("contrast") or {}
+        check((pbl_ct.get("text") or 0) >= 4.5, "浅色背景色：标题文字对浅底对比度 ≥4.5", pbl_ct.get("text"))
+        check((pbl_ct.get("num") or 0) >= 3.5, "浅色背景色：倒计时数字对浅底对比度 ≥3.5", pbl_ct.get("num"))
+        check((pbl_ct.get("tipBad") or 0) >= 4.0, "浅色背景色：红字说明对浅底对比度 ≥4", pbl_ct.get("tipBad"))
+        check((pbl_ct.get("tipGood") or 0) >= 4.0, "浅色背景色：绿字说明对浅底对比度 ≥4", pbl_ct.get("tipGood"))
+        check((pbl_ct.get("primaryBtn") or 0) >= 3.5,
+              "浅色背景色：主按钮文字对按钮底对比度 ≥3.5", pbl_ct.get("primaryBtn"))
+        check(not (pbl.get("consoleErrors") or []), "浅色背景色：页面无控制台错误",
+              (pbl.get("consoleErrors") or [])[:2])
 
         # ---- 外卖提醒窗口（takeout.html）----
         # 会话来自 Go 的 TakeoutCurrent（预览触发 → 会话 → 渲染），固定时刻、三个按钮、红包区。

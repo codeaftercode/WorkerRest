@@ -46,6 +46,11 @@ type PreBreakInfo struct {
 	// PostponeMin 该提醒的「可推迟」分钟数：0 = 渲染层不显示「推迟」按钮。
 	// 弹窗打开时算一次（与标题同口径），中途改配置不跟随。
 	PostponeMin int `json:"postponeMin"`
+	// BgColor 背景颜色：取「通用配置 → 提醒窗口 → 背景颜色」（appearance.color），
+	// 与休息窗口同一个键。同样是弹窗打开时算一次。空串 = 渲染层用内置默认蓝。
+	// 文字色不在这里下发 —— 由渲染层按这个底色算对比度（浅底配深字 / 深底配浅字），
+	// 保证用户把颜色调到多浅多深，标题、倒计时、两行说明都还看得清。
+	BgColor string `json:"bgColor"`
 }
 
 // builtinPreBreakTitleShort / builtinPreBreakTitleLong 内置短 / 长的标题。它们的名字
@@ -70,15 +75,17 @@ func (a *App) preBreakInfoOfType(kind string) PreBreakInfo {
 	if cfg, ok := a.cfgSnapshot().BreakByID(kind); ok {
 		pm = int(cfg.PostponeMs / 60_000)
 	}
+	// 背景色与休息窗口同源（通用配置 → 提醒窗口 → 背景颜色），弹窗打开时算一次
+	bg := a.cfgSnapshot().AppearanceCfg().Color
 	if kind == "short" || kind == "long" {
 		title := builtinPreBreakTitleShort
 		if kind == "long" {
 			title = builtinPreBreakTitleLong
 		}
-		return PreBreakInfo{Custom: false, Title: title, CountdownTail: builtinPreBreakTail, PostponeMin: pm}
+		return PreBreakInfo{Custom: false, Title: title, CountdownTail: builtinPreBreakTail, PostponeMin: pm, BgColor: bg}
 	}
 	name := a.cfgSnapshot().BreakNameByID(kind)
-	return PreBreakInfo{Custom: true, Title: preBreakTitle(name), CountdownTail: preBreakCountdownTail(name), PostponeMin: pm}
+	return PreBreakInfo{Custom: true, Title: preBreakTitle(name), CountdownTail: preBreakCountdownTail(name), PostponeMin: pm, BgColor: bg}
 }
 
 // preBreakInfoOf 当前计划里那一条的内容（调度器没起来时按短休息算）
@@ -140,6 +147,8 @@ func preBreakBounds(wa application.Rect, custom bool) (x, y, w, h int) {
 // preBreakURL 弹窗页面地址。版式经 query 下发（渲染层读 location.search，见文件头第一条）。
 // tail 里带中文与空格，必须逐段编码 —— 直接把原文拼进 query 会被 WebView2 当非法字符丢掉。
 // postpone=0 时渲染层首帧就藏掉「推迟」按钮（与 PreBreakState.canPostpone 同源）。
+// bg 是背景颜色（# 也要编码成 %23）：带上它，首帧就是用户配的颜色，
+// 不会先闪一下内置默认蓝再等 500ms 轮询改过来。
 func preBreakURL(info PreBreakInfo) string {
 	flag := "0"
 	if info.Custom {
@@ -149,8 +158,12 @@ func preBreakURL(info PreBreakInfo) string {
 	if info.PostponeMin <= 0 {
 		postpone = "0"
 	}
-	return "/prebreak.html?custom=" + flag + "&tail=" + url.QueryEscape(info.CountdownTail) +
+	u := "/prebreak.html?custom=" + flag + "&tail=" + url.QueryEscape(info.CountdownTail) +
 		"&postpone=" + postpone + "&win=prebreak"
+	if info.BgColor != "" {
+		u += "&bg=" + url.QueryEscape(info.BgColor)
+	}
+	return u
 }
 
 // preBreakWindowName 窗口名：Wails 按名字交付窗口，清理时也按它查
@@ -231,6 +244,12 @@ func (a *App) closePreBreakWindow() {
 // 少一个字段不会报错，只会静默显示错内容 —— 所以这里不裁字段。
 func (a *App) PreBreakState() map[string]any {
 	info := a.currentPreBreakInfo()
+	// 背景色每次都按当前配置现取：用户在设置里改了颜色、窗口还挂着时也能立刻跟上。
+	// 优先用弹窗内容里记住的那份（与标题同口径），空则现取（旧窗口 / 单测构造的 info）。
+	bgColor := info.BgColor
+	if bgColor == "" {
+		bgColor = a.cfgSnapshot().AppearanceCfg().Color
+	}
 	// 外卖预通知：倒计时指向「原定时刻」（不读调度器剩余），且永不暂停计时
 	if info.Owner == "takeout" {
 		a.mu.Lock()
@@ -264,6 +283,7 @@ func (a *App) PreBreakState() map[string]any {
 			"custom":        info.Custom,
 			"countdownTail": info.CountdownTail,
 			"canPostpone":   info.PostponeMin > 0,
+			"bgColor":       bgColor,
 		}
 	}
 	phase, paused, remain := "idle", false, int64(0)
@@ -291,6 +311,8 @@ func (a *App) PreBreakState() map[string]any {
 		"countdownTail": info.CountdownTail,
 		// 推迟分钟数为 0 时渲染层藏掉「推迟」按钮（URL query 的 postpone 与之同源）
 		"canPostpone": info.PostponeMin > 0,
+		// 背景颜色（通用配置 → 提醒窗口 → 背景颜色）：渲染层据此算底色 + 自适应文字色
+		"bgColor": bgColor,
 	}
 }
 

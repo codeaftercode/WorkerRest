@@ -1,9 +1,25 @@
+/* 提前提示小窗（屏幕右下角）。
+ *
+ * 底色不再写死：跟随「通用配置 → 提醒窗口 → 背景颜色」，与休息窗口同一个键
+ * （appearance.color）。具体怎么从那个颜色派生底色 / 文字色 / 按钮色，见 prebreak.js
+ * 的 applyPalette()。这里的一组默认值只是兜底（蓝色 + 深底浅字），由脚本按配置覆盖。
+ *
+ * ⚠️ 本文件里的颜色一律走变量，不要再写死 rgba(255,255,255,…) 这类“只适合深色底”的字面量——
+ * 底色浅的时候用户就看不见了。 */
 :root {
   --accent: #4f7cff;
-  --panel: #1b1f2c;
-  --border: rgba(255, 255, 255, 0.12);
+  --pb-bg-1: #262c40;
+  --pb-bg-2: #141824;
   --text: #eef1f8;
-  --text-2: rgba(238, 241, 248, 0.62);
+  --text-2: rgba(238, 241, 248, 0.66);
+  --border: rgba(255, 255, 255, 0.14);
+  --btn-bg: rgba(255, 255, 255, 0.08);
+  --btn-bg-hover: rgba(255, 255, 255, 0.14);
+  --btn-primary-bg: #4f7cff;
+  --btn-primary-text: #ffffff;
+  --num: #7fa2ff;
+  --tip-bad: #ff9a9a;
+  --tip-good: #63e29b;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -18,7 +34,7 @@ html, body {
 
 #app {
   height: 100vh;
-  background: linear-gradient(160deg, var(--panel), #141824);
+  background: linear-gradient(160deg, var(--pb-bg-1), var(--pb-bg-2));
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 18px 20px;
@@ -41,7 +57,7 @@ html, body {
 /* 只有数字那颗 span（#pb-seconds）放大提色：后缀 #pb-post 与前面的「还有」都是普通小字，
    别写成 .countdown span —— 那样后缀也会变成 20px 主色大字（倒计时拆成三段后就踩过） */
 .countdown #pb-seconds {
-  color: var(--accent);
+  color: var(--num);
   font-size: 20px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
@@ -50,8 +66,9 @@ html, body {
 
 /* 固定两行说明：上行红（硬撑的代价）、下行绿（短暂休息的收益）。
    只要字体颜色，不加任何装饰（无淡底衬 / 色条 / 加粗 / 字间距 / 阴影）。
-   面板是深色渐变底，纯 #ff0000 / #00ff00 在这种底上又暗又刺眼——用提亮后的红/绿。
-   ⚠️ 文字颜色是"红 / 绿"的语义色，不跟随主题与背景颜色设置。 */
+   红 / 绿是语义色，不跟随背景颜色本身，但**要跟着底色深浅换档**：深底用提亮的红绿
+   （纯 #f00 / #0f0 在深底上又暗又刺眼），浅底用压暗的红绿（提亮那套在浅底上几乎看不见）。
+   两套都写在 prebreak.js 的 applyPalette() 里，由 --tip-bad / --tip-good 下发。 */
 .tips {
   display: flex;
   flex-direction: column;
@@ -61,8 +78,8 @@ html, body {
   font-size: 13.5px;
   line-height: 1.4;
 }
-.tip.bad { color: #ff9a9a; }
-.tip.good { color: #63e29b; }
+.tip.bad { color: var(--tip-bad); }
+.tip.good { color: var(--tip-good); }
 
 .actions { display: flex; gap: 8px; margin-top: auto; }
 
@@ -74,20 +91,20 @@ html, body {
   font-size: 13px;
   font-weight: 600;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.06);
+  background: var(--btn-bg);
   color: var(--text);
 }
-.btn:hover { background: rgba(255, 255, 255, 0.12); }
+.btn:hover { background: var(--btn-bg-hover); }
 .btn.primary {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #ffffff;
+  background: var(--btn-primary-bg);
+  border-color: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
 }
 .btn.primary:hover { filter: brightness(1.1); }
 .btn:disabled { opacity: 0.4; cursor: default; }
-.btn:disabled:hover { background: rgba(255, 255, 255, 0.06); }
-.btn.primary:disabled:hover { background: var(--accent); filter: none; }
+.btn:disabled:hover { background: var(--btn-bg); }
+.btn.primary:disabled:hover { background: var(--btn-primary-bg); filter: none; }
 
 /* 自定义提醒的版式没有两行说明、也不提供「暂停计时」：由渲染层加 .hidden
-   （窗口高度也随之小一档，见 preBreakWindow.ts） */
+   （窗口高度也随之小一档，见 prebreak.go 的 preBreakBounds） */
 .hidden { display: none !important; }

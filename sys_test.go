@@ -469,6 +469,47 @@ func TestDndWatchIsIdempotent(t *testing.T) {
 	}
 }
 
+// 全屏独占支路：只读写它自己那条暂停原因，进入 / 退出各打一行日志（边沿触发），
+// 中间反复「仍然活跃」不重复暂停、也不产生第二条原因。
+func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
+	a, s := newWatchApp(t, shortCountdown)
+
+	// ① 不活跃：一条原因都不该留（首次 tick 的常态）
+	a.applyAutoPause(false, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
+	if st := s.stateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("不活跃时不该暂停，得到 %v", st.PauseReasons)
+	}
+	if a.fsActiveLogged {
+		t.Fatal("不活跃时不该留下「已记录」标记")
+	}
+
+	// ② 活跃：暂停原因恰好是「全屏独占」，且标记置位
+	a.applyAutoPause(true, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
+	st := s.stateCopy()
+	if !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonFullScr {
+		t.Fatalf("活跃时应恰好停在「全屏独占」上，得到 paused=%v %v", st.Paused, st.PauseReasons)
+	}
+	if !a.fsActiveLogged {
+		t.Fatal("活跃时该置位「已记录」标记（否则每 3 秒刷一行日志）")
+	}
+
+	// ③ 仍然活跃：幂等，不能叠出第二条原因
+	a.applyAutoPause(true, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
+	if st := s.stateCopy(); len(st.PauseReasons) != 1 {
+		t.Fatalf("重复判活跃不该叠加暂停原因，得到 %v", st.PauseReasons)
+	}
+
+	// ④ 退出：原因摘掉、恢复，且只摘自己那条
+	a.applyAutoPause(false, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
+	st = s.stateCopy()
+	if st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("退出后应恢复提醒，得到 paused=%v %v", st.Paused, st.PauseReasons)
+	}
+	if a.fsActiveLogged {
+		t.Fatal("退出后「已记录」标记应清零")
+	}
+}
+
 // ---------- 命令行拼装 ----------
 
 func TestBuildRunCommandLine(t *testing.T) {
@@ -679,7 +720,69 @@ func TestDndProbeShape(t *testing.T) {
 			}
 		}
 		if !known {
-			t.Fatalf("判定为勿扰时 detail 应是三个已知状态之一，得到 %q", st.Detail)
+			t.Fatalf("判定为勿扰时 detail 应是已知勿扰状态之一，得到 %q", st.Detail)
 		}
+	}
+}
+
+// QUERY_USER_NOTIFICATION_STATE 取值 → 结论的映射表。这里钉死三条口径，改动前先看注释：
+//   - 2 / 4 是勿扰（Win10 专注助手、Win11 勿扰、演示模式）
+//   - 6（首次登录 / 大版本升级后的静默时间）**不算**勿扰（2026-10-27 用户明确要求）
+//   - 3（全屏独占）走「全屏独占」开关，也不算勿扰
+func TestQunsStateMapping(t *testing.T) {
+	cases := []struct {
+		name    string
+		state   uint32
+		dnd     bool
+		fullScr bool
+	}{
+		{"锁屏/屏保", qunsNotPresent, false, false},
+		{"勿扰/仅优先", qunsBusy, true, false},
+		{"全屏独占", qunsRunningD3DFullScreen, false, true},
+		{"演示模式", qunsPresentationMode, true, false},
+		{"正常接收", qunsAcceptsNotifications, false, false},
+		{"升级后静默时间", qunsQuietTime, false, false},
+		{"商店应用在前台", qunsApp, false, false},
+		{"未知取值", 99, false, false},
+	}
+	for _, c := range cases {
+		d := dndStatusOf(c.state, true)
+		if !d.Supported || d.Active != c.dnd {
+			t.Fatalf("%s（state=%d）：勿扰结论应为 active=%v，得到 %+v", c.name, c.state, c.dnd, d)
+		}
+		if d.Detail == "" {
+			t.Fatalf("%s（state=%d）：detail 不该为空", c.name, c.state)
+		}
+		fs := fullScreenStatusOf(c.state, true)
+		if !fs.Supported || fs.Active != c.fullScr {
+			t.Fatalf("%s（state=%d）：全屏独占结论应为 active=%v，得到 %+v", c.name, c.state, c.fullScr, fs)
+		}
+		if fs.Detail == "" {
+			t.Fatalf("%s（state=%d）：全屏 detail 不该为空", c.name, c.state)
+		}
+	}
+	// API 不可用：一律「不支持 + 有说明」，绝不报 active（否则在非 Windows / 调用失败时
+	// 会凭空暂停休息）
+	if d := dndStatusOf(0, false); d.Supported || d.Active || d.Detail == "" {
+		t.Fatalf("API 不可用时勿扰结论应为 {supported:false, active:false, detail:非空}，得到 %+v", d)
+	}
+	if f := fullScreenStatusOf(0, false); f.Supported || f.Active || f.Detail == "" {
+		t.Fatalf("API 不可用时全屏结论应为 {supported:false, active:false, detail:非空}，得到 %+v", f)
+	}
+}
+
+// 两个开关的默认值：勿扰默认开（老行为不变）；全屏独占默认**关**（新增能力，
+// 开启等于「游戏时不提醒、计时也停」，不能替用户决定）。
+func TestAutoPauseFlagDefaults(t *testing.T) {
+	s := &Settings{raw: map[string]any{}}
+	if !s.DndPause() {
+		t.Fatal("dndPause 缺省应为 true")
+	}
+	if s.FullScreenPause() {
+		t.Fatal("fullscreenPause 缺省应为 false")
+	}
+	s = &Settings{raw: map[string]any{"dndPause": false, "fullscreenPause": true}}
+	if s.DndPause() || !s.FullScreenPause() {
+		t.Fatalf("配置值未生效：dnd=%v fullscreen=%v", s.DndPause(), s.FullScreenPause())
 	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -248,7 +249,7 @@ func TestPreBreakPostponeZero(t *testing.T) {
 func TestPreBreakStateShape(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	st := a.PreBreakState()
-	for _, k := range []string{"phase", "paused", "remainMs", "title", "custom", "countdownTail", "canPostpone"} {
+	for _, k := range []string{"phase", "paused", "remainMs", "title", "custom", "countdownTail", "canPostpone", "bgColor"} {
 		if _, ok := st[k]; !ok {
 			t.Fatalf("PreBreakState 少了字段 %q（渲染层直接读它，缺字段只会静默显示错内容）：%v", k, st)
 		}
@@ -285,6 +286,51 @@ func TestPreBreakInfoRemembered(t *testing.T) {
 	st = a.PreBreakState()
 	if st["title"] != builtinPreBreakTitleShort || st["custom"] != false {
 		t.Fatalf("再次记住后应变成内置版式，得到 %v", st)
+	}
+}
+
+// ---------- 背景颜色（跟随「通用配置 → 提醒窗口 → 背景颜色」） ----------
+
+// bgColorCfg 把提醒窗口背景色调成亮黄（浅底）：用来钉「小窗底色跟着配置走」这条链路
+const bgColorCfg = `{"appearance":{"color":"#ffd400"},` +
+	`"short":{"enabled":true,"mode":"countdown","intervalMs":600000,"durationMs":20000,` +
+	`"notifyBeforeMs":10000,"postponeMs":120000,"slots":[]}}`
+
+// 小窗底色 = appearance.color（不是写死的深色）：弹窗内容、URL（首帧）、轮询状态三处同源。
+// 渲染层的「浅底配深字」由 prebreak.js 按这个颜色算，探针里断言，不在 Go 侧。
+func TestPreBreakBgColorFollowsAppearance(t *testing.T) {
+	a, _ := newPreBreakApp(t, bgColorCfg)
+	info := a.preBreakInfoOfType("short")
+	if info.BgColor != "#ffd400" {
+		t.Fatalf("BgColor 应取 appearance.color，得到 %q", info.BgColor)
+	}
+	// URL 带 bg（# 必须编码成 %23，否则被 WebView2 当锚点吃掉）
+	u := preBreakURL(info)
+	parsed, err := url.Parse(u)
+	if err != nil {
+		t.Fatalf("地址解析失败: %v", err)
+	}
+	if got := parsed.Query().Get("bg"); got != "#ffd400" {
+		t.Fatalf("地址应带 bg=#ffd400（编码后），得到 %q（完整 %q）", got, u)
+	}
+	if !strings.Contains(u, "bg=%23ffd400") {
+		t.Fatalf("bg 的 # 必须编码成 %%23，得到 %q", u)
+	}
+	// 轮询状态同源
+	a.rememberPreBreakInfo("short")
+	if st := a.PreBreakState(); st["bgColor"] != "#ffd400" {
+		t.Fatalf("PreBreakState 的 bgColor 应同源，得到 %#v", st["bgColor"])
+	}
+	// 没带 BgColor 的 info（旧窗口 / 手工构造）回退到当前配置，不留空
+	a.mu.Lock()
+	a.preInfo = PreBreakInfo{Custom: false, Title: builtinPreBreakTitleShort}
+	a.mu.Unlock()
+	if st := a.PreBreakState(); st["bgColor"] != "#ffd400" {
+		t.Fatalf("info 没记颜色时应回退到当前配置，得到 %#v", st["bgColor"])
+	}
+	// 地址里没有颜色时干脆不带这个参数（渲染层用内置默认蓝），别传一个空的 bg=
+	if strings.Contains(preBreakURL(PreBreakInfo{PostponeMin: 1}), "bg=") {
+		t.Fatal("BgColor 为空时地址不该带 bg 参数")
 	}
 }
 

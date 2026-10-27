@@ -122,11 +122,14 @@
   function pauseActionOf(v) {
     return PAUSE_ACTIONS.some((a) => a.value === v) ? v : "postpone";
   }
+  // 「暂停休息」的范围说明（挂在「暂停休息时」标签的「?」上）。只改措词、口径不变：
+  // 列的是**所有可能**导致暂停的情况，勾没勾选都照列（和以前列「勿扰」「应用占用」一致），
+  // 具体哪几条在你的机器上生效，看「自动暂停」卡片里各开关的状态。
   function pauseScopeHint() {
     const n = Math.max(1, Math.round(Number(S && S.idlePauseMin) || 5));
-    return "\u300C\u6682\u505C\u4F11\u606F\u300D\u6307\uFF1A\u7CFB\u7EDF\u7A7A\u95F2 " + n +
-      " \u5206\u949F\u81EA\u52A8\u6682\u505C\u3001\u7CFB\u7EDF\u5F00\u542F\u52FF\u6270\u6A21\u5F0F\u81EA\u52A8\u6682\u505C\u3001" +
-      "\u6307\u5B9A\u5E94\u7528\u8FD0\u884C\u65F6\u81EA\u52A8\u6682\u505C\uFF0C\u4EE5\u53CA\u624B\u52A8\u6682\u505C\u4F11\u606F\u3002";
+    return "「暂停休息」指：系统空闲 " + n +
+      " 分钟自动暂停、系统勿扰 / 专注 / 演示模式自动暂停、全屏独占应用运行时自动暂停、" +
+      "指定应用运行时自动暂停，以及手动暂停休息。";
   }
   function refreshPauseHints() {
     const text = pauseScopeHint();
@@ -2053,6 +2056,9 @@
     $("autostart").checked = S.autostart;
     $("startMinimized").checked = S.startMinimized;
     $("dndPause").checked = S.dndPause;
+    // 老配置里没有 fullscreenPause：undefined 传给 checked 会让框呈现未选，
+    // 与后端 Flag(false,…) 的默认值一致，所以这里不额外补默认值
+    $("fullscreenPause").checked = !!S.fullscreenPause;
     $("chk-update").checked = S.checkUpdateOnStart;
     $("appPause-enabled").checked = S.appPause.enabled;
     renderAppList();
@@ -2099,6 +2105,7 @@
     S.autostart = $("autostart").checked;
     S.startMinimized = $("startMinimized").checked;
     S.dndPause = $("dndPause").checked;
+    S.fullscreenPause = $("fullscreenPause").checked;
     S.checkUpdateOnStart = $("chk-update").checked;
     S.appPause.enabled = $("appPause-enabled").checked;
     const readBreak = (id) => {

@@ -75,7 +75,10 @@
             <span class="tail">分钟后自动暂停</span>
           </div>
           <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="dndPause" /> 系统勿扰时自动暂停</label>
+            <label class="switch-row"><input type="checkbox" id="dndPause" /> 系统勿扰、专注、演示模式自动暂停</label>
+          </div>
+          <div class="row check">
+            <label class="switch-row"><input type="checkbox" id="fullscreenPause" /> 全屏独占应用运行时自动暂停<span class="q-mark" title="按 Windows 的「全屏独占」判定（D3D 独占全屏）：真全屏游戏、视频播放器全屏。浏览器 F11、无边框全屏、系统不认为是独占全屏的窗口不会触发。">?</span></label>
           </div>
           <div class="row check">
             <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 指定应用运行时自动暂停</label>
@@ -277,7 +280,7 @@
                下拉本体由 settings.js 的 mountPauseDrop 画（原生 select 装不下每一项的「?」）；
                标签上的「?」说明「暂停休息」包括哪几种情况，空闲分钟数由 settings.js 补全 -->
           <div class="row field">
-            <label>暂停休息时<span class="q-mark pause-scope-help" title="「暂停休息」指：系统空闲 5 分钟自动暂停、系统开启勿扰模式自动暂停、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+            <label>暂停休息时<span class="q-mark pause-scope-help" title="「暂停休息」指：系统空闲 5 分钟自动暂停、系统勿扰 / 专注 / 演示模式自动暂停、全屏独占应用运行时自动暂停、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
             <div class="cdrop-host" id="tk-pause"></div>
           </div>
           <div class="row field"><label>提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>
@@ -536,14 +539,14 @@
                 <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
                 <path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
               </svg>
-              <span>所有统计数据与配置均保存在本地设备，可随时清空或恢复默认</span>
+              <span>所有统计数据均保存在本地，不会上传到网络</span>
             </div>
             <div class="note-row">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 3.5l1.7 4.1 4.1 1.7-4.1 1.7L12 15.1l-1.7-4.1L6.2 9.3l4.1-1.7z"/>
                 <path d="M18.4 15.4l.8 1.9 1.9.8-1.9.8-.8 1.9-.8-1.9-1.9-.8 1.9-.8z"/>
               </svg>
-              <span>内置立绘与图标均由 WorkBuddy 生成，其中历史人物为艺术化形象，与史实原貌并不一致</span>
+              <span>内置立绘与图标均由 WorkBuddy 生成，历史人物为艺术化形象，并非史实原貌</span>
             </div>
             <div class="note-row">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -665,7 +668,7 @@
         <span class="cf-icon accent" aria-hidden="true">◉</span>
         <div class="cf-titles">
           <h3 id="color-title">背景颜色</h3>
-          <p class="cf-desc">提醒窗口的背景色。直接挑选一个预设，或者用下面的调色板自己选，改完立即生效。</p>
+          <p class="cf-desc">休息窗口和右下角提前提示小窗的底色，同时用作强调色。直接挑选一个预设，或者用下面的调色板自己选，改完立即生效。小窗的文字颜色会按底色深浅自动调整。</p>
         </div>
       </div>
       <div class="cp-label">预设</div>

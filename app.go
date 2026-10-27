@@ -100,13 +100,14 @@ type App struct {
 	supWatchStop chan struct{}
 
 	// 系统能力（见 sys_*.go）：空闲状态机 + 三条监视链路的停止信号与「上一跳状态」。
-	// idleAway / dndActiveLogged / appPauseHitLogged 只被各自的 goroutine 读写，
-	// 提成字段是为了让单测能直接调 tick 函数；它们的值不影响任何跨链路判定。
+	// idleAway / dndActiveLogged / fsActiveLogged / appPauseHitLogged 只被各自的
+	// goroutine 读写，提成字段是为了让单测能直接调 tick 函数；它们的值不影响任何跨链路判定。
 	// appPauseIgnored 例外：监视 goroutine 与「手动恢复」的 UI 线程都会碰，走 appPauseMu。
 	idle              *IdleState
 	sysStop           chan struct{}
 	idleAway          bool
 	dndActiveLogged   bool
+	fsActiveLogged    bool
 	appPauseHitLogged bool
 	// appPauseIgnored 「指定应用临时忽略」会话：自动暂停后用户手动点「恢复休息」时置位，
 	// 监视器不再因目标应用重新暂停；目标应用全部退出或用户手动暂停时解除。

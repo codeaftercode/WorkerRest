@@ -636,6 +636,11 @@ def main():
                   and isinstance(dnd.get("active"), bool) and bool(dnd.get("detail")),
                   "勿扰探测返回 {supported, active, detail}", dnd)
 
+            fs = probe.get("fullscreen") or {}
+            check(isinstance(fs, dict) and isinstance(fs.get("supported"), bool)
+                  and isinstance(fs.get("active"), bool) and bool(fs.get("detail")),
+                  "全屏独占探测返回 {supported, active, detail}", fs)
+
             procs = probe.get("processes") or {}
             check(isinstance(procs, dict) and procs.get("supported") is True,
                   "进程枚举可用（Toolhelp32）", procs.get("detail"))

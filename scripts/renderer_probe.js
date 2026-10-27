@@ -463,6 +463,7 @@ const PROBE_SETTINGS = `(function () {
     startMinimized: chk('startMinimized'),
     idlePauseMin: val('idlePauseMin'),
     dndPause: chk('dndPause'),
+    fullscreenPause: chk('fullscreenPause'),
     themeSet: !!document.documentElement.getAttribute('data-theme'),
     themeOptions: Array.prototype.map.call(
       document.querySelectorAll('input[name=theme]'),
@@ -714,6 +715,28 @@ const PROBE_PREBREAK = `(function () {
   var list = document.querySelectorAll('.actions .btn');
   for (var i = 0; i < list.length; i++) btns.push(list[i].textContent.trim());
   var app = document.getElementById('app');
+  // 底色 / 文字色自适应（prebreak.js 的 applyPalette）：这里按 WCAG 真算一遍对比度，
+  // 只断言「颜色不等于某个值」是拦不住"深字配深底"这类事故的。
+  var cs = getComputedStyle(document.documentElement);
+  var v = function (n) { return (cs.getPropertyValue(n) || '').trim(); };
+  var parseRgb = function (s) {
+    var m = /rgba?\\(\\s*(\\d+)\\s*,\\s*(\\d+)\\s*,\\s*(\\d+)/.exec(s || '');
+    return m ? [ +m[1], +m[2], +m[3] ] : null;
+  };
+  var ch = function (x) { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); };
+  var lum = function (c) { return 0.2126 * ch(c[0]) + 0.7152 * ch(c[1]) + 0.0722 * ch(c[2]); };
+  var ratio = function (a, b) {
+    if (!a || !b) return null;
+    var l1 = lum(a), l2 = lum(b);
+    return Math.round(((Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05)) * 100) / 100;
+  };
+  var bg2 = parseRgb(v('--pb-bg-2'));
+  var bg1 = parseRgb(v('--pb-bg-1'));
+  var textRGB = parseRgb(app ? getComputedStyle(app).color : '');
+  var badEl = document.querySelector('.tip.bad');
+  var goodEl = document.querySelector('.tip.good');
+  var numEl = document.getElementById('pb-seconds');
+  var pBtn = document.getElementById('pb-now');
   return {
     shim: window.__WR_SHIM || null,
     title: txt('pb-title'),
@@ -723,7 +746,28 @@ const PROBE_PREBREAK = `(function () {
     pauseShown: shown('pb-pause'),
     postponeShown: shown('pb-postpone'),
     buttons: btns,
-    appHeight: app ? Math.round(app.getBoundingClientRect().height) : 0
+    appHeight: app ? Math.round(app.getBoundingClientRect().height) : 0,
+    // ---- 底色自适应 ----
+    bgSource: document.documentElement.dataset.pbBg || null,
+    lumMode: document.documentElement.dataset.pbLum || null,
+    bg1: v('--pb-bg-1'),
+    bg2: v('--pb-bg-2'),
+    textColor: app ? getComputedStyle(app).color : null,
+    numColor: numEl ? getComputedStyle(numEl).color : null,
+    tipBadColor: badEl ? getComputedStyle(badEl).color : null,
+    tipGoodColor: goodEl ? getComputedStyle(goodEl).color : null,
+    // 文字 / 数字 / 红绿说明对底色的对比度（WCAG，正文要 ≥4.5，大字 ≥3）
+    contrast: {
+      text: ratio(textRGB, bg2),
+      textTop: ratio(textRGB, bg1),
+      num: ratio(parseRgb(numEl ? getComputedStyle(numEl).color : ''), bg2),
+      tipBad: ratio(parseRgb(badEl ? getComputedStyle(badEl).color : ''), bg2),
+      tipGood: ratio(parseRgb(goodEl ? getComputedStyle(goodEl).color : ''), bg2),
+      primaryBtn: ratio(
+        parseRgb(pBtn ? getComputedStyle(pBtn).color : ''),
+        parseRgb(pBtn ? getComputedStyle(pBtn).backgroundColor : '')
+      ),
+    },
   };
 })()`;
 const PROBE_SOUND_PREVIEW = `(async function () {
@@ -1198,6 +1242,24 @@ async function run() {
   metrics.nozoom.prebreak = await pre.evaluate(NOZOOM_PROBE);
   console.log("[probe] nozoom/prebreak:", JSON.stringify(metrics.nozoom.prebreak));
 
+  // ---- 1b2. 提前提示窗：底色跟随「通用配置 → 提醒窗口 → 背景颜色」 ----
+  // 地址里的 bg 就是主进程 preBreakURL 按配置生成的参数（# 编码成 %23）。
+  // 这里挑一个**亮色**（亮黄）：浅底必须自动改用深色文字，否则整窗白字看不见。
+  // 放在 1c 之前 —— 1c 会造一条自定义提醒，轮询会把版式切成自定义（无两行说明），
+  // 而这段要验的正是「浅底上那两行红绿说明还看得清」。
+  const pbLErr = [];
+  const preL = await open(
+    browser,
+    BASE + "/prebreak.html?postpone=1&bg=" + encodeURIComponent("#ffd400"),
+    400, 240,
+    { transparent: true, frame: false, onConsole: pbLErr },
+  );
+  await delay(700);
+  metrics.preBreakLightBg = await preL.evaluate(PROBE_PREBREAK);
+  metrics.preBreakLightBg.consoleErrors = pbLErr;
+  await shot(preL, "prebreak_light_bg");
+  console.log("[probe] preBreakLightBg:", JSON.stringify(metrics.preBreakLightBg));
+
   // ---- 1c. 提前提示窗：自定义提醒版式 ----
   // supervisor:{enabled:true}：探针断言（has-supervisor 版式 / 立绘解码）以「启用」为前提，
   // 必须在隔离副本上显式打开，不跟随用户真实配置的开关状态。
@@ -1324,6 +1386,31 @@ async function run() {
       "short:{postponeMs:120000}, takeout:{postponeMin:10}}); })()",
   );
   await delay(800);
+
+  // ---- 5c. 「全屏独占应用运行时自动暂停」：页面上勾一下，配置真的跟着变 ----
+  // 静态控件上的 change 由 bindAutoSave 统一接到 autoSave（collectForm + saveSettings），
+  // 这里验的就是这条链路；fillForm 的回填另有 stg 断言覆盖。
+  // 验完立刻还原，免得影响后面按磁盘配置比对的断言。
+  metrics.fsPauseRoundTrip = { on: null, off: null };
+  await set.evaluate(
+    "(function(){ var c=document.getElementById('fullscreenPause');" +
+      " if(!c) return false; c.checked=true;" +
+      " c.dispatchEvent(new Event('change',{bubbles:true})); return true; })()",
+  );
+  await delay(900);
+  metrics.fsPauseRoundTrip.on = await set.evaluate(
+    "(function(){ return window.api.getSettings().then(function(s){ return !!s.fullscreenPause; }); })()",
+  );
+  await set.evaluate(
+    "(function(){ var c=document.getElementById('fullscreenPause');" +
+      " if(!c) return false; c.checked=false;" +
+      " c.dispatchEvent(new Event('change',{bubbles:true})); return true; })()",
+  );
+  await delay(900);
+  metrics.fsPauseRoundTrip.off = await set.evaluate(
+    "(function(){ return window.api.getSettings().then(function(s){ return !!s.fullscreenPause; }); })()",
+  );
+  console.log("[probe] fsPauseRoundTrip:", JSON.stringify(metrics.fsPauseRoundTrip));
 
   // 收尾兜底：WebSocket 事件通道是**延迟**连上的（页面加载完才连），
   // 所以 `net::ERR_ADDRESS_IN_USE` 这类传输层抖动会在 open() 返回**之后**才进

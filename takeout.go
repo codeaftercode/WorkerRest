@@ -439,6 +439,8 @@ func (a *App) showTakeoutPreNotify(slot TimeSlot, targetAt int64) {
 		Title:         TAKEOUT_NAME,
 		CountdownTail: " 秒",
 		PostponeMin:   cfg.TakeoutPostponeMin(),
+		// 背景色与休息预通知同源（通用配置 → 提醒窗口 → 背景颜色）
+		BgColor: cfg.AppearanceCfg().Color,
 	}
 	a.mu.Lock()
 	a.preInfo = info

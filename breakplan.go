@@ -188,8 +188,12 @@ func (s *Settings) IdlePauseMin() int {
 	return int(n)
 }
 
-// DndPause 系统勿扰时暂停
+// DndPause 系统勿扰 / 专注 / 演示模式时暂停
 func (s *Settings) DndPause() bool { return s.Flag(true, "dndPause") }
+
+// FullScreenPause 全屏独占应用运行时暂停（QUNS_RUNNING_D3D_FULL_SCREEN）。
+// 默认关：升级上来的用户不会因为「游戏时提醒不弹、计时也停」而莫名其妙丢统计。
+func (s *Settings) FullScreenPause() bool { return s.Flag(false, "fullscreenPause") }
 
 // TakeoutLeadSec 外卖「提前通知」秒数（0=到点提醒；提前通知只是先弹一个小窗提示，
 // 真正的外卖提醒窗口仍在「原定时刻」弹出，不会因提前通知而提前）

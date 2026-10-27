@@ -119,6 +119,10 @@ def main():
         })
         cfg_seed["long"] = dict(cfg_seed.get("long") or {}, enabled=False)
         cfg_seed["takeout"] = dict(cfg_seed.get("takeout") or {}, enabled=False)
+        # 系统勿扰也会让调度器一启动就「暂停（勿扰）」，pre 阶段永远不到，
+        # 「提前提示窗建出来了」两条断言在开着专注助手的机器上必挂 —— 与它要验的东西无关。
+        # 显式关掉，探针才真的自给自足（idlePauseMin 观察 12 秒内到不了，不用管）。
+        cfg_seed["dndPause"] = False
         with open(iso, "w", encoding="utf-8") as f:
             json.dump(cfg_seed, f, ensure_ascii=False, indent=2)
 

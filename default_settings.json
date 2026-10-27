@@ -22,6 +22,7 @@
   "longEveryNShort": 2,
   "idlePauseMin": 5,
   "dndPause": true,
+  "fullscreenPause": false,
   "appPause": {
     "enabled": false,
     "seeded": false,

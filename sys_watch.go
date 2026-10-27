@@ -26,6 +26,7 @@ const (
 const (
 	pauseReasonIdle     = "idle"
 	pauseReasonDnd      = "勿扰"
+	pauseReasonFullScr  = "全屏独占"
 	pauseReasonAppPause = "应用占用"
 )
 
@@ -123,30 +124,49 @@ func (a *App) idleWatchTick(away bool) bool {
 	return away
 }
 
-// dndWatchTick 推进一次系统勿扰判定。
+// dndWatchTick 推进一次系统「勿扰 / 全屏独占」判定。
+//
+// 两条支路共用同一次 SHQueryUserNotificationState 查询（同一个返回值的不同取值）：
+//   - 2 / 4：勿扰、专注助手、演示模式 —— 开关 dndPause
+//   - 3：全屏独占（真全屏游戏、播放器全屏）—— 开关 fullscreenPause
 //
 // 与 上一版有一处**刻意不同**：那边每一跳（3 秒）都打一条 `[dnd] active: …`，
-// 勿扰开着的时候日志会被刷满；这里只在「进入 / 退出勿扰暂停」的那一次打日志。
-// 判定与暂停行为完全一致。
+// 勿扰开着的时候日志会被刷满；这里只在「进入 / 退出暂停」的那一次打日志。
 func (a *App) dndWatchTick() {
 	if a.sched == nil {
 		return
 	}
-	st := GetDndStatus()
-	active := a.cfgSnapshot().DndPause() && st.Supported && st.Active
+	state, ok := queryQunsState()
+	cfg := a.cfgSnapshot()
+
+	dnd := dndStatusOf(state, ok)
+	a.applyAutoPause(cfg.DndPause() && dnd.Active, pauseReasonDnd, &a.dndActiveLogged,
+		"[dnd] 系统勿扰 / 专注 / 演示模式已开启："+dnd.Detail+"，暂停提醒",
+		"[dnd] 系统勿扰 / 专注 / 演示模式已关闭：恢复提醒")
+
+	fs := fullScreenStatusOf(state, ok)
+	a.applyAutoPause(cfg.FullScreenPause() && fs.Active, pauseReasonFullScr, &a.fsActiveLogged,
+		"[fullscreen] 检测到全屏独占应用运行（"+fs.Detail+"），暂停提醒",
+		"[fullscreen] 全屏独占应用已退出：恢复提醒")
+}
+
+// applyAutoPause 把一条「系统状态 → 暂停原因」的边沿变化落到调度器上。
+// 只在进入 / 退出暂停的那一次打日志：状态没变就什么都不做（3 秒一跳，不能刷屏）。
+// logged 指向 App 上该支路自己的标记字段，两条支路互不影响。
+func (a *App) applyAutoPause(active bool, reason string, logged *bool, enterMsg, exitMsg string) {
 	if active {
-		a.sched.pause(pauseReasonDnd)
-		if !a.dndActiveLogged {
-			a.dndActiveLogged = true
-			log.Printf("[dnd] 系统勿扰已开启：%s，暂停提醒", st.Detail)
+		a.sched.pause(reason)
+		if !*logged {
+			*logged = true
+			log.Print(enterMsg)
 		}
 		return
 	}
-	if a.dndActiveLogged {
-		a.dndActiveLogged = false
-		log.Printf("[dnd] 系统勿扰已关闭：恢复提醒")
+	if *logged {
+		*logged = false
+		log.Print(exitMsg)
 	}
-	a.sched.resume(pauseReasonDnd)
+	a.sched.resume(reason)
 }
 
 // appPauseWatchTick 推进一次「指定应用占用」判定。
@@ -215,9 +235,10 @@ func (a *App) SysProbe() map[string]any {
 		autostart["wanted"] = a.cfgSnapshot().Autostart()
 	}
 	return map[string]any{
-		"idle":      idle,
-		"dnd":       GetDndStatus(),
-		"processes": procs,
-		"autostart": autostart,
+		"idle":       idle,
+		"dnd":        GetDndStatus(),
+		"fullscreen": GetFullScreenStatus(),
+		"processes":  procs,
+		"autostart":  autostart,
 	}
 }
