@@ -1383,7 +1383,12 @@ func writeFileAtomic(path string, data []byte) error {
 	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp, path)
+	if err := os.Rename(tmp, path); err != nil {
+		// 改名失败（例如目标位置被同名目录占着）→ 别把临时文件留在目录里
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 // ---------- App 侧：落点推导与统计绑定 ----------
