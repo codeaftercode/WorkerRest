@@ -235,7 +235,23 @@ func (a *App) PreBreakState() map[string]any {
 	if info.Owner == "takeout" {
 		a.mu.Lock()
 		target := a.preTargetAt
+		pp := a.takeoutPostponed
 		a.mu.Unlock()
+		var ppDue int64
+		if pp != nil {
+			ppDue = pp.DueAt
+		}
+		// 自愈：外卖预通知窗没有调度器那条「该不该在场」的判据，由窗口自己的轮询兜住
+		// 三种失效：外卖总开关被关、推迟计划被改到别的时刻（这个 target 已作废）、
+		// 过了到点 + 宽限仍未收（真窗本该弹出并关掉它）。不兜的话窗口会一直挂着，
+		// 倒计时停在 0 秒，用户以为提醒坏了。
+		cfg := a.cfgSnapshot()
+		stale := !cfg.TakeoutEnabled() ||
+			(pp != nil && ppDue > 0 && ppDue != target) ||
+			(nowMs() > target+takeoutPreNotifyGraceMs)
+		if stale {
+			a.closePreBreakWindow()
+		}
 		remain := target - nowMs()
 		if remain < 0 {
 			remain = 0
@@ -255,6 +271,16 @@ func (a *App) PreBreakState() map[string]any {
 		st := a.sched.stateCopy()
 		phase, paused = st.Phase, st.Paused
 		remain = a.sched.remainingMs()
+		// 自愈：窗口每 500ms 就自己来问一次状态 —— 顺手校验「我还该不该在场」。
+		// 这层兜底与调度器各状态变更处的 syncPreBreakWindow 互补：任何漏收窗的路径
+		//（含未来新加的）都会在 500ms 内被窗口自己发现并退场，绝不会带着一整轮
+		// 满格倒计时留在屏幕上。窗口被关后本条轮询的返回无人接收，无需善后。
+		//
+		// 暂停期间不判：暂停态下 phase 不是 pre，但「暂停休息期间自定义提醒照常提醒」
+		//（scheduler.pausedFire）正是要在暂停中弹这个窗，靠判据会把它自己误收掉。
+		if !paused && !a.sched.preBreakWanted() {
+			a.closePreBreakWindow()
+		}
 	}
 	return map[string]any{
 		"phase":         phase,
@@ -299,7 +325,8 @@ func (a *App) preBreakAct(action string) error {
 			a.takeoutFired[occurrenceKey("takeout", at)] = true
 			a.mu.Unlock()
 			a.closePreBreakWindow()
-			a.fireTakeout(slot, 0)
+			// occurrence 用预通知的目标时刻：提前通知跨午夜时是次日那一格
+			a.fireTakeoutAt(slot, 0, at)
 			a.refreshStateAfterTakeout()
 			return nil
 		case "postpone":

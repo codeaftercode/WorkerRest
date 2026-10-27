@@ -47,7 +47,7 @@ const takeoutCfg = `{
 func TestBuildTakeoutInfo(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	info := a.buildTakeoutInfo(slot, false, 0)
+	info := a.buildTakeoutInfo(slot, false, 0, 0)
 	if info == nil {
 		t.Fatal("会话不应为空")
 	}
@@ -88,7 +88,7 @@ func TestBuildTakeoutInfo(t *testing.T) {
 func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]},"installId":"uuid-1234"}`
 	a := newTakeoutApp(t, cfg)
-	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0)
+	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
 	if info == nil {
 		t.Fatal("会话不应为空")
 	}
@@ -126,7 +126,7 @@ func TestTakeoutPostponeMinClamp(t *testing.T) {
 func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":[]},"installId":"uuid-1234"}`
 	a := newTakeoutApp(t, cfg)
-	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 18, Minute: 0, Enabled: true}, false, 0)
+	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 18, Minute: 0, Enabled: true}, false, 0, 0)
 	if info.RedPacketData == nil {
 		t.Fatal("外卖提醒窗口应始终展示外卖优惠券（redPacketData 不应为 nil）")
 	}
@@ -150,7 +150,7 @@ func TestBuildTakeoutInfoSupervisorClearsCommand(t *testing.T) {
 	// 有督休专员时 supervisor 的 command 必须清空（外卖窗口第二段不换台词）
 	// 这里只验证「nil 时不炸」——有督休专员的路径由 GUI/对拍覆盖（需要真实立绘 data URL）
 	a := newTakeoutApp(t, takeoutCfg)
-	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0)
+	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
 	if info.Supervisor != nil {
 		t.Fatalf("空督休专员目录应无 supervisor，得到 %+v", info.Supervisor)
 	}
@@ -236,7 +236,7 @@ func TestTakeoutActionOrderedAndSkip(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
 	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0)
+	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0, 0)
 	if err := a.TakeoutAction("takeout", "ordered"); err != nil {
 		t.Fatalf("ordered 动作报错: %v", err)
 	}
@@ -249,7 +249,7 @@ func TestTakeoutActionPostpone(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
 	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0)
+	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0, 0)
 	if err := a.TakeoutAction("takeout", "postpone"); err != nil {
 		t.Fatalf("postpone 动作报错: %v", err)
 	}
@@ -277,7 +277,7 @@ func TestTakeoutActionPreview(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
 	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	a.takeoutCurrent = a.buildTakeoutInfo(slot, true, 0)
+	a.takeoutCurrent = a.buildTakeoutInfo(slot, true, 0, 0)
 	if err := a.TakeoutAction("takeout", "postpone"); err != nil {
 		t.Fatalf("预览 postpone 报错: %v", err)
 	}
@@ -360,7 +360,7 @@ func TestTakeoutActionRecordsStats(t *testing.T) {
 	st := NewStatsStore(func() string { return filepath.Join(t.TempDir(), "stats.json") })
 	a.stats = st
 	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0)
+	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0, 0)
 	_ = a.TakeoutAction("takeout", "ordered")
 	d := st.Today()
 	if d.TakeoutOrdered != 1 {

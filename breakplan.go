@@ -99,8 +99,11 @@ type SchedulerState struct {
 	FixedNext      map[string]int64 `json:"fixedNext"`
 	BreakEndsAt    int64            `json:"breakEndsAt"`
 	BreakStartedAt int64            `json:"breakStartedAt"`
-	Paused         bool             `json:"paused"`
-	PauseReasons   []string         `json:"pauseReasons"`
+	// BreakWhilePaused 这次休息是在「暂停态」下主动发起的（托盘 / 侧栏「立即休息」）。
+	// 这种休息不参与暂停的时间冻结：用户既然点了开始，就要按真实时钟走完并自动收窗。
+	BreakWhilePaused bool     `json:"breakWhilePaused"`
+	Paused           bool     `json:"paused"`
+	PauseReasons     []string `json:"pauseReasons"`
 	// PausedAt 进入暂停的时刻（冻结倒计时用：暂停期间剩余时间按此锚定，不再往下掉）
 	PausedAt        int64 `json:"pausedAt"`
 	ShortsSinceLong int   `json:"shortsSinceLong"`
@@ -413,6 +416,16 @@ func slotAlertAt(slot TimeSlot, leadMs, dayMs int64) int64 {
 	return at.UnixMilli() - leadMs
 }
 
+// slotOccurrenceAt 提前线所属的 occurrence 时刻（提醒**真正发生**的那一次）。
+//
+// 提前量会把「进入提前区间」的那一刻推到前一天（00:10 的提醒提前 20 分钟 → 23:50 就要
+// 弹提前通知），但 occurrence 仍归属 00:10 那一次。基准取 now+leadMs 再构造当天时刻，
+// 跨午夜时自然落到次日；直接用 slotAlertAt(slot, lead, now) 会得到「前一天 00:10」，
+// 与次日同一条目的去重键相撞（提前通知被吞），预通知窗的倒计时也会指向过去（进窗即 0 秒）。
+func slotOccurrenceAt(slot TimeSlot, leadMs, nowMs int64) int64 {
+	return slotAlertAt(slot, 0, nowMs+leadMs)
+}
+
 // slotFireKey 触发去重键：同一条目在同一天同一时刻（精确到分钟）只会触发一次
 func slotFireKey(slot TimeSlot, nowMs, leadMs int64) string {
 	t := time.UnixMilli(nowMs + leadMs)
@@ -616,9 +629,12 @@ func filterConsumed(pool []PlannedBreak, skip map[string]bool) []PlannedBreak {
 }
 
 // cdAnchor 上一轮挂起的倒计时锚点：At = 触发时刻，Iv = 产生该锚点的间隔（ms）。
+// Frozen 表示这个锚点是在**暂停期间**收集的：暂停中时间不流逝，即使 At 已经早于真实
+// 墙钟，它也没有「过期」，replan 必须原样沿用（见 Scheduler.prevCountdownAnchorsLocked）。
 type cdAnchor struct {
-	At int64
-	Iv int64
+	At     int64
+	Iv     int64
+	Frozen bool
 }
 
 // schedulerLines 调度器的全部挂起线（不含外卖——外卖窗口独立于休息调度）：
@@ -655,8 +671,12 @@ func schedulerLines(s *Settings, now int64, shortsSinceLong int, skip map[string
 // countdownAnchor 倒计时线的锚点：上一轮同身份的锚点仍未到期、未被消费且产生间隔
 // 与当前配置一致时原样沿用（倒计时进度跨 replan 保留）；间隔已改的立刻按新间隔
 // 重新起算。到期、被跳过/立即休息（已消费）或该身份被删除后，同样回落到 fresh。
+//
+// Frozen 锚点（暂停期间收集）跳过「到期」判定：暂停中时间冻结，At 早于真实墙钟不代表
+// 这一跳已经过去 —— 用真实墙钟判会把冻结进度整段丢掉。
 func countdownAnchor(prev map[string]cdAnchor, typ string, now int64, skip map[string]bool, fresh, curIv int64) int64 {
-	if a, ok := prev[typ]; ok && a.At > now && !skip[occurrenceKey(typ, a.At)] && a.Iv == curIv {
+	if a, ok := prev[typ]; ok && (a.Frozen || a.At > now) &&
+		!skip[occurrenceKey(typ, a.At)] && a.Iv == curIv {
 		return a.At
 	}
 	return fresh
@@ -696,8 +716,11 @@ func takeoutLine(s *Settings, now int64) (PlannedBreak, bool) {
 	}
 	best := int64(0)
 	found := false
+	// 用日历日推进（AddDate）而不是 now+86400000：夏令时切换日一天可能是 23/25 小时，
+	// 加固定毫秒会在那两天落回同一天或跳过一天。中国无夏令时，但这段逻辑不该因此写死。
+	base := time.UnixMilli(now)
 	for d := 0; d < 2; d++ {
-		day := now + int64(d)*86_400_000
+		day := base.AddDate(0, 0, d).UnixMilli()
 		for _, sl := range slots {
 			at := slotAlertAt(sl, 0, day)
 			if at > now && (!found || at < best) {
@@ -850,13 +873,18 @@ func expandBuiltinCountdown(s *Settings, now int64, shortsSinceLong int, skip ma
 	return out
 }
 
-// expandCustomCountdown 自定义提醒倒计时链：anchor = 上一跳 at + 自己的 intervalMs，
-// 同样剔已消费、今天截断、上限保护。
-func expandCustomCountdown(now int64, skip map[string]bool, first PlannedBreak, intervalMs int64) []PlannedBreak {
+// expandCustomCountdown 自定义提醒倒计时链：anchor = 上一跳 at + 上一跳时长 + 自己的
+// intervalMs，同样剔已消费、今天截断、上限保护。
+//
+// 为什么加时长：调度器是「休息结束 → replan → now + interval」，replan 发生在窗口关闭
+// 那一刻（≈ 开始 + 时长）。只加 interval 会把整条链算早一个「提醒时长」，用户按今日
+// 时间线核对时会发现「写着 10:00，实际 10:05 才提醒」。
+func expandCustomCountdown(now int64, skip map[string]bool, first PlannedBreak, intervalMs, durationMs int64) []PlannedBreak {
 	out := []PlannedBreak{first}
 	curAt := first.At
-	for i := 0; i < cdExpandMax && intervalMs > 0; i++ {
-		at := curAt + intervalMs
+	step := durationMs + intervalMs
+	for i := 0; i < cdExpandMax && step > 0; i++ {
+		at := curAt + step
 		if !sameLocalDay(at, now) {
 			break
 		}
@@ -998,7 +1026,7 @@ func todayTimeline(s *Settings, now int64, opts TimelineOptions) []TimelineItem 
 			pushCd(l)
 			continue
 		}
-		for _, p := range expandCustomCountdown(now, opts.Skip, l, cfg.IntervalMs) {
+		for _, p := range expandCustomCountdown(now, opts.Skip, l, cfg.IntervalMs, cfg.DurationMs) {
 			pushCd(p)
 		}
 	}

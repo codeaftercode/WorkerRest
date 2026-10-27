@@ -28,6 +28,9 @@ const (
 	raiseIntervalMs = 700
 	// takeoutPostponeGraceMs 推迟计划有效期：到点后若一直暂停 / 睡眠，超过此宽限即作废
 	takeoutPostponeGraceMs = 5 * 60_000
+	// takeoutPreNotifyGraceMs 预通知窗过了到点后的收窗宽限：正常路径由真窗弹出时关闭，
+	// 这里只兜「真窗没能弹出」（暂停 / 跳过 / 总开关被关）时的残留
+	takeoutPreNotifyGraceMs = 60_000
 )
 
 // ---------- 抬升簿记（对应 windows/raise.ts） ----------
@@ -89,10 +92,15 @@ func (r *raiseState) anyBreakActive() bool {
 
 // buildTakeoutInfo 组装一次外卖会话（对应 takeoutWindow.ts 的 showTakeoutWindows 里
 // 那个 TakeoutSessionInfo）。会话与「弹窗」分开：渲染层随后会自己再拉一次 TakeoutCurrent。
-func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) *TakeoutInfo {
+func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int, atOverride int64) *TakeoutInfo {
 	cfg := a.cfgSnapshot()
 	now := time.Now()
-	at := time.Date(now.Year(), now.Month(), now.Day(), slot.Hour, slot.Minute, 0, 0, now.Location())
+	// atOverride = 这次提醒真正归属的 occurrence（提前通知跨午夜时是次日那一格、
+	// 推迟线是推迟后的到点时刻）；不传则按「当天该时刻」—— 与历史口径一致。
+	atMs := atOverride
+	if atMs <= 0 {
+		atMs = slotAlertAt(slot, 0, now.UnixMilli())
+	}
 	// 红包二维码指向本机专属领取地址：installId 是每台设备一枚的 UUID，
 	// 服务端（www.goodgoodlive.com）按 id 区分来源。只要显示外卖提醒窗口就必须展示优惠券，
 	// 因此这里无条件带上地址（不再有开关）。
@@ -102,7 +110,7 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int) 
 		cfg.Str("", "installId") + "&t=" + strconv.FormatInt(now.UnixMilli(), 10)}
 	info := &TakeoutInfo{
 		ID:             takeoutID(),
-		At:             at.UnixMilli(),
+		At:             atMs,
 		Hour:           slot.Hour,
 		Minute:         slot.Minute,
 		Slot:           slot,
@@ -138,9 +146,15 @@ func takeoutID() string {
 
 // fireTakeout 弹出一次外卖提醒（固定时刻线、推迟线两条触发路径共用）
 func (a *App) fireTakeout(slot TimeSlot, postponedCount int) {
+	a.fireTakeoutAt(slot, postponedCount, 0)
+}
+
+// fireTakeoutAt 同上，但显式指定这次提醒归属的 occurrence 时刻（会话里「原定时刻」用它）。
+// 提前通知跨午夜（23:50 提次日 00:10）时「立即提醒」要落在次日那一格，不能显示今天。
+func (a *App) fireTakeoutAt(slot TimeSlot, postponedCount int, atMs int64) {
 	log.Printf("[takeout] 触发提醒 %02d:%02d lead=%d秒 postponed=%d次",
 		slot.Hour, slot.Minute, a.cfgSnapshot().TakeoutLeadSec(), postponedCount)
-	a.showTakeoutWindows(slot, false, postponedCount)
+	a.showTakeoutWindowsAt(slot, false, postponedCount, atMs)
 	a.playConfiguredSound()
 }
 
@@ -163,15 +177,36 @@ func (a *App) checkTakeoutReminders() {
 		a.takeoutPostponed = nil
 		a.takeoutPreFired = nil
 		a.mu.Unlock()
+		// 总开关刚被关掉：已经弹出的「外卖预通知」小窗必须一起收掉。它不属于调度器
+		//（owner=takeout 的 PreBreakState 不走向上的自愈判据），不在这里关就会永远挂着，
+		// 而且倒计时停在 0 秒。
+		a.closeTakeoutPreNotifyIfOpen()
 		return
 	}
-	// 推迟计划过期即作废（只在暂停 / 休眠期间才可能发生）
+	now := nowMs()
+	// 推迟计划一律锁内取快照：TakeoutAction（UI 线程）会同时改写 DueAt / PreFired，
+	// 锁外直接读这几个字段是数据竞争（真机上表现为「刚点的推迟被 tick 回退」）。
+	// 判「过期作废」也放在同一把锁里，避免读到写了一半的状态。
 	a.mu.Lock()
-	pp := a.takeoutPostponed
-	if pp != nil && nowMs() > pp.DueAt+takeoutPostponeGraceMs {
+	if a.takeoutPostponed != nil &&
+		now > a.takeoutPostponed.DueAt+takeoutPostponeGraceMs {
 		log.Printf("[takeout] 推迟计划已过期，作废")
 		a.takeoutPostponed = nil
-		pp = nil
+	}
+	hasPP := a.takeoutPostponed != nil
+	var pp TakeoutPostponed
+	if hasPP {
+		pp = *a.takeoutPostponed
+	}
+	// 顺手修剪去重表：只留最近 3 天的 occurrence 键。键里带绝对时刻，长期运行
+	//（一年几千条）不会影响正确性，但也没必要一直留着；3 天足够覆盖跨午夜的提前线。
+	if len(a.takeoutFired) > 32 {
+		cut := now - 3*86_400_000
+		for k := range a.takeoutFired {
+			if occurrenceKeyAt(k) < cut {
+				delete(a.takeoutFired, k)
+			}
+		}
 	}
 	a.mu.Unlock()
 	// 暂停休息期间：按「暂停休息时」的处置走 —— 正常提醒就落下去走正常的触发线；
@@ -183,49 +218,64 @@ func (a *App) checkTakeoutReminders() {
 		case PauseActionRemind:
 			// 照常提醒：继续往下走下面的四条触发线
 		case PauseActionPostpone:
-			if a.postponeTakeoutWhilePaused(cfg, pp) {
+			if a.postponeTakeoutWhilePaused(cfg, hasPP) {
 				return
 			}
 			// 「可推迟」填了 0：没有时长可推，退化成跳过（否则每跳原地打转、永远不弹）
-			a.skipTakeoutWhilePaused(cfg, pp)
+			a.skipTakeoutWhilePaused(cfg)
 			return
 		default:
-			a.skipTakeoutWhilePaused(cfg, pp)
+			a.skipTakeoutWhilePaused(cfg)
 			return
 		}
 	}
-	now := nowMs()
 	leadSec := cfg.TakeoutLeadSec()
 	leadMs := int64(leadSec) * 1000
-	// ① 推迟线：到点直接弹真窗
-	if pp != nil && now >= pp.DueAt {
+	// ① 推迟线：到点直接弹真窗。清空时核对 DueAt —— 期间用户可能又点了一次推迟，
+	// 不能把那份新计划一起清掉。
+	if hasPP && now >= pp.DueAt {
 		a.mu.Lock()
-		a.takeoutPostponed = nil
+		if p := a.takeoutPostponed; p != nil && p.DueAt == pp.DueAt {
+			a.takeoutPostponed = nil
+		}
 		a.mu.Unlock()
 		a.closeTakeoutPreNotifyIfOpen()
-		a.fireTakeout(pp.Slot, pp.Count)
+		// 推迟线：会话里的「原定时刻」= 推迟后的到点时刻（跨午夜时就是次日）
+		a.fireTakeoutAt(pp.Slot, pp.Count, pp.DueAt)
 		return
 	}
 	// ①b 推迟后的提前通知：leadSec>0 时，在推迟后的真实时刻前 leadMs 再弹一次预通知小窗
 	// （倒计时指向推迟后的到点时刻）。与原始提前通知线同口径：推迟后仍需提前提醒用户。
-	// 去重用 pp.PreFired——每秒 tick 都会走到这里，只弹一次。
-	if pp != nil && leadSec > 0 && now >= pp.DueAt-leadMs && now < pp.DueAt && !pp.PreFired {
-		pp.PreFired = true
-		a.showTakeoutPreNotify(pp.Slot, pp.DueAt)
-		return
+	// 去重标记 PreFired 在锁内写（每秒 tick 都会走到这里，只弹一次）。
+	if hasPP && leadSec > 0 && now >= pp.DueAt-leadMs && now < pp.DueAt {
+		a.mu.Lock()
+		mark := false
+		if p := a.takeoutPostponed; p != nil && p.DueAt == pp.DueAt && !p.PreFired {
+			p.PreFired = true
+			mark = true
+		}
+		a.mu.Unlock()
+		if mark {
+			a.showTakeoutPreNotify(pp.Slot, pp.DueAt)
+			return
+		}
 	}
 	// ② 固定时刻线（真窗）：原定时刻已到就弹；③ 提前通知线：在原定时刻−提前量 之后弹一次
 	var toFire []TimeSlot
-	var toPreNotify []TimeSlot
+	type preHit struct {
+		slot TimeSlot
+		at   int64 // 这次提醒真正发生的那一刻（可能已跨到次日）
+	}
+	var toPreNotify []preHit
 	a.mu.Lock()
 	for _, slot := range cfg.TakeoutSlots() {
 		if !slot.Enabled {
 			continue
 		}
-		at := slotAlertAt(slot, 0, now) // 原定时刻（当天，用于 occurrence 去重键）
 		// ② 真窗：now 命中条目「原定分钟」（leadMs=0）才弹——保持原来的「按分钟匹配」语义，
 		//    不补弹过去错过的分钟；按 occurrence 去重，避免同一分钟重复弹。
 		if isTimeSlotDue(slot, now, 0) {
+			at := slotAlertAt(slot, 0, now) // 原定时刻（当天，用于 occurrence 去重键）
 			key := occurrenceKey("takeout", at)
 			if a.takeoutFired[key] {
 				continue
@@ -236,13 +286,16 @@ func (a *App) checkTakeoutReminders() {
 		}
 		// ③ 提前通知窗：now+提前量 命中原定分钟那一刻弹一次（提前量=0 不进此支）；
 		//    窗口随后保持显示，直到原定时刻真窗弹出或用户动作。
+		//    at 必须按 now+提前量 折算：提前量把「进入提前区间」推到前一天时（23:50 提
+		//    次日 00:10），occurrence 仍归次日 —— 用 now 当天算会与当天同条目的旧键相撞。
 		if leadSec > 0 && isTimeSlotDue(slot, now, leadMs) {
+			at := slotOccurrenceAt(slot, leadMs, now)
 			key := occurrenceKey("takeout", at)
 			if a.takeoutPreFired[key] {
 				continue
 			}
 			a.takeoutPreFired[key] = true
-			toPreNotify = append(toPreNotify, slot)
+			toPreNotify = append(toPreNotify, preHit{slot: slot, at: at})
 		}
 	}
 	a.mu.Unlock()
@@ -250,8 +303,8 @@ func (a *App) checkTakeoutReminders() {
 		a.closeTakeoutPreNotifyIfOpen()
 		a.fireTakeout(slot, 0)
 	}
-	for _, slot := range toPreNotify {
-		a.showTakeoutPreNotify(slot, 0)
+	for _, h := range toPreNotify {
+		a.showTakeoutPreNotify(h.slot, h.at)
 	}
 }
 
@@ -262,30 +315,47 @@ func (a *App) checkTakeoutReminders() {
 // 返回 false 表示这次没法推迟（「可推迟」填了 0，没有时长可推），由调用方退化成跳过。
 // 已有一次推迟在路上时，本分钟到点的其它条目并进那一次（外卖提醒窗口只有一扇，
 // 标题也不区分时刻），记进 takeoutFired 免得恢复后再补弹。
-func (a *App) postponeTakeoutWhilePaused(cfg *Settings, pp *TakeoutPostponed) bool {
+func (a *App) postponeTakeoutWhilePaused(cfg *Settings, hasPP bool) bool {
 	ms := int64(cfg.TakeoutPostponeMin()) * 60_000
 	if ms <= 0 {
 		return false
 	}
 	now := nowMs()
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if pp != nil {
-		if now >= pp.DueAt {
-			pp.DueAt = now + ms
-			// 推后之后还要再走一遍提前通知线，复位它的去重标记
-			pp.PreFired = false
-			log.Printf("[takeout] 暂停休息期间推迟后再次到点，继续推迟 %d 分钟", ms/60_000)
+	if hasPP {
+		// 锁内重新取（hasPP 只是「进来时有没有」，期间可能被 UI 的 TakeoutAction 换掉）
+		a.mu.Lock()
+		p := a.takeoutPostponed
+		restarted := false
+		if p != nil && now >= p.DueAt {
+			p.DueAt = now + ms
+			p.PreFired = false // 推后之后还要再走一遍提前通知线
+			restarted = true
 		}
+		// 本分钟到点的其它条目并进这一次推迟（外卖窗口只有一扇，标题也不区分时刻）
 		for _, slot := range cfg.TakeoutSlots() {
-			if !isTimeSlotDue(slot, now, 0) {
-				continue
+			if isTimeSlotDue(slot, now, 0) {
+				a.takeoutFired[occurrenceKey("takeout", slotAlertAt(slot, 0, now))] = true
 			}
-			a.takeoutFired[occurrenceKey("takeout", slotAlertAt(slot, 0, now))] = true
+		}
+		a.mu.Unlock()
+		if p == nil {
+			// 计划已被清掉（用户点了别的动作）：本跳什么都不做，别退化成跳过记账
+			return true
+		}
+		if restarted {
+			log.Printf("[takeout] 暂停休息期间推迟后再次到点，继续推迟 %d 分钟", ms/60_000)
+			// 旧的预通知窗指向已经作废的到点时刻，收掉（新的到点前还会再弹一次）
+			a.closeTakeoutPreNotifyIfOpen()
 		}
 		return true
 	}
+	a.mu.Lock()
 	for _, slot := range cfg.TakeoutSlots() {
+		if a.takeoutPostponed != nil {
+			// 期间 UI 刚点了一次推迟（hasPP 取快照时还没有）：别覆盖用户的选择，
+			// 交给下一跳走「已有计划」分支
+			break
+		}
 		if !isTimeSlotDue(slot, now, 0) {
 			continue
 		}
@@ -295,10 +365,12 @@ func (a *App) postponeTakeoutWhilePaused(cfg *Settings, pp *TakeoutPostponed) bo
 		}
 		a.takeoutFired[key] = true
 		a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: now + ms, Count: 1}
+		a.mu.Unlock()
 		log.Printf("[takeout] 暂停休息期间 %02d:%02d 到点，推迟 %d 分钟再提醒",
 			slot.Hour, slot.Minute, ms/60_000)
 		return true
 	}
+	a.mu.Unlock()
 	// 这一刻没有到点的条目（推迟计划还在路上）：什么都不用做
 	return true
 }
@@ -308,21 +380,20 @@ func (a *App) postponeTakeoutWhilePaused(cfg *Settings, pp *TakeoutPostponed) bo
 // —— 恢复后同一分钟不再补弹。「推迟提醒」但「可推迟」填了 0 时也落到这里（没有时长可推）。
 //
 // 三条线口径：
-//   - 推迟线：到点（pp.DueAt）即记一次跳过并清掉推迟计划（暂停期间不补弹）；
+//   - 推迟线：到点（DueAt）即记一次跳过并清掉推迟计划（暂停期间不补弹）；
 //   - 固定时刻线：按分钟匹配（与真窗同口径），每个到点的条目各记一次；
 //   - 提前通知线：暂停期间根本不弹小窗，因此不单独记账（到点那一跳已记）。
-func (a *App) skipTakeoutWhilePaused(cfg *Settings, pp *TakeoutPostponed) {
+func (a *App) skipTakeoutWhilePaused(cfg *Settings) {
 	now := nowMs()
-	skipped := 0
-	if pp != nil && now >= pp.DueAt {
-		a.mu.Lock()
-		a.takeoutPostponed = nil
-		a.mu.Unlock()
-		skipped++
-		log.Printf("[takeout] 暂停休息期间推迟线到点，按跳过处理")
-	}
+	ppFired := false
 	var hits []TimeSlot
+	// 推迟线到点与「本分钟条目到点」必须在同一把锁里判定并消费：
+	// UI 线程的 TakeoutAction 同时会写这两张表，锁外读会读到回退前的值。
 	a.mu.Lock()
+	if p := a.takeoutPostponed; p != nil && now >= p.DueAt {
+		a.takeoutPostponed = nil
+		ppFired = true
+	}
 	for _, slot := range cfg.TakeoutSlots() {
 		if !isTimeSlotDue(slot, now, 0) {
 			continue
@@ -335,12 +406,21 @@ func (a *App) skipTakeoutWhilePaused(cfg *Settings, pp *TakeoutPostponed) {
 		hits = append(hits, slot)
 	}
 	a.mu.Unlock()
-	for _, slot := range hits {
+	skipped := len(hits)
+	if ppFired {
 		skipped++
+		log.Printf("[takeout] 暂停休息期间推迟线到点，按跳过处理")
+	}
+	for _, slot := range hits {
 		log.Printf("[takeout] 暂停休息期间 %02d:%02d 到点，按跳过处理", slot.Hour, slot.Minute)
 	}
 	for i := 0; i < skipped; i++ {
 		a.statsStore().RecordTakeoutAction("skip")
+	}
+	if skipped > 0 {
+		// 这一跳被跳过（或者推迟计划作废）：已经弹出的预通知窗不能继续挂着，
+		// 否则它指向的那次提醒永远不会来，倒计时停在 0 秒。
+		a.closeTakeoutPreNotifyIfOpen()
 	}
 }
 
@@ -430,7 +510,12 @@ func (a *App) targetDisplays() []*application.Screen {
 // showTakeoutWindows 弹出外卖提醒窗口（每个目标屏各一个）。无头（server 模式）下不建窗，
 // 但会话照常构建，于是无头冒烟能验证「触发 → 会话 JSON → 动作记账」整条链路。
 func (a *App) showTakeoutWindows(slot TimeSlot, preview bool, postponedCount int) {
-	info := a.buildTakeoutInfo(slot, preview, postponedCount)
+	a.showTakeoutWindowsAt(slot, preview, postponedCount, 0)
+}
+
+// showTakeoutWindowsAt 同上，附带 occurrence 时刻（0 = 按当天该时刻）。
+func (a *App) showTakeoutWindowsAt(slot TimeSlot, preview bool, postponedCount int, atMs int64) {
+	info := a.buildTakeoutInfo(slot, preview, postponedCount, atMs)
 	a.mu.Lock()
 	a.takeoutCurrent = info
 	a.mu.Unlock()

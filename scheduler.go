@@ -67,6 +67,11 @@ type Scheduler struct {
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
+
+	// lastTickAt 上一次 onTick 的墙钟时刻：用来发现「两次 tick 之间过了很久」——
+	// 睡眠 / 休眠 / 系统时间被大幅调整时，倒计时会在醒来第一刻全部到点，
+	// 不处理就会立刻弹一个休息窗口（用户刚开机就被要求休息）。
+	lastTickAt int64
 }
 
 // postponedBreak 暂停期间被「推迟提醒」推后的一次自定义提醒。
@@ -150,11 +155,30 @@ func (s *Scheduler) loop() {
 // 手动「提前结束」走 endBreak → finishBreak 不经过这里，立即关窗不受影响。
 const breakCloseDwellMs int64 = 1000
 
+// tickJumpThresholdMs 两次 tick 的墙钟间隔超过它，就认为中间「时间大跳」过
+// （睡眠 / 休眠 / 系统时间被调整）。与 stats 的睡眠判定同阈值：60 秒足够挡掉
+// GC、磁盘、系统卡顿这类正常抖动。
+const tickJumpThresholdMs = 60_000
+
 func (s *Scheduler) onTick() {
+	// 时间大跳：这一跳不判任何「到点」——睡眠期间过期的倒计时不该在醒来第一刻补弹，
+	// 统一重排（内置 / 自定义倒计时从头计时，固定线顺延到下一个时刻）。
+	// 暂停中也重排：冻结锚点由 prevCountdownAnchorsLocked 保住，不会被清掉。
+	tickNow := nowMs()
+	s.mu.Lock()
+	last := s.lastTickAt
+	s.lastTickAt = tickNow
+	s.mu.Unlock()
+	if last > 0 && tickNow-last > tickJumpThresholdMs {
+		log.Printf("[scheduler] 两次 tick 间隔 %d ms（睡眠 / 休眠 / 系统时间调整）：重排，不补弹过期提醒",
+			tickNow-last)
+		s.scheduleNext()
+		return
+	}
 	s.mu.Lock()
 	paused := s.state.Paused
 	inBreak := s.state.Phase == "break"
-	breakKind := s.state.NextType
+	clockFrozen := s.pauseFreezesClockLocked()
 	// 蓄能容器：到点（能量蓄满）后多停留 breakCloseDwellMs 再关窗
 	breakDue := inBreak && s.state.BreakEndsAt > 0 && nowMs() >= s.state.BreakEndsAt+breakCloseDwellMs
 	// 暂停期间：短 / 长休息保持原状（不提醒、不记账）；自定义提醒按「暂停休息时」的
@@ -164,8 +188,10 @@ func (s *Scheduler) onTick() {
 		s.mu.Unlock()
 		if inBreak {
 			// 暂停期间弹出来的自定义提醒仍要按点收窗，否则窗口会一直挂着；
-			// 手动 / 自动暂停撞上进行中的短·长休息则保持冻结（恢复时整体平移）。
-			if breakDue && isCustomBreakID(breakKind) {
+			// 暂停中「立即休息」主动开始的内置休息同理（clockFrozen=false）——
+			// 少这一条，内置休息窗口会一直挂到用户恢复暂停为止。
+			// 暂停前就在进行的短 / 长休息保持冻结（恢复时整体平移）。
+			if breakDue && !clockFrozen {
 				s.finishBreak()
 			}
 			return
@@ -205,8 +231,9 @@ func (s *Scheduler) onTick() {
 	preNotifyMs := int64(0)
 	if s.state.Phase == "idle" {
 		// 该提醒已被用户在设置页关闭（禁用项正常路径上由 replan 从挂起线剔除，
-		// 这里再卡一道：既不进「提前提示」阶段、也绝不会到点触发，杜绝竞态下误提醒）
-		if cfgOK && cfg.Enabled && cfg.NotifyBeforeMs > 0 && now >= nextAt-cfg.NotifyBeforeMs {
+		// 这里再卡一道：既不进「提前提示」阶段、也绝不会到点触发，杜绝竞态下误提醒）。
+		// now < nextAt：已到点就直接走下面的 due（开始休息），不再先弹一个 0 秒的提示窗。
+		if cfgOK && cfg.Enabled && cfg.NotifyBeforeMs > 0 && now < nextAt && now >= nextAt-cfg.NotifyBeforeMs {
 			s.state.Phase = "pre"
 			preNotifyMs = cfg.NotifyBeforeMs
 		}
@@ -334,10 +361,13 @@ func (s *Scheduler) pausedFire() {
 					}
 					continue
 				}
-				if cc.NotifyBeforeMs > 0 && isTimeSlotDue(slot, now, cc.NotifyBeforeMs) {
-					key := occurrenceKey(c.ID, at) + pauseFirePreSuffix
+				// 提前提示线：occurrence 按 now+提前量 折算（提前量跨午夜时归次日那一格），
+				// 与真窗用同一把键，才能正确区分「同一天的两个不同 occurrence」。
+				if nb := cc.NotifyBeforeMs; nb > 0 && isTimeSlotDue(slot, now, nb) {
+					preAt := slotOccurrenceAt(slot, nb, now)
+					key := occurrenceKey(c.ID, preAt) + pauseFirePreSuffix
 					if !s.pauseFired[key] {
-						cands = append(cands, cand{id: c.ID, at: at, key: key, pre: true, nb: cc.NotifyBeforeMs})
+						cands = append(cands, cand{id: c.ID, at: preAt, key: key, pre: true, nb: nb})
 					}
 				}
 			}
@@ -589,6 +619,9 @@ func (s *Scheduler) postpone() {
 	// 统计用：不管推迟来自托盘、快捷键还是休息前提示窗，都从这里过一遍
 	log.Printf("[scheduler] 推迟 %s %d ms", nextType, ms)
 	s.emitState()
+	// 推迟把原定时刻推远 → 已不在提前区间：托盘 / 侧栏 / 快捷键这几条路径不经过
+	// PreBreakAction，必须在这里收窗（否则窗口继续显示已失效的提醒倒计时）
+	s.syncPreBreakWindow()
 }
 
 // skip 跳过当前休息，直接进入下一周期。
@@ -756,11 +789,16 @@ func (s *Scheduler) resume(reason string) {
 		}
 		// 与固定线分支一致：恢复后立即重判「即将休息」阶段，不依赖下一个 tick。
 		// 暂停期间若 NextAt 被平移进提前区间内，或暂停前本就在 pre，都应立刻回到提示窗。
-		if c, ok := cfg.BreakByID(nextType); ok &&
-			st.NextAt > 0 && c.NotifyBeforeMs > 0 &&
-			nowMs() >= st.NextAt-c.NotifyBeforeMs {
-			st.Phase = "pre"
-			preType = nextType
+		//
+		// 已过期（now >= NextAt）时不弹：那一跳该由 onTick 直接开始休息，弹一个
+		//「还剩 0 秒」的提示窗只是闪一下；更重要的是「离开期间刚好到点」那种 case ——
+		// 弹窗紧接着就被 reanchorCountdown 推回整轮间隔，窗口会挂着一整段倒计时。
+		if c, ok := cfg.BreakByID(nextType); ok && st.NextAt > 0 && c.NotifyBeforeMs > 0 {
+			now := nowMs()
+			if now < st.NextAt && now >= st.NextAt-c.NotifyBeforeMs {
+				st.Phase = "pre"
+				preType = nextType
+			}
 		}
 		s.mu.Unlock()
 	default:
@@ -783,6 +821,7 @@ func (s *Scheduler) resume(reason string) {
 	log.Printf("[scheduler] 恢复（%s）", reason)
 	s.emitState()
 	// 暂停时正处于「即将休息」阶段的话，恢复后重新弹出提示窗（倒计时继续）
+	// 判据在 syncPreBreakWindow：刚弹出的场景 phase=pre 且剩余在提前区间内，不会被收掉
 	if preType != "" {
 		nb := int64(0)
 		if c, ok := cfg.BreakByID(preType); ok {
@@ -790,7 +829,61 @@ func (s *Scheduler) resume(reason string) {
 		}
 		s.host.onPreNotify(preType, nb)
 	}
+	s.syncPreBreakWindow()
 	// 离开结束后内置倒计时重新从头计时由调用方接着调 reanchorCountdown()
+}
+
+// ---------- 提前提示窗的在场判据 ----------
+
+// preBreakWanted 右下角「提前提示窗」此刻是否该在场 —— 唯一判据。
+//
+// 窗口是**状态的影子**，不是一次性的弹窗：计划一旦离开提前区间（被重锚、推迟、
+// 跳过、暂停、到点开始休息、目标提醒被关闭），窗口就必须消失。此前关窗散落在
+// onPaused / scheduleNext / PreBreakAction 各处，谁漏一处，窗口就带着**新一轮的整段
+// 倒计时**留在屏幕上 —— 用户看到的就是「还有 1200 秒（= 整个间隔）就弹出提前通知」。
+//
+// phase == "pre" 之外还要卡「剩余 ≤ 提前量」：phase 卡在 pre 而计划已被推远时，
+// 光看 phase 会误判成该在场。
+func (s *Scheduler) preBreakWanted() bool {
+	s.mu.Lock()
+	phase, paused, nextAt, nextType := s.state.Phase, s.state.Paused, s.state.NextAt, s.state.NextType
+	s.mu.Unlock()
+	if paused || phase != "pre" || nextAt == 0 {
+		return false
+	}
+	// cfgSnapshot 要加 App.mu：必须在放开 Scheduler.mu 之后再取（锁序铁律）
+	c, ok := s.host.cfgSnapshot().BreakByID(nextType)
+	if !ok || !c.Enabled || c.NotifyBeforeMs <= 0 {
+		return false
+	}
+	remain := nextAt - nowMs()
+	return remain >= 0 && remain <= c.NotifyBeforeMs
+}
+
+// syncPreBreakWindow 把提前提示窗收成状态的影子：判据说不该在场就关掉。
+// 幂等：窗口本来就不在时是空操作，可以在任意状态变更后无脑调。
+func (s *Scheduler) syncPreBreakWindow() {
+	if !s.preBreakWanted() {
+		s.host.closePreBreak()
+	}
+}
+
+// pauseFreezesClockLocked 暂停此刻是否冻结「休息剩余时间」。
+//
+// 冻结（true）只适用于「暂停之前就已经开始的休息」：短暂暂停不吞用户的休息时间，
+// 恢复时整体平移。另外两种情形必须照常走时钟，否则会互相踩：
+//   - 暂停期间照常弹出的自定义提醒（pausedFire）—— 它本来就在正常计时；
+//   - 暂停开始之后用户主动「立即休息」发起的内置休息 —— 若也冻结，onTick 的暂停分支
+//     永远不会判到点，休息窗口挂到用户恢复暂停为止（短休息也会变成永久窗口）。
+func (s *Scheduler) pauseFreezesClockLocked() bool {
+	st := &s.state
+	if !st.Paused {
+		return false
+	}
+	if st.Phase == "break" && (isCustomBreakID(st.NextType) || st.BreakWhilePaused) {
+		return false
+	}
+	return true
 }
 
 // remainingMs 距下一次事件（休息开始 / 结束）的剩余毫秒；没有安排休息时为 0。
@@ -799,9 +892,9 @@ func (s *Scheduler) remainingMs() int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := nowMs()
-	// 暂停期间剩余时间冻结（锚定到 pausedAt）；但暂停期间照常弹出来的自定义提醒
-	// 本身在正常走时，不能按冻结算
-	if s.state.Paused && !(s.state.Phase == "break" && isCustomBreakID(s.state.NextType)) {
+	// 暂停期间剩余时间冻结（锚定到 pausedAt）；但「本该正常走时」的两种情形不冻结：
+	// 暂停期间照常弹出的自定义提醒、以及暂停开始之后主动「立即休息」的那次休息。
+	if s.pauseFreezesClockLocked() {
 		now = s.state.PausedAt
 	}
 	if s.state.Phase == "break" {
@@ -884,6 +977,10 @@ func (s *Scheduler) reanchorCountdown() {
 	s.mu.Unlock()
 	log.Printf("[scheduler] 内置倒计时重新计时：%s → %s", fmtClock(oldAt), fmtClock(at))
 	s.emitState()
+	// 重锚把计划推到「现在 + 间隔」＝彻底离开提前区间：刚从 resume 弹出的提示窗
+	// 必须跟着收掉，否则它会带着一整轮倒计时挂在屏幕上（用户报的「还有 1200 秒就弹」
+	// 就是这个：窗口是对的，倒数被重锚改成了满格）。
+	s.syncPreBreakWindow()
 }
 
 // ---------- 内部：计划与状态机 ----------
@@ -908,14 +1005,25 @@ func (s *Scheduler) advanceCounter(id string) {
 // schedulerLines / planNextBreakSplit：未到期且间隔未变的锚点原样保留（倒计时
 // 进度跨 replan 保留），间隔已改的立刻按新间隔重新起算（见 breakplan.go 的
 // countdownAnchor）。调用方必须已持有 s.mu。
+//
+// 暂停期间「时间冻结」：判锚点过期必须用 PausedAt 而不是真实墙钟。否则暂停中任何一次
+// replan（保存设置 / 暂停期间结束一次自定义提醒）都会把冻结锚点当成过期、按
+// now+interval 重新起算；恢复时 resume 又整体平移 delta，等于把整段暂停算了两遍
+// （用户看到「还剩 50 分钟」，而配置是 20 分钟）。
 func (s *Scheduler) prevCountdownAnchorsLocked(now int64) map[string]cdAnchor {
+	ref := now
+	frozen := false
+	if s.state.Paused && s.state.PausedAt > 0 && s.state.PausedAt < ref {
+		ref = s.state.PausedAt
+		frozen = true
+	}
 	prev := map[string]cdAnchor{}
 	for _, l := range s.state.Lines {
-		if l.Source != "countdown" || l.At <= now {
+		if l.Source != "countdown" || l.At <= ref {
 			continue
 		}
 		if old, ok := prev[l.Type]; !ok || l.At < old.At {
-			prev[l.Type] = cdAnchor{At: l.At, Iv: s.anchorIv[l.Type]}
+			prev[l.Type] = cdAnchor{At: l.At, Iv: s.anchorIv[l.Type], Frozen: frozen}
 		}
 	}
 	return prev
@@ -997,15 +1105,32 @@ func planRefOf(p *PlannedBreak) *PlanRef {
 func (s *Scheduler) scheduleNext() {
 	s.mu.Lock()
 	wasPre := s.state.Phase == "pre"
+	preType := s.state.NextType
 	s.state.Phase = "idle"
 	s.mu.Unlock()
 	s.replan()
+	// 原来就在「即将休息」、新计划又仍落在提前区间（设置保存触发的重排最常见）：
+	// 把 phase 拉回来。否则窗口会被 syncPreBreakWindow 关掉、下一个 500ms tick 再弹一遍，
+	// 用户看到右下角窗口闪一下。
+	// 新计划被推远 / 被禁用 / 换成了另一条提醒时判据不成立（或窗口内容会对不上），
+	// 仍按原逻辑收窗，由下一个 tick 用新内容重弹。
+	if wasPre {
+		cfg := s.host.cfgSnapshot()
+		s.mu.Lock()
+		if s.state.NextType == preType {
+			if c, ok := cfg.BreakByID(preType); ok &&
+				c.Enabled && c.NotifyBeforeMs > 0 && s.state.NextAt > 0 {
+				if now := nowMs(); s.state.NextAt > now && now >= s.state.NextAt-c.NotifyBeforeMs {
+					s.state.Phase = "pre"
+				}
+			}
+		}
+		s.mu.Unlock()
+	}
 	// 刚从「即将休息」阶段被重排（例如用户在设置页取消勾选了正在倒计时提醒的那条），
 	// 关闭残留的提前提示窗 —— 否则它会继续显示已失效提醒的倒计时，用户感知为「仍会提醒」。
-	// 新计划若仍在提前区间内，下一个 tick 的 onTick 会重新弹出来（指向新的 NextType）。
-	if wasPre {
-		s.host.closePreBreak()
-	}
+	// 新计划若仍在提前区间内，判据成立，窗口不会被收掉。
+	s.syncPreBreakWindow()
 	s.emitState()
 }
 
@@ -1039,6 +1164,8 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	st.Phase = "break"
 	st.BreakStartedAt = now
 	st.BreakEndsAt = now + bcfg.DurationMs
+	// 暂停态下主动发起的休息：不参与暂停的时间冻结（见 pauseFreezesClockLocked）
+	st.BreakWhilePaused = st.Paused
 	// 这次安排已消费：无论到点触发还是「立即休息」，replan 都不再排它
 	if at > 0 {
 		s.consumed[occurrenceKey(kind, at)] = true
@@ -1050,6 +1177,9 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	log.Printf("[scheduler] 开始休息 %s（%d ms，%s）", kind, bcfg.DurationMs, bcfg.Mode)
 	// 休息窗口与设置页立即反映「休息中」
 	id := s.host.showBreakSession(kind, false, "")
+	// phase 已翻到 break：提前提示窗在此刻起不该在场（App 侧建会话时已收，这里兜一道，
+	// 保证「窗口只在 phase=pre 存在」这条不变量对所有宿主成立）
+	s.syncPreBreakWindow()
 	s.emitState()
 	return id
 }
@@ -1058,6 +1188,7 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 func (s *Scheduler) finishBreak() {
 	s.mu.Lock()
 	kind := s.state.NextType
+	s.state.BreakWhilePaused = false
 	s.advanceCounter(kind)
 	s.mu.Unlock()
 

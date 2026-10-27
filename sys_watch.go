@@ -53,10 +53,14 @@ func (a *App) startSystemWatchers() {
 		return
 	}
 	a.sysStop = make(chan struct{})
+	// 把通道作为参数传下去，而不是在循环里每跳读 a.sysStop：stopSystemWatchers 会
+	// close 之后把字段置 nil，若某一跳恰好读到 nil，`<-nil` 会永久阻塞，goroutine
+	// 既停不下来也不再轮询（应用退出时留下一个卡住的监视器）。
+	stop := a.sysStop
 	// 空闲：不立刻判一次（先攒够采样），其余两条与上一版 一样启动即判一次
-	go a.watchLoop("空闲", idleSampleMs, false, func() { a.idleAway = a.idleWatchTick(a.idleAway) })
-	go a.watchLoop("勿扰", dndWatchMs, true, a.dndWatchTick)
-	go a.watchLoop("应用占用", appPauseWatchMs, true, a.appPauseWatchTick)
+	go a.watchLoop(stop, "空闲", idleSampleMs, false, func() { a.idleAway = a.idleWatchTick(a.idleAway) })
+	go a.watchLoop(stop, "勿扰", dndWatchMs, true, a.dndWatchTick)
+	go a.watchLoop(stop, "应用占用", appPauseWatchMs, true, a.appPauseWatchTick)
 }
 
 // stopSystemWatchers 停止全部监视（退出清理）
@@ -72,7 +76,7 @@ func (a *App) stopSystemWatchers() {
 
 // watchLoop 通用轮询骨架：`immediate` 为真时先立刻判一次再进入定时（上一版的
 // `void tick()` + `setInterval(tick, …)` 就是这个形状）。
-func (a *App) watchLoop(name string, intervalMs int, immediate bool, fn func()) {
+func (a *App) watchLoop(stop <-chan struct{}, name string, intervalMs int, immediate bool, fn func()) {
 	if immediate {
 		fn()
 	}
@@ -80,7 +84,7 @@ func (a *App) watchLoop(name string, intervalMs int, immediate bool, fn func()) 
 	defer t.Stop()
 	for {
 		select {
-		case <-a.sysStop:
+		case <-stop:
 			log.Printf("[sys] %s监视已停止", name)
 			return
 		case <-t.C:

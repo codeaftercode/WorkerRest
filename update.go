@@ -545,6 +545,11 @@ func autoUpdateTick(st *autoUpdateState, today string, now time.Time,
 		st.armedAt = now.Add(randDur(autoCheckWindow))
 		return autoActNone
 	}
+	// 系统时钟被往回调（手动改时间 / 校时）会把已排的 armedAt 推到很远的未来，
+	// 那一整天的自动检查就永远等不到。超过本日窗口 + 5 分钟就当作失效、重新排期。
+	if st.armedAt.After(now.Add(autoCheckWindow + 5*time.Minute)) {
+		st.armedAt = now.Add(randDur(autoCheckWindow))
+	}
 	if now.Before(st.armedAt) {
 		return autoActNone
 	}

@@ -349,7 +349,11 @@ func migrateRolesLayout(resRoot string) {
 				}
 			}
 		}
-		newDir := uniqueRoleDir(newRoot, sanitizeRoleDirName(roleName), "")
+		// 显示名也要唯一（老部署里可能有两位同名专员）：目录名去重成「X (2)」，
+		// role.json 的显示名若还是「X」，同一个名字会指向两个不同的人。
+		// 迁移是**软件自己起名**的场景，不能弹窗问用户 → 自动退让一位。
+		display := uniqueRoleName(newRoot, roleName, roleKey)
+		newDir := uniqueRoleDir(newRoot, sanitizeRoleDirName(display), "")
 		if err := os.Rename(oldDir, newDir); err != nil {
 			log.Printf("[supervisor] 迁移：移动 %s 失败 %v", e.Name(), err)
 			continue
@@ -358,8 +362,16 @@ func migrateRolesLayout(resRoot string) {
 		if rerr == nil {
 			var m map[string]any
 			if json.Unmarshal(raw, &m) == nil {
+				changed := false
 				if cur, ok := m["key"].(string); !ok || cur == "" {
 					m["key"] = roleKey
+					changed = true
+				}
+				if cur, ok := m["name"].(string); !ok || strings.TrimSpace(cur) != display {
+					m["name"] = display
+					changed = true
+				}
+				if changed {
 					if out, jerr := json.MarshalIndent(m, "", "  "); jerr == nil {
 						out = append(out, '\n')
 						_ = os.WriteFile(filepath.Join(newDir, "role.json"), out, 0o644)
@@ -402,7 +414,7 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 	if !cfg.Enabled {
 		return nil
 	}
-	all := scanRoles(a.rolesRoot)
+	all := applyRoleOrder(scanRoles(a.rolesRoot), cfg.Order)
 	usable := make([]Role, 0, len(all))
 	for _, r := range all {
 		if r.FigurePath != "" {
@@ -533,11 +545,18 @@ func (a *App) SupervisorPreview(sup map[string]any, key string) *SupStageInfo {
 		if sel != "sequence" && sel != "random" {
 			sel = "fixed"
 		}
+		// 顺序：表单里带了 order 就用表单的（用户刚拖过、还没落盘也能立刻生效），
+		// 没带就沿用磁盘上的那份（前端没这个键时的兼容路径）。
+		order := cfg.Order
+		if _, ok := sup["order"]; ok {
+			order = normalizeRoleOrder(sup["order"])
+		}
 		cfg = SupervisorConfig{
 			Enabled:   sup["enabled"] != false,
 			Gaze:      sup["gaze"] != false,
 			Selection: sel,
 			FixedKey:  strOf(sup["fixedKey"]),
+			Order:     order,
 		}
 	}
 	return a.buildSupervisorSessionWith(cfg, true, key)
@@ -717,20 +736,40 @@ func (a *App) onSchedulerState() {
 // 中途计划漂移（比如固定时刻线重排）不会让标题 / 后缀跟着变。
 func (a *App) onPreNotify(kind string, notifyBeforeMs int64) {
 	info := a.rememberPreBreakInfo(kind)
-	log.Printf("[prebreak] 即将休息：%s（提前 %d ms）custom=%v title=%q",
-		kind, notifyBeforeMs, info.Custom, info.Title)
+	// 剩余时间一起打出来：这张日志是排查「弹早了 / 弹晚了」的唯一现场
+	//（窗口上显示的数字与它同源，见 PreBreakState）
+	remain := int64(-1)
+	if a.sched != nil {
+		remain = a.sched.remainingMs()
+	}
+	log.Printf("[prebreak] 即将休息：%s（提前 %d ms，剩余 %d ms）custom=%v title=%q",
+		kind, notifyBeforeMs, remain, info.Custom, info.Title)
 	a.ShowPreBreakWindow(info)
 }
 
 // onPaused 暂停提醒：关掉提前提示窗。托盘暂停与弹窗内「暂停计时」共用这条路径；
 // 恢复时若仍在提前提示区间内，调度器会再走一次 onPreNotify 把窗口弹回来（倒计时继续）。
+//
+// 只收调度器自己那扇窗（closePreBreak）：外卖预通知共用同一窗口但归外卖模块管 ——
+// 「暂停休息」不等于「暂停外卖」，外卖按自己的 pauseAction 决定照常/推迟/跳过，
+// 无条件关窗会让「照常提醒」那条配置在暂停时静默失效。
 func (a *App) onPaused() {
-	a.closePreBreakWindow()
+	a.closePreBreak()
 }
 
 // closePreBreak 调度器重排时关掉残留的提前提示窗（对应 schedHost.closePreBreak）。
 // 与 onPaused 的区别：这里只关窗、不改 pause 状态，专供「被禁用 / 重排的提醒」清场。
+//
+// 只收**自己那扇窗**：外卖预通知（owner=takeout）复用同一个窗口，归外卖模块自己管
+// （closeTakeoutPreNotifyIfOpen）—— 调度器任何一次状态变更都顺手把它抹掉的话，
+// 外卖的提前通知会被「保存设置」这类无关动作带走。
 func (a *App) closePreBreak() {
+	a.mu.Lock()
+	takeoutOwned := a.preInfo.Owner == "takeout"
+	a.mu.Unlock()
+	if takeoutOwned {
+		return
+	}
 	a.closePreBreakWindow()
 }
 
@@ -1229,8 +1268,15 @@ func (a *App) AppInfo() map[string]any {
 }
 
 // ListRoles 督休专员目录扫描结果（预览图为 data URL，设置页督休专员列表用）
+// ListRoles 候选督休专员列表（设置页画廊 / 主窗口共用）。
+// 顺序按用户拖动保存的 supervisor.order 排 —— 画廊显示顺序与「顺序轮换」的出场次序
+// 共用这一份顺序，用户拖一次两边同时生效。
 func (a *App) ListRoles() []Role {
-	return scanRoles(a.rolesRoot)
+	roles := scanRoles(a.rolesRoot)
+	if cfg := a.cfgSnapshot(); cfg != nil {
+		roles = applyRoleOrder(roles, cfg.SupervisorCfg().Order)
+	}
+	return roles
 }
 
 // QuitApp 退出应用（托盘 / 主窗口按钮）
