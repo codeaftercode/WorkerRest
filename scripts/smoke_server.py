@@ -52,6 +52,7 @@ except Exception:
     pass
 
 # 内置督休专员的固定出场顺序（与 历史源码/supervisor.ts 的 BUILTIN_ROLE_META 同源）
+# 这是**出厂顺序**清单（产品语义），不是「个数」清单 —— 实际个数从磁盘现算。
 BUILTIN_ROLE_ORDER = [
     "supervisor_default", "role_mentor", "role_doctor",
     "role_coach", "role_shopkeeper",
@@ -59,6 +60,61 @@ BUILTIN_ROLE_ORDER = [
     "role_economist", "role_magician", "role_painter", "role_warrior",
     "role_panda", "role_lieutenant", "role_girlfriend", "role_frenemy",
 ]
+
+
+def _valid_role_dir(name):
+    """与 Go 侧 validRoleKey 同口径（目录名层面的合法性）。"""
+    if not name or name == ".." or name.startswith("."):
+        return False
+    return not any(ch in name for ch in '/\\:*?"<>|')
+
+
+def scan_role_keys(root):
+    """按 Go 侧 scanRoles 的口径列出**磁盘上实际存在**的督休专员 key。
+
+    顺序：内置清单顺序在前（只含磁盘上确实存在的），其余按目录名排序。
+    写死「内置 17 个」是错的 —— 用户在设置页删掉某个内置专员后目录真的没了，
+    断言会必然误报红。这里从磁盘现算，删一个少一个都不误报。
+    """
+    sup = os.path.join(root, "supervisors")
+    recs = []
+    if os.path.isdir(sup):
+        for name in sorted(os.listdir(sup)):
+            if not _valid_role_dir(name):
+                continue
+            p = os.path.join(sup, name, "role.json")
+            if not os.path.isfile(p):
+                continue
+            try:
+                with open(p, encoding="utf-8") as f:
+                    d = json.load(f)
+            except Exception:
+                continue
+            key = str((d or {}).get("key") or name).strip() or name
+            recs.append((key, name))
+    out, used = [], set()
+    for bk in BUILTIN_ROLE_ORDER:
+        for rk, _dn in recs:
+            if rk == bk and rk not in used:
+                out.append(rk)
+                used.add(rk)
+                break
+    out += [rk for rk, _dn in recs if rk not in used]
+    return out
+
+
+def expected_order(disk_keys, saved_order):
+    """applyRoleOrder 的 Python 口径：保存的顺序在前（只取磁盘上还在的），
+    其余按扫描顺序追加。"""
+    dset = set(disk_keys)
+    out, used = [], set()
+    for k in saved_order or []:
+        if k in dset and k not in used:
+            out.append(k)
+            used.add(k)
+    out += [k for k in disk_keys if k not in used]
+    return out
+
 
 def role_dir(root, key):
     """在 supervisors/ 下按 key 反查某个督休专员的目录（目录名是专员名称，不固定）。"""
@@ -371,9 +427,15 @@ def main():
             check(all(r.get("thumb", "").startswith("data:image/") for r in roles),
                   "每个督休专员都带缩略图 data URL（字段名 thumb，与设置页一致）", keys)
             # 顺序 = BUILTIN_ROLE_META 的内置清单顺序（立绘库磁贴与顺序轮换的出场次序）；
-            # 不是目录名字典序 —— 这里与其后追加的自定义督休专员拼起来校验前缀
-            check(keys[:len(BUILTIN_ROLE_ORDER)] == BUILTIN_ROLE_ORDER,
-                  "内置督休专员按 BUILTIN_ROLE_META 的顺序在前", keys)
+            # 不是目录名字典序 —— 这里与其后追加的自定义督休专员拼起来校验前缀。
+            # 用户在设置页拖过立绘后，顺序以 settings.json 的 supervisor.order 为准。
+            # 期望值从磁盘现算：用户删掉某个内置专员后目录真的没了，写死「17 个」会误报红。
+            disk_keys = scan_role_keys(ROOT)
+            saved_order = ((cfg or {}).get("supervisor") or {}).get("order") or []
+            want_order = expected_order(disk_keys, saved_order)
+            check(keys == want_order,
+                  "督休专员顺序 == 保存的顺序（拖过则用 supervisor.order，否则内置清单顺序）",
+                  "%s vs %s" % (keys[:3], want_order[:3]))
             check(all(r.get("geom", {}).get("sizePct") for r in roles),
                   "每个督休专员都带完整 geom（尺寸/位置滑条要用）", keys[:2])
             check(all(isinstance(r.get("messages", {}).get("items"), list) for r in roles),
@@ -381,6 +443,57 @@ def main():
             if cfg:
                 fixed = (cfg.get("supervisor") or {}).get("fixedKey")
                 check(fixed in keys, "配置里固定的督休专员 %s 在扫描结果中" % fixed, keys)
+
+        # ---- 候选专员顺序持久化（拖拽排序的落点）----
+        # 拖动立绘把顺序写进 settings.json 的 supervisor.order（role key 数组）；
+        # 画廊显示顺序与「顺序轮换」的出场次序共用这一份。这里从绑定层走一遍：
+        # 写 order → ListRoles 顺序跟着变 → 读回 / 落盘都对得上 → 再复原。
+        if isinstance(roles, list) and len(roles) >= 2:
+            rev = list(reversed([r.get("key") for r in roles]))
+            st, _ = call(base, "SaveSettings", [{"supervisor": {"order": rev}}])
+            check(st == 200, "SaveSettings 写入 supervisor.order", st)
+            st, roles2 = call(base, "ListRoles", [])
+            keys2 = [r.get("key") for r in roles2] if isinstance(roles2, list) else []
+            check(keys2 == rev, "ListRoles 顺序跟随 supervisor.order（画廊顺序 == 保存的顺序）",
+                  "%s vs %s" % (keys2[:3], rev[:3]))
+            st, gs = call(base, "GetSettings", [])
+            saved_order = ((gs or {}).get("supervisor") or {}).get("order") or []
+            check(saved_order == rev, "GetSettings 读回的 order == 写入的顺序", saved_order[:3])
+            disk = read_json(iso_settings) if os.path.exists(iso_settings) else {}
+            disk_order = (disk.get("supervisor") or {}).get("order") or []
+            check(disk_order == rev, "配置文件里 supervisor.order 已落盘", disk_order[:3])
+            # 复原：清空 order → 回到内置清单顺序（别把改动留给后面的用例）
+            call(base, "SaveSettings", [{"supervisor": {"order": []}}])
+            st, roles3 = call(base, "ListRoles", [])
+            keys3 = [r.get("key") for r in roles3] if isinstance(roles3, list) else []
+            check(keys3 == scan_role_keys(ROOT),
+                  "清空 order 后回到内置清单顺序", keys3[:3])
+
+        # ---- 督休专员显示名唯一：SaveRole 改成别人的名字必须被拒 ----
+        # 需求原文：「提交名称时，软件对现有的督休专员名称进行检查，若有重名的，
+        # 拒绝保存，要求用户重新输入名称」。绑定层是权威判定（设置页的前端检查
+        # 只是提前拦一道）。这条用例只验**拒绝**路径 —— 拒绝是零副作用的，
+        # 磁盘上的 role.json 一个字节都不会变（不碰用户真实的 supervisors/）。
+        if isinstance(roles, list) and len(roles) >= 2:
+            names = [(r.get("key"), r.get("name")) for r in roles if r.get("name")]
+            if len(names) >= 2 and names[0][1] != names[1][1]:
+                (ka, na), (kb, nb) = names[0], names[1]
+                st, res = call(base, "SaveRole", [ka, {"name": nb}])
+                check(st == 200 and res is False,
+                      "SaveRole 把督休专员改成别人的名字返回 false（重名被拒）",
+                      "status=%s res=%r" % (st, res))
+                # 零副作用：被拒后磁盘上的显示名没变
+                d = role_dir(ROOT, ka)
+                disk_name = ""
+                if d:
+                    rp = os.path.join(d, "role.json")
+                    if os.path.isfile(rp):
+                        disk_name = read_json(rp).get("name") or ""
+                check(disk_name == na,
+                      "重名被拒后磁盘上的显示名没被改（零副作用）",
+                      "%r vs %r" % (disk_name, na))
+            else:
+                check(False, "督休专员重名用例跑起来了（至少两个显示名不同的专员）", names[:2])
 
         st, info = call(base, "AppInfo", [])
         check(st == 200 and isinstance(info, dict) and info.get("engine") == "go+wails3",

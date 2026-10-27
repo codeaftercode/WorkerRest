@@ -117,10 +117,10 @@ python scripts/verify_portable.py
 ## 测试与验证
 
 ```powershell
-go test -tags server ./...         # 单元测试（220 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
-                                   # 系统能力 / 提示音 / 统计 / 督休专员迁移 / 外卖 / 更新 / 睡眠检测
-python scripts/smoke_server.py     # 绑定层无头冒烟：169 项断言
-python scripts/probe_renderer.py   # 渲染层探针：246 项断言 + 截图（需先 npm install）
+go test -tags server ./...         # 单元测试（246 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
+                                   # 系统能力 / 提示音 / 统计 / 督休专员迁移与命名唯一 / 外卖 / 更新 / 睡眠检测
+python scripts/smoke_server.py     # 绑定层无头冒烟：176 项断言
+python scripts/probe_renderer.py   # 渲染层探针：270 项断言 + 截图（需先 npm install）
 python scripts/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
 python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
 python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）
@@ -158,6 +158,16 @@ python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / �
   整目录拷贝 / 删除就是完整的迁移 / 卸载。不再检查 `%APPDATA%`（老版本的历史目录已放弃兼容）。
 - 打包交付的便携目录**自带**三件套：`sounds/`（四个内置提示音）、`config/settings.json`
   （出厂默认，首跑补 installId）、`data/stats.json`（空统计表）——首跑直接在预置文件上继续写。
+- **督休专员的出场顺序可拖动调整**：设置页「督休专员」→ 候选专员列表，按住立绘磁贴拖动即可
+  改顺序，松手即生效并自动保存。顺序存于 `config/settings.json` 的 `supervisor.order`
+  （role key 数组），重启后仍在；画廊显示顺序与「顺序轮换」模式的出场次序**共用这一份**，
+  两边永远一致。出厂默认 `order` 为空数组 = 按内置清单顺序，补装/新增的专员自动排到末尾。
+- **督休专员的显示名唯一**：导入立绘时会弹命名框；提交的名字若与现有专员重名，
+  **拒绝保存**并把错误留在框里、要求重新输入（对话框不关、已输入的字保留）。
+  Go 侧 `SaveRole` 也会再兜一层底（重名直接返回 false、磁盘零副作用），
+  软件自己起名的场景（导入用文件名、迁移旧配置）则自动退让成「名字 (2)」。
+  ⚠️ 显示名唯一只管「同名」：**同一张图导入两次**（key 撞号）由另一道防线兜住
+  （`uniqueRoleKey` 给 key 加 `-2` 后缀）—— 两道防线互补，缺一不可。
 
 ## 已知差异（与历史 上一版）
 

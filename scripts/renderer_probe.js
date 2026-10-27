@@ -24,12 +24,25 @@ const BASE = process.env.WR_BASE || "http://127.0.0.1:29731";
 const OUT = process.env.WR_OUT || path.join(process.env.TEMP || ".", "wr_go_probe");
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// 页面脚本（shim.js）是否真的装载成功：shim.js 装载成功才会挂上 window.api。
+// 用它判定「这一页是不是根本没跑起来」，比逐个枚举浏览器的网络错误码可靠。
+// evaluate 失败（页面正在导航 / 已关闭）也视作「没装载好」，交给重试处理。
+async function scriptsLoaded(page) {
+  try {
+    return await page.evaluate(() => typeof window.api === "object" && window.api !== null);
+  } catch (e) {
+    return false;
+  }
+}
+
 // ---- 页面打开：Playwright 等价替代原来的 BrowserWindow.loadURL ----
 // 关键：用 addInitScript 在页面脚本之前注入 window.__WR_WIN，模拟 Go 侧建窗时的注入。
 // shim.js 的窗口身份优先级是 window.__WR_WIN → URL 的 ?win= → "settings"，
 // 真实运行时由 Go 的 WebviewWindowOptions.JS 注入；探针不走 Wails 建窗路径，得自己补。
-async function open(browser, url, w, h, opts) {
-  const o = opts || {};
+// 新建一页并挂好「开页前的全部准备」：preload 注入 + favicon 拦截 + console 收集。
+// 抽成独立函数是因为 goto 失败要**重开**一页（见 open 里的重试）——重开的页
+// 必须把同样的钩子再挂一遍，漏挂就会丢掉 console 错误或让 favicon 404 混进断言。
+async function newPage(browser, w, h, o) {
   const page = await browser.newPage({ viewport: { width: w, height: h } });
   // 透明窗口的截图：给透明页一个深色底，避免白底掩盖「没画出来」——但保持与旧
   // 上一版探针一致，这里只对 transparent 页面用透明背景，其余用浅灰。
@@ -59,14 +72,368 @@ async function open(browser, url, w, h, opts) {
       o.onConsole.push(String(err && err.message || err));
     });
   }
-  await page.goto(url, { waitUntil: "domcontentloaded" });
-  await delay(1400);
   return page;
+}
+
+async function open(browser, url, w, h, opts) {
+  const o = opts || {};
+  let page = await newPage(browser, w, h, o);
+  // goto 本身也可能撞上浏览器侧的网络抖动（ERR_NO_BUFFER_SPACE 等），而且是
+  // **抛异常**而不是记进 console —— 页面根本没打开，后面所有度量都无从谈起。
+  // 所以 goto 也要包在重试里：失败就**重开**一页（同一页反复 goto 撞同一个坑）。
+  let gotoOk = false;
+  for (let attempt = 0; attempt < 3 && !gotoOk; attempt++) {
+    try {
+      await page.goto(url, { waitUntil: "domcontentloaded" });
+      gotoOk = true;
+    } catch (e) {
+      if (attempt >= 2) throw e;
+      await page.close().catch(() => {});
+      page = await newPage(browser, w, h, o);
+      await delay(800);
+    }
+  }
+  await delay(1400);
+  // 偶发：资源加载失败（浏览器侧连接抖动，与被测代码无关），结果是页面脚本没跑起来
+  // → window.api 未定义 → 页面里的方法调用全炸（如「Cannot read properties of
+  // undefined (reading 'takeoutCurrent')」）→ 断言整段变红。
+  //
+  // 判定「脚本没装载成功」不能只看错误文案：Chromium 的网络错误码一长串
+  // （ERR_ADDRESS_IN_USE / ERR_NO_BUFFER_SPACE / ERR_CONNECTION_RESET …），
+  // 白名单永远补不全（曾漏掉 ERR_NO_BUFFER_SPACE：Windows 套接字缓冲耗尽，
+  // 症状是 shim.js 没加载成功 → 页面首行就抛 TypeError）。
+  // 改成**看事实**：shim.js 装载成功才会挂上 window.api，没挂上就是这页没跑起来 ——
+  // 直接重开页面。
+  //
+  // 重试要**多轮**：WebSocket 事件通道是在页面加载完之后才连的，第一轮 reload 之后
+  // 它还会再抖一次 —— 只重试一轮的话，第二轮抖的那次仍会被断言当成代码缺陷。
+  const NET_FLAKE = /net::ERR_[A-Z_]+|ERR_CONNECTION_REFUSED|Failed to fetch/;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (!o.onConsole) break;
+    const idx = o.onConsole.findIndex((t) => NET_FLAKE.test(t));
+    const scriptsOk = await scriptsLoaded(page);
+    if (idx < 0 && scriptsOk) break;
+    // 这类网络层抖动在 reload 后仍可能复现：把已知抖动的那几条先摘掉，
+    // 只在**还剩别的错误**时才值得再开一次页面。
+    o.onConsole.length = 0;
+    await page.reload({ waitUntil: "domcontentloaded" });
+    await delay(1400);
+  }
+  // 页面刚加载完这一刻的残留抖动先兜一遍（真正的兜底在写 metrics 前，见文件末尾）。
+  if (o.onConsole) normalizeTransportErrors(o.onConsole);
+  return page;
+}
+
+// 纯传输层故障：与被测代码无关，可以归一化掉。
+// 保守起见只列确定的传输层错误码（ERR_ABORTED 之类含义不明的留给断言报红）。
+const NET_TRANSPORT =
+  /net::ERR_(ADDRESS_IN_USE|CONNECTION_REFUSED|NO_BUFFER_SPACE|CONNECTION_RESET|CONNECTION_CLOSED|EMPTY_RESPONSE|NETWORK_CHANGED|TIMED_OUT|SOCKET_NOT_CONNECTED|CONNECTION_ABORTED|HOST_RESOLVER|NAME_NOT_RESOLVED|UNEXPECTED_EOF|INVALID_HTTP_RESPONSE|INTERNET_DISCONNECTED)|Failed to fetch/;
+
+// 归一化掉「纯传输层」错误。
+// 页内 JS 错误（TypeError / ReferenceError 等）一律保留，让断言照常报红。
+//
+// ⚠️ 必须**原地**删（splice），不能重新赋值：调用方（sErr / tkErr …）持有的是
+// 最初那个数组的引用，重新赋值等于把归一化结果丢进无人引用的新数组里。
+function normalizeTransportErrors(arr) {
+  if (!arr) return arr;
+  for (let i = arr.length - 1; i >= 0; i--) {
+    const t = arr[i];
+    if (NET_TRANSPORT.test(t) && !/TypeError|ReferenceError|SyntaxError/.test(t)) {
+      arr.splice(i, 1);
+    }
+  }
+  return arr;
+}
+
+// 递归找出 metrics 里所有 consoleErrors* 数组（收尾统一兜一遍）。
+function collectConsoleErrorArrays(node, out) {
+  if (!node || typeof node !== "object") return out;
+  if (Array.isArray(node)) {
+    node.forEach((v) => collectConsoleErrorArrays(v, out));
+    return out;
+  }
+  Object.keys(node).forEach((k) => {
+    const v = node[k];
+    if (k.startsWith("consoleErrors") && Array.isArray(v)) out.push(v);
+    else collectConsoleErrorArrays(v, out);
+  });
+  return out;
 }
 
 // ---- 截图：Playwright 等价替代 capturePage().toPNG() ----
 async function shot(page, name) {
   await page.screenshot({ path: path.join(OUT, name + ".png") });
+}
+
+// ---- 候选专员拖拽排序：真拖一次，核对「DOM 顺序 / 落盘的 order / 刷新后是否还在」----
+// 落点取目标磁贴**左缘往里 6px**（它的左半）= 语义上「插到它前面」。
+// 画廊是多列网格，落点判定在页面里按「行分组 + 行内左右」算，这里只负责把鼠标放到对的位置。
+async function dragRoleTile(page) {
+  const readOrder = () =>
+    page.evaluate(() =>
+      Array.prototype.map.call(
+        document.querySelectorAll("#sup-gallery .role-item"),
+        (el) => el.dataset.key,
+      ),
+    );
+  const before = await readOrder();
+  if (!before || before.length < 3) {
+    return { skipped: "磁贴不足 3 个", before: before };
+  }
+  const boxes = await page.evaluate(() => {
+    const els = Array.prototype.slice.call(
+      document.querySelectorAll("#sup-gallery .role-item"),
+    );
+    const rect = (el) => {
+      const b = el.getBoundingClientRect();
+      return { x: b.left, y: b.top, w: b.width, h: b.height };
+    };
+    return { src: rect(els[0]), dst: rect(els[2]) };
+  });
+  const sx = boxes.src.x + boxes.src.w / 2;
+  const sy = boxes.src.y + boxes.src.h / 2;
+  const dx = boxes.dst.x + 6;
+  const dy = boxes.dst.y + boxes.dst.h / 2;
+  // 真拖：按下 → 越过起拖阈值 → 移到目标 → 再挪 1px（触发最后一次 dragover）→ 松手
+  await page.mouse.move(sx, sy);
+  await page.mouse.down();
+  await page.mouse.move(sx + 6, sy + 6, { steps: 6 });
+  await page.mouse.move(dx, dy, { steps: 24 });
+  await page.mouse.move(dx + 1, dy, { steps: 2 });
+  await page.mouse.up();
+  await delay(800);
+  const after = await readOrder();
+  const saved = await page.evaluate(async () => {
+    const s = await window.api.getSettings();
+    return (s && s.supervisor && s.supervisor.order) || [];
+  });
+  // 刷新页面（模拟重启）：顺序必须还在 —— 这才是「持久化」的真实验证
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await delay(1600);
+  const reloaded = await readOrder();
+  return { before: before, after: after, saved: saved, reloaded: reloaded };
+}
+
+// ---- 督休专员重名：提交重名 → 拒绝保存、对话框不关、要求用户重新输入 ----
+//
+// 这条用例必须**无副作用**：重名被拒时磁盘一个字节都不该变。
+// 所以只做「提交重名 → 看它被拒」，不做「改成别的名字」（那会真改名）。
+// Go 侧的权威判定（saveSupervisorRole 返回 false）也在这里直接验一次。
+async function dupNameProbe(page) {
+  const info = await page.evaluate(() => {
+    const tiles = Array.prototype.slice.call(
+      document.querySelectorAll("#sup-gallery .role-item"),
+    );
+    if (tiles.length < 2) return { skipped: "磁贴不足 2 个" };
+    const capOf = (el) => {
+      const c = el.querySelector(".role-cap");
+      return c ? c.textContent.trim() : "";
+    };
+    return {
+      aKey: tiles[0].dataset.key,
+      aName: capOf(tiles[0]),
+      bKey: tiles[1].dataset.key,
+      bName: capOf(tiles[1])
+    };
+  });
+  if (info.skipped) return info;
+
+  // 右键第一个磁贴 → 菜单 → 「重命名」→ 命名框弹出
+  await page.evaluate(() => {
+    const tile = document.querySelector("#sup-gallery .role-item");
+    tile.dispatchEvent(
+      new MouseEvent("contextmenu", {
+        bubbles: true, cancelable: true, clientX: 120, clientY: 120
+      })
+    );
+  });
+  await delay(300);
+  await page.evaluate(() => {
+    const b = document.querySelector('#sup-role-menu .role-menu-item[data-act="rename"]');
+    if (b) b.click();
+  });
+  await delay(500);
+
+  const opened = await page.evaluate(() => {
+    const box = document.getElementById("prompt-modal");
+    const inp = document.getElementById("pm-input");
+    return {
+      visible: !!box && !box.classList.contains("hidden"),
+      value: inp ? inp.value : null
+    };
+  });
+
+  // 填成**另一个专员的显示名** → 点确定
+  await page.evaluate((dup) => {
+    const inp = document.getElementById("pm-input");
+    inp.value = dup;
+    inp.dispatchEvent(new Event("input", { bubbles: true }));
+  }, info.bName);
+  await page.evaluate(() => {
+    document.getElementById("pm-ok").click();
+  });
+  await delay(800);
+
+  const rejected = await page.evaluate(async () => {
+    const box = document.getElementById("prompt-modal");
+    const err = document.getElementById("pm-error");
+    const inp = document.getElementById("pm-input");
+    return {
+      // 对话框**没关** = 拒绝保存后要求用户重新输入
+      stillOpen: !!box && !box.classList.contains("hidden"),
+      errText: err ? err.textContent.trim() : "",
+      errShown: !!err && !err.classList.contains("hidden"),
+      inputKept: inp ? inp.value : null,
+      focused: document.activeElement ? document.activeElement.id : null
+    };
+  });
+
+  // 磁盘上第一个专员的显示名没被改（拒绝 = 零副作用）
+  const diskNames = await page.evaluate(async () => {
+    const roles = await window.api.listSupervisorRoles();
+    const out = {};
+    for (const r of roles) out[r.key] = r.name;
+    return out;
+  });
+
+  // Go 侧权威判定：直接调绑定改名成别人的名字 → 必须返回 false
+  const goReject = await page.evaluate(
+    async ([k, dup]) => await window.api.saveSupervisorRole(k, { name: dup }),
+    [info.aKey, info.bName],
+  );
+
+  // 改一个字 → 旧的红字提示应消失（用户要能看见自己改到哪了）
+  await page.evaluate(() => {
+    const inp = document.getElementById("pm-input");
+    inp.value = inp.value + "X";
+    inp.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await delay(200);
+  const cleared = await page.evaluate(() => {
+    const err = document.getElementById("pm-error");
+    return {
+      hidden: !!err && err.classList.contains("hidden"),
+      text: err ? err.textContent.trim() : ""
+    };
+  });
+
+  await shot(page, "settings_supervisor_dupname");
+
+  // 收尾：取消命名框，别把对话框留在页面上影响后面的用例
+  await page.evaluate(() => {
+    document.getElementById("pm-cancel").click();
+  });
+  await delay(300);
+  const closed = await page.evaluate(() => {
+    const box = document.getElementById("prompt-modal");
+    return !!box && box.classList.contains("hidden");
+  });
+
+  return {
+    opened: opened,
+    rejected: rejected,
+    cleared: cleared,
+    closed: closed,
+    goReject: goReject,
+    aName: info.aName,
+    bName: info.bName,
+    diskA: diskNames[info.aKey] || null,
+    diskB: diskNames[info.bKey] || null
+  };
+}
+
+// ---- 候选专员画廊：滚到边界后继续滚 → 整页跟着滚（滚动链）----
+//
+// 需求：鼠标在立绘列表里滚，列表已到顶/到底（滚不动了）时，继续滚应带动**整页**。
+// 实现：.gallery-body 的 overscroll-behavior-y: auto（默认的 contain 会掐断滚动链）。
+//
+// 三条断言缺一不可：
+//   A 列表已到底 → 继续下滚 → 外层 #content 往下走（链生效）
+//   B 列表已到顶 → 继续上滚 → 外层 #content 往上走（反向也生效）
+//   C 列表在中间 → 滚轮只滚列表，外层**不动**（不能变成「一滚就带动整页」）
+async function galleryScrollChainProbe(page) {
+  const snap = () => {
+    const g = document.getElementById("sup-gallery-body");
+    const c = document.getElementById("content");
+    if (!g || !c) return null;
+    return {
+      g: Math.round(g.scrollTop),
+      gMax: Math.round(g.scrollHeight - g.clientHeight),
+      c: Math.round(c.scrollTop),
+      cMax: Math.round(c.scrollHeight - c.clientHeight),
+      osb: getComputedStyle(g).overscrollBehaviorY
+    };
+  };
+
+  // 必须自己切到「督休专员」页签：dragRoleTile 结尾会 reload 页面，而设置页的
+  // init() **不恢复上次页签**（goTab(activeTab) 只在 pendingUpdate 流程里调用），
+  // 刷新后页签复位到「通用」→ #sup-gallery-body 落在 display:none 的祖先下，
+  // boundingBox() 返回 null，这条用例会误报「找不到列表」。
+  await page.evaluate(() => {
+    const b = document.querySelector('#nav .nav-item[data-tab="supervisor"]');
+    if (b) b.click();
+  });
+  await delay(900);
+
+  const box = await page.locator("#sup-gallery-body").boundingBox();
+  if (!box) return { skipped: "找不到 #sup-gallery-body（督休专员页签未打开？）" };
+  // 鼠标必须落在列表里（滚轮事件的目标决定谁先处理）
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+
+  const init = await page.evaluate(snap);
+  // 列表装得下就没有「滚不动」这回事，这条用例无从验证
+  if (!init || init.gMax <= 0) return { skipped: "画廊内容装得下（不可滚）", init: init };
+  if (init.cMax <= 0) return { skipped: "页面本身不可滚", init: init };
+
+  // ---- A：列表滚到底，继续下滚 → 外层应往下走 ----
+  await page.evaluate(() => {
+    document.getElementById("sup-gallery-body").scrollTop = 999999;
+    document.getElementById("content").scrollTop = 0;
+  });
+  await delay(220);
+  const aBefore = await page.evaluate(snap);
+  await page.mouse.wheel(0, 150);
+  await delay(320);
+  const aAfter = await page.evaluate(snap);
+
+  // ---- B：列表回到顶，继续上滚 → 外层应往上走 ----
+  await page.evaluate(() => {
+    document.getElementById("sup-gallery-body").scrollTop = 0;
+    document.getElementById("content").scrollTop = Math.min(
+      400, document.getElementById("content").scrollHeight -
+        document.getElementById("content").clientHeight);
+  });
+  await delay(220);
+  const bBefore = await page.evaluate(snap);
+  await page.mouse.wheel(0, -150);
+  await delay(320);
+  const bAfter = await page.evaluate(snap);
+
+  // ---- C：列表在中间 → 只滚列表，外层不动 ----
+  await page.evaluate(() => {
+    const g = document.getElementById("sup-gallery-body");
+    g.scrollTop = Math.floor((g.scrollHeight - g.clientHeight) / 2);
+    document.getElementById("content").scrollTop = 0;
+  });
+  await delay(220);
+  const cBefore = await page.evaluate(snap);
+  await page.mouse.wheel(0, 120);
+  await delay(320);
+  const cAfter = await page.evaluate(snap);
+
+  // 收尾：把页面滚回顶部，别影响后面的截图
+  await page.evaluate(() => {
+    document.getElementById("sup-gallery-body").scrollTop = 0;
+    document.getElementById("content").scrollTop = 0;
+  });
+  await delay(150);
+
+  return {
+    init: init,
+    down: { before: aBefore, after: aAfter },
+    up: { before: bBefore, after: bAfter },
+    middle: { before: cBefore, after: cAfter }
+  };
 }
 
 // ---- 设置页（settings.html）：本窗口是本项目的主界面，最要紧的一条 ----
@@ -785,6 +1152,31 @@ async function run() {
   metrics.stats = await set.evaluate(PROBE_STATS);
   console.log("[probe] stats:", JSON.stringify(metrics.stats));
 
+  // ---- 0e. 候选专员拖拽排序：拖第 1 块到第 3 块之前 → 顺序变 → 落盘 → 刷新后仍在 ----
+  // 放在设置页所有断言之后：这一段会 reload 页面（验证「持久化」），跑在最后不影响别的用例。
+  await set.evaluate(
+    '(function(){var b=document.querySelector(\'#nav .nav-item[data-tab="supervisor"]\');' +
+    "if(b) b.click();})()",
+  );
+  await delay(800);
+  metrics.roleDragPre = await set.evaluate(async () => {
+    const s = await window.api.getSettings();
+    return (s && s.supervisor && s.supervisor.order) || [];
+  });
+  metrics.roleDrag = await dragRoleTile(set);
+  console.log("[probe] roleDrag:", JSON.stringify(metrics.roleDrag));
+  await shot(set, "settings_supervisor_dragged");
+
+  // ---- 0f. 督休专员重名：提交重名 → 拒绝保存、对话框不关、要求重新输入 ----
+  // 放在拖拽之后（拖拽会 reload 页面，正好重新加载出干净的画廊）。
+  metrics.dupName = await dupNameProbe(set);
+  console.log("[probe] dupName:", JSON.stringify(metrics.dupName));
+
+  // ---- 0g. 候选专员画廊：滚到顶/底后继续滚 → 整页跟着滚（滚动链）----
+  // 放在重名用例之后：命名框已取消、页面状态干净。
+  metrics.galleryScroll = await galleryScrollChainProbe(set);
+  console.log("[probe] galleryScroll:", JSON.stringify(metrics.galleryScroll));
+
   // ---- 1. 调试控制台（index.html） ----
   const main = await open(browser, BASE + "/", 1000, 760);
   metrics.index = await main.evaluate(PROBE_MAIN);
@@ -932,6 +1324,13 @@ async function run() {
       "short:{postponeMs:120000}, takeout:{postponeMin:10}}); })()",
   );
   await delay(800);
+
+  // 收尾兜底：WebSocket 事件通道是**延迟**连上的（页面加载完才连），
+  // 所以 `net::ERR_ADDRESS_IN_USE` 这类传输层抖动会在 open() 返回**之后**才进
+  // consoleErrors 数组 —— open() 里那次归一化看不到它。写盘前统一再兜一遍，
+  // 否则环境抖动会被断言当成「页面有控制台错误」报红。
+  // 注意：只清传输层错误，页内 JS 错误（TypeError / ReferenceError）一律保留。
+  collectConsoleErrorArrays(metrics, []).forEach(normalizeTransportErrors);
 
   await browser.close();
   fs.writeFileSync(path.join(OUT, "metrics.json"), JSON.stringify(metrics, null, 2));

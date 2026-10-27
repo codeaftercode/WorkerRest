@@ -58,15 +58,76 @@ ISO = os.path.join(TEMP, "wr_probe_iso")
 
 # 内置督休专员的固定出场顺序（与 历史源码/supervisor.ts 的 BUILTIN_ROLE_META 同源）。
 # 画廊磁贴顺序与「顺序轮换」都按它来 —— 写成按目录名字典序就是回归。
-BUILTIN_ROLE_ORDER = ",".join((
+# 注意：这是**顺序**清单，不是「个数」清单 —— 专员的实际个数从磁盘现算（见 scan_role_keys）。
+BUILTIN_ROLE_ORDER = [
     "supervisor_default", "role_mentor", "role_doctor",
     "role_coach", "role_shopkeeper",
     "role_emperor", "role_hacker", "role_pilot", "role_judge",
     "role_economist", "role_magician", "role_painter", "role_warrior",
     "role_panda", "role_lieutenant", "role_girlfriend", "role_frenemy",
-))
-# 期望的督休专员数：从内置清单现算（清单增减不用再改断言）
-EXPECTED_ROLE_COUNT = len(BUILTIN_ROLE_ORDER.split(","))
+]
+
+
+def _valid_role_dir(name):
+    """与 Go 侧 validRoleKey 同口径（目录名层面的合法性）。"""
+    if not name or name == ".." or name.startswith("."):
+        return False
+    return not any(ch in name for ch in '/\\:*?"<>|')
+
+
+def scan_role_keys(root):
+    """按 Go 侧 scanRoles 的口径列出**磁盘上实际存在**的督休专员 key。
+
+    顺序：内置清单顺序在前（只含磁盘上确实存在的），其余按目录名排序。
+    写死「内置 17 个」是错的 —— 用户删掉某个内置专员（目录整个没了）后，
+    断言会必然误报红。这里从磁盘现算，删一个少一个都不误报。
+
+    Go 侧 scanRoles 读的是 rolesRoot（= 模块根的 supervisors/），探针的
+    无头服务也是从这个目录扫的，两边同源。
+    """
+    sup = os.path.join(root, "supervisors")
+    recs = []
+    if os.path.isdir(sup):
+        for name in sorted(os.listdir(sup)):
+            if not _valid_role_dir(name):
+                continue
+            p = os.path.join(sup, name, "role.json")
+            if not os.path.isfile(p):
+                continue
+            try:
+                with open(p, encoding="utf-8") as f:
+                    d = json.load(f)
+            except Exception:
+                continue
+            key = str((d or {}).get("key") or name).strip() or name
+            recs.append((key, name))
+    out, used = [], set()
+    for bk in BUILTIN_ROLE_ORDER:
+        for rk, _dn in recs:
+            if rk == bk and rk not in used:
+                out.append(rk)
+                used.add(rk)
+                break
+    out += [rk for rk, _dn in recs if rk not in used]
+    return out
+
+
+def expected_order(disk_keys, saved_order):
+    """applyRoleOrder 的 Python 口径：保存的顺序在前（只取磁盘上还在的），
+    其余按扫描顺序追加。"""
+    dset = set(disk_keys)
+    out, used = [], set()
+    for k in saved_order or []:
+        if k in dset and k not in used:
+            out.append(k)
+            used.add(k)
+    out += [k for k in disk_keys if k not in used]
+    return out
+
+
+# 期望的督休专员数 / 顺序：从磁盘现算（内置清单增删不用再改断言）
+DISK_ROLE_KEYS = scan_role_keys(ROOT)
+EXPECTED_ROLE_COUNT = len(DISK_ROLE_KEYS)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -254,9 +315,45 @@ def main():
               stg.get("supGallery"))
         check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个「新建督休专员」磁贴",
               stg.get("supGalleryAdd"))
-        check(str(stg.get("supGalleryNames") or "") == BUILTIN_ROLE_ORDER,
-              "画廊顺序 == BUILTIN_ROLE_META 的内置顺序（顺序轮换的出场次序）",
+        # 磁贴的 key 集合 == 磁盘上的专员集合（不多不少）：只比个数会漏掉「渲染出
+        # 另一个专员」这类错位，比集合才抓得住。个数本身从磁盘现算 —— 用户在应用里
+        # 删掉一个内置专员后目录真的没了，写死「17 个」会必然误报红。
+        gallery_keys = [k for k in str(stg.get("supGalleryNames") or "").split(",") if k]
+        check(sorted(gallery_keys) == sorted(DISK_ROLE_KEYS),
+              "画廊磁贴的督休专员集合 == 磁盘上的集合（不多不少）",
+              "%d vs %d" % (len(gallery_keys), len(DISK_ROLE_KEYS)))
+        # 画廊顺序：拖过 = 用户保存的 supervisor.order；没拖过 = 内置清单顺序
+        # （两者是同一个来源：内置清单顺序就是顺序轮换的出场次序）。
+        # 期望顺序从磁盘现算：保存的顺序里可能有已被删掉的专员（key 不在磁盘上），
+        # 那部分要被跳过、其余按扫描顺序补到末尾 —— 与 Go 侧 applyRoleOrder 同口径。
+        pre_saved = m.get("roleDragPre") or []
+        want_gallery = ",".join(expected_order(DISK_ROLE_KEYS, pre_saved))
+        check(str(stg.get("supGalleryNames") or "") == want_gallery,
+              "画廊顺序 == 用户保存的顺序（未拖过时 == 内置清单顺序，也是顺序轮换的出场次序）",
               stg.get("supGalleryNames"))
+        # 拖拽排序（拖第 1 块到第 3 块之前 → 期望 [2,1,3,4…]）
+        drag = m.get("roleDrag") or {}
+        before = drag.get("before") or []
+        after = drag.get("after") or []
+        saved = drag.get("saved") or []
+        reloaded = drag.get("reloaded") or []
+        if len(before) >= 3:
+            want_after = [before[1], before[0]] + before[2:]
+            check(after == want_after,
+                  "拖动立绘后画廊顺序 = 拖动源插到目标之前",
+                  "%s vs %s" % (after[:4], want_after[:4]))
+            check(saved == want_after,
+                  "拖动后的顺序已落盘（supervisor.order）",
+                  "%s vs %s" % (saved[:4], want_after[:4]))
+            check(reloaded == want_after,
+                  "刷新页面后顺序仍在（持久化生效）",
+                  "%s vs %s" % (reloaded[:4], want_after[:4]))
+            cfg_order = (cfg.get("supervisor") or {}).get("order") or []
+            check(cfg_order == want_after,
+                  "配置文件里的 supervisor.order == 拖动后的顺序",
+                  "%s vs %s" % (cfg_order[:4], want_after[:4]))
+        else:
+            check(False, "拖拽排序用例跑起来了（画廊至少 3 块磁贴）", before)
         check((stg.get("supMsgItems") or 0) >= 1,
               "督休专员台词面板渲染出条目（ListRoles 真的下发了 messages）",
               "items=%s empty=%s" % (stg.get("supMsgItems"), stg.get("supMsgEmpty")))
@@ -388,6 +485,75 @@ def main():
                   "右侧留边是透明的（不引入可见色带）", egd)
         else:
             check(False, "采集到右边缘拖动带数据（edgeGutter）", "缺失")
+
+        # ---- 督休专员重名：提交重名 → 拒绝保存、对话框不关、要求重新输入 ----
+        # （需求原文：「导入立绘时…提交名称时检查重名，若有重名的，拒绝保存，
+        #   要求用户重新输入名称」。这条断言把该行为钉死在真实链路上。）
+        dn = m.get("dupName") or {}
+        if dn.get("skipped"):
+            check(False, "督休专员重名用例跑起来了（画廊至少 2 块磁贴）", dn.get("skipped"))
+        else:
+            check(dn.get("opened", {}).get("visible") is True,
+                  "右键 → 「重命名」能弹出命名框", dn.get("opened"))
+            rj = dn.get("rejected") or {}
+            check(rj.get("stillOpen") is True,
+                  "提交重名后命名框**不关闭**（拒绝保存，要求用户重新输入）",
+                  "stillOpen=%s err=%r" % (rj.get("stillOpen"), rj.get("errText")))
+            check(rj.get("errShown") is True and bool(rj.get("errText")),
+                  "重名时框内给出错误提示（不是一闪而过的 toast）",
+                  "shown=%s text=%r" % (rj.get("errShown"), rj.get("errText")))
+            check(rj.get("inputKept") == dn.get("bName"),
+                  "被拒后输入框里已输入的名字原样保留（用户不用重打一遍）",
+                  "%r vs %r" % (rj.get("inputKept"), dn.get("bName")))
+            check(rj.get("focused") == "pm-input",
+                  "被拒后焦点回到输入框（可以直接改）", rj.get("focused"))
+            check(dn.get("diskA") == dn.get("aName"),
+                  "重名被拒后磁盘上第一个专员的显示名**没被改**（零副作用）",
+                  "%r vs %r" % (dn.get("diskA"), dn.get("aName")))
+            check(dn.get("goReject") is False,
+                  "Go 侧权威判定：SaveRole 改成别人的名字返回 false", dn.get("goReject"))
+            cl = dn.get("cleared") or {}
+            check(cl.get("hidden") is True,
+                  "用户一改动输入框，旧的错误提示就消失", cl)
+            check(dn.get("closed") is True, "取消后命名框正常关闭（不影响后续用例）", dn.get("closed"))
+
+        # ---- 候选专员画廊：滚到顶/底后继续滚 → 整页跟着滚（滚动链）----
+        # （需求原文：「当鼠标在候选专员的立绘列表中滚动时，若立绘已经滚动到顶或到底，
+        #   继续滚已经滚不动了，则令整个页面继续向上或向下滚动。」
+        #   实现：.gallery-body 的 overscroll-behavior-y 改成 auto ——
+        #   contain 会**掐断**滚动链，滚到边界后滚轮就没反应了。）
+        gs = m.get("galleryScroll") or {}
+        if gs.get("skipped"):
+            check(False, "画廊滚动链用例跑起来了（列表可滚且页面可滚）", gs.get("skipped"))
+        else:
+            init = gs.get("init") or {}
+            check(init.get("osb") == "auto",
+                  "画廊列表的纵向 overscroll-behavior 是 auto（不掐断滚动链）",
+                  init.get("osb"))
+            # A：列表已到底，继续下滚 → 外层往下走
+            dn2 = (gs.get("down") or {}).get("before") or {}
+            da = (gs.get("down") or {}).get("after") or {}
+            check(da.get("c", 0) > dn2.get("c", 0),
+                  "立绘列表滚到底后继续下滚 → **整个页面**跟着往下滚",
+                  "content %s → %s" % (dn2.get("c"), da.get("c")))
+            check(da.get("g") == dn2.get("g"),
+                  "到边界后继续滚，画廊自身不再动（内容没被越界拖动）",
+                  "gallery %s → %s" % (dn2.get("g"), da.get("g")))
+            # B：列表已到顶，继续上滚 → 外层往上走
+            ub = (gs.get("up") or {}).get("before") or {}
+            ua = (gs.get("up") or {}).get("after") or {}
+            check(ua.get("c", 0) < ub.get("c", 0),
+                  "立绘列表滚到顶后继续上滚 → **整个页面**跟着往上滚",
+                  "content %s → %s" % (ub.get("c"), ua.get("c")))
+            # C：列表在中间 → 只滚列表，外层不动（不能变成「一滚就带动整页」）
+            mb = (gs.get("middle") or {}).get("before") or {}
+            ma = (gs.get("middle") or {}).get("after") or {}
+            check(ma.get("g", 0) != mb.get("g", 0),
+                  "列表在中间时滚轮照常滚动列表本身",
+                  "gallery %s → %s" % (mb.get("g"), ma.get("g")))
+            check(ma.get("c") == mb.get("c"),
+                  "列表在中间时**不会**误带动整页（滚动链只在边界触发）",
+                  "content %s → %s" % (mb.get("c"), ma.get("c")))
 
         # 「检查更新」点下去必须立刻有反馈（2026-10-26：原先点了毫无动静，用户会反复点）
         ul = m.get("updateLoading") or {}
