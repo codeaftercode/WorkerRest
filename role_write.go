@@ -186,23 +186,31 @@ func replaceRoleImage(root, key, src string) bool {
 		log.Printf("[role] 读取源立绘失败 %s: %v", src, err)
 		return false
 	}
-	// 清掉旧的 figure.* / preview.*（扩展名可能跟新图不同，残留会占着目录）
-	for _, pat := range []string{"figure.*", "preview.*"} {
-		if matches, _ := filepath.Glob(filepath.Join(dir, pat)); matches != nil {
-			for _, m := range matches {
-				_ = os.Remove(m)
-			}
-		}
-	}
+	// 顺序很重要：**先写新的、再删旧的**。
+	// 反过来（先删 figure.* / preview.* 再写）一旦写入失败，这个督休专员就既没有
+	// 立绘也没有预览图了 —— FigurePath 为空 → 永远出不了场（buildSupervisorSessionWith
+	// 过滤 FigurePath == ""），而 role.json 里还指着已经不存在的旧文件名。
 	fig := "figure" + ext
 	prev := "preview" + ext
-	if err := os.WriteFile(filepath.Join(dir, fig), b, 0o644); err != nil {
+	if err := writeFileAtomic(filepath.Join(dir, fig), b); err != nil {
 		log.Printf("[role] 写入新立绘失败 %s: %v", key, err)
 		return false
 	}
-	if err := os.WriteFile(filepath.Join(dir, prev), b, 0o644); err != nil {
+	if err := writeFileAtomic(filepath.Join(dir, prev), b); err != nil {
 		log.Printf("[role] 写入新预览图失败 %s: %v", key, err)
 		return false
+	}
+	// 再清掉**扩展名不同**的旧文件（figure.* / preview.* 通配），避免残留占着目录。
+	// 刚写好的那两个要跳过。
+	for _, pat := range []string{"figure.*", "preview.*"} {
+		if matches, _ := filepath.Glob(filepath.Join(dir, pat)); matches != nil {
+			for _, m := range matches {
+				if base := filepath.Base(m); base == fig || base == prev {
+					continue
+				}
+				_ = os.Remove(m)
+			}
+		}
 	}
 	base.Image = fig
 	base.Preview = prev

@@ -457,9 +457,21 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 候选专员折叠面板：复用 .fold-panel 折叠外观与 .msg-head/.msg-toggle 头部行。
    展开后列表体固定高度（默认 = 两行磁贴，由脚本按实测行高写入），溢出出纵向滚动条；
    底部拖柄上下拖动调高度（记 localStorage，下次打开保持）。折叠时体与拖柄一并隐藏。 */
+.gallery-tip {
+  /* 拖拽排序说明：放在面板头与列表体之间（列表体是固定高度 + 滚动区，
+     说明写在列表体内会被滚走） */
+  padding: 7px 12px 8px; font-size: 11.5px; color: var(--text-2); line-height: 1.5;
+}
 .gallery-body {
   padding: 0 12px 12px; border-top: 1px solid var(--border);
-  overflow-y: auto; overscroll-behavior: contain;
+  overflow-y: auto;
+  /* 纵向允许**滚动链**（scroll chaining）：列表滚到顶 / 到底后，继续滚同一个滚轮
+     会接着带动外层页面（#content）继续滚，而不是「卡住不动」。
+     之前这里写的是 overscroll-behavior: contain —— 那会**掐断**滚动链，
+     滚到边界后滚轮就没反应了，是全站唯一一处与其它内层滚动区（.msg-list /
+     .rc-scroll 等都是默认 auto）行为不一致的地方。
+     只放开纵向：横向不链（画廊是 auto-fill 自适应网格，本来也不会横向溢出）。 */
+  overscroll-behavior-y: auto;
 }
 /* 磁贴悬停的「右键操作」提示画在磁贴边框外上方：给网格顶部留出提示高度，
    避免首行磁贴的提示被滚动容器裁掉（收窄至 24px，首行紧贴头部） */
@@ -511,12 +523,14 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
   gap: 10px;
   padding: 2px 0 6px;
+  position: relative; /* 拖拽排序的插入指示条按本容器定位（绝对定位的参照系） */
 }
 .role-item {
   position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
   padding: 6px 6px 8px; cursor: pointer; font: inherit;
+  user-select: none; /* 拖动磁贴时不要顺手选中磁贴上的名字 */
 }
 .role-item:hover { border-color: var(--accent); }
 .role-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
@@ -560,6 +574,20 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .role-item:hover .role-hint,
 .role-item:focus-within .role-hint { opacity: 1; }
+
+/* 候选专员拖拽排序（顺序会落盘，也决定「顺序轮换」的出场次序）：
+   拖起来的磁贴置灰 + 虚线（与提醒内容列表 / 提示音列表同一套观感）；
+   插入位置用一条竖条画在两块磁贴的**缝隙**里 —— 画廊是多列网格，竖条比
+   「高亮某一块」说得清「插在谁前面」，也不会和「选中态」的描边混淆。 */
+.role-item.dragging { opacity: 0.45; border-style: dashed; }
+.role-drop-marker {
+  position: absolute; z-index: 5; width: 3px; border-radius: 2px;
+  background: var(--accent); pointer-events: none;
+}
+/* 拖拽进行中：光标变抓手；磁贴上的「右键操作」提示收起（别挡着插入指示） */
+.role-gallery.sorting,
+.role-gallery.sorting .role-item { cursor: grabbing; }
+.role-gallery.sorting .role-hint { opacity: 0 !important; }
 
 /* 督休专员右键菜单：固定定位小面板（重命名 / 修改图片 / 删除），点别处或 Esc 收起 */
 #sup-role-menu {
@@ -608,6 +636,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .pm-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
 .pm-row .modal-input { flex: 1 1 auto; min-width: 0; margin-top: 0; }
 .pm-label { flex: 0 0 auto; color: var(--text-2); font-size: 13px; }
+/* 命名框的校验错误（重名等）：留在框里提示，用户改完再提交 */
+.pm-error { margin: 8px 0 0; color: var(--danger); font-size: 12.5px; line-height: 1.5; }
 
 /* 督休专员预览：忠实还原休息窗口的版式（立绘左下、底部悬浮对话框 + 左上角名字牌）。
    圆角 16px 与真机 --app-radius 对齐（预览面板 overflow:hidden 会把贴边对话框的

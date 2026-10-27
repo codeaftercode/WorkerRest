@@ -604,6 +604,8 @@
     resolve?.(ok);
   }
   var pmResolve = null;
+  var pmValidate = null;
+  var pmBusy = false;
   function promptDialog(opts) {
     $("pm-title").textContent = opts.title;
     const desc = $("pm-desc");
@@ -616,6 +618,11 @@
     input.value = opts.value ?? "";
     input.placeholder = opts.placeholder ?? "";
     $("pm-ok").textContent = opts.okText ?? "\u786E\u5B9A";
+    // validate(value) 返回非空文案 = 拒绝保存。命名框用它做「重名检查」：
+    // 拒绝时对话框**不关**，输入框里的内容原样留着，用户改个名再提交 ——
+    // 而不是弹一下 toast 就把刚输入的名字丢掉（丢名字 = 用户白输一遍）。
+    pmValidate = typeof opts.validate === "function" ? opts.validate : null;
+    setPromptError(opts.error ?? "");
     $("prompt-modal").classList.remove("hidden");
     setTimeout(() => {
       input.focus();
@@ -625,13 +632,52 @@
       pmResolve = resolve;
     });
   }
+  // setPromptError 显示/清空命名框里的错误提示（重名等）
+  function setPromptError(msg) {
+    const el = $("pm-error");
+    if (!el) return;
+    el.textContent = msg ?? "";
+    el.classList.toggle("hidden", !msg);
+  }
   function closePrompt(v) {
     const box = $("prompt-modal");
     if (!box || box.classList.contains("hidden")) return;
+    // 保存进行中不接受「取消」：validate 里可能正在往磁盘写名字，
+    // 这时候把目录删掉，写完就把它复活成一个没有立绘的僵尸目录。
+    // （等 validate 回来就好 —— 它成功会自己关框，失败会留在框里报错。）
+    if (pmBusy) return;
     box.classList.add("hidden");
     const resolve = pmResolve;
     pmResolve = null;
+    pmValidate = null;
+    setPromptError("");
     resolve?.(v);
+  }
+  // submitPrompt 命名框的提交入口（确定按钮与回车都走这里）：
+  // 先过 validate（可以是异步的：真正的保存动作就放在里面），
+  // 被拒就把错误显示在框里、留在框里让用户改，不 resolve。
+  async function submitPrompt() {
+    if (pmBusy) return;
+    const input = $("pm-input");
+    const v = input.value;
+    if (pmValidate) {
+      pmBusy = true;
+      let err = null;
+      try {
+        err = await pmValidate(v);
+      } catch (e) {
+        console.error("[promptDialog] validate 抛错", e);
+        err = "校验失败，请重试";
+      }
+      pmBusy = false;
+      if (err) {
+        setPromptError(err);
+        input.focus();
+        input.select();
+        return;
+      }
+    }
+    closePrompt(v);
   }
   function currentGeomKey() {
     return supEditKey;
@@ -642,15 +688,55 @@
   function geomOf(key) {
     return ROLES.find((r) => r.key === key)?.geom ?? null;
   }
+  // 督休专员显示名是否已被占用（与 Go 侧 roleNameTaken 同口径：忽略大小写）。
+  // excludeKey 是「自己」的 key —— 改名时要排除自己，否则用户不改名直接点确定
+  // 会被自己的旧名字挡住。
+  //
+  // 数据源是内存里的 ROLES（ListRoles 的结果），不是磁盘 —— 前端要的是
+  // **用户看得见的名字**是否重复，Go 侧还会再兜一层底。
+  function roleNameTaken(name, excludeKey) {
+    const n = (name ?? "").trim();
+    if (!n) return false;
+    const lower = n.toLowerCase();
+    return ROLES.some(
+      (r) => r.key !== excludeKey && (r.name ?? "").trim().toLowerCase() === lower,
+    );
+  }
+  // roleNameError 重名检查的错误文案（null = 通过）。
+  // excludeKey 同 roleNameTaken：改名时排除自己。
+  function roleNameError(name, excludeKey) {
+    const n = (name ?? "").trim();
+    if (!n) return "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A";
+    if (roleNameTaken(n, excludeKey)) {
+      return `\u540D\u79F0\u300C${n}\u300D\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A`;
+    }
+    return null;
+  }
+  // persistRole 把内存里的某个督休专员写回 role.json。
+  // 返回 Promise<boolean>：false = Go 侧拒绝（重名 / 写失败）。
+  // 调用方必须能感知这个结果 —— 否则界面显示改了名字、磁盘上却没改，
+  // 下次启动又变回去，界面在骗人。
   function persistRole(key) {
     const role = ROLES.find((r) => r.key === key);
-    if (!role) return;
-    void window.api.saveSupervisorRole(key, {
-      name: role.name,
-      enabled: role.enabled,
-      geom: role.geom,
-      messages: role.messages
-    });
+    if (!role) return Promise.resolve(false);
+    try {
+      return Promise.resolve(
+        window.api.saveSupervisorRole(key, {
+          name: role.name,
+          enabled: role.enabled,
+          geom: role.geom,
+          messages: role.messages
+        })
+      )
+        .then((ok) => ok === true)
+        .catch((e) => {
+          console.error("[persistRole] 保存失败", e);
+          return false;
+        });
+    } catch (e) {
+      console.error("[persistRole] 保存失败", e);
+      return Promise.resolve(false);
+    }
   }
   function ensureSupEditKey() {
     if (supEditKey && ROLES.some((r) => r.key === supEditKey)) return;
@@ -715,11 +801,31 @@
       desc: "\u540D\u79F0\u4F1A\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u3001\u53F0\u8BCD\u6C14\u6CE1\u7684\u8BF4\u8BDD\u4EBA\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\u3002",
       value: role.name,
       placeholder: "\u540D\u79F0",
-      okText: "\u786E\u5B9A"
+      okText: "\u786E\u5B9A",
+      // 重名 → 拒绝保存，留在框里要求重新输入（不关对话框、不丢已输入的名字）。
+      // excludeKey = key：排除自己，否则「不改名直接点确定」会被自己的旧名挡住。
+      //
+      // 校验与**保存**都在 validate 里做：Go 侧 SaveRole 才是权威（磁盘上可能已经
+      // 多了一个同名专员，前端内存里的 ROLES 不一定知道），它返回 false 就是被拒 ——
+      // 这时对话框不关、错误留在框里，用户改个名再提交，而不是弹个 toast 把名字丢掉。
+      validate: async (v) => {
+        const name = (v ?? "").trim();
+        if (!name) return "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A";
+        const err = roleNameError(name, key);
+        if (err) return err;
+        // 全字段保存（与原来的 persistRole 同一套语义：名字 / 启停 / 几何 / 台词一起落盘），
+        // 失败时把内存里的名字退回去 —— 界面不能显示一个没存住的名字。
+        const prev = role.name;
+        role.name = name;
+        const ok = await persistRole(key);
+        if (!ok) {
+          role.name = prev;
+          return "\u540D\u79F0\u5DF2\u5B58\u5728\uFF08\u6216\u4FDD\u5B58\u5931\u8D25\uFF09\uFF0C\u8BF7\u6362\u4E00\u4E2A";
+        }
+        return null;
+      }
     });
     if (input === null) return;
-    role.name = input.trim() || role.name;
-    persistRole(key);
     fillSupervisorImageName();
     autoSave();
     await refreshSupervisorPreview();
@@ -752,10 +858,23 @@
       okText: "\u5220\u9664"
     });
     if (!ok) return;
-    await window.api.removeSupervisorRole(key);
+    // 必须看返回值：删除失败（文件被占用 / 权限不足）时若照样从 ROLES 里摘掉并提示
+    // 「已删除」，界面会说谎，而重启后这个督休专员又原样冒出来。
+    const done = await window.api.removeSupervisorRole(key);
+    if (!done) {
+      toast("\u5220\u9664\u5931\u8D25\uFF1A\u6587\u4EF6\u53EF\u80FD\u88AB\u5360\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+      ROLES = await window.api.listSupervisorRoles();
+      await renderRoleGallery();
+      return;
+    }
     ROLES = ROLES.filter((r) => r.key !== key);
     if (S.supervisor.fixedKey === key) {
       S.supervisor.fixedKey = ROLES[0]?.key ?? "";
+    }
+    // 顺序表里也把这个 key 摘掉：留下的陈旧 key 会让配置随删随涨，
+    // 而且用户重新导入同一张图时它会「回到原来的位置」。
+    if (Array.isArray(S.supervisor.order)) {
+      S.supervisor.order = S.supervisor.order.filter((k) => k !== key);
     }
     ensureSupEditKey();
     fillSupervisorImageName();
@@ -767,20 +886,40 @@
   async function addCustomRole() {
     const picked = await window.api.pickSupervisorImage();
     if (!picked) return;
+    // picked.name 是**磁盘上实际落盘**的名字（Go 侧建目录时已去过重：
+    // 同名 → "名字 (2)"），用它当默认输入值 —— 用户不改名直接确定才不会撞名被拒。
     const base = picked.name.trim() || "\u81EA\u5B9A\u4E49\u7ACB\u7ED8";
+    // saved = 名字是否已经存进磁盘（validate 里保存成功才算）。
+    // 取消时要清掉刚建的目录 —— 那时名字还没存，目录是个半成品。
+    let saved = false;
     const input = await promptDialog({
       title: "\u547D\u540D",
-      desc: "\u7ED9\u8FD9\u4E2A\u7ACB\u7ED8\u8D77\u4E00\u4E2A\u540D\u5B57\uFF08\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\uFF09\u3002",
+      desc: "\u7ED9\u8FD9\u4E2A\u7ACB\u7ED8\u8D77\u4E00\u4E2A\u540D\u5B57\uFF08\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\uFF09\uFF0C\u540D\u79F0\u4E0D\u80FD\u4E0E\u5176\u4ED6\u7763\u4F11\u4E13\u5458\u91CD\u540D\u3002",
       value: base,
       placeholder: "\u4F8B\u5982\uFF1A\u6211\u7684\u4E0A\u53F8",
-      okText: "\u6DFB\u52A0"
+      okText: "\u6DFB\u52A0",
+      // 重名 → 拒绝保存，留在框里要求用户重新输入（不关对话框、不丢已输入的名字）。
+      //
+      // 校验与**保存**都在 validate 里做：Go 侧 SaveRole 才是权威（磁盘上可能已经
+      // 有一个同名专员，前端内存里的 ROLES 不一定知道），它返回 false 就是被拒 ——
+      // 这时对话框不关、错误留在框里，用户改个名再提交，而不是弹个 toast 把名字丢掉。
+      validate: async (v) => {
+        const name = (v ?? "").trim();
+        if (!name) return "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A";
+        const err = roleNameError(name, picked.key);
+        if (err) return err;
+        const ok = await window.api.saveSupervisorRole(picked.key, { name });
+        if (!ok) return "\u540D\u79F0\u5DF2\u5B58\u5728\uFF08\u6216\u4FDD\u5B58\u5931\u8D25\uFF09\uFF0C\u8BF7\u6362\u4E00\u4E2A";
+        saved = true;
+        return null;
+      }
     });
     if (input === null) {
-      await window.api.removeSupervisorRole(picked.key);
+      // 取消：删掉刚建的目录（名字还没存 → 那个目录对用户没有意义）
+      if (!saved) await window.api.removeSupervisorRole(picked.key);
       return;
     }
     const name = input.trim() || base;
-    await window.api.saveSupervisorRole(picked.key, { name });
     ROLES = await window.api.listSupervisorRoles();
     supEditKey = picked.key;
     if (S.supervisor.selection === "fixed" && !S.supervisor.fixedKey) S.supervisor.fixedKey = picked.key;
@@ -896,6 +1035,135 @@
     ro.observe($("sup-gallery"));
     applyGalleryHeight(Number(localStorage.getItem(GALLERY_H_KEY)) || null);
   }
+  /* ---------- 候选专员拖拽排序 ----------
+     画廊是**多列网格**（auto-fill），落点不能照搬单列列表的「上/下半」判断：
+     必须先按行分组，再在行内按左右比较，最后换算成全局下标。
+     顺序落在 config/settings.json 的 supervisor.order（role key 数组），
+     Go 侧 ListRoles / 顺序轮换共用这一份 —— 拖一次，画廊顺序与轮换次序同时生效。 */
+  var supDragKey = null;   // 正在拖动的专员 key
+  var supDragFrom = -1;    // 拖动源在 ROLES 里的下标
+  var supDropIndex = -1;   // 落点：插入到第 n 个磁贴之前（n == 磁贴数 = 插到末尾）
+  var supDragEndAt = 0;    // 最近一次拖动结束的时刻（挡掉拖完浏览器补的那一下 click）
+  function roleTiles() {
+    return Array.prototype.slice.call($("sup-gallery").querySelectorAll(".role-item"));
+  }
+  // 按行分组：同一行的磁贴 top 基本一致（阈值取磁贴高度的 40%，够容错又不串行）
+  function roleRows() {
+    const rows = [];
+    for (const el of roleTiles()) {
+      const r = el.getBoundingClientRect();
+      const row = rows.find((rr) => Math.abs(rr.top - r.top) < Math.max(4, r.height * 0.4));
+      if (row) row.items.push({ el: el, r: r });
+      else rows.push({ top: r.top, items: [{ el: el, r: r }] });
+    }
+    return rows;
+  }
+  function computeRoleDropIndex(mx, my) {
+    const tiles = roleTiles();
+    if (!tiles.length) return -1;
+    const rows = roleRows();
+    if (!rows.length) return -1;
+    // ① 鼠标落在哪一行（行带 = 该行磁贴 top..bottom）
+    let row = rows.find((rr) => {
+      const top = Math.min.apply(null, rr.items.map((x) => x.r.top));
+      const bottom = Math.max.apply(null, rr.items.map((x) => x.r.bottom));
+      return my >= top && my <= bottom;
+    });
+    if (!row) {
+      // ② 落在行与行的缝里：取垂直距离最近的一行
+      let best = null;
+      let bestD = Infinity;
+      for (const rr of rows) {
+        const top = Math.min.apply(null, rr.items.map((x) => x.r.top));
+        const bottom = Math.max.apply(null, rr.items.map((x) => x.r.bottom));
+        const d = my < top ? top - my : my > bottom ? my - bottom : 0;
+        if (d < bestD) { bestD = d; best = rr; }
+      }
+      row = best;
+    }
+    if (!row) return 0;
+    // ③ 行内按左右比较：落在某块磁贴左半 → 插到它前面；右半 → 插到它后面
+    for (const it of row.items) {
+      if (mx < it.r.left + it.r.width / 2) return tiles.indexOf(it.el);
+    }
+    // ④ 行内最右侧 → 插到该行最后一块之后（= 下一行第一块之前，线性下标上是同一个位置）
+    const last = row.items[row.items.length - 1];
+    return tiles.indexOf(last.el) + 1;
+  }
+  function clearRoleDropHint() {
+    const mk = document.getElementById("role-drop-marker");
+    if (mk) mk.remove();
+    supDropIndex = -1;
+  }
+  function showRoleDropHint(idx) {
+    const box = $("sup-gallery");
+    const tiles = roleTiles();
+    if (!tiles.length) return;
+    supDropIndex = idx;
+    const boxRect = box.getBoundingClientRect();
+    let mk = document.getElementById("role-drop-marker");
+    if (!mk) {
+      mk = document.createElement("div");
+      mk.id = "role-drop-marker";
+      mk.className = "role-drop-marker";
+      box.appendChild(mk);
+    }
+    let left;
+    let top;
+    let height;
+    if (idx < tiles.length) {
+      // 插到第 idx 块之前 → 竖条画在它左边那道缝隙里
+      const r = tiles[idx].getBoundingClientRect();
+      left = r.left - boxRect.left - 5;
+      top = r.top - boxRect.top;
+      height = r.height;
+    } else {
+      // 插到末尾 → 竖条画在最后一块右边那道缝隙里（末尾的「＋新增」磁贴在这道缝之后）
+      const r = tiles[tiles.length - 1].getBoundingClientRect();
+      left = r.right - boxRect.left + 2;
+      top = r.top - boxRect.top;
+      height = r.height;
+    }
+    mk.style.left = Math.max(0, Math.round(left)) + "px";
+    mk.style.top = Math.round(top) + "px";
+    mk.style.height = Math.round(height) + "px";
+  }
+  // 把 ROLES 按新顺序重排并落盘（supervisor.order = 全部 key，数组整体替换）
+  function applyRoleMove(from, to) {
+    if (from < 0 || to < 0 || from === to) return;
+    const moved = ROLES.splice(from, 1)[0];
+    ROLES.splice(to, 0, moved);
+    if (!S.supervisor) S.supervisor = {};
+    S.supervisor.order = ROLES.map((r) => r.key);
+    void autoSave();
+    void renderRoleGallery();
+  }
+  // 容器级事件（只绑一次，别放进 renderRoleGallery —— 那里每渲染一次就会多绑一遍）
+  function bindRoleGalleryDrag() {
+    const box = $("sup-gallery");
+    box.addEventListener("dragenter", (e) => {
+      if (!supDragKey) return;
+      e.preventDefault();
+    });
+    box.addEventListener("dragover", (e) => {
+      if (!supDragKey) return;
+      e.preventDefault(); // 不拦住就放不下
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      const idx = computeRoleDropIndex(e.clientX, e.clientY);
+      if (idx >= 0) showRoleDropHint(idx);
+    });
+    box.addEventListener("drop", (e) => {
+      if (!supDragKey) return;
+      e.preventDefault();
+      const from = supDragFrom;
+      let to = supDropIndex;
+      // 移除拖动源后，落点下标要前移一位（to > from = 落点在源之后）
+      if (to > from) to -= 1;
+      // 改 DOM 推迟到下一个任务：drop 之后浏览器还要在**源元素**上派发 dragend，
+      // 源元素被提前换掉会导致 dragend 不触发、拖拽态清不掉。
+      setTimeout(() => applyRoleMove(from, to), 0);
+    });
+  }
   async function renderRoleGallery() {
     const box = $("sup-gallery");
     box.innerHTML = "";
@@ -906,9 +1174,11 @@
       // 未勾选不改磁贴样式，仅复选框呈未选态
       btn.className = "role-item";
       btn.dataset.key = r.key;
+      btn.draggable = true;
       const img = document.createElement("img");
       if (r.thumb) img.src = r.thumb;
       img.alt = r.name;
+      img.draggable = false; // 图片默认可拖，会抢走磁贴的拖拽（拖的是图而不是整块磁贴）
       const hint = document.createElement("span");
       hint.className = "role-hint";
       hint.textContent = "\u53F3\u952E\u64CD\u4F5C";
@@ -923,11 +1193,37 @@
       capRow.className = "role-cap-row";
       capRow.append(sel, cap);
       btn.append(img, hint, capRow);
-      btn.addEventListener("click", () => selectRole(r.key));
+      btn.addEventListener("click", () => {
+        // 拖完浏览器可能补一个 click（此时磁贴已经重排），那不是用户想选的专员
+        if (supDragEndAt && Date.now() - supDragEndAt < 400) {
+          supDragEndAt = 0;
+          return;
+        }
+        selectRole(r.key);
+      });
       btn.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
         openRoleMenu(r.key, e.clientX, e.clientY);
+      });
+      btn.addEventListener("dragstart", (e) => {
+        supDragKey = r.key;
+        supDragFrom = ROLES.findIndex((x) => x.key === r.key);
+        supDropIndex = supDragFrom;
+        btn.classList.add("dragging");
+        box.classList.add("sorting");
+        if (e.dataTransfer) {
+          e.dataTransfer.setData("text/plain", r.key);
+          e.dataTransfer.effectAllowed = "move";
+        }
+      });
+      btn.addEventListener("dragend", () => {
+        btn.classList.remove("dragging");
+        box.classList.remove("sorting");
+        supDragKey = null;
+        supDragFrom = -1;
+        supDragEndAt = Date.now();
+        clearRoleDropHint();
       });
       box.appendChild(btn);
     }
@@ -2362,7 +2658,7 @@
     const pauseTitle = st.paused && st.pauseReasons.length
       ? "\u6682\u505C\u539F\u56E0\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001")
       : "";
-    const now = st.paused ? st.pausedAt : Date.now();
+    const now = st.paused && !(st.phase === "break" && st.breakWhilePaused) ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("\u63D0\u9192") ? `\u4E0B\u6B21${name}` : `\u4E0B\u6B21${name}\u63D0\u9192`;
     const todayOnly = (at) => dayDiffOf(at) > 0 ? "\u4ECA\u65E5\u5DF2\u65E0\u63D0\u9192" : fmtRemain(Math.max(0, at - now));
     // 「下次提醒」取外卖/自定义里最近的一次（st.other 已合并两者）；
@@ -5404,6 +5700,7 @@
       toast(r.items.length > 1 ? `\u5DF2\u6DFB\u52A0 ${r.items.length} \u9996\u97F3\u4E50` : "\u5DF2\u6DFB\u52A0\u5230\u97F3\u4E50\u5217\u8868");
     });
     setupGalleryPanel();
+    bindRoleGalleryDrag();
     void renderRoleGallery();
     const supSelBtn = $("sup-selection-btn");
     supSelBtn.addEventListener("click", () => {
@@ -5542,16 +5839,18 @@
       }
     });
     $("pm-cancel").addEventListener("click", () => closePrompt(null));
-    $("pm-ok").addEventListener("click", () => closePrompt($("pm-input").value));
+    $("pm-ok").addEventListener("click", () => submitPrompt());
     $("prompt-modal").addEventListener("click", (e) => {
       if (e.target === $("prompt-modal")) closePrompt(null);
     });
     $("pm-input").addEventListener("keydown", (e) => {
       if (e.key === "Enter") {
         e.preventDefault();
-        closePrompt($("pm-input").value);
+        submitPrompt();
       }
     });
+    // 边改字边清掉错误提示：重名被拒后，用户一动手就看到旧的红字消失
+    $("pm-input").addEventListener("input", () => setPromptError(""));
     document.addEventListener("keydown", (e) => {
       if ($("prompt-modal").classList.contains("hidden")) return;
       if (e.key === "Escape") {

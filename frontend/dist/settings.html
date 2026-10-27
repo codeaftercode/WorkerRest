@@ -351,6 +351,9 @@
                 <button type="button" class="msg-add" id="sup-gallery-add" title="新增立绘（支持 PNG / JPG / WebP）">＋</button>
               </div>
             </div>
+            <!-- 拖拽排序说明：放在面板头与列表体之间（列表体是固定高度 + 滚动区，
+                 说明写在列表体内会被滚走）。顺序同时决定「顺序轮换」的出场次序 -->
+            <div class="gallery-tip">拖动立绘磁贴可以调整顺序，顺序会保存下来，同时也是「顺序轮换」的出场次序。</div>
             <div class="gallery-body" id="sup-gallery-body">
               <div class="role-gallery" id="sup-gallery"></div>
             </div>
@@ -628,6 +631,8 @@
         <label id="pm-label" class="pm-label hidden"></label>
         <input type="text" id="pm-input" class="modal-input" maxlength="20" />
       </div>
+      <!-- 校验失败提示（重名等）：提交被拒时留在框里，要求用户重新输入 -->
+      <p id="pm-error" class="pm-error hidden"></p>
       <div class="modal-actions">
         <button class="btn ghost" id="pm-cancel">取消</button>
         <button class="btn" id="pm-ok">确定</button>

@@ -183,6 +183,12 @@ func (a *App) BuiltinMsgDefaults() map[string]any {
 //
 // 名称变化时把目录改名到新名称（与「目录名 = 专员名称」的新布局一致）：key 不变，
 // 只是给人看的目录名跟着名称走，写入时仍按 key 反查真实目录。
+//
+// **重名直接拒绝**：显示名重名会让「key ↔ 目录 ↔ 显示名」三者失配 —— 目录名靠
+// uniqueRoleDir 去重成「X (2)」，而 role.json 里的显示名还是「X」，于是同一个名字
+// 在画廊 / 台词气泡 / 提醒面板标题里指向两个不同的人。设置页会在提交前先查一遍并
+// 要求用户重新输入；这里再兜一层底，防止有别的入口绕过检查（返回 false，
+// 前端据此提示「名称已存在」并把输入框留在对话框里）。
 func (a *App) SaveRole(key string, patch map[string]any) bool {
 	if !validRoleKey(key) {
 		log.Printf("[role] 非法督休专员 key：%q", key)
@@ -199,6 +205,11 @@ func (a *App) SaveRole(key string, patch map[string]any) bool {
 		next.Name = key
 	}
 	next.Key = key
+	// 名称变了 → 先查重名（排除自己），重了直接拒绝，不动目录也不写 role.json
+	if next.Name != base.Name && roleNameTaken(a.rolesRoot, next.Name, key) {
+		log.Printf("[role] 名称重复，拒绝保存：%s → %s", base.Name, next.Name)
+		return false
+	}
 	// 名称变了 → 把目录改名到新名称（去重后）
 	if next.Name != base.Name {
 		newBase := sanitizeRoleDirName(next.Name)
@@ -219,12 +230,59 @@ func (a *App) SaveRole(key string, patch map[string]any) bool {
 }
 
 // RemoveRole 删除督休专员 = 整个督休专员子目录一并删除
+//
+// 删完顺手把配置里指向它的两处清掉：`supervisor.fixedKey`（固定模式会指向一个不存在的
+// key → 休息窗口取不到人）与 `supervisor.order`（顺序表里的陈旧 key：显示上无害，
+// 但会让配置随删随涨，且用户重新导入同一张图时它会「回到原来的位置」）。
+// 设置页也会清一遍（它手里有 S，清完再 autoSave），两边一致才不会互相覆盖。
 func (a *App) RemoveRole(key string) bool {
 	if !removeRoleDir(a.rolesRoot, key) {
 		log.Printf("[role] 删除失败：%s", key)
 		return false
 	}
+	a.clearRoleFromSettings(key)
 	return true
+}
+
+// clearRoleFromSettings 把已删除的督休专员从配置里摘干净（fixedKey / order）。
+// 拿不到配置就什么都不做（配置还没加载时删目录本来也删不成）。
+func (a *App) clearRoleFromSettings(key string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil {
+		return
+	}
+	raw := a.cfg.Raw()
+	sup, ok := raw["supervisor"].(map[string]any)
+	if !ok {
+		return
+	}
+	changed := false
+	if s, _ := sup["fixedKey"].(string); s == key {
+		sup["fixedKey"] = ""
+		changed = true
+	}
+	if order, ok := sup["order"].([]any); ok {
+		kept := make([]any, 0, len(order))
+		for _, v := range order {
+			if s, _ := v.(string); s == key {
+				changed = true
+				continue
+			}
+			kept = append(kept, v)
+		}
+		sup["order"] = kept
+	}
+	if !changed {
+		return
+	}
+	s := &Settings{raw: raw, path: a.cfg.Path()}
+	normalizeForSave(raw)
+	if err := s.Save(); err != nil {
+		log.Printf("[settings] 清理已删除督休专员的配置失败：%v", err)
+		return
+	}
+	a.cfg = s
 }
 
 // PickSupervisorImage 新建自定义督休专员（选图 → 建督休专员目录）。
@@ -258,6 +316,14 @@ func (a *App) PickSupervisorImage() map[string]any {
 		log.Printf("[role] 创建督休专员目录失败：%s", src)
 		return nil
 	}
+	// 返回**文件名原样**（不是去重后的落盘名）：这个值是命名框的预填内容，
+	// 用户提交的就是它 —— 查重规则必须作用在「用户提交的名字」上。
+	// 若这里返回去重后的「名字 (2)」，用户点确定就直接存了个带序号的怪名字，
+	// 而「重名要拒绝并要求重新输入」这条规则就几乎走不到。
+	//
+	// 落盘那一刻 createRoleDir 已用 uniqueRoleName 去过重，所以磁盘上此刻的名字是唯一的；
+	// 用户改成一个被别人占用的名字时，SaveRole 会拒绝（返回 false），
+	// 设置页把错误留在命名框里、要求重新输入。
 	return map[string]any{"key": key, "name": name}
 }
 

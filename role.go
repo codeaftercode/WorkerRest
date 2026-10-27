@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -339,6 +340,157 @@ func scanRoles(root string) []Role {
 	return out
 }
 
+// roleNameTaken 判断显示名 name 是否已被**其它**督休专员占用。
+//
+// excludeKey 是「自己」的 key（改名时要排除自己 —— 否则用户不改名直接点确定
+// 会被自己的旧名字挡住）。
+//
+// 大小写**不敏感**（EqualFold）：Windows 的目录名本来就不区分大小写，
+// 显示器名如果区分，"Alice" 与 "alice" 会显示成两个几乎一样的名字，
+// 但底层目录只能有一个（另一个会被 uniqueRoleDir 顶成 "alice (2)"）——
+// 名字与目录就对不上了。
+//
+// 「重名」的危害不是显示层的小瑕疵，而是 key ↔ 目录 ↔ 显示名三者失配：
+// 目录名靠 uniqueRoleDir 去重成「X (2)」，role.json 里的显示名却还是「X」，
+// 于是同一个名字在画廊 / 台词气泡 / 提醒面板标题里指向两个不同的人。
+func roleNameTaken(root, name, excludeKey string) bool {
+	n := strings.TrimSpace(name)
+	if n == "" {
+		return false
+	}
+	for _, r := range scanRoleNames(root) {
+		if r.Key == excludeKey {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(r.Name), n) {
+			return true
+		}
+	}
+	return false
+}
+
+// roleNameEntry 一条「督休专员身份 + 显示名」的轻量记录（查重名用）
+type roleNameEntry struct {
+	Key  string
+	Name string
+}
+
+// scanRoleNames 只读 role.json 里的 key 与显示名，**不碰立绘 / 预览图**。
+//
+// 为什么不用 scanRoles：它会给每个督休专员生成缩略图的 data URL（17 个内置专员
+// 约 3.5 MB 的图片要读一遍再 base64 编码），而查重名只需要名字。
+// uniqueRoleName 还要循环调用查重（"X" → "X (2)" → "X (3)"），
+// 走 scanRoles 就是把整套图片反复解码若干遍 —— 改个名字要等好几秒。
+func scanRoleNames(root string) []roleNameEntry {
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	out := make([]roleNameEntry, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() || !validRoleKey(e.Name()) {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(root, e.Name(), "role.json"))
+		if err != nil {
+			continue
+		}
+		var rawMap map[string]any
+		if err := json.Unmarshal(raw, &rawMap); err != nil {
+			continue
+		}
+		cfg := normalizeRoleFile(rawMap)
+		key := cfg.Key
+		if key == "" {
+			key = e.Name()
+		}
+		name := cfg.Name
+		if name == "" {
+			name = roleFallbackName(key)
+		}
+		out = append(out, roleNameEntry{Key: key, Name: name})
+	}
+	return out
+}
+
+// uniqueRoleName 给显示名去重：name 已被占用时依次试「name (2)」「name (3)」。
+//
+// 用于**软件自己起名**的地方（导入时用文件名当默认名、迁移旧配置）——
+// 这类场景不能弹窗问用户，就自动退让一位。
+// 用户**主动**改名（SaveRole）不走这里：那条路要拒绝保存、要求重新输入。
+//
+// excludeKey 是「自己」的 key：迁移时角色已经建在磁盘上了，把它自己算进去
+// 会把「医生」误判成重名（→ 变成「医生 (2)」）。
+func uniqueRoleName(root, name, excludeKey string) string {
+	base := strings.TrimSpace(name)
+	if base == "" {
+		base = "自定义督休专员"
+	}
+	// 只扫一次：循环里反复查重会把目录读上好几遍。
+	// 比较统一走 EqualFold（与 roleNameTaken 同口径），不做 ToLower ——
+	// 两者的 Unicode 折叠规则并不完全一致（Turkish İ 之类），混用会漏判。
+	taken := make([]string, 0, 16)
+	for _, e := range scanRoleNames(root) {
+		if e.Key == excludeKey {
+			continue
+		}
+		taken = append(taken, strings.TrimSpace(e.Name))
+	}
+	free := func(cand string) bool {
+		for _, t := range taken {
+			if strings.EqualFold(t, cand) {
+				return false
+			}
+		}
+		return true
+	}
+	if free(base) {
+		return base
+	}
+	for i := 2; ; i++ {
+		cand := fmt.Sprintf("%s (%d)", base, i)
+		if free(cand) {
+			return cand
+		}
+	}
+}
+
+// applyRoleOrder 按用户保存的顺序重排督休专员。
+//
+// order 是 role key 数组（设置页拖动立绘磁贴得到的顺序，落在 config/settings.json 的
+// supervisor.order 里）：
+//   - order 里出现的 key，按 order 的先后排；
+//   - order 里没有的 key（后来新增的专员 / 用户清过顺序）保持 scanRoles 给的相对顺序，
+//     追加在后面 —— 新增的专员不会因为没写进 order 就消失；
+//   - order 里多余的 key（专员已被删除）直接忽略。
+//
+// order 为空（没拖过 / 老配置没这个键）时原样返回，即内置清单顺序 + 其余按目录名排序。
+func applyRoleOrder(roles []Role, order []string) []Role {
+	if len(order) == 0 || len(roles) == 0 {
+		return roles
+	}
+	byKey := make(map[string]Role, len(roles))
+	for _, r := range roles {
+		byKey[r.Key] = r
+	}
+	out := make([]Role, 0, len(roles))
+	used := make(map[string]bool, len(roles))
+	for _, k := range order {
+		r, ok := byKey[k]
+		if !ok || used[k] {
+			continue
+		}
+		out = append(out, r)
+		used[k] = true
+	}
+	for _, r := range roles {
+		if !used[r.Key] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // resolveRoleDir 按 key 反查督休专员子目录：目录名改用专员名称后，key 不再等于目录名，
 // 所有读写都必须「按 key 反查」——扫描各子目录的 role.json，返回 key 字段（或目录名兜底）
 // 与 key 匹配的目录绝对路径。找不到返回 ("", false)。
@@ -363,8 +515,15 @@ func resolveRoleDir(root, key string) (string, bool) {
 		if err := json.Unmarshal(raw, &m); err != nil {
 			continue
 		}
-		if k, ok := m["key"].(string); ok && k == key {
-			return dir, true
+		if k, ok := m["key"].(string); ok && k != "" {
+			// 目录有**显式 key**：只认这个 key。
+			// 不能因为目录名恰好等于别的 key 就返回 —— 目录名是用户起的名字，
+			// 用户完全可以把某个督休专员命名成 "supervisor_default"，那它只是名字，
+			// 不能因此劫持内置督休专员按 key 反查的结果（否则改名 / 换图 / 删除会打到别人的目录）。
+			if k == key {
+				return dir, true
+			}
+			continue
 		}
 		// 旧部署：role.json 没有 key 字段，目录名即 key
 		if e.Name() == key {
@@ -372,6 +531,54 @@ func resolveRoleDir(root, key string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// existingRoleKeys 列出目录里所有督休专员的 key（role.json 的 key 字段；旧部署缺字段时
+// 用目录名兜底 —— 与 scanRoles 解析 key 的口径一致）。
+func existingRoleKeys(root string) map[string]bool {
+	out := map[string]bool{}
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return out
+	}
+	for _, e := range entries {
+		if !e.IsDir() || !validRoleKey(e.Name()) {
+			continue
+		}
+		raw, err := os.ReadFile(filepath.Join(root, e.Name(), "role.json"))
+		if err != nil {
+			continue
+		}
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			continue
+		}
+		if k, ok := m["key"].(string); ok && k != "" {
+			out[k] = true
+			continue
+		}
+		out[e.Name()] = true
+	}
+	return out
+}
+
+// uniqueRoleKey 保证新 key 在目录里不与既有督休专员撞号（撞了加 -2 / -3 后缀）。
+//
+// key 的基底是**图片内容摘要**（同一张图 → 同一个 key），而目录名是按专员名称去重的
+// （同名 → "名字 (2)"）。两者放在一起会打破「key ↔ 目录」的一一对应：同一张图导入两次
+// 会造出两个目录却共用一个 key，而所有读写都按 key 反查**第一个**命中 —— 第二个目录
+// 成了僵尸（改名 / 换图打到第一个、删除只删掉一个、另一个残留到重启又冒出来；
+// 在命名对话框点「取消」时更是会误删掉**之前那次**已经导入成功的督休专员）。
+// 所以撞号时给 key 加后缀，保证每个目录一个独立 key。
+func uniqueRoleKey(root, base string) string {
+	used := existingRoleKeys(root)
+	cand := base
+	for i := 2; ; i++ {
+		if !used[cand] {
+			return cand
+		}
+		cand = fmt.Sprintf("%s-%d", base, i)
+	}
 }
 
 // sanitizeRoleDirName 把专员名称收敛成合法目录名：剔除 Windows 非法字符并裁掉首尾空白。

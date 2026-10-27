@@ -253,37 +253,52 @@ func createRoleDir(rolesRoot, name, src string) string {
 	if err != nil || !st.Mode().IsRegular() || st.Size() > 20*1024*1024 {
 		return ""
 	}
+	// 扩展名必须先过白名单（与 replaceRoleImage 同口径）：imageExtMIME 不认的格式
+	// （.bmp / .svg …）写下去，读取侧的 isImageName 也不认 → 磁贴空白、FigurePath 为空，
+	// 该督休专员**永远出不了场**（buildSupervisorSessionWith 过滤 FigurePath == ""）。
+	// 迁移路径的 src 来自旧配置里的任意路径，不受选图对话框的过滤器约束，必须在这里挡。
+	ext := strings.ToLower(filepath.Ext(src))
+	if ext == "" {
+		ext = ".png"
+	}
+	if _, ok := imageExtMIME[ext]; !ok {
+		log.Printf("[role] 不支持的图片格式：%s", ext)
+		return ""
+	}
 	b, err := os.ReadFile(src)
 	if err != nil {
 		return ""
 	}
 	sum := sha1.Sum(b)
-	key := "custom-" + hex.EncodeToString(sum[:])[:10]
+	key := uniqueRoleKey(rolesRoot, "custom-"+hex.EncodeToString(sum[:])[:10])
 	// 目录按专员名称命名（去重），与「目录名 = 名称」的新布局一致
-	base := sanitizeRoleDirName(name)
+	// 显示名也要唯一：目录名去重成「X (2)」而 role.json 里还写着「X」的话，
+	// 同一个名字会在画廊磁贴 / 台词气泡 / 提醒面板标题里指向两个不同的人。
+	// （用户主动改名走 SaveRole —— 那条路要拒绝保存、要求重新输入，不在这里退让；
+	//   这里退让的是**软件自己起名**的场景：导入时用文件名当默认名、迁移旧配置。）
+	display := uniqueRoleName(rolesRoot, name, key)
+	base := sanitizeRoleDirName(display)
 	if base == "" {
 		base = key
 	}
 	dir := uniqueRoleDir(rolesRoot, base, "")
-	if isRegularFile(filepath.Join(dir, "role.json")) {
-		return key // 同名目录里已有 role.json：沿用既有目录
-	}
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return ""
 	}
-	ext := strings.ToLower(filepath.Ext(src))
-	if ext == "" {
-		ext = ".png"
-	}
-	if err := os.WriteFile(filepath.Join(dir, "figure"+ext), b, 0o644); err != nil {
+	// 任何一步失败都把刚建的目录整个清掉：没有 role.json 的目录会被 scanRoles 跳过
+	// —— 用户在界面上看不见它，它却占着「名字」，下一次导入就变成 "名字 (2)" 了。
+	abort := func() { _ = os.RemoveAll(dir) }
+	if err := writeFileAtomic(filepath.Join(dir, "figure"+ext), b); err != nil {
+		abort()
 		return ""
 	}
-	if err := os.WriteFile(filepath.Join(dir, "preview"+ext), b, 0o644); err != nil {
+	if err := writeFileAtomic(filepath.Join(dir, "preview"+ext), b); err != nil {
+		abort()
 		return ""
 	}
 	cfg := RoleFile{
 		Key:      key,
-		Name:     name,
+		Name:     display,
 		Enabled:  true,
 		Image:    "figure" + ext,
 		Preview:  "preview" + ext,
@@ -296,17 +311,12 @@ func createRoleDir(rolesRoot, name, src string) string {
 	// 目录已按名称建好：直接落盘 role.json（绕过「按 key 反查目录」）
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
+		abort()
 		return ""
 	}
 	data = append(data, '\n')
-	target := filepath.Join(dir, "role.json")
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		_ = os.Remove(tmp)
-		return ""
-	}
-	if err := os.Rename(tmp, target); err != nil {
-		_ = os.Remove(tmp)
+	if err := writeFileAtomic(filepath.Join(dir, "role.json"), data); err != nil {
+		abort()
 		return ""
 	}
 	return key

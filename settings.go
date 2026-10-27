@@ -91,6 +91,10 @@ type SupervisorConfig struct {
 	Gaze      bool   `json:"gaze"`
 	Selection string `json:"selection"` // fixed | sequence | random
 	FixedKey  string `json:"fixedKey"`
+	// Order 候选专员的展示顺序（role key 数组）。用户在设置页拖动立绘磁贴调整顺序后落盘，
+	// 这里读回来即为「顺序轮换」的出场次序 —— 画廊显示顺序与轮换次序共用这一份顺序，
+	// 用户拖一次两边同时生效，不会出现「画廊一个样、轮换另一个样」的劈叉。
+	Order []string `json:"order"`
 }
 
 // ReminderMessageItem 一条提醒内容
@@ -259,6 +263,12 @@ func (s *Settings) Slice(keys ...string) []any {
 	return nil
 }
 
+// StrSlice 取字符串数组（只保留字符串项，空串与重复项剔除）。
+// 键不存在 / 类型不是数组时返回 nil —— 调用方据此回落到默认顺序。
+func (s *Settings) StrSlice(keys ...string) []string {
+	return normalizeRoleOrder(s.lookup(keys...))
+}
+
 // Raw 整份配置（给 settings:get 下发，也用于落盘）
 func (s *Settings) Raw() map[string]any { return s.raw }
 
@@ -391,6 +401,7 @@ func (s *Settings) SupervisorCfg() SupervisorConfig {
 		Gaze:      s.Flag(true, "supervisor", "gaze"),
 		Selection: s.normSelection(s.Str("fixed", "supervisor", "selection")),
 		FixedKey:  s.Str("", "supervisor", "fixedKey"),
+		Order:     s.StrSlice("supervisor", "order"),
 	}
 }
 
@@ -1290,6 +1301,31 @@ func cleanLegacyKeys(raw map[string]any) {
 	}
 }
 
+// normalizeRoleOrder 归一化候选专员顺序：只保留非空字符串项并去重。
+// 类型不是数组（老配置手改坏了 / 导入配置带了别的结构）时返回 nil ——
+// 顺序是**派生**数据，坏了就回落到内置清单顺序，绝不让程序起不来。
+func normalizeRoleOrder(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	seen := make(map[string]bool, len(arr))
+	for _, it := range arr {
+		str, ok := it.(string)
+		if !ok {
+			continue
+		}
+		str = strings.TrimSpace(str)
+		if str == "" || seen[str] {
+			continue
+		}
+		seen[str] = true
+		out = append(out, str)
+	}
+	return out
+}
+
 // normalizeSupervisorMessages 督休专员配置归一化（与 config.ts 同义）：
 // selection 只认固定 / 顺序 / 随机；开关类字段只认布尔；视线跟随恒为 true；
 // rolesMigrated 置位后，把可能从导入配置带进来的旧督休专员字段直接清掉。
@@ -1309,6 +1345,18 @@ func normalizeSupervisorMessages(raw map[string]any) {
 	}
 	// 视线跟随已改为始终启用、不再可配置
 	sup["gaze"] = true
+	// 候选专员展示顺序：拖动磁贴得到的 key 数组。类型不对就整键丢掉（回落到内置顺序）。
+	if v, ok := sup["order"]; ok {
+		if _, isArr := v.([]any); isArr {
+			norm := make([]any, 0, len(v.([]any)))
+			for _, s := range normalizeRoleOrder(v) {
+				norm = append(norm, s)
+			}
+			sup["order"] = norm
+		} else {
+			delete(sup, "order")
+		}
+	}
 	migrated := sup["rolesMigrated"] == true
 	sup["rolesMigrated"] = migrated
 	if migrated {
