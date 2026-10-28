@@ -1,8 +1,11 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -269,7 +272,8 @@ func TestStatsLoadFlushRoundTrip(t *testing.T) {
 func TestStatsLoadToleratesGarbage(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "stats.json")
-	if err := os.WriteFile(path, []byte("{ this is not json"), 0o644); err != nil {
+	bad := []byte("{ this is not json")
+	if err := os.WriteFile(path, bad, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	st := NewStatsStore(func() string { return path })
@@ -279,6 +283,118 @@ func TestStatsLoadToleratesGarbage(t *testing.T) {
 	}
 	if d := st.Today(); d.WorkMs != 0 {
 		t.Fatalf("损坏文件后 today 应全 0，得到 %+v", d)
+	}
+}
+
+// ---------- 统计文件的创建 / 备份重建（打包不再预置 data/stats.json，见 make_portable.py）----------
+
+func TestStatsLoadCreatesEmptyFileWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "data", "stats.json") // data 目录也不存在：首跑要连目录一起建
+	st := NewStatsStore(func() string { return path })
+	st.Load()
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("缺文件时应自动创建空表：%v", err)
+	}
+	var top map[string]any
+	if err := json.Unmarshal(raw, &top); err != nil {
+		t.Fatalf("自建的空表必须是合法 JSON：%v（内容 %q）", err, raw)
+	}
+	if _, ok := top["_customNames"]; !ok {
+		t.Fatalf("空表应带 _customNames 保留键（与 marshalLocked 同格式），得到 %q", raw)
+	}
+	if n := st.FileNotice(); n != nil {
+		t.Fatalf("首跑自建不是「文件损坏」，不该产生弹窗说明：%+v", n)
+	}
+	if n := len(st.DaysInRange("", "")); n != 0 {
+		t.Fatalf("新建的空表应为 0 天，得到 %d 天", n)
+	}
+}
+
+func TestStatsLoadBacksUpBrokenFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "stats.json")
+	bad := []byte("{ this is not json")
+	if err := os.WriteFile(path, bad, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	st := NewStatsStore(func() string { return path })
+	st.Load()
+
+	n := st.FileNotice()
+	if n == nil {
+		t.Fatal("损坏文件必须留下处置说明（界面要弹窗告知用户）")
+	}
+	if n.File != path {
+		t.Fatalf("说明里的文件路径应为 %q，得到 %q", path, n.File)
+	}
+	if n.Reason == "" || n.At == "" {
+		t.Fatalf("说明应带判定原因与处置时刻：%+v", n)
+	}
+	// 备份与原文件同目录、命名为 stats_<日期_时间>.json，内容与损坏前逐字节一致
+	if filepath.Dir(n.Backup) != dir {
+		t.Fatalf("备份应留在同目录 %q，得到 %q", dir, n.Backup)
+	}
+	base := filepath.Base(n.Backup)
+	if !strings.HasPrefix(base, "stats_") || !strings.HasSuffix(base, ".json") {
+		t.Fatalf("备份名应为 stats_<日期_时间>.json，得到 %q", base)
+	}
+	if got, err := os.ReadFile(n.Backup); err != nil || !bytes.Equal(got, bad) {
+		t.Fatalf("备份内容应保留原始数据（err=%v）", err)
+	}
+	// 原路径上换成了空表
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("重建后原路径应存在空表：%v", err)
+	}
+	var top map[string]any
+	if err := json.Unmarshal(raw, &top); err != nil {
+		t.Fatalf("重建的空表必须可解析：%v（内容 %q）", err, raw)
+	}
+	if len(top) != 1 {
+		t.Fatalf("重建的空表只该有 _customNames，得到 %q", raw)
+	}
+
+	// 同一秒内再次损坏：备份名必须退让，不能覆盖上一份备份
+	if err := os.WriteFile(path, []byte("[1,2,3]"), 0o644); err != nil { // 数组 = 顶层结构不对
+		t.Fatal(err)
+	}
+	st.Load()
+	n2 := st.FileNotice()
+	if n2 == nil || n2.Backup == n.Backup {
+		t.Fatalf("第二次损坏应另存一份备份，得到 %+v", n2)
+	}
+	backups, _ := filepath.Glob(filepath.Join(dir, "stats_*.json"))
+	if len(backups) != 2 {
+		t.Fatalf("两次损坏应留下两份备份，得到 %v", backups)
+	}
+
+	// 用户点掉弹窗后不再有说明
+	st.AckFileNotice()
+	if n := st.FileNotice(); n != nil {
+		t.Fatalf("Ack 之后不该再有说明：%+v", n)
+	}
+}
+
+func TestStatsLoadKeepsFileWhenUnreadable(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "stats.json")
+	// 用同名**目录**制造读取失败：读不出来 ≠ 文件坏了，绝不能改名或删除用户的文件
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Skipf("无法在同名目录上制造读取失败：%v", err)
+	}
+	st := NewStatsStore(func() string { return path })
+	st.Load()
+	if fi, err := os.Stat(path); err != nil || !fi.IsDir() {
+		t.Fatalf("读取失败时不该动用户的路径（err=%v）", err)
+	}
+	if n := st.FileNotice(); n != nil {
+		t.Fatalf("读取失败不是「格式错误」，不该弹窗说明：%+v", n)
+	}
+	if len(st.DaysInRange("", "")) != 0 {
+		t.Fatal("读取失败时应从空表开始用")
 	}
 }
 

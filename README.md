@@ -123,6 +123,7 @@ python scripts/smoke_server.py     # 绑定层无头冒烟：176 项断言
 python scripts/probe_renderer.py   # 渲染层探针：270 项断言 + 截图（需先 npm install）
 python scripts/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
 python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
+python scripts/probe_stats_file.py # 统计文件自愈探针：19 项（首跑自建 data/ / 损坏改名备份 / 弹窗说明 / Ack 清空）
 python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）
 ```
 
@@ -156,8 +157,15 @@ python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / �
 
 - 一律「数据与程序同目录」：配置、统计、用户音频统一落在 exe 旁的 `config/` 与 `data/` 下，
   整目录拷贝 / 删除就是完整的迁移 / 卸载。不再检查 `%APPDATA%`（老版本的历史目录已放弃兼容）。
-- 打包交付的便携目录**自带**三件套：`sounds/`（四个内置提示音）、`config/settings.json`
-  （出厂默认，首跑补 installId）、`data/stats.json`（空统计表）——首跑直接在预置文件上继续写。
+- 打包交付的便携目录**自带**两件套：`sounds/`（四个内置提示音）、`config/settings.json`
+  （出厂默认，首跑补 installId）——首跑直接在预置文件上继续写。
+- **`data/` 与 `stats.json` 不进安装包**（统计是用户数据，不属于发行物）：
+  - 首跑：`data/` 目录与空的 `data/stats.json` 由程序自动创建（见 `stats.go` 的 `Load`）；
+  - 损坏：文件**读不出来**时不动它、只从空表开始用；**格式错误（解析失败 / 不是 JSON 对象）**
+    时先把原文件改名成 `data/stats_<日期_时间>.json` 留作备份，再重建空表，并在设置页弹窗
+    说明「备份在哪、为什么判定损坏」——历史统计不会无声消失；
+  - 更新：只替换 `rest.exe`（旧的改名成 `.bak`），解压与合并配置都在 `update/` 与 `config/`
+    里进行，**不碰** `data/`。
 - **督休专员的出场顺序可拖动调整**：设置页「督休专员」→ 候选专员列表，按住立绘磁贴拖动即可
   改顺序，松手即生效并自动保存。顺序存于 `config/settings.json` 的 `supervisor.order`
   （专员名数组），重启后仍在；画廊显示顺序与「顺序轮换」模式的出场次序**共用这一份**，

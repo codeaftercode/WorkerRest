@@ -67,6 +67,9 @@ var wiredCalls = []string{
 	"GetStats",
 	"GetHistory",
 	"ClearStats",
+	// 统计文件损坏已备份重建的告知（见 stats.go 的 StatsFileNotice）
+	"GetStatsFileNotice",
+	"AckStatsFileNotice",
 
 	// ---- 声音 ----
 	"SoundFileURL",

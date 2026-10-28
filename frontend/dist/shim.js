@@ -228,6 +228,14 @@
     clearStats: function () {
       return call("ClearStats");
     },
+    // 统计文件损坏已备份重建的说明（null = 没发生过，不弹窗）
+    getStatsFileNotice: function () {
+      return call("GetStatsFileNotice");
+    },
+    // 用户看过弹窗后确认，本次运行不再弹
+    ackStatsFileNotice: function () {
+      return call("AckStatsFileNotice");
+    },
 
     // ---- 窗口 / 进程 ----
     closeWindow: function () {

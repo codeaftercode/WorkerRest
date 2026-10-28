@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -270,6 +271,21 @@ func splitByDay(from, to int64) []daySeg {
 
 // ---------- 统计存储 ----------
 
+// StatsFileNotice 「统计文件损坏，已备份并重建空表」的说明（给渲染层弹窗用）。
+//
+// 只在**这次启动**里存在一份：Load 判定文件读取 / 解析失败时产生，用户点掉弹窗后由
+// AckStatsFileNotice 清掉。它是「已经发生的处置」的告知，不是错误状态，不影响记账。
+type StatsFileNotice struct {
+	// File 统计文件路径（重建后的空表位置）
+	File string `json:"file"`
+	// Backup 损坏文件被改名到的位置（原始数据还在这里，可人工抢救）
+	Backup string `json:"backup"`
+	// Reason 判定为损坏的直接原因（解析报错原文 / 结构不对）
+	Reason string `json:"reason"`
+	// At 处置时刻（本地时间 YYYY-MM-DD HH:MM:SS）
+	At string `json:"at"`
+}
+
 // StatsStore 统计存储与记账。所有导出方法都可并发调用（自带锁）。
 type StatsStore struct {
 	mu sync.Mutex
@@ -339,6 +355,10 @@ type StatsStore struct {
 	// LoadOnce —— Load 里要回读配置路径，而那条路径需要 App 的锁，持锁调用会自死锁
 	//（本项目踩过一次：idleWatchTick → statsStore → Load → appStatsFile → cfgSnapshot）。
 	loadOnce sync.Once
+
+	// loadNotice 本次启动里「文件损坏 → 已备份 → 重建空表」的说明（nil = 没发生过）。
+	// 用户点掉弹窗后由 AckFileNotice 清掉；只在 Load 里写、在锁内读写。
+	loadNotice *StatsFileNotice
 }
 
 // LoadOnce 首次读盘（幂等、并发安全）。App 侧一律用它，不要直接调 Load。
@@ -361,24 +381,65 @@ func NewStatsStore(fileFn func() string) *StatsStore {
 	}
 }
 
-// Load 读统计文件。没有文件或内容损坏 = 从空表开始，不是错误。
+// Load 读统计文件，并把落点修成「一定有一份可用的空表」。四情形：
+//
+//	① 文件存在且能解析 → 正常读入（走 normalizeDay，旧数据 / 手改都不会炸）；
+//	② 文件不存在（新装 / 用户删了 data 目录）→ **建目录 + 写一份空表**，
+//	   所以打包时不再预置 data/stats.json，首跑自己长出来；
+//	③ 文件存在但**读不出来**（权限 / 被占用 / 路径是个目录）：不冒险动用户的文件，
+//	   只从空表开始用，下次能读时数据还在；
+//	④ 文件存在但**不是合法 JSON 对象**（截断、乱码、手改坏）：把原文件改名成
+//	   `stats_<日期_时间>.json` 留在同目录（原始数据不销毁），再重建空表，并记一条
+//	   StatsFileNotice 让界面弹窗说明——静默重置等于用户的历史凭空消失。
+//
 // 统计数据全部永久保留，这里不裁剪历史条目。
 func (st *StatsStore) Load() {
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	st.days = map[string]*DayStats{}
 	st.customNames = map[string]string{}
+	st.loadNotice = nil
 	path := st.file()
 	if path == "" {
 		return
 	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		log.Printf("[stats] 数据目录创建失败（%v），本次统计只在内存里", err)
+		return
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
+		if os.IsNotExist(err) {
+			st.createEmptyLocked(path)
+			return
+		}
+		log.Printf("[stats] 统计文件读取失败（%v），本次从空表开始（原文件保持不动）", err)
 		return
 	}
 	var top map[string]any
-	if err := json.Unmarshal(raw, &top); err != nil {
-		log.Printf("[stats] 统计文件解析失败（从空表开始）：%v", err)
+	perr := json.Unmarshal(raw, &top)
+	reason := ""
+	if perr != nil {
+		reason = perr.Error()
+	} else if top == nil {
+		// 合法 JSON 但不是对象（`null` / 空文件解析成 nil）：结构上不可能装下天记录
+		reason = "文件内容不是一个 JSON 对象"
+	}
+	if reason != "" {
+		backup, berr := renameBrokenStatsFile(path)
+		if berr != nil {
+			log.Printf("[stats] 统计文件损坏（%s），且改名保留失败（%v）：直接重建空表", reason, berr)
+			backup = ""
+		} else {
+			log.Printf("[stats] 统计文件损坏（%s），已备份为 %s 并重建空表", reason, backup)
+		}
+		st.createEmptyLocked(path)
+		st.loadNotice = &StatsFileNotice{
+			File:   path,
+			Backup: backup,
+			Reason: reason,
+			At:     time.Now().Format("2006-01-02 15:04:05"),
+		}
 		return
 	}
 	// 名字快照（保留键，不是日期条目）：只认 cb- 前缀与非空字符串
@@ -398,6 +459,69 @@ func (st *StatsStore) Load() {
 		d := normalizeDay(v, date)
 		st.days[date] = &d
 	}
+}
+
+// createEmptyLocked 把内存里的空表写到 path（调用方需持锁）。
+// 内容与 marshalLocked 同源，所以「打包预置的空表」与「首跑自建的空表」字节等价。
+func (st *StatsStore) createEmptyLocked(path string) {
+	text, err := st.marshalLocked()
+	if err != nil {
+		log.Printf("[stats] 空统计表序列化失败: %v", err)
+		return
+	}
+	if err := writeFileAtomic(path, text); err != nil {
+		log.Printf("[stats] 空统计表写入失败（%v），本次统计只在内存里", err)
+		return
+	}
+	log.Printf("[stats] 空统计表已就位：%s", path)
+}
+
+// brokenStatsBackupName 损坏文件的备份路径：同目录 `stats_20261028_164510.json`。
+// 同一秒里反复触发（手动换文件连点两次）时依次退让成 `-2` / `-3`，绝不覆盖已有备份。
+func brokenStatsBackupName(dir, base, ext, stamp string, n int) string {
+	name := base + "_" + stamp
+	if n > 1 {
+		name += "-" + strconv.Itoa(n)
+	}
+	return filepath.Join(dir, name+ext)
+}
+
+// renameBrokenStatsFile 把损坏的统计文件改名保留（不删除：里面可能有用户手改过的数据），
+// 返回备份后的完整路径。
+func renameBrokenStatsFile(path string) (string, error) {
+	dir, name := filepath.Split(path)
+	ext := filepath.Ext(name)
+	base := strings.TrimSuffix(name, ext)
+	stamp := time.Now().Format("20060102_150405")
+	for n := 1; n <= 100; n++ {
+		cand := brokenStatsBackupName(dir, base, ext, stamp, n)
+		if _, err := os.Stat(cand); err == nil {
+			continue // 已存在（同秒重名），换下一个后缀
+		}
+		if err := os.Rename(path, cand); err != nil {
+			return "", err
+		}
+		return cand, nil
+	}
+	return "", fmt.Errorf("同一秒内备份文件过多，放弃改名")
+}
+
+// FileNotice 本次启动的「文件损坏已备份重建」说明（没有则 nil）
+func (st *StatsStore) FileNotice() *StatsFileNotice {
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.loadNotice == nil {
+		return nil
+	}
+	n := *st.loadNotice
+	return &n
+}
+
+// AckFileNotice 用户已看过弹窗：清掉说明（同一进程里不再弹）
+func (st *StatsStore) AckFileNotice() {
+	st.mu.Lock()
+	st.loadNotice = nil
+	st.mu.Unlock()
 }
 
 // Flush 落盘：`open → write → fsync → close → rename`。与 settings 的写盘同套路
@@ -1491,6 +1615,27 @@ func (a *App) GetHistory(start, end string) map[string]any {
 func (a *App) ClearStats() map[string]any {
 	a.statsStore().Clear()
 	log.Printf("[stats] 已清空全部统计数据")
+	return map[string]any{"ok": true}
+}
+
+// GetStatsFileNotice 统计文件损坏并被重建时的说明（渲染层打开设置页时来取）。
+// 没有发生过（绝大多数情况）返回 nil —— 前端据此不弹窗。
+func (a *App) GetStatsFileNotice() map[string]any {
+	n := a.statsStore().FileNotice()
+	if n == nil {
+		return nil
+	}
+	return map[string]any{
+		"file":   n.File,
+		"backup": n.Backup,
+		"reason": n.Reason,
+		"at":     n.At,
+	}
+}
+
+// AckStatsFileNotice 用户已看过「统计文件已重建」弹窗：清掉说明，本次运行不再弹。
+func (a *App) AckStatsFileNotice() map[string]any {
+	a.statsStore().AckFileNotice()
 	return map[string]any{"ok": true}
 }
 

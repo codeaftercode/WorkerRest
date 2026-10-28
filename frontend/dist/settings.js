@@ -594,6 +594,34 @@
     t.classList.remove("hidden");
     setTimeout(() => t.classList.add("hidden"), 2200);
   }
+  // 统计文件损坏：Go 侧已把原文件改名成 stats_<日期_时间>.json 备份，并重建空表
+  //（见 stats.go 的 Load）。必须让用户知道——否则历史统计「凭空归零」，看起来像软件
+  // 悄悄丢了数据。备份文件路径一并给出，用户想抢救原始数据还能找到。
+  let statsNoticeShown = false;
+  async function showStatsFileNotice() {
+    if (statsNoticeShown) return;
+    const n = await window.api.getStatsFileNotice();
+    if (!n || statsNoticeShown) return;
+    statsNoticeShown = true;
+    const body = $("st-body");
+    body.innerHTML = "";
+    const add = (label, val) => {
+      const div = document.createElement("div");
+      div.className = "up-item";
+      div.textContent = `${label}：${val || "\u2014"}`;
+      body.appendChild(div);
+    };
+    add("\u539F\u6587\u4EF6\u5DF2\u5907\u4EFD\u4E3A", n.backup || "\uFF08\u6539\u540D\u5931\u8D25\uFF09");
+    add("\u5224\u5B9A\u539F\u56E0", n.reason);
+    add("\u5904\u7406\u65F6\u95F4", n.at);
+    $("stats-modal").classList.remove("hidden");
+  }
+  function bindStatsNotice() {
+    $("st-ok").addEventListener("click", () => {
+      $("stats-modal").classList.add("hidden");
+      void window.api.ackStatsFileNotice();
+    });
+  }
   var cfResolve = null;
   function confirmDialog(opts) {
     $("cf-title").textContent = opts.title;
@@ -6136,6 +6164,9 @@
       });
     }
     await refreshSupervisorPreview();
+    // 统计文件损坏重建过就弹窗说明（Go 侧启动时处置，这里取一次告知结果）
+    bindStatsNotice();
+    void showStatsFileNotice();
     window.api.onState((raw) => renderStatus(raw));
     // 统计入账（工作/休息/离开/休息次数/外卖动作）后 Go 侧会推今天的快照：
     // 「今天」卡立刻跟着变，不用等切页、切窗口或手动刷新。

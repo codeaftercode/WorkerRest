@@ -4,8 +4,9 @@
 
 验证的核心语义（README「数据与配置落点」里 Go 版的约定）：
   数据与程序同目录 —— 配置/统计/音频都在 exe 旁的 config/ 与 data/，绝不碰 %APPDATA%。
-  打包交付的便携目录自带预置三件套（sounds/ + config/settings.json + data/stats.json），
-  首跑直接在预置文件上继续写（installId 补生成并回写）。
+  打包交付的便携目录自带预置两件套（sounds/ + config/settings.json），首跑直接在预置
+  文件上继续写（installId 补生成并回写）。**data/ 与 stats.json 不进包**（统计是用户
+  数据，更新时不能被安装包覆盖）：首跑由 stats.go 的 Load 自己建出 data/stats.json。
 
 做法：
   1. 把 make_portable.py 产出的便携目录**整体复制**到 %TEMP% 隔离副本（不污染 release/）；
@@ -13,8 +14,10 @@
      自然落点推导，直接独占；这里要验的是**自然落点**）；
   3. 观察几秒，断言：
      - 进程活着、日志无 panic；
-     - 预置三件套随包完整（sounds/ 四个 wav、config/settings.json、data/stats.json）；
+     - 预置两件套随包完整（sounds/ 四个 wav、config/settings.json）；
+     - 发布包里**没有** data/ 与 stats.json（统计文件由首跑自行创建）；
      - 首跑把 installId 补写进了 exe 旁的 config/settings.json（在预置文件上继续写）；
+     - 首跑自动创建了 exe 旁的 data/stats.json，且内容是合法空表；
      - 隔离 APPDATA 里没有落下任何 WorkerRest 相关文件（没往 APPDATA 写）。
 
 用法：python scripts/verify_portable.py [--dir <便携目录>] [--seconds 8]
@@ -136,6 +139,13 @@ def main():
     shutil.rmtree(iso_appdata, ignore_errors=True)
     os.makedirs(iso_appdata, exist_ok=True)
 
+    # 发布包里不许带统计文件：它是用户数据，首跑由程序自建（改动前的老包会带 data/）
+    shipped_data = os.path.join(src, "data")
+    shipped_stats = os.path.join(src, "stats.json")
+    check(not os.path.exists(shipped_data) and not os.path.exists(shipped_stats),
+          "发布包里没有 data/ 与 stats.json（统计文件不随包分发）",
+          shipped_data if os.path.exists(shipped_data) else shipped_stats)
+
     print("便携目录验证：%s（观察 %d 秒，隔离 APPDATA=%s）" % (iso, args.seconds, iso_appdata))
 
     env = dict(os.environ)
@@ -174,14 +184,16 @@ def main():
     check(n_wav == 4, "预置 sounds/ 有四个内置提示音", "wav=%d" % n_wav)
     preset_cfg = os.path.join(iso, "config", "settings.json")
     check(os.path.isfile(preset_cfg), "预置 config/settings.json 随包存在", preset_cfg)
-    preset_stats = os.path.join(iso, "data", "stats.json")
-    check(os.path.isfile(preset_stats), "预置 data/stats.json 随包存在", preset_stats)
-    if os.path.isfile(preset_stats):
+    # 首跑自建的空表（不再是「预置文件」）：Load 见文件缺失就建目录 + 写空表
+    runtime_stats = os.path.join(iso, "data", "stats.json")
+    check(os.path.isfile(runtime_stats), "首跑自动创建 data/stats.json", runtime_stats)
+    if os.path.isfile(runtime_stats):
         try:
-            sdata = json.load(open(preset_stats, encoding="utf-8"))
-            check("_customNames" in sdata, "预置统计表是合法空表结构", "")
+            sdata = json.load(open(runtime_stats, encoding="utf-8"))
+            check(isinstance(sdata, dict) and "_customNames" in sdata,
+                  "自建的统计表是合法空表结构", "")
         except Exception as e:  # noqa: BLE001
-            check(False, "预置统计表可解析", repr(e))
+            check(False, "自建统计表可解析", repr(e))
 
     # 3. 首跑在预置配置上继续写（installId 补生成并回写）
     cfg_side = os.path.join(iso, "config", "settings.json")

@@ -16,11 +16,12 @@
 
 组装结构：
   - rest.exe + supervisors/（约 1 MB 内置督休专员模板，立绘已转 webp，子目录按专员名称命名）；
-  - 预置三件套（运行数据随包分发，首跑直接在预置文件上继续写）：
+  - 预置两件套（运行数据随包分发，首跑直接在预置文件上继续写）：
       sounds/               四个内置提示音（源文件在模块根 sounds/，不再 embed 进二进制）
       config/settings.json  出厂默认配置（与 go:embed 的 default_settings.json 同一
                             份文件，天然零漂移；installId 是空串，首跑自动补生成并回写）
-      data/stats.json       空统计表（与 stats.go 空表落盘格式一致）
+  - **不预置 data/ 与 stats.json**：用户的统计数据不属于安装包。首跑由 stats.go 的
+    Load 自己建 data/stats.json（见其四情形说明）；文件损坏时也会改名备份再重建。
   - 运行时残留（exe 同目录跑过一次后留下的 config/data/sounds 等）组装前一律清掉。
 
 版本号：**只认当前提交上的 git tag**（格式 v主.次.修订，见 scripts/version.py）。
@@ -69,9 +70,6 @@ TEMP = os.environ.get("TEMP", ROOT)
 
 # 运行产物目录：便携目录跑过一次后会留下这些，组装发布目录时清掉
 RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json"]
-
-# 空统计表预置内容：与 stats.go marshalLocked 的空表落盘格式一致（缩进 2 空格）
-EMPTY_STATS_JSON = '{\n  "_customNames": {}\n}\n'
 
 # 交付目录默认 release/（项目内；被 IDE/杀软锁住时用 --out 重定向）
 DEFAULT_OUT = os.path.join(ROOT, "release")
@@ -176,9 +174,10 @@ def assemble(dest: str, version: str) -> bool:
             shutil.rmtree(p, ignore_errors=True)
         elif os.path.exists(p):
             os.remove(p)
-    # 预置三件套：sounds/（内置提示音）、config/settings.json（出厂默认）、
-    # data/stats.json（空统计表）。首跑直接在预置文件上继续写（installId 由
-    # Go 侧 ensureInstallID 补生成并回写）。
+    # 预置两件套：sounds/（内置提示音）、config/settings.json（出厂默认）。
+    # 首跑直接在预置文件上继续写（installId 由 Go 侧 ensureInstallID 补生成并回写）。
+    # data/ 与 stats.json **不进包**：统计是用户数据，首跑由 stats.go 的 Load 自己建
+    # （缺就建空表、坏就改名备份后重建），更新时也不会被安装包覆盖或删除。
     shutil.copytree(SOUNDS_SRC, os.path.join(dest, "sounds"))
     os.makedirs(os.path.join(dest, "config"), exist_ok=True)
     # 预置配置写「exe 内嵌的那份」而不是直接拷仓库文件：点「恢复默认设置」拿到的就是内嵌
@@ -190,9 +189,6 @@ def assemble(dest: str, version: str) -> bool:
         return False
     with open(os.path.join(dest, "config", "settings.json"), "wb") as f:
         f.write(cfg_bytes)
-    os.makedirs(os.path.join(dest, "data"), exist_ok=True)
-    with open(os.path.join(dest, "data", "stats.json"), "w", encoding="utf-8", newline="\n") as f:
-        f.write(EMPTY_STATS_JSON)
     return True
 
 
@@ -236,19 +232,23 @@ def verify_zip(zip_path: str, top: str) -> bool:
     # 预置三件套：四个内置提示音 + 出厂默认配置 + 空统计表
     n_sounds = sum(1 for n in names if n.startswith(f"{top}/sounds/") and n.endswith(".wav"))
     has_cfg = f"{top}/config/settings.json" in names
-    has_stats = f"{top}/data/stats.json" in names
+    # 统计是用户数据：安装包与更新包里**必须没有** data/（首跑自动创建，见 stats.go Load）
+    data_entries = [n for n in names if n.startswith(f"{top}/data/") or n == f"{top}/stats.json"]
+    no_data = not data_entries
     # 顶层目录硬保证：每个条目都必须落在 top/ 里，且不允许出现反斜杠条目
     # （反斜杠会被一部分解压工具当文件名的一部分，解压后文件散落一地）
     escaped = [n for n in names if not n.startswith(top + "/") or "\\" in n]
     ok = (
         test is None and has_exe and has_roles and has_role_meta
-        and n_sounds == 4 and has_cfg and has_stats and not escaped
+        and n_sounds == 4 and has_cfg and no_data and not escaped
     )
     print(
         f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} supervisors={has_roles}"
         f" role_meta={has_role_meta} img={n_roles} sounds={n_sounds} cfg={has_cfg}"
-        f" stats={has_stats} escaped={len(escaped)} crc={test is None}"
+        f" no_data={no_data} escaped={len(escaped)} crc={test is None}"
     )
+    if data_entries:
+        print(f"[make-portable] FAIL: 包里不该有统计文件 / data 目录: {data_entries[:5]}")
     if escaped:
         print(f"[make-portable] FAIL: 有条目跑到顶层目录外或含反斜杠: {escaped[:5]}")
     if not ok:
@@ -531,7 +531,6 @@ def main() -> int:
         ("督休专员目录", find_role_meta(dest, "眼镜主管")),
         ("预置 sounds/", os.path.join(dest, "sounds", "short_start.wav")),
         ("预置 config/settings.json", os.path.join(dest, "config", "settings.json")),
-        ("预置 data/stats.json", os.path.join(dest, "data", "stats.json")),
     ]
     ok = True
     for name, p in checks:
@@ -539,6 +538,13 @@ def main() -> int:
         if not has:
             ok = False
         print(f"[make-portable] {name}: {'ok' if has else 'MISSING'}（{p}）")
+
+    # 反向核验：交付目录里**不许**有统计文件及其目录 —— 那是用户数据，首跑由程序自建
+    stale = [os.path.join(dest, "data"), os.path.join(dest, "stats.json")]
+    stale = [x for x in stale if os.path.exists(x)]
+    if stale:
+        ok = False
+    print(f"[make-portable] 不预置统计文件: {'ok' if not stale else 'UNEXPECTED'}（{stale}）")
 
     # 4. 打 zip + 校验
     zip_path = os.path.join(stage_parent, PORTABLE_ZIP_NAME)
