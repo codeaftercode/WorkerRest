@@ -508,7 +508,9 @@ func (a *App) initSoundHost() {
 	})
 	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		a.mu.Lock()
-		delete(a.wins, soundHostWindowName)
+		// 只删自己：destroySoundHost 之后可能重建宿主窗，迟到一步的旧回调按名字 delete
+		// 会把新宿主的引用抹掉（与提前提示窗同一个坑，见 dropWindowRef）
+		dropWindowRef(a.wins, soundHostWindowName, win)
 		a.mu.Unlock()
 	})
 	a.mu.Lock()

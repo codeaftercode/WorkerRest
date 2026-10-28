@@ -6,32 +6,32 @@ import (
 	"testing"
 )
 
-// 督休专员**显示名唯一性**的回归（2026-10-26）。
+// 督休专员**名字唯一性**的回归（2026-10-26 起；2026-10-28 改成「名字即身份」后重写）。
 //
-// 背景：一个督休专员 = supervisors/<目录>/{role.json, 立绘, 预览图}。
-// 目录名 = 显示名，key 是稳定身份。显示名重名会让「key ↔ 目录 ↔ 显示名」
-// 三者失配：目录名靠 uniqueRoleDir 去重成「X (2)」，而 role.json 里的显示名
-// 还是「X」—— 同一个名字在画廊磁贴 / 台词气泡 / 提醒面板标题里指向两个不同的人。
+// 背景：一个督休专员 = supervisors/<目录>/{meta.json, 立绘, 预览图}，没有内部 id。
+// 名字重复会让「名字 ↔ 目录 ↔ fixedRole / order」四者失配：目录名靠 uniqueRoleDir
+// 去重成「X (2)」，meta.json 里却还是「X」—— 同一个名字在画廊磁贴 / 台词气泡 /
+// 提醒面板标题里指向两个不同的人，删一个还会删错。
 //
 // 三层防线，逐层钉住：
 //   ① 前端 promptDialog 的 validate：重名 → 拒绝保存、留在框里要求重新输入；
-//   ② Go 侧 SaveRole：重名 → 返回 false，零副作用（不改目录、不写 role.json）；
-//   ③ Go 侧 createRoleDir / 迁移：软件自己起名 → 自动退让成「X (2)」。
+//   ② Go 侧 SaveRole：重名 → 返回 false，零副作用（不改目录、不写 meta.json）；
+//   ③ Go 侧 createRoleDir：软件自己起名 → 自动退让成「X (2)」。
 //
-// ⚠️ 注意：显示名唯一性**只管「同名」**，管不到「同图」。
-// 同一张图片导入两次（key 撞号）由 uniqueRoleKey 负责，两道防线互补、缺一不可。
+// ⚠️ 判据是 roleIdentity（**目录名口径**），不是字符串相等：名字里带 `/`、大小写不同、
+// 尾随点空格，都会落到同一个目录上，必须算重名。见 TestRoleNameTakenDirNameIdentity。
 
 // roleNameTaken 基本行为：命中同名 / 大小写不同也算命中 / 排除自己不误报。
 func TestRoleNameTakenBasics(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "医生", map[string]any{
-		"key": "role_doctor", "name": "医生", "enabled": true, "image": "figure.webp",
+		"name": "医生", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 	writeRoleDir(t, root, "学姐", map[string]any{
-		"key": "role_mentor", "name": "学姐", "enabled": true, "image": "figure.webp",
+		"name": "学姐", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 	writeRoleDir(t, root, "Alice", map[string]any{
-		"key": "role_alice", "name": "Alice", "enabled": true, "image": "figure.webp",
+		"name": "Alice", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 
 	if !roleNameTaken(root, "医生", "") {
@@ -46,8 +46,8 @@ func TestRoleNameTakenBasics(t *testing.T) {
 		t.Fatal("首尾空格差异应仍算占用")
 	}
 	// 排除自己：改名时不能被自己的旧名字挡住
-	if roleNameTaken(root, "医生", "role_doctor") {
-		t.Fatal("excludeKey 命中自己时不应算占用")
+	if roleNameTaken(root, "医生", "医生") {
+		t.Fatal("excludeName 命中自己时不应算占用")
 	}
 	if roleNameTaken(root, "不存在的名字", "") {
 		t.Fatal("没人用的名字不应算占用")
@@ -57,7 +57,70 @@ func TestRoleNameTakenBasics(t *testing.T) {
 	}
 }
 
-// scanRoleNames：只读 key 与显示名，且**不碰立绘 / 预览图**。
+// 判据是「目录名口径」：会被 sanitize 抹平的差异必须算重名。
+//
+// 反例：只比字符串的话，"A/B" 与 "AB" 判为不重名 → 两个专员争同一个目录，
+// 后写的那份 meta.json 覆盖前一份，界面上只剩一个人（文件还在，最难查的那种）。
+func TestRoleNameTakenDirNameIdentity(t *testing.T) {
+	root := t.TempDir()
+	writeRoleDir(t, root, "AB", map[string]any{
+		"name": "AB", "enabled": true, "image": "figure.webp",
+	}, map[string]string{"figure.webp": "w"})
+	writeRoleDir(t, root, "abc", map[string]any{
+		"name": "abc", "enabled": true, "image": "figure.webp",
+	}, map[string]string{"figure.webp": "w"})
+
+	cases := []struct {
+		name string
+		want bool
+	}{
+		{"A/B", true},     // 斜杠被剔除 → AB
+		{"A\\B", true},    // 反斜杠同理
+		{"AB.", true},     // 尾随点被系统吞掉
+		{"AB ", true},     // 尾随空格同理
+		{"ABC", true},     // 大小写不同
+		{"A:B", true},     // 冒号被剔除
+		{"AC", false},     // 真的不同
+		{"", false},       // 空名
+		{"AB (2)", false}, // 去重后缀是独立的名字
+	}
+	for _, c := range cases {
+		if got := roleNameTaken(root, c.name, ""); got != c.want {
+			t.Fatalf("roleNameTaken(%q)=%v，期望 %v", c.name, got, c.want)
+		}
+	}
+}
+
+// sanitizeRoleDirName 的几处「不处理就会静默撞车」的边界。
+func TestSanitizeRoleDirName(t *testing.T) {
+	cases := []struct{ in, want string }{
+		{"医生", "医生"},
+		{" 医生 ", "医生"},
+		{"A/B", "AB"},
+		{"医生.", "医生"},
+		{"医生 ", "医生"},
+		{"CON", "_CON"}, // Windows 保留名
+		{"con.txt", "_con.txt"},
+		{"COM1", "_COM1"},
+		{"", "督休专员"},
+		{"...", "督休专员"},
+	}
+	for _, c := range cases {
+		if got := sanitizeRoleDirName(c.in); got != c.want {
+			t.Fatalf("sanitizeRoleDirName(%q)=%q，期望 %q", c.in, got, c.want)
+		}
+	}
+	// 超长名字截到 60 个字符（目录名上限 255 字节，中文按 3 字节算）
+	long := ""
+	for i := 0; i < 80; i++ {
+		long += "长"
+	}
+	if n := len([]rune(sanitizeRoleDirName(long))); n != 60 {
+		t.Fatalf("超长名字应截到 60 字符，实际 %d", n)
+	}
+}
+
+// scanRoleNames：只读显示名，且**不碰立绘 / 预览图**。
 //
 // 为什么这条要单测：查重名原本走 scanRoles，而 scanRoles 会给每个专员生成
 // 缩略图的 data URL（17 个内置专员约 3.5 MB 图片要读一遍再 base64 编码）。
@@ -65,24 +128,24 @@ func TestRoleNameTakenBasics(t *testing.T) {
 func TestScanRoleNamesLightweight(t *testing.T) {
 	root := t.TempDir()
 	// 目录里放一个**坏掉的**立绘文件：真去读图就会出错，
-	// 只读 role.json 的路径不该被它影响。
+	// 只读 meta.json 的路径不该被它影响。
 	writeRoleDir(t, root, "甲", map[string]any{
-		"key": "role_a", "name": "甲", "enabled": true, "image": "figure.webp",
+		"name": "甲", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "not-an-image"})
 	writeRoleDir(t, root, "乙", map[string]any{
-		"key": "role_b", "name": "乙", "enabled": true, "image": "figure.webp",
+		"name": "乙", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "not-an-image"})
 
-	entries := scanRoleNames(root)
-	if len(entries) != 2 {
-		t.Fatalf("应扫到 2 条，实际 %d 条", len(entries))
+	names := scanRoleNames(root)
+	if len(names) != 2 {
+		t.Fatalf("应扫到 2 条，实际 %d 条", len(names))
 	}
-	seen := map[string]string{}
-	for _, e := range entries {
-		seen[e.Key] = e.Name
+	seen := map[string]bool{}
+	for _, n := range names {
+		seen[n] = true
 	}
-	if seen["role_a"] != "甲" || seen["role_b"] != "乙" {
-		t.Fatalf("key → 显示名 映射不对：%v", seen)
+	if !seen["甲"] || !seen["乙"] {
+		t.Fatalf("显示名不对：%v", names)
 	}
 }
 
@@ -90,7 +153,7 @@ func TestScanRoleNamesLightweight(t *testing.T) {
 func TestUniqueRoleNameFallsBack(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "医生", map[string]any{
-		"key": "role_doctor", "name": "医生", "enabled": true, "image": "figure.webp",
+		"name": "医生", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 
 	if got := uniqueRoleName(root, "教练", ""); got != "教练" {
@@ -99,36 +162,36 @@ func TestUniqueRoleNameFallsBack(t *testing.T) {
 	if got := uniqueRoleName(root, "医生", ""); got != "医生 (2)" {
 		t.Fatalf("重名应退让成「医生 (2)」：%q", got)
 	}
-	// 自己就叫「医生」时（迁移路径：角色已在磁盘上）不能把自己算进去
-	if got := uniqueRoleName(root, "医生", "role_doctor"); got != "医生" {
+	// 自己就叫「医生」时不能把自己算进去
+	if got := uniqueRoleName(root, "医生", "医生"); got != "医生" {
 		t.Fatalf("排除自己时不该退让：%q", got)
 	}
 	// 连着占两位 → 退让到 (3)
 	writeRoleDir(t, root, "医生 (2)", map[string]any{
-		"key": "role_d2", "name": "医生 (2)", "enabled": true, "image": "figure.webp",
+		"name": "医生 (2)", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 	if got := uniqueRoleName(root, "医生", ""); got != "医生 (3)" {
 		t.Fatalf("应退让到「医生 (3)」：%q", got)
 	}
 }
 
-// SaveRole 遇到重名 → 返回 false，且**零副作用**：目录没改名、role.json 没被改写。
+// SaveRole 遇到重名 → 返回 false，且**零副作用**：目录没改名、meta.json 没被改写。
 //
-// 零副作用很重要：拒绝发生在目录改名之前，所以磁盘状态完全不变 ——
+// 零副作用很重要：拒绝发生在写盘之前，所以磁盘状态完全不变 ——
 // 用户换个名字重试即可，不会留下「名字改了但目录没改」的半成品。
 func TestSaveRoleRejectsDuplicateName(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "医生", map[string]any{
-		"key": "role_doctor", "name": "医生", "enabled": true, "image": "figure.webp",
+		"name": "医生", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 	writeRoleDir(t, root, "学姐", map[string]any{
-		"key": "role_mentor", "name": "学姐", "enabled": true, "image": "figure.webp",
+		"name": "学姐", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 
 	a := &App{rolesRoot: root}
 
 	// 学姐改成「医生」→ 拒绝
-	if a.SaveRole("role_mentor", map[string]any{"name": "医生"}) {
+	if a.SaveRole("学姐", map[string]any{"name": "医生"}) {
 		t.Fatal("重名必须被拒绝（SaveRole 应返回 false）")
 	}
 	// 零副作用：目录名没变
@@ -138,22 +201,60 @@ func TestSaveRoleRejectsDuplicateName(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(root, "医生 (2)")); err == nil {
 		t.Fatal("被拒后不该建出新目录")
 	}
-	// role.json 也没被改写
-	cfg, ok := readRoleFile(root, "role_mentor")
+	cfg, ok := readRoleFile(root, "学姐")
 	if !ok || cfg.Name != "学姐" {
 		t.Fatalf("被拒后显示名不该变：%q ok=%v", cfg.Name, ok)
 	}
 
 	// 改成没被占用的名字 → 放行，且目录跟着改名
-	if !a.SaveRole("role_mentor", map[string]any{"name": "学姐2"}) {
+	if !a.SaveRole("学姐", map[string]any{"name": "学姐2"}) {
 		t.Fatal("不重名应放行")
 	}
 	if _, err := os.Stat(filepath.Join(root, "学姐2")); err != nil {
 		t.Fatalf("改名后目录应跟着走：%v", err)
 	}
-	cfg, _ = readRoleFile(root, "role_mentor")
+	if _, err := os.Stat(filepath.Join(root, "学姐")); err == nil {
+		t.Fatal("改名后旧目录不该还在")
+	}
+	cfg, _ = readRoleFile(root, "学姐2")
 	if cfg.Name != "学姐2" {
 		t.Fatalf("改名后显示名应更新：%q", cfg.Name)
+	}
+}
+
+// 改名后立绘不能丢：这是「改名 = 换身份」最容易踩的坑 ——
+// 按新名反查不到旧目录会新建空壳，原来的立绘就被丢在旧目录里。
+func TestSaveRoleRenameKeepsFigure(t *testing.T) {
+	root := t.TempDir()
+	writeRoleDir(t, root, "医生", map[string]any{
+		"name": "医生", "enabled": true, "image": "figure.png",
+	}, map[string]string{"figure.png": "doctor-bytes"})
+
+	a := &App{rolesRoot: root}
+	if !a.SaveRole("医生", map[string]any{"name": "值班医生"}) {
+		t.Fatal("改名应成功")
+	}
+	dir, ok := resolveRoleDir(root, "值班医生")
+	if !ok {
+		t.Fatal("改名后应能按新名反查")
+	}
+	if filepath.Base(dir) != "值班医生" {
+		t.Fatalf("目录名应跟着改：%q", filepath.Base(dir))
+	}
+	b, err := os.ReadFile(filepath.Join(dir, "figure.png"))
+	if err != nil {
+		t.Fatalf("改名后立绘不该丢：%v", err)
+	}
+	if string(b) != "doctor-bytes" {
+		t.Fatalf("立绘内容被改了：%q", b)
+	}
+	// 旧目录不能留
+	if _, err := os.Stat(filepath.Join(root, "医生")); err == nil {
+		t.Fatal("改名后旧目录不该还在")
+	}
+	// 扫描结果里也只有一个人
+	if roles := scanRoles(root); len(roles) != 1 || roles[0].Name != "值班医生" {
+		t.Fatalf("扫描结果应只有「值班医生」，实际 %v", roleNames(roles))
 	}
 }
 
@@ -161,15 +262,14 @@ func TestSaveRoleRejectsDuplicateName(t *testing.T) {
 func TestSaveRoleAllowsUnchangedName(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "医生", map[string]any{
-		"key": "role_doctor", "name": "医生", "enabled": true, "image": "figure.webp",
+		"name": "医生", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 
 	a := &App{rolesRoot: root}
-	if !a.SaveRole("role_doctor", map[string]any{"name": "医生"}) {
+	if !a.SaveRole("医生", map[string]any{"name": "医生"}) {
 		t.Fatal("提交原名应放行（不能被自己的旧名挡住）")
 	}
-	// 大小写不同也算同一个名字 → 允许（自己）
-	if !a.SaveRole("role_doctor", map[string]any{"name": "医生"}) {
+	if !a.SaveRole("医生", map[string]any{"name": "医生"}) {
 		t.Fatal("再次提交同名应放行")
 	}
 }
@@ -181,52 +281,22 @@ func TestCreateRoleDirDisplayNameUnique(t *testing.T) {
 	src := writeImgSrc(t, t.TempDir(), "我的图.png", "bytes-a")
 	src2 := writeImgSrc(t, t.TempDir(), "另一张.png", "bytes-b")
 
-	k1 := createRoleDir(root, "我的图", src)
-	k2 := createRoleDir(root, "我的图", src2)
-	if k1 == "" || k2 == "" {
-		t.Fatalf("导入应成功：k1=%q k2=%q", k1, k2)
+	n1 := createRoleDir(root, "我的图", src)
+	n2 := createRoleDir(root, "我的图", src2)
+	if n1 == "" || n2 == "" {
+		t.Fatalf("导入应成功：n1=%q n2=%q", n1, n2)
 	}
-	c1, _ := readRoleFile(root, k1)
-	c2, _ := readRoleFile(root, k2)
+	c1, _ := readRoleFile(root, n1)
+	c2, _ := readRoleFile(root, n2)
 	if c1.Name != "我的图" {
 		t.Fatalf("第一个应叫「我的图」：%q", c1.Name)
 	}
 	if c2.Name != "我的图 (2)" {
 		t.Fatalf("第二个应自动退让成「我的图 (2)」：%q", c2.Name)
 	}
-	// 显示名与目录名一致（目录名 = 显示名的新布局）
-	d2, _ := resolveRoleDir(root, k2)
+	// 目录名与名字一致
+	d2, _ := resolveRoleDir(root, n2)
 	if filepath.Base(d2) != "我的图 (2)" {
-		t.Fatalf("目录名应与显示名一致：%q", filepath.Base(d2))
-	}
-}
-
-// 「同名」与「同图」是两个正交维度：
-// 同一张图导入两次 → key 不同（uniqueRoleKey 兜底）、显示名也不同（自动退让）；
-// 不同图同名导入 → 显示名不同、key 本来就不同（摘要不同）。
-//
-// 这条用例把「两道防线互补」钉死：名称唯一性检查**不能**替代 key 唯一化。
-func TestSameImageAndSameNameAreIndependent(t *testing.T) {
-	root := t.TempDir()
-	src := writeImgSrc(t, t.TempDir(), "我的图.png", "same-bytes")
-
-	// 同图导入两次
-	k1 := createRoleDir(root, "我的图", src)
-	k2 := createRoleDir(root, "我的图", src)
-	if k1 == k2 {
-		t.Fatalf("同图两次必须给不同 key：%q", k1)
-	}
-	c1, _ := readRoleFile(root, k1)
-	c2, _ := readRoleFile(root, k2)
-	if c1.Name == c2.Name {
-		t.Fatalf("同图两次的显示名也应唯一：%q == %q", c1.Name, c2.Name)
-	}
-	// 显示名唯一 → roleNameTaken 必须能查到对方
-	if !roleNameTaken(root, c2.Name, "") {
-		t.Fatalf("「%s」应被判定为已占用", c2.Name)
-	}
-	// 排除自己时不误报
-	if roleNameTaken(root, c2.Name, k2) {
-		t.Fatalf("排除自己时「%s」不该算占用", c2.Name)
+		t.Fatalf("目录名应与名字一致：%q", filepath.Base(d2))
 	}
 }

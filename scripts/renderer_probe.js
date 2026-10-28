@@ -173,7 +173,7 @@ async function dragRoleTile(page) {
     page.evaluate(() =>
       Array.prototype.map.call(
         document.querySelectorAll("#sup-gallery .role-item"),
-        (el) => el.dataset.key,
+        (el) => el.dataset.name,
       ),
     );
   const before = await readOrder();
@@ -230,9 +230,9 @@ async function dupNameProbe(page) {
       return c ? c.textContent.trim() : "";
     };
     return {
-      aKey: tiles[0].dataset.key,
+      aKey: tiles[0].dataset.name,
       aName: capOf(tiles[0]),
-      bKey: tiles[1].dataset.key,
+      bKey: tiles[1].dataset.name,
       bName: capOf(tiles[1])
     };
   });
@@ -292,7 +292,7 @@ async function dupNameProbe(page) {
   const diskNames = await page.evaluate(async () => {
     const roles = await window.api.listSupervisorRoles();
     const out = {};
-    for (const r of roles) out[r.key] = r.name;
+    for (const r of roles) out[r.name] = r.name;
     return out;
   });
 
@@ -525,7 +525,7 @@ const PROBE_SETTINGS = `(function () {
     supGalleryAdd: cnt('#sup-gallery .role-add'),
     supGalleryNames: Array.prototype.map.call(
       document.querySelectorAll('#sup-gallery .role-item'),
-      function (b) { return b.dataset.key || ''; }
+      function (b) { return b.dataset.name || ''; }
     ).join(','),
     supMsgRole: txt('sup-msg-role'),
     supMsgItems: cnt('.msg-panel[data-kind="sup"] .msg-list .msg-item'),
@@ -681,6 +681,14 @@ const PROBE_BREAK = `(function () {
     appBlRadius: app ? getComputedStyle(app).borderBottomLeftRadius : null,
     appBrRadius: app ? getComputedStyle(app).borderBottomRightRadius : null,
     badgeHidden: document.getElementById('preview-badge').classList.contains('hidden'),
+    // 立绘几何：break.js 把 meta.json 的 geom 写成 documentElement 上的三个 CSS 变量。
+    // 内置专员统一「高度 80 / 距左 5 / 距底 0」（2026-10-28 用户要求），这里采回来
+    // 就能直接断言「打包出去的那份 meta.json 真的按 80/5 渲染」，而不是只看截图。
+    figVars: [
+      cs.getPropertyValue('--fig-size').trim(),
+      cs.getPropertyValue('--fig-x').trim(),
+      cs.getPropertyValue('--fig-y').trim(),
+    ],
     supMetrics: supMetrics,
     figureVisible: (typeof figureVisibleProbe === 'function' ? figureVisibleProbe() : null),
     contentInline: content ? {
@@ -1014,6 +1022,32 @@ async function run() {
   metrics.settings.consoleErrors = sErr;
   await shot(set, "settings");
   console.log("[probe] settings:", JSON.stringify(metrics.settings));
+
+  // ---- 0a. 预览被拒时的提示 ----
+  // 真实提醒窗口（休息 / 外卖）在场时后端拒弹预览并返回 "busy"，页面必须给一句提示，
+  // 否则用户点了「预览」什么都没发生，会以为卡住了。
+  // 无头环境里没有真实休息窗口，这里把 api.previewBreak 临时换成返回 "busy" 的桩，
+  // 只验前端这一条反馈链路（后端真的会返回 busy 由 smoke_server.py 钉住）。
+  metrics.previewBusyToast = await set.evaluate(async function () {
+    var btn = document.getElementById("short-preview");
+    var t = document.getElementById("toast");
+    if (!btn || !t) return { err: "缺少预览按钮或 toast 节点" };
+    var orig = window.api.previewBreak;
+    window.api.previewBreak = function () { return Promise.resolve("busy"); };
+    t.classList.add("hidden");
+    btn.click();
+    await new Promise(function (r) { setTimeout(r, 150); });
+    var out = {
+      text: t.textContent,
+      shown: !t.classList.contains("hidden"),
+      stubRestored: false,
+    };
+    window.api.previewBreak = orig;
+    out.stubRestored = window.api.previewBreak === orig;
+    t.classList.add("hidden");
+    return out;
+  });
+  console.log("[probe] previewBusyToast:", JSON.stringify(metrics.previewBusyToast));
 
   // ---- 0a. 侧栏状态格超长名称压力：注入 20 字名字，验证「缩字号 → 中间省略」链路。
   //      三条底线：不换行、不裁半截字（scrollWidth 不超 clientWidth）、不溢出卡片。

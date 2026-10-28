@@ -178,75 +178,72 @@ func (a *App) BuiltinMsgDefaults() map[string]any {
 
 // ---------- 督休专员目录（增删改） ----------
 
-// SaveRole 保存某个督休专员的 role.json（改名 / 启停 / 尺寸位置 / 台词编辑）。
+// SaveRole 保存某个督休专员的 meta.json（改名 / 启停 / 尺寸位置 / 台词编辑）。
 // 只覆盖 patch 里带到的字段，立绘文件名等读取侧字段保持不动。
 //
-// 名称变化时把目录改名到新名称（与「目录名 = 专员名称」的新布局一致）：key 不变，
-// 只是给人看的目录名跟着名称走，写入时仍按 key 反查真实目录。
+// name 是**改名前**的专员名（就是身份）。名称变了要做两件事，顺序不能反：
+//   - 先落盘 meta.json（名字是权威，之后按新名反查就找得到这个目录）；
+//   - 再让目录名跟上（renameRoleDir）。目录改名可能被句柄占用而失败，那只是
+//     「目录名难看」，功能照常 —— 反查一律读 meta.json 的 name，不靠目录名拼路径。
+//     也正因为如此，这里**不能**走 writeRoleFile：改名后按新名反查不到旧目录，
+//     它会新建一个空壳，把原来的立绘丢在旧目录里。
 //
-// **重名直接拒绝**：显示名重名会让「key ↔ 目录 ↔ 显示名」三者失配 —— 目录名靠
-// uniqueRoleDir 去重成「X (2)」，而 role.json 里的显示名还是「X」，于是同一个名字
-// 在画廊 / 台词气泡 / 提醒面板标题里指向两个不同的人。设置页会在提交前先查一遍并
+// **重名直接拒绝**：名字就是身份，重名会让 fixedRole / order / 台词游标指向两个人。
+// 判据是 roleIdentity（目录名口径），见 roleNameTaken。设置页会在提交前先查一遍并
 // 要求用户重新输入；这里再兜一层底，防止有别的入口绕过检查（返回 false，
 // 前端据此提示「名称已存在」并把输入框留在对话框里）。
-func (a *App) SaveRole(key string, patch map[string]any) bool {
-	if !validRoleKey(key) {
-		log.Printf("[role] 非法督休专员 key：%q", key)
+func (a *App) SaveRole(name string, patch map[string]any) bool {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		log.Printf("[role] 空的督休专员名")
 		return false
 	}
-	dir, ok := resolveRoleDir(a.rolesRoot, key)
+	dir, ok := resolveRoleDir(a.rolesRoot, name)
 	if !ok {
-		log.Printf("[role] 督休专员不存在或 role.json 读不出来：%s", key)
+		log.Printf("[role] 督休专员不存在或 meta.json 读不出来：%s", name)
 		return false
 	}
-	base, _ := readRoleFile(a.rolesRoot, key)
+	base, ok := readRoleFile(a.rolesRoot, name)
+	if !ok {
+		return false
+	}
 	next := applyRolePatch(base, patch)
 	if next.Name == "" {
-		next.Name = key
+		next.Name = name
 	}
-	next.Key = key
-	// 名称变了 → 先查重名（排除自己），重了直接拒绝，不动目录也不写 role.json
-	if next.Name != base.Name && roleNameTaken(a.rolesRoot, next.Name, key) {
+	// 名称变了 → 先查重名（排除自己），重了直接拒绝，不动目录也不写 meta.json
+	if next.Name != base.Name && roleNameTaken(a.rolesRoot, next.Name, base.Name) {
 		log.Printf("[role] 名称重复，拒绝保存：%s → %s", base.Name, next.Name)
 		return false
 	}
-	// 名称变了 → 把目录改名到新名称（去重后）
+	if err := writeRoleFileAt(dir, next); err != nil {
+		log.Printf("[role] 写入失败 %s: %v", next.Name, err)
+		return false
+	}
 	if next.Name != base.Name {
-		newBase := sanitizeRoleDirName(next.Name)
-		if filepath.Base(dir) != newBase {
-			newDir := uniqueRoleDir(a.rolesRoot, newBase, dir)
-			if err := os.Rename(dir, newDir); err != nil {
-				log.Printf("[role] 重命名督休专员目录失败 %s→%s: %v", dir, newDir, err)
-				return false
-			}
-			dir = newDir
-		}
-	}
-	if err := writeRoleFile(a.rolesRoot, key, next); err != nil {
-		log.Printf("[role] 写入失败 %s: %v", key, err)
-		return false
+		renameRoleDir(a.rolesRoot, dir, next.Name)
 	}
 	return true
 }
 
-// RemoveRole 删除督休专员 = 整个督休专员子目录一并删除
+// RemoveRole 删除督休专员 = 整个督休专员子目录一并删除（name 是专员名）
 //
-// 删完顺手把配置里指向它的两处清掉：`supervisor.fixedKey`（固定模式会指向一个不存在的
-// key → 休息窗口取不到人）与 `supervisor.order`（顺序表里的陈旧 key：显示上无害，
-// 但会让配置随删随涨，且用户重新导入同一张图时它会「回到原来的位置」）。
+// 删完顺手把配置里指向它的两处清掉：`supervisor.fixedRole`（固定模式会指向一个不存在的
+// 名字 → 休息窗口取不到人）与 `supervisor.order`（顺序表里的陈旧名字：显示上无害，
+// 但会让配置随删随涨）。
 // 设置页也会清一遍（它手里有 S，清完再 autoSave），两边一致才不会互相覆盖。
-func (a *App) RemoveRole(key string) bool {
-	if !removeRoleDir(a.rolesRoot, key) {
-		log.Printf("[role] 删除失败：%s", key)
+func (a *App) RemoveRole(name string) bool {
+	if !removeRoleDir(a.rolesRoot, name) {
+		log.Printf("[role] 删除失败：%s", name)
 		return false
 	}
-	a.clearRoleFromSettings(key)
+	a.clearRoleFromSettings(name)
 	return true
 }
 
-// clearRoleFromSettings 把已删除的督休专员从配置里摘干净（fixedKey / order）。
+// clearRoleFromSettings 把已删除的督休专员从配置里摘干净（fixedRole / order）。
 // 拿不到配置就什么都不做（配置还没加载时删目录本来也删不成）。
-func (a *App) clearRoleFromSettings(key string) {
+func (a *App) clearRoleFromSettings(name string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.cfg == nil {
@@ -258,14 +255,14 @@ func (a *App) clearRoleFromSettings(key string) {
 		return
 	}
 	changed := false
-	if s, _ := sup["fixedKey"].(string); s == key {
-		sup["fixedKey"] = ""
+	if s, _ := sup["fixedRole"].(string); s != "" && strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(name)) {
+		sup["fixedRole"] = ""
 		changed = true
 	}
 	if order, ok := sup["order"].([]any); ok {
 		kept := make([]any, 0, len(order))
 		for _, v := range order {
-			if s, _ := v.(string); s == key {
+			if s, _ := v.(string); strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(name)) {
 				changed = true
 				continue
 			}
@@ -310,30 +307,30 @@ func (a *App) PickSupervisorImage() map[string]any {
 		return nil
 	}
 	src := r.path
-	name := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
-	key := createRoleDir(a.rolesRoot, name, src)
-	if key == "" {
+	defaultName := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
+	saved := createRoleDir(a.rolesRoot, defaultName, src)
+	if saved == "" {
 		log.Printf("[role] 创建督休专员目录失败：%s", src)
 		return nil
 	}
-	// 返回**文件名原样**（不是去重后的落盘名）：这个值是命名框的预填内容，
-	// 用户提交的就是它 —— 查重规则必须作用在「用户提交的名字」上。
-	// 若这里返回去重后的「名字 (2)」，用户点确定就直接存了个带序号的怪名字，
-	// 而「重名要拒绝并要求重新输入」这条规则就几乎走不到。
-	//
-	// 落盘那一刻 createRoleDir 已用 uniqueRoleName 去过重，所以磁盘上此刻的名字是唯一的；
+	// 返回两个名字，别混：
+	//   - name  = 文件名原样，是命名框的**预填**内容（用户提交的就是它 —— 查重必须
+	//             作用在用户输入上；若预填「名字 (2)」，用户点确定就直接存了个带序号的
+	//             怪名字，而「重名要拒绝」这条规则几乎走不到）；
+	//   - saved = 磁盘上此刻真正落盘的名字（createRoleDir 已用 uniqueRoleName 去过重）。
 	// 用户改成一个被别人占用的名字时，SaveRole 会拒绝（返回 false），
 	// 设置页把错误留在命名框里、要求重新输入。
-	return map[string]any{"key": key, "name": name}
+	return map[string]any{"name": defaultName, "saved": saved}
 }
 
-// ReplaceRoleImage 修改某个已有督休专员的立绘图片（选图 → 覆盖 figure / preview → 回写 role.json）。
+// ReplaceRoleImage 修改某个已有督休专员的立绘图片（选图 → 覆盖 figure / preview → 回写 meta.json）。
 //
-// 与 PickSupervisorImage（新建督休专员）不同：这里督休专员 key 保持不变、只换图，名字 / 启停 /
-// 几何 / 台词都保留。返回是否成功（取消 / 无头环境 / 失败都返回 false，设置页据此静默）。
-func (a *App) ReplaceRoleImage(key string) bool {
-	if !validRoleKey(key) {
-		log.Printf("[role] 非法督休专员 key：%q", key)
+// 与 PickSupervisorImage（新建督休专员）不同：这里专员名（= 身份）不变、只换图，
+// 名字 / 启停 / 几何 / 台词都保留。返回是否成功（取消 / 无头环境 / 失败都返回 false，
+// 设置页据此静默）。
+func (a *App) ReplaceRoleImage(name string) bool {
+	if strings.TrimSpace(name) == "" {
+		log.Printf("[role] 空的督休专员名")
 		return false
 	}
 	if !a.dialogAvailable() {
@@ -350,7 +347,7 @@ func (a *App) ReplaceRoleImage(key string) bool {
 		logDialogErr("选择立绘", r.err)
 		return false
 	}
-	return replaceRoleImage(a.rolesRoot, key, r.path)
+	return replaceRoleImage(a.rolesRoot, name, r.path)
 }
 
 // ---------- 关于页 / 更新 / 窗口 ----------

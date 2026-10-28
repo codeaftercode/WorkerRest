@@ -1,12 +1,11 @@
 {
-  "key": "supervisor_default",
   "name": "眼镜主管",
   "enabled": true,
   "image": "figure.webp",
   "preview": "preview.webp",
   "geom": {
     "sizePct": 80,
-    "posXPct": 4,
+    "posXPct": 5,
     "posYPct": 0,
     "flip": false
   },
@@ -14,27 +13,27 @@
     "order": "random",
     "items": [
       {
-        "id": "builtin-cmd-supervisor_default-0",
+        "id": "1",
         "text": "我不管你手头在赶什么——现在，离开工位。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-supervisor_default-1",
+        "id": "2",
         "text": "这是公司的休息制度，也是我的命令。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-supervisor_default-2",
+        "id": "3",
         "text": "把椅子转过去，五分钟后我回来检查。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-supervisor_default-3",
+        "id": "4",
         "text": "工位不是你的床，站起来活动活动。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-supervisor_default-4",
+        "id": "5",
         "text": "我这副眼镜只看报表，不看过劳的人。",
         "enabled": true
       }

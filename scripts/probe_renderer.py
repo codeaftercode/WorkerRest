@@ -31,13 +31,13 @@ ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶�
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
 
 
-def role_dir(root, key):
-    """在 supervisors/ 下按 key 反查某个督休专员的目录（目录名是专员名称，不固定）。"""
+def role_dir(root, name):
+    """在 supervisors/ 下按专员名反查目录（目录名是名字的投影，可能被清洗过）。"""
     sup = os.path.join(root, "supervisors")
     if not os.path.isdir(sup):
         return None
-    for name in os.listdir(sup):
-        p = os.path.join(sup, name, "role.json")
+    for dn in os.listdir(sup):
+        p = os.path.join(sup, dn, "meta.json")
         if not os.path.isfile(p):
             continue
         try:
@@ -45,9 +45,12 @@ def role_dir(root, key):
                 d = json.load(f)
         except Exception:
             continue
-        if d.get("key") == key:
-            return os.path.join(sup, name)
+        nm = str((d or {}).get("name") or dn).strip() or dn
+        if nm == name:
+            return os.path.join(sup, dn)
     return None
+
+
 PROBE = os.path.join(HERE, "renderer_probe.js")
 TEMP = os.environ.get("TEMP", ROOT)
 OUT = os.path.join(TEMP, "wr_go_probe")
@@ -56,42 +59,40 @@ LOG = os.path.join(TEMP, "wr_go_probe_server.log")
 # 隔离副本：探针也绝不能碰用户的真实配置（加载路径会回写 installId / 预置条目）
 ISO = os.path.join(TEMP, "wr_probe_iso")
 
-# 内置督休专员的固定出场顺序（与 历史源码/supervisor.ts 的 BUILTIN_ROLE_META 同源）。
-# 画廊磁贴顺序与「顺序轮换」都按它来 —— 写成按目录名字典序就是回归。
-# 注意：这是**顺序**清单，不是「个数」清单 —— 专员的实际个数从磁盘现算（见 scan_role_keys）。
+
+# 内置督休专员的固定出场顺序（与 Go 侧 defaultRoleOrder 同源）
+# 注意：这是**顺序**清单，不是「个数」清单 —— 专员的实际个数从磁盘现算（见 scan_role_names）。
 BUILTIN_ROLE_ORDER = [
-    "supervisor_default", "role_mentor", "role_doctor",
-    "role_coach", "role_shopkeeper",
-    "role_emperor", "role_hacker", "role_pilot", "role_judge",
-    "role_economist", "role_magician", "role_painter", "role_warrior",
-    "role_panda", "role_lieutenant", "role_girlfriend", "role_frenemy",
+    "眼镜主管", "温柔学姐", "医生", "体能教练",
+    "始皇帝", "神秘黑客", "飞行员", "法官",
+    "经济学家", "魔法师", "画家", "战士",
+    "熊猫侠客", "中尉军官", "野蛮女友", "毒舌损友",
+    "霸道总裁",
 ]
 
 
 def _valid_role_dir(name):
-    """与 Go 侧 validRoleKey 同口径（目录名层面的合法性）。"""
+    """与 Go 侧 validRoleDirName 同口径（目录名层面的合法性）。"""
     if not name or name == ".." or name.startswith("."):
         return False
     return not any(ch in name for ch in '/\\:*?"<>|')
 
 
-def scan_role_keys(root):
-    """按 Go 侧 scanRoles 的口径列出**磁盘上实际存在**的督休专员 key。
+def scan_role_names(root):
+    """按 Go 侧 scanRoles 的口径列出**磁盘上实际存在**的督休专员名。
 
-    顺序：内置清单顺序在前（只含磁盘上确实存在的），其余按目录名排序。
-    写死「内置 17 个」是错的 —— 用户删掉某个内置专员（目录整个没了）后，
+    身份就是名字（meta.json 里没有 key 字段），目录名是它的文件系统投影。
+    顺序：自带清单顺序在前（只含磁盘上确实存在的），其余按目录名排序。
+    写死「内置 17 个」是错的 —— 用户在设置页删掉某个专员后目录真的没了，
     断言会必然误报红。这里从磁盘现算，删一个少一个都不误报。
-
-    Go 侧 scanRoles 读的是 rolesRoot（= 模块根的 supervisors/），探针的
-    无头服务也是从这个目录扫的，两边同源。
     """
     sup = os.path.join(root, "supervisors")
     recs = []
     if os.path.isdir(sup):
-        for name in sorted(os.listdir(sup)):
-            if not _valid_role_dir(name):
+        for dn in sorted(os.listdir(sup)):
+            if not _valid_role_dir(dn):
                 continue
-            p = os.path.join(sup, name, "role.json")
+            p = os.path.join(sup, dn, "meta.json")
             if not os.path.isfile(p):
                 continue
             try:
@@ -99,16 +100,16 @@ def scan_role_keys(root):
                     d = json.load(f)
             except Exception:
                 continue
-            key = str((d or {}).get("key") or name).strip() or name
-            recs.append((key, name))
+            nm = str((d or {}).get("name") or dn).strip() or dn
+            recs.append((nm, dn))
     out, used = [], set()
-    for bk in BUILTIN_ROLE_ORDER:
-        for rk, _dn in recs:
-            if rk == bk and rk not in used:
-                out.append(rk)
-                used.add(rk)
+    for bn in BUILTIN_ROLE_ORDER:
+        for rn, _dn in recs:
+            if rn == bn and rn not in used:
+                out.append(rn)
+                used.add(rn)
                 break
-    out += [rk for rk, _dn in recs if rk not in used]
+    out += [rn for rn, _dn in recs if rn not in used]
     return out
 
 
@@ -126,8 +127,8 @@ def expected_order(disk_keys, saved_order):
 
 
 # 期望的督休专员数 / 顺序：从磁盘现算（内置清单增删不用再改断言）
-DISK_ROLE_KEYS = scan_role_keys(ROOT)
-EXPECTED_ROLE_COUNT = len(DISK_ROLE_KEYS)
+DISK_ROLE_NAMES = scan_role_names(ROOT)
+EXPECTED_ROLE_COUNT = len(DISK_ROLE_NAMES)
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -303,10 +304,10 @@ def main():
         for it in (rm.get("items") or []):
             if it.get("id") == rm.get("fixedId"):
                 want_msg = it.get("text") or ""
-        fixed_key = (cfg.get("supervisor") or {}).get("fixedKey")
+        fixed_key = (cfg.get("supervisor") or {}).get("fixedRole")
         want_role = ""
         if fixed_key:
-            rp = os.path.join(role_dir(ROOT, fixed_key) or "", "role.json")
+            rp = os.path.join(role_dir(ROOT, fixed_key) or "", "meta.json")
             if os.path.isfile(rp):
                 want_role = json.load(open(rp, encoding="utf-8")).get("name") or ""
         print("   （对齐基准：settings=%s role=%s）" % (iso_settings if cfg else "未找到", fixed_key or "-"))
@@ -327,6 +328,13 @@ def main():
         check(stg.get("themeChecked") == "light", "主题默认选中「浅色」", stg.get("themeChecked"))
         check(stg.get("themeSet"), "设置页已应用主题（data-theme 已写入）", stg.get("themeSet"))
         check((stg.get("navCount") or 0) >= 6, "侧栏页签渲染出来（>=6 个）", stg.get("navCount"))
+        # 预览被后端拒弹（真实提醒窗口正在显示）时的反馈：点了不能毫无动静
+        pbt = m.get("previewBusyToast") or {}
+        check(not pbt.get("err"), "预览拒弹提示：预览按钮与 toast 节点都在", pbt.get("err"))
+        check(pbt.get("shown") is True, "预览被拒时弹出提示条", pbt.get("shown"))
+        check("无法预览" in (pbt.get("text") or ""), "提示文案说明「暂时无法预览」", pbt.get("text"))
+        check(pbt.get("stubRestored") is True, "探针用完已还原 api.previewBreak（不污染后续断言）",
+              pbt.get("stubRestored"))
         check((stg.get("tabCount") or 0) >= 6, "各页签内容区都在 DOM 里", stg.get("tabCount"))
         check((stg.get("supGallery") or 0) == EXPECTED_ROLE_COUNT,
               "督休专员画廊渲染出 %d 个督休专员（ListRoles → DOM）" % EXPECTED_ROLE_COUNT,
@@ -337,15 +345,15 @@ def main():
         # 另一个专员」这类错位，比集合才抓得住。个数本身从磁盘现算 —— 用户在应用里
         # 删掉一个内置专员后目录真的没了，写死「17 个」会必然误报红。
         gallery_keys = [k for k in str(stg.get("supGalleryNames") or "").split(",") if k]
-        check(sorted(gallery_keys) == sorted(DISK_ROLE_KEYS),
+        check(sorted(gallery_keys) == sorted(DISK_ROLE_NAMES),
               "画廊磁贴的督休专员集合 == 磁盘上的集合（不多不少）",
-              "%d vs %d" % (len(gallery_keys), len(DISK_ROLE_KEYS)))
+              "%d vs %d" % (len(gallery_keys), len(DISK_ROLE_NAMES)))
         # 画廊顺序：拖过 = 用户保存的 supervisor.order；没拖过 = 内置清单顺序
         # （两者是同一个来源：内置清单顺序就是顺序轮换的出场次序）。
         # 期望顺序从磁盘现算：保存的顺序里可能有已被删掉的专员（key 不在磁盘上），
         # 那部分要被跳过、其余按扫描顺序补到末尾 —— 与 Go 侧 applyRoleOrder 同口径。
         pre_saved = m.get("roleDragPre") or []
-        want_gallery = ",".join(expected_order(DISK_ROLE_KEYS, pre_saved))
+        want_gallery = ",".join(expected_order(DISK_ROLE_NAMES, pre_saved))
         check(str(stg.get("supGalleryNames") or "") == want_gallery,
               "画廊顺序 == 用户保存的顺序（未拖过时 == 内置清单顺序，也是顺序轮换的出场次序）",
               stg.get("supGalleryNames"))
@@ -760,6 +768,11 @@ def main():
                 check(str(b.get("accent", "")).lower() == want_color.lower(),
                       "%s提醒窗口：--accent == 配置外观色" % label, "%s vs %s" % (b.get("accent"), want_color))
             check(b.get("badgeHidden") is True, "%s提醒窗口：真实休息不带预览角标（preview=false）" % label, b.get("badgeHidden"))
+            # 立绘几何：内置专员统一「高度 80 / 距左 5 / 距底 0」（2026-10-28 用户要求）。
+            # 这三个值是 break.js 从 meta.json 的 geom 写到 documentElement 上的，
+            # 所以这一条直接证明「打包出去的那份配置真的按 80/5 渲染」。
+            check(b.get("figVars") == ["80", "5", "0"],
+                  "%s提醒窗口：立绘按 高度 80%% / 距左 5%% / 距底 0 渲染" % label, b.get("figVars"))
 
             # ---- 督休专员版式：游戏对话画面（底部全宽对话框），是 supervisorLayout 的核心 ----
             # 同一个会话，只换窗口尺寸（横 1100x720 / 竖 760x980），两档都应进入对话框

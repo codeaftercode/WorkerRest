@@ -1,11 +1,10 @@
 {
-  "key": "role_emperor",
   "name": "始皇帝",
   "enabled": true,
   "image": "figure.webp",
   "geom": {
     "sizePct": 80,
-    "posXPct": 4,
+    "posXPct": 5,
     "posYPct": 0,
     "flip": false
   },
@@ -13,52 +12,52 @@
     "order": "random",
     "items": [
       {
-        "id": "builtin-cmd-role_emperor-0",
+        "id": "1",
         "text": "朕命你即刻起身，离开这方寸荧屏，舒展筋骨。久坐如囚，气血不畅；若敢抗旨不动，朕便罚你站立一炷香。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-1",
+        "id": "2",
         "text": "你伏案盯屏，目倦神疲，成何体统？朕令你起身远眺片刻，让双目得歇。不得拖延，违者记入起居注。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-2",
+        "id": "3",
         "text": "朕昔日批阅奏章，尚知起身巡视殿前；你不过敲击键盘，岂敢久坐如桩？速速站起，走动数步。钦此。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-3",
+        "id": "4",
         "text": "久坐伤腰，久视伤目，此乃常理。朕命你离座伸臂、转肩、活动颈项，做完再回。若敷衍了事，朕一眼便知。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-4",
+        "id": "5",
         "text": "你以为端坐不动便是勤勉？错矣。朕令你暂离案前，饮一口水，行十余步。身体若垮，万事皆空——此旨不容违抗。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-5",
+        "id": "6",
         "text": "朕统一六国，靠的是令行禁止；你护养身体，也须遵令而行。此刻起身，稍作歇息，莫等朕发怒再动。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-6",
+        "id": "7",
         "text": "屏幕之惑，竟叫你忘了起居之节？朕命你即刻站起，抬头挺胸，缓行片刻。抗旨久坐者，罚下一炷香不得落座。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-7",
+        "id": "8",
         "text": "你的筋骨非铁石所铸，你的双目非烛火可长熬。朕令你起身休息，远望窗外，活动四肢。此乃强令，非与你商议。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-8",
+        "id": "9",
         "text": "朕闻久坐者气血迟滞，恐生疾患。今命你暂歇片刻，舒展腰背，勿使身体困于椅榻之间。违令者，太医署记你一过。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_emperor-9",
+        "id": "10",
         "text": "朕最后再说一遍：起身，走动，稍歇，再回。方寸屏幕误不了江山，却能耗你精神。遵旨而行，不得久坐。",
         "enabled": true
       }

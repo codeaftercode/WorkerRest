@@ -1,13 +1,12 @@
 package main
 
-import "fmt"
+import "strconv"
 
 // 内置提醒内容：与 历史源码/messages.ts 的 builtinKindMessages 逐字同源。
 //
 // 这些只是**种子**数据 —— 设置页首次打开某类面板、或启动时 seedPresetEntries 跑第一次
-// 时把它们种进配置，之后就是普通条目（可改、可禁、可删），删空后不再回补。id 由
-// builtinID 按「builtin-<kind>-<下标>」生成，与 config.ts 的 BUILTIN_PREFIX 规则一致：
-// 固定 id 让升级后仍能对上同一条。
+// 时把它们种进配置，之后就是普通条目（可改、可禁、可删），删空后不再回补。id 是列表内
+// 序号（"1"、"2"…，见 nextSeqID）：本列表内唯一就够，不需要类型前缀。
 
 // builtinShortMessages 短休息：一两分钟就能完成的微休息
 var builtinShortMessages = []string{
@@ -53,17 +52,12 @@ var builtinKindMessages = map[string][]string{
 	"takeout": builtinTakeoutMessages,
 }
 
-// builtinID 预置条目的固定 id（与 config.ts 的 `${BUILTIN_PREFIX}${kind}-${i}` 同构）
-func builtinID(kind string, i int) string {
-	return fmt.Sprintf("builtin-%s-%d", kind, i)
-}
-
 // builtinKindItems 某类提醒的预置提醒内容条目（id 固定、默认启用）
 func builtinKindItems(kind string) []ReminderMessageItem {
 	texts := builtinKindMessages[kind]
 	out := make([]ReminderMessageItem, 0, len(texts))
 	for i, text := range texts {
-		out = append(out, ReminderMessageItem{ID: builtinID(kind, i), Text: text, Enabled: true})
+		out = append(out, ReminderMessageItem{ID: strconv.Itoa(i + 1), Text: text, Enabled: true})
 	}
 	return out
 }

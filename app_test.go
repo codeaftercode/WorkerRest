@@ -9,9 +9,9 @@ import (
 
 // 督休专员会话构建的纯逻辑回归（脱离窗口与 Wails）。
 //
-// 这里钉的是「固定显示」的选人规则：固定显示只看磁贴点选（fixedKey），
-// **不看** role.json 里的单条 enabled —— 复选框只在随机 / 顺序模式下出现，
-// 若固定路径仍拿 enabled 当门槛，随包 role.json 里 enabled=false 的督休专员
+// 这里钉的是「固定显示」的选人规则：固定显示只看磁贴点选（fixedRole），
+// **不看** meta.json 里的单条 enabled —— 复选框只在随机 / 顺序模式下出现，
+// 若固定路径仍拿 enabled 当门槛，随包 meta.json 里 enabled=false 的督休专员
 // 就会出现「立绘列表看得到、休息时不显示」的劈叉（真机发布踩过）。
 
 // newSupTestApp 造一个最小 App，rolesRoot 指向 t.TempDir()
@@ -27,7 +27,7 @@ func newSupTestApp(t *testing.T, cfgJSON string) *App {
 	}
 }
 
-// writeRole 落一个督休专员目录（role.json + 假立绘文件；toDataURL 只要求文件可读）
+// writeRole 落一个督休专员目录（meta.json + 假立绘文件；toDataURL 只要求文件可读）
 func writeRole(t *testing.T, root, key, name string, enabled bool) {
 	t.Helper()
 	dir := filepath.Join(root, key)
@@ -36,7 +36,7 @@ func writeRole(t *testing.T, root, key, name string, enabled bool) {
 	}
 	roleJSON := `{"name":"` + name + `","enabled":` + boolJSON(enabled) +
 		`,"image":"figure.png","geom":{"sizePct":72,"posXPct":4,"posYPct":0,"flip":false}}`
-	if err := os.WriteFile(filepath.Join(dir, "role.json"), []byte(roleJSON), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "meta.json"), []byte(roleJSON), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "figure.png"), []byte("fake-png-bytes"), 0o644); err != nil {
@@ -51,18 +51,18 @@ func boolJSON(b bool) string {
 	return "false"
 }
 
-// 固定显示：role.json 里单条 enabled=false 也要照常出场（立绘列表能看到就得能显示）
+// 固定显示：meta.json 里单条 enabled=false 也要照常出场（立绘列表能看到就得能显示）
 func TestSupervisorFixedSelectionIgnoresPerRoleEnabled(t *testing.T) {
-	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"gaze":true,"selection":"fixed","fixedKey":"sup-a"}}`)
-	writeRole(t, a.rolesRoot, "sup-a", "甲", false)
-	writeRole(t, a.rolesRoot, "sup-b", "乙", true)
+	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"gaze":true,"selection":"fixed","fixedRole":"sup-a"}}`)
+	writeRole(t, a.rolesRoot, "sup-a", "sup-a", false)
+	writeRole(t, a.rolesRoot, "sup-b", "sup-b", true)
 
 	got := a.buildSupervisorSession(false, "")
 	if got == nil {
 		t.Fatal("固定显示指定 enabled=false 的督休专员也应出场，得到 nil")
 	}
-	if got.ImageKey != "sup-a" {
-		t.Fatalf("应选中 sup-a，得到 %q", got.ImageKey)
+	if got.RoleName != "sup-a" {
+		t.Fatalf("应选中 sup-a，得到 %q", got.RoleName)
 	}
 	if got.Image == "" {
 		t.Fatal("立绘 data URL 不应为空")
@@ -71,22 +71,22 @@ func TestSupervisorFixedSelectionIgnoresPerRoleEnabled(t *testing.T) {
 
 // 固定显示：指定的督休专员不存在（已删除）→ 兜底第一个可用督休专员
 func TestSupervisorFixedSelectionFallsBackToFirstUsable(t *testing.T) {
-	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"gaze":true,"selection":"fixed","fixedKey":"sup-gone"}}`)
-	writeRole(t, a.rolesRoot, "sup-a", "甲", false)
+	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"gaze":true,"selection":"fixed","fixedRole":"sup-gone"}}`)
+	writeRole(t, a.rolesRoot, "sup-a", "sup-a", false)
 
 	got := a.buildSupervisorSession(false, "")
 	if got == nil {
-		t.Fatal("fixedKey 失效应兜底到第一个可用督休专员，得到 nil")
+		t.Fatal("fixedRole 失效应兜底到第一个可用督休专员，得到 nil")
 	}
-	if got.ImageKey != "sup-a" {
-		t.Fatalf("应兜底到 sup-a，得到 %q", got.ImageKey)
+	if got.RoleName != "sup-a" {
+		t.Fatalf("应兜底到 sup-a，得到 %q", got.RoleName)
 	}
 }
 
 // 顶层总开关关闭时仍然一律不显示（既有语义，钉住防回归）
 func TestSupervisorTopLevelSwitchStillGates(t *testing.T) {
-	a := newSupTestApp(t, `{"supervisor":{"enabled":false,"gaze":true,"selection":"fixed","fixedKey":"sup-a"}}`)
-	writeRole(t, a.rolesRoot, "sup-a", "甲", true)
+	a := newSupTestApp(t, `{"supervisor":{"enabled":false,"gaze":true,"selection":"fixed","fixedRole":"sup-a"}}`)
+	writeRole(t, a.rolesRoot, "sup-a", "sup-a", true)
 
 	if got := a.buildSupervisorSession(false, ""); got != nil {
 		t.Fatalf("顶层开关关闭时不应构建督休专员会话，得到 %+v", got)
@@ -97,38 +97,38 @@ func TestSupervisorTopLevelSwitchStillGates(t *testing.T) {
 //
 // 真机现象：在立绘库里切换督休专员后点「预览」，偶尔出现的预览窗没有督休专员，
 // 不改任何配置再点一次又能显示。根因是这条链路上的几处「会话 ↔ 窗口」没有绑定：
-//   · 设置页传来过期的 forceKey（列表刚重排 / 刚改名）时，会话构建直接返回 nil；
+//   · 设置页传来过期的 forceName（列表刚重排 / 刚改名）时，会话构建直接返回 nil；
 //   · 首选立绘读不出来时同样直接返回 nil（窗口只剩背景）；
 //   · ShowBreakWindow「有窗口就复用」把上一次会话的页面留下来；
 //   · 上一次会话的窗口迟到一步 WindowClosing，把刚建好的新会话清掉。
 // 下面把可直接验的四条钉住。
 
-// forceKey 未命中（设置页传来过期 key）→ 回退固定项，而不是给一个没有督休专员的空壳
-func TestSupervisorUnknownForceKeyFallsBackToFixed(t *testing.T) {
-	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"gaze":true,"selection":"fixed","fixedKey":"sup-a"}}`)
-	writeRole(t, a.rolesRoot, "sup-a", "甲", true)
-	writeRole(t, a.rolesRoot, "sup-b", "乙", true)
+// forceName 未命中（设置页传来过期的名字）→ 回退固定项，而不是给一个没有督休专员的空壳
+func TestSupervisorUnknownForceNameFallsBackToFixed(t *testing.T) {
+	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"gaze":true,"selection":"fixed","fixedRole":"sup-a"}}`)
+	writeRole(t, a.rolesRoot, "sup-a", "sup-a", true)
+	writeRole(t, a.rolesRoot, "sup-b", "sup-b", true)
 
 	got := a.buildSupervisorSession(true, "sup-gone")
 	if got == nil {
-		t.Fatal("forceKey 失效时应回退固定项，得到 nil（预览窗会变成没有督休专员的空壳）")
+		t.Fatal("forceName 失效时应回退固定项，得到 nil（预览窗会变成没有督休专员的空壳）")
 	}
-	if got.ImageKey != "sup-a" {
-		t.Fatalf("应回退固定项 sup-a，得到 %q", got.ImageKey)
+	if got.RoleName != "sup-a" {
+		t.Fatalf("应回退固定项 sup-a，得到 %q", got.RoleName)
 	}
 }
 
-// forceKey 与 fixedKey 都失效 → 第一个可用督休专员（有立绘就得出场）
-func TestSupervisorUnknownForceKeyAndFixedFallsBackToFirst(t *testing.T) {
-	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"gaze":true,"selection":"fixed","fixedKey":"sup-gone"}}`)
-	writeRole(t, a.rolesRoot, "sup-a", "甲", true)
+// forceName 与 fixedRole 都失效 → 第一个可用督休专员（有立绘就得出场）
+func TestSupervisorUnknownForceNameAndFixedFallsBackToFirst(t *testing.T) {
+	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"gaze":true,"selection":"fixed","fixedRole":"sup-gone"}}`)
+	writeRole(t, a.rolesRoot, "sup-a", "sup-a", true)
 
 	got := a.buildSupervisorSession(true, "sup-gone2")
 	if got == nil {
-		t.Fatal("两个 key 都失效时应兜底到第一个可用督休专员，得到 nil")
+		t.Fatal("两个名字都失效时应兜底到第一个可用督休专员，得到 nil")
 	}
-	if got.ImageKey != "sup-a" {
-		t.Fatalf("应兜底到 sup-a，得到 %q", got.ImageKey)
+	if got.RoleName != "sup-a" {
+		t.Fatalf("应兜底到 sup-a，得到 %q", got.RoleName)
 	}
 }
 
@@ -140,11 +140,11 @@ func TestPickRoleWithImageSkipsUnreadableFigure(t *testing.T) {
 		t.Fatal(err)
 	}
 	usable := []Role{
-		{Key: "bad", FigurePath: filepath.Join(dir, "missing.png")}, // 文件不存在 → toDataURL 空串
-		{Key: "ok", FigurePath: good},
+		{Name: "bad", FigurePath: filepath.Join(dir, "missing.png")}, // 文件不存在 → toDataURL 空串
+		{Name: "ok", FigurePath: good},
 	}
 	picked, image := pickRoleWithImage(usable, &usable[0])
-	if picked == nil || picked.Key != "ok" {
+	if picked == nil || picked.Name != "ok" {
 		t.Fatalf("应跳过读不出立绘的角色，选中 ok，得到 %+v", picked)
 	}
 	if image == "" {

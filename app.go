@@ -42,6 +42,14 @@ type App struct {
 	// breakWinMu 串行化「建休息窗口」这一段：连点两下「预览」会并发建窗，
 	// 两批窗户怼在一起时后注册的会覆盖前者、前者变成没人管的野窗。
 	breakWinMu sync.Mutex
+	// takeoutWinMu 同理串行化「建外卖窗口」：连点两下「预览」会并发建窗，
+	// 后一批 a.takeoutWins = wins 会把前一批的引用整批顶掉，前一批就成了
+	// 屏幕上关不掉的野窗（休息窗口那边踩过同一个坑）。
+	takeoutWinMu sync.Mutex
+	// preBreakMu 串行化「建提前提示窗」：调度器的 onPreNotify 与外卖预通知是两个
+	// goroutine，可能同时弹同一扇窗（固定名 prebreak）。不串行的话两批窗互相覆盖，
+	// 后写入的那扇成为唯一引用，先建的那扇就再也关不掉了。
+	preBreakMu sync.Mutex
 	sess       *BreakInfo
 	start      time.Time
 
@@ -90,6 +98,9 @@ type App struct {
 	takeoutPostponed *TakeoutPostponed
 	takeoutCurrent   *TakeoutInfo
 	takeoutWins      []*application.WebviewWindow
+	// takeoutWinSess 窗口 → 建它时的会话 id（与休息窗口的 breakWinSess 同理）：
+	// 旧窗口的 WindowClosing 可能迟到，不能让它把刚建好的新会话清掉。
+	takeoutWinSess map[*application.WebviewWindow]string
 	// takeoutStop / takeoutRaiseStop 外卖每秒检查与抬升循环的停止信号（nil = 未启动）
 	takeoutStop      chan struct{}
 	takeoutRaiseStop chan struct{}
@@ -135,22 +146,11 @@ func NewApp(app *application.App) *App {
 		activeTab:       "general",
 	}
 	a.rolesRoot = filepath.Join(a.resourcesRoot(), "supervisors")
-	// 旧版「roles/」目录（目录名=英文 key、role.json 无 key 字段）一次性迁到 supervisors/
-	// （目录名=专员名称、role.json 注入 key）：兼容老用户升级，不丢配置。
-	migrateRolesLayout(a.resourcesRoot())
 	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
 	resourcesRootHintFn = a.resourcesRoot
 	// 内置提示音随包目录：<resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）
 	builtinSoundDirFn = func() string { return filepath.Join(a.resourcesRoot(), "sounds") }
 	a.cfg = loadSettings(a.resourcesRoot())
-	// 旧版「督休专员数据存 settings.json」→ 督休专员目录 role.json：一次性迁移，迁移了就当场落盘
-	// （对应 历史源码/main.ts 的 `if (migrateLegacyRoles(settings)) saveSettings(settings)`）。
-	// 必须在 loadSettings 之后 —— 迁移要读归一化后的 supervisor 配置，还要写 role.json。
-	if migrateLegacyRoles(a.cfg.Raw(), a.rolesRoot) {
-		if err := a.cfg.Save(); err != nil {
-			log.Printf("[supervisor] 迁移后配置落盘失败: %v", err)
-		}
-	}
 	return a
 }
 
@@ -222,7 +222,19 @@ func (a *App) ServiceShutdown() error {
 		a.sched.Stop()
 	}
 	a.stopTakeoutWatcher()
-	a.closeTakeoutWindows()
+	// 退出清理要把**所有**提醒窗口都收掉：外卖、休息、右下角提前提示小窗。
+	// 少收一类就等于把窗口留给进程销毁时的「兜底」——进程真退出时看不出来，
+	// 但只要退出流程被拖慢（WebView2 卸载、自更新替换 exe），那扇窗就会在屏幕上
+	// 多停一会儿，用户只能等。一律静默：退出不是「提醒结束」，不该响一声。
+	a.closeTakeoutWindowsOpt(true)
+	a.closeBreakWindowsOpt(true)
+	// 提前提示窗用 TryLock：退出可能发生在主线程，而建窗路径可能在等主线程处理
+	// InvokeSync —— 硬等这把锁会让「等主线程」和「主线程等锁」互相卡死（退出挂住）。
+	// 抢不到就跳过：进程马上结束，那一扇窗会随进程一起消失。
+	if a.preBreakMu.TryLock() {
+		a.closePreBreakWindowLocked()
+		a.preBreakMu.Unlock()
+	}
 	a.stopSystemWatchers()
 	a.stopTrayRefresh()
 	a.destroySoundHost()
@@ -302,94 +314,6 @@ func hasSupervisorsDir(dir string) bool {
 	return err == nil && st.IsDir()
 }
 
-// migrateRolesLayout 把旧版「roles/」目录整体迁到新的「supervisors/」目录：
-// 旧目录名是英文 key、role.json 没有 key 字段；新布局目录名用专员名称、role.json 注入 key。
-// 只在检测到「旧 roles/ 存在、新 supervisors/ 尚未就位」时跑一次（升级老用户数据，不丢配置）。
-// 若 supervisors/ 已就位（随包模板已带）则不自动搬——避免冲掉模板或让已删内置复活；
-// 若两者皆无则建一个空 supervisors/ 兜底，后续逻辑按空目录处理。
-func migrateRolesLayout(resRoot string) {
-	oldRoot := filepath.Join(resRoot, "roles")
-	newRoot := filepath.Join(resRoot, "supervisors")
-	if _, err := os.Stat(newRoot); err == nil {
-		// 新版 supervisors/ 已就位：不覆盖、不搬，避免冲掉随包模板 / 让已删内置复活
-		if _, err2 := os.Stat(oldRoot); err2 == nil {
-			log.Printf("[supervisor] 检测到旧 roles/ 但 supervisors/ 已存在：旧目录暂不自动迁移（自定义督休专员请手动合并）")
-		}
-		return
-	}
-	if _, err := os.Stat(oldRoot); err != nil {
-		// 都没有：建空 supervisors/ 兜底
-		_ = os.MkdirAll(newRoot, 0o755)
-		return
-	}
-	// 只有旧 roles/、没有新 supervisors/：整体搬过去（升级老用户）
-	if err := os.MkdirAll(newRoot, 0o755); err != nil {
-		log.Printf("[supervisor] 迁移：创建 supervisors/ 失败 %v", err)
-		return
-	}
-	entries, err := os.ReadDir(oldRoot)
-	if err != nil {
-		return
-	}
-	for _, e := range entries {
-		if !e.IsDir() || !validRoleKey(e.Name()) {
-			continue
-		}
-		oldDir := filepath.Join(oldRoot, e.Name())
-		raw, rerr := os.ReadFile(filepath.Join(oldDir, "role.json"))
-		roleKey := e.Name() // 旧目录名即 key
-		roleName := roleKey
-		if rerr == nil {
-			var m map[string]any
-			if json.Unmarshal(raw, &m) == nil {
-				if k, ok := m["key"].(string); ok && k != "" {
-					roleKey = k
-				}
-				if n, ok := m["name"].(string); ok && strings.TrimSpace(n) != "" {
-					roleName = n
-				}
-			}
-		}
-		// 显示名也要唯一（老部署里可能有两位同名专员）：目录名去重成「X (2)」，
-		// role.json 的显示名若还是「X」，同一个名字会指向两个不同的人。
-		// 迁移是**软件自己起名**的场景，不能弹窗问用户 → 自动退让一位。
-		display := uniqueRoleName(newRoot, roleName, roleKey)
-		newDir := uniqueRoleDir(newRoot, sanitizeRoleDirName(display), "")
-		if err := os.Rename(oldDir, newDir); err != nil {
-			log.Printf("[supervisor] 迁移：移动 %s 失败 %v", e.Name(), err)
-			continue
-		}
-		// 回写 key 字段到新目录的 role.json（缺失才补，不覆盖已有值）
-		if rerr == nil {
-			var m map[string]any
-			if json.Unmarshal(raw, &m) == nil {
-				changed := false
-				if cur, ok := m["key"].(string); !ok || cur == "" {
-					m["key"] = roleKey
-					changed = true
-				}
-				if cur, ok := m["name"].(string); !ok || strings.TrimSpace(cur) != display {
-					m["name"] = display
-					changed = true
-				}
-				if changed {
-					if out, jerr := json.MarshalIndent(m, "", "  "); jerr == nil {
-						out = append(out, '\n')
-						_ = os.WriteFile(filepath.Join(newDir, "role.json"), out, 0o644)
-					}
-				}
-			}
-		}
-		log.Printf("[supervisor] 迁移：%s → %s（key=%s）", e.Name(), filepath.Base(newDir), roleKey)
-	}
-	// 旧目录搬空后移除
-	if entries2, _ := os.ReadDir(oldRoot); len(entries2) == 0 {
-		_ = os.RemoveAll(oldRoot)
-	} else {
-		log.Printf("[supervisor] 迁移：旧 roles/ 仍有残留，未删除：%v", oldRoot)
-	}
-}
-
 func isDevBuild(exe string) bool {
 	return len(exe) > 0 && (strings.Contains(exe, "go-build") || strings.Contains(exe, "Temp"))
 }
@@ -398,7 +322,7 @@ func isDevBuild(exe string) bool {
 
 // buildSupervisorSession 组装下发给渲染层的督休专员信息：
 // 与 历史源码/supervisor.ts 的 buildSupervisorSession 同规则——按 selection
-// 从督休专员目录里选一个督休专员，随机取一条劝说台词兜底，命令台词从该督休专员 role.json 抽。
+// 从督休专员目录里选一个督休专员，随机取一条劝说台词兜底，命令台词从该督休专员 meta.json 抽。
 // 关掉开关、没有可用督休专员、立绘读不出来时返回 nil，渲染层退回无督休专员布局。
 func (a *App) buildSupervisorSession(force bool, forceKey string) *SupStageInfo {
 	return a.buildSupervisorSessionWith(a.cfg.SupervisorCfg(), force, forceKey)
@@ -411,7 +335,7 @@ func (a *App) buildSupervisorSession(force bool, forceKey string) *SupStageInfo 
 // 一律不显示立绘与对话框（设置页点「预览」也应如实反映这个勾选状态）。
 // force 现在只用于**绕过单个督休专员的启用**（预览某个已停用的督休专员时仍要能看到效果），
 // 不再绕过顶层总开关。
-func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, forceKey string) *SupStageInfo {
+func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, forceName string) *SupStageInfo {
 	if !cfg.Enabled {
 		return nil
 	}
@@ -427,22 +351,22 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 	}
 
 	var picked *Role
-	pickByKey := func(rs []Role, key string) *Role {
-		if key == "" {
+	pickByName := func(rs []Role, name string) *Role {
+		if strings.TrimSpace(name) == "" {
 			return nil
 		}
 		for i := range rs {
-			if rs[i].Key == key {
+			if strings.EqualFold(rs[i].Name, strings.TrimSpace(name)) {
 				return &rs[i]
 			}
 		}
 		return nil
 	}
 	switch {
-	case forceKey != "":
+	case forceName != "":
 		// 预览指定的督休专员：无视 enabled（预览要能看到已关闭督休专员的效果）
 		for i := range usable {
-			if usable[i].Key == forceKey {
+			if strings.EqualFold(usable[i].Name, strings.TrimSpace(forceName)) {
 				picked = &usable[i]
 				break
 			}
@@ -458,10 +382,10 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 		}
 	default: // fixed：取指定督休专员。固定显示只看磁贴点选本身，**不看单条启用**——
 		// 复选框（role.enabled）只在随机 / 顺序模式下出现；若这里仍拿 enabled 当门槛，
-		// 随包 role.json 里 enabled=false 的督休专员就会出现「立绘列表看得到、
+		// 随包 meta.json 里 enabled=false 的督休专员就会出现「立绘列表看得到、
 		// 休息时不显示」的劈叉（设置页总开关是启用的，用户无从排查）
 		for i := range usable {
-			if usable[i].Key == cfg.FixedKey {
+			if strings.EqualFold(usable[i].Name, strings.TrimSpace(cfg.FixedRole)) {
 				picked = &usable[i]
 				break
 			}
@@ -474,11 +398,11 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 		}
 	}
 	// 兜底（2026-10-25 修）：指定/固定的那个督休专员找不到时（库里改过名、刚被删掉，
-	// 或设置页传来的是过期的 key），按「固定项 → 第一个可用」逐级退让。
+	// 或设置页传来的是过期的名字），按「固定项 → 第一个可用」逐级退让。
 	// 曾经这里直接 return nil：预览窗于是变成一个既没有立绘、也没有对话框的空壳，
 	// 用户只能反复点「预览」撞运气。
 	if picked == nil {
-		picked = pickByKey(usable, cfg.FixedKey)
+		picked = pickByName(usable, cfg.FixedRole)
 	}
 	if picked == nil {
 		picked = &usable[0]
@@ -495,15 +419,15 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 	}
 	return &SupStageInfo{
 		Image:    image,
-		ImageKey: picked.Key,
+		RoleName: picked.Name,
 		Name:     name,
 		Gaze:     cfg.Gaze,
 		Geom:     &picked.Geom,
 		Lines: SupLines{
 			// 第一段兜底：提醒内容为空时督休专员不至于哑口（正常由渲染层优先用提醒的提醒内容）
 			Urge: pickOne(urgeLines, a.rng),
-			// 第二段（命令）：该督休专员 role.json 的台词池（空池返回空串，渲染层沿用第一段台词）
-			Command: pickRoleLine(picked.Messages, picked.Key, a.cursor, a.rng),
+			// 第二段（命令）：该督休专员 meta.json 的台词池（空池返回空串，渲染层沿用第一段台词）
+			Command: pickRoleLine(picked.Messages, picked.Name, a.cursor, a.rng),
 		},
 	}
 }
@@ -520,7 +444,7 @@ func pickRoleWithImage(usable []Role, prefer *Role) (*Role, string) {
 		}
 	}
 	for i := range usable {
-		if prefer != nil && usable[i].Key == prefer.Key {
+		if prefer != nil && strings.EqualFold(usable[i].Name, prefer.Name) {
 			continue
 		}
 		if img := toDataURL(usable[i].FigurePath); img != "" {
@@ -536,7 +460,7 @@ func pickRoleWithImage(usable []Role, prefer *Role) (*Role, string) {
 // sup 是设置页表单里**当前**的督导配置（可能还没落盘），null 时用磁盘上的配置。
 // 与弹窗预览的区别：同样尊重顶层「启用」开关（未启用返回 nil，页面据此隐藏立绘与对话框），
 // 但 force=true 仍可绕过单个督休专员的启用（预览某个已停用的督休专员），forceKey 指定要预览的督休专员。
-func (a *App) SupervisorPreview(sup map[string]any, key string) *SupStageInfo {
+func (a *App) SupervisorPreview(sup map[string]any, name string) *SupStageInfo {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	cfg := a.cfg.SupervisorCfg()
@@ -556,11 +480,11 @@ func (a *App) SupervisorPreview(sup map[string]any, key string) *SupStageInfo {
 			Enabled:   sup["enabled"] != false,
 			Gaze:      sup["gaze"] != false,
 			Selection: sel,
-			FixedKey:  strOf(sup["fixedKey"]),
+			FixedRole: strOf(sup["fixedRole"]),
 			Order:     order,
 		}
 	}
-	return a.buildSupervisorSessionWith(cfg, true, key)
+	return a.buildSupervisorSessionWith(cfg, true, name)
 }
 
 // enabledRoles 过滤掉已禁用督休专员（force=true 预览时不过滤）
@@ -662,7 +586,10 @@ func (a *App) showBreakSession(kind string, preview bool, forceKey string) strin
 
 	// 休息真的开始了：顺手收掉右下角的提前提示窗
 	//（对应 上一版 在 break-start 事件里调 closePreBreakWindow）。
-	a.closePreBreakWindow()
+	// 预览不算「真的开始」：看一眼预览就把真实提醒的小窗收掉，属于预览污染真实状态。
+	if !preview {
+		a.closePreBreakWindow()
+	}
 	a.ShowBreakWindow(kind)
 	// 提示音：只给真实休息放（预览是「看一眼窗口长什么样」，不该出声）
 	if !preview {
@@ -682,6 +609,14 @@ const endEarlyToleranceMs = 1500
 // 目前唯一的调用点是调度器的 finishBreak，所以这里顺带承担「休息结束」的副作用：
 // 播一次提示音（对应 上一版的 break-end → playConfiguredSound）。
 func (a *App) closeBreakWindows() {
+	a.closeBreakWindowsOpt(false)
+}
+
+// closeBreakWindowsOpt silent=true 时不播「休息结束」提示音 —— 预览关窗（看一眼就走）
+// 与退出清理都不该出声；其余副作用（关窗、清会话、记统计、清空闲基准）完全一致。
+// 统一成一条路径是为了让「点任意处关预览」与「休息自然结束」不会各写一份收尾逻辑，
+// 少一处就可能漏一项（统计、轮询、idle 基准）。
+func (a *App) closeBreakWindowsOpt(silent bool) {
 	a.mu.Lock()
 	ws := a.breakWins
 	a.breakWins = nil
@@ -698,7 +633,12 @@ func (a *App) closeBreakWindows() {
 	// 窗口和会话都没了：全局键鼠轮询该收了（若还有外卖窗口在场则继续跑，
 	// 判断在 releaseSupActivityWatch 里）
 	a.releaseSupActivityWatch()
-	a.playConfiguredSound()
+	// 休息窗全没了：外卖抬升循环不该再抢窗口层级与焦点（每次抬升都会 Focus 外卖窗，
+	// 没有休息窗在场时反复抢焦点等于打断用户）
+	a.raise.setBreaksActive(false)
+	if !silent {
+		a.playConfiguredSound()
+	}
 	// 统计：休息结束（唯一调用点是调度器的 finishBreak，所以这里就是 break-end）。
 	// 类型取自会话本身 —— 休息结束时调度器状态可能已经翻篇，而记录要用**刚刚结束的那次**；
 	// 自定义提醒把名字快照一起记下来，提醒删了 / 改名了报表也还能对上号。
@@ -840,25 +780,32 @@ func (a *App) ShowBreakWindow(kind string) {
 	// 建窗要几百毫秒：串行化，避免连点「预览」时两批窗口互相覆盖（野窗）
 	a.breakWinMu.Lock()
 	defer a.breakWinMu.Unlock()
-	curID := ""
 	a.mu.Lock()
+	curID := ""
 	if a.sess != nil {
 		curID = a.sess.ID
 	}
+	winSess, winsNow := a.breakSessID, a.breakWins
+	a.mu.Unlock()
+	// 复用还要求「窗口确实还活着」：已销毁的窗口不在窗口管理器里，对它 Show()
+	// 会被 Wails 当成重新 Run —— 原地复活一扇僵尸窗（页面重载、旧会话内容闪一下）。
 	var stale []*application.WebviewWindow
-	if breakWinReusable(a.breakSessID, curID, len(a.breakWins)) {
-		ws := a.breakWins
-		a.mu.Unlock()
-		for _, w := range ws {
+	if breakWinReusable(winSess, curID, len(winsNow)) && a.windowsLive(winsNow) {
+		for _, w := range winsNow {
 			w.Show()
 			w.Focus()
 		}
 		return
 	}
+	a.mu.Lock()
 	if len(a.breakWins) > 0 {
 		stale = a.breakWins
 		a.breakWins = nil
 		a.breakSessID = ""
+		// 指针条目跟着摘掉：留着只会让 map 无界增长，且容易让后来者误判归属
+		for _, w := range stale {
+			delete(a.breakWinSess, w)
+		}
 	}
 	// 先认领会话：建窗要几百毫秒，这期间旧窗口的 WindowClosing 可能迟到 ——
 	// 认领之后 removeBreakWindow 能认出「那是上一个会话的窗」，不会把会话清掉。
@@ -913,6 +860,19 @@ func (a *App) ShowBreakWindow(kind string) {
 	}
 
 	a.mu.Lock()
+	// 建窗这几百毫秒里会话可能已经被收掉（提前结束 / 预览点任意处 / 调度器到点）：
+	// 那就不能把刚建好的窗口挂上去 —— 否则屏幕上一扇「没有会话」的空窗，而程序认为
+	// 它属于一个已经结束的会话，除了等下一次建窗或退出，谁也关不掉它。
+	stillWanted := curID != "" && a.sess != nil && a.sess.ID == curID
+	if !stillWanted {
+		a.breakSessID = ""
+		a.mu.Unlock()
+		for _, w := range wins {
+			w.Close()
+		}
+		log.Printf("[win] 建窗期间会话已结束，本轮建出的 %d 个窗口直接收掉", len(wins))
+		return
+	}
 	if a.breakWinSess == nil {
 		a.breakWinSess = make(map[*application.WebviewWindow]string)
 	}
@@ -922,6 +882,10 @@ func (a *App) ShowBreakWindow(kind string) {
 	a.breakWins = wins
 	a.breakSessID = curID
 	a.mu.Unlock()
+	// 告诉外卖抬升循环「休息窗口在场了」：两者都是置顶窗，后显示的会压住先显示的，
+	// 只有靠这个标记，外卖窗才会被周期性地重新抬到休息窗之上（时间敏感的一方在上面）。
+	// 此前它只在单测里被设过、生产代码从不接线，抬升循环因此从未真正生效。
+	a.raise.setBreaksActive(len(wins) > 0)
 }
 
 // removeBreakWindow 单个休息窗口被直接关掉（Alt+F4）时从切片摘除；
@@ -949,12 +913,103 @@ func (a *App) removeBreakWindow(w *application.WebviewWindow) {
 	a.mu.Unlock()
 	// 最后一个休息窗口被直接关掉（Alt+F4）：全局键鼠轮询按「还有没有提醒窗口」决定收不收
 	a.releaseSupActivityWatch()
+	// 多屏时可能只关掉其中一扇：按**剩余**窗口更新外卖抬升标记
+	a.raise.setBreaksActive(a.hasBreakWindows())
+}
+
+// hasBreakWindows 是否有休息窗口在场
+func (a *App) hasBreakWindows() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return len(a.breakWins) > 0
 }
 
 // breakWinReusable 现有休息窗口能不能直接复用：必须「确实有窗口」且
 // 「这些窗口就是为当前会话建的」。curSess 为空（没有会话）时一律不复用。
 func breakWinReusable(winSess, curSess string, n int) bool {
 	return n > 0 && curSess != "" && winSess == curSess
+}
+
+// ensureWindowsOnScreen 把落在所有显示器工作区之外的提醒窗口移回主屏中央。
+//
+// 触发场景：拔掉外接显示器（或改分辨率 / 缩放）后，原本建在那块屏上的窗口坐标落在
+// 已经不存在的位置。它仍然置顶、仍然不接受操作，用户除了 Alt+F4 没有任何入口 ——
+// 这是「关不掉的窗」最容易被忽略的一种。全部窗口都在工作区内时一次 API 都不调。
+func (a *App) ensureWindowsOnScreen() {
+	if serverMode || a.app == nil {
+		return
+	}
+	a.mu.Lock()
+	ws := append([]*application.WebviewWindow(nil), a.breakWins...)
+	ws = append(ws, a.takeoutWins...)
+	if w := a.wins[preBreakWindowName]; w != nil {
+		ws = append(ws, w)
+	}
+	a.mu.Unlock()
+	if len(ws) == 0 {
+		return
+	}
+	screens := a.app.Screen.GetAll()
+	if len(screens) == 0 {
+		return
+	}
+	for _, w := range ws {
+		if !a.windowLive(w) {
+			continue
+		}
+		if rectVisibleOnAny(w.Bounds(), screens) {
+			continue
+		}
+		log.Printf("[win] 提醒窗口跑到所有显示器工作区之外（窗口 #%d），移回主屏中央", w.ID())
+		w.Center()
+	}
+}
+
+// rectVisibleOnAny 矩形与任一显示器工作区是否有可见交集
+func rectVisibleOnAny(r application.Rect, screens []*application.Screen) bool {
+	for _, s := range screens {
+		wa := s.WorkArea
+		if r.X < wa.X+wa.Width && r.X+r.Width > wa.X &&
+			r.Y < wa.Y+wa.Height && r.Y+r.Height > wa.Y {
+			return true
+		}
+	}
+	return false
+}
+
+// windowLive 窗口对象是否还挂在 Wails 的窗口管理器里（已销毁的窗口会被摘掉）。
+//
+// 为什么要问这一句：Wails 的 Show() 在窗口已销毁时会走 `w.Run()` **原地重建**同一扇窗，
+// 所以「复用」之前不确认存活，可能把一扇本该消失的提醒窗复活出来（页面重载、
+// 倒计时从头开始），而程序还当它是上次那个会话的窗。
+func (a *App) windowLive(w *application.WebviewWindow) bool {
+	if w == nil || a.app == nil {
+		return false
+	}
+	_, ok := a.app.Window.GetByID(w.ID())
+	return ok
+}
+
+// windowsLive 一批窗口是否全部还活着（Create 之后立即注册进管理器，所以新建的也算活）
+func (a *App) windowsLive(ws []*application.WebviewWindow) bool {
+	for _, w := range ws {
+		if !a.windowLive(w) {
+			return false
+		}
+	}
+	return true
+}
+
+// dropWindowRef 只在 m[name] 确实指向 w 时才删除这一项。
+//
+// 关窗事件在 Wails 里是**异步分发**的（每个监听器各起一个 goroutine）。「关旧窗 →
+// 立刻建同名新窗」是这些窗口的常规操作，迟到的旧窗回调若按名字无脑 delete，抹掉的
+// 是刚建好的新窗引用 —— 那扇新窗从此没有任何代码持有它，只能靠它自己的页面按钮
+// 关闭，主进程彻底失去控制权。所有「按名字登记窗口」的回调都必须走这里。
+func dropWindowRef(m map[string]*application.WebviewWindow, name string, w *application.WebviewWindow) {
+	if m[name] == w {
+		delete(m, name)
+	}
 }
 
 // breakSessEndsOn 关掉一个窗口后要不要结束会话：
@@ -1011,21 +1066,16 @@ func (a *App) CloseWindow(win string) {
 		a.closeTakeoutWindows()
 		return
 	}
+	// 提前提示窗走专用入口：它有自己的建窗锁，通用分支直接 delete(a.wins, win) 会
+	// 与「关旧窗 → 建新窗」交错（删掉刚建好的新窗引用，那扇窗就没人关了）。
+	if win == preBreakWindowName {
+		a.closePreBreakWindow()
+		return
+	}
 	if win == "break" {
-		a.mu.Lock()
-		ws := a.breakWins
-		a.breakWins = nil
-		a.breakSessID = ""
-		for _, w := range ws {
-			delete(a.breakWinSess, w)
-		}
-		a.sess = nil
-		a.mu.Unlock()
-		for _, w := range ws {
-			w.Close()
-		}
-		// 预览 / 点任意处关闭：窗口与会话都清了，全局键鼠轮询一并收掉
-		a.releaseSupActivityWatch()
+		// 预览点任意处关闭（真实休息的结束由调度器 finishBreak 走 closeBreakWindows）：
+		// 收尾走同一条路径，只是不出声。预览会话的 info.Preview 会让统计那一段自动跳过。
+		a.closeBreakWindowsOpt(true)
 		return
 	}
 	a.mu.Lock()
@@ -1175,8 +1225,16 @@ func (a *App) schedResetCycle() {
 	}
 }
 func (a *App) schedEndBreak() {
-	if a.sched != nil {
-		a.sched.endBreak()
+	if a.sched == nil {
+		return
+	}
+	a.sched.endBreak()
+	// 兜底：调度器已经不在休息阶段时 endBreak 直接返回（自然到点 / 状态已翻篇），
+	// 屏幕上的窗口就成了「点了没反应」的窗 —— 用户只能 Alt+F4。这里直接收掉，
+	// 绝不把无主窗口留给用户。正常路径上 finishBreak 已经关过窗，这步是空操作。
+	if a.sched.stateCopy().Phase != "break" && a.hasBreakWindows() {
+		log.Printf("[action] endBreak 无效（调度器不在休息阶段），直接收掉残留的休息窗口")
+		a.closeBreakWindowsOpt(true)
 	}
 }
 
@@ -1193,11 +1251,31 @@ func (a *App) SupActivity(win string) {
 //
 // 预览**完全不进调度器**：不消费 occurrence、不改 phase、不占会话（与上一版 一致，
 // 那边 break:preview 直接调 showBreakWindows）。
+//
+// 真实休息窗口在场时**拒弹**（返回 previewBusyReply）：预览会建一个新会话并顶掉当前
+// 会话，ShowBreakWindow 随后把旧窗口当 stale 关掉 —— 用户看到的就是「点了预览，正在
+// 进行的休息窗被关掉」，而且那次休息的统计 / 结束判定也跟着乱。让真实提醒照常走完。
 func (a *App) PreviewBreak(kind, forceKey string) string {
 	if kind == "" {
 		kind = "short"
 	}
+	if a.realBreakActive() {
+		log.Printf("[break] 真实休息窗口在场，忽略预览请求（kind=%s）", kind)
+		return previewBusyReply
+	}
 	return a.showBreakSession(kind, true, forceKey)
+}
+
+// previewBusyReply 预览被拒时给渲染层的返回值：真实提醒窗口正在显示。
+// 空串另有用处（休息身份不存在等），所以这里用独立取值，前端据此给出提示而不是干等。
+const previewBusyReply = "busy"
+
+// realBreakActive 真实休息（非预览）正在进行：会话在场即算。
+// 窗口被 Alt+F4 直接关掉时 removeBreakWindow 会清会话，所以这条不会把人永久挡在门外。
+func (a *App) realBreakActive() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.sess != nil && !a.sess.Preview
 }
 
 // StartBreak 立即开始一次指定类型的休息（托盘 / 诊断页）。

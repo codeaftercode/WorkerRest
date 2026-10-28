@@ -130,8 +130,8 @@
     }, { once: true });
   }
 
-  // renderer/supervisorStage.ts
-  var GEOM_FALLBACK = { sizePct: 72, posXPct: 4, posYPct: 0, flip: false };
+  // renderer/supervisorStage.ts（默认值同 Go 的 supGeomDefault：高度 80%、距左 5%、贴底）
+  var GEOM_FALLBACK = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false };
   var ESCALATE_WEIGHT = 3;
   var RELAX_MS = 6e3;
   function setupSupervisor(sup, stage1Text, opts) {

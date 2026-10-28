@@ -85,13 +85,13 @@ failures = []
 checks = 0
 
 
-def find_role_json(root, key):
-    """在 supervisors/ 下按 key 反查某个督休专员的 role.json（目录名是专员名称，不固定）。"""
+def find_role_meta(root: str, name: str):
+    """在 supervisors/ 下按专员名反查 meta.json（目录名是名字的投影，可能被清洗过）。"""
     sup = os.path.join(root, "supervisors")
     if not os.path.isdir(sup):
         return None
-    for name in os.listdir(sup):
-        p = os.path.join(sup, name, "role.json")
+    for dn in os.listdir(sup):
+        p = os.path.join(sup, dn, "meta.json")
         if not os.path.isfile(p):
             continue
         try:
@@ -99,7 +99,8 @@ def find_role_json(root, key):
                 d = json.load(f)
         except Exception:
             continue
-        if d.get("key") == key:
+        nm = str((d or {}).get("name") or dn).strip() or dn
+        if nm == name:
             return p
     return None
 
@@ -244,11 +245,10 @@ def main():
     check(not wrote_cfg, "隔离 APPDATA 里没有写入 settings.json（配置没外溢到 APPDATA）",
           "发现 settings.json" if wrote_cfg else "（干净）")
 
-    # 5. supervisors/ 随包完整（渲染层立绘要能读到）。目录名是专员名称、不固定，
-    # 按 key 反查 supervisor_default 的 role.json。
-    role_json = find_role_json(iso, "supervisor_default")
-    check(bool(role_json) and os.path.isfile(role_json),
-          "supervisors/ 随包完整（supervisor_default 在）", role_json or "(未找到)")
+    # 5. supervisors/ 随包完整（渲染层立绘要能读到）。名字即身份，按专员名反查目录。
+    role_meta = find_role_meta(iso, "眼镜主管")
+    check(bool(role_meta) and os.path.isfile(role_meta),
+          "supervisors/ 随包完整（眼镜主管 在）", role_meta or "(未找到)")
 
     with open(REPORT, "w", encoding="utf-8") as f:
         f.write("便携版验证：%d 项断言，失败 %d 项\n\n" % (checks, len(failures)))

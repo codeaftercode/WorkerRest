@@ -32,7 +32,7 @@ type SupLines struct {
 // 少一个字段就是「Cannot read properties of undefined」把预览打断。
 type SupStageInfo struct {
 	Image    string   `json:"image"` // data URL
-	ImageKey string   `json:"imageKey,omitempty"`
+	RoleName string   `json:"roleName,omitempty"`
 	Name     string   `json:"name,omitempty"`
 	Gaze     bool     `json:"gaze"`
 	Geom     *SupGeom `json:"geom,omitempty"`

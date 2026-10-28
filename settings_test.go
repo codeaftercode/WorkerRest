@@ -50,7 +50,7 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 			"long":  map[string]any{"items": []any{map[string]any{"text": "没有 id"}}},
 		},
 	}
-	installIDCreated, presetSeeded := normalizeLoad(raw)
+	installIDCreated, presetSeeded, _ := normalizeLoad(raw)
 	if !installIDCreated {
 		t.Fatal("老配置没有 installId，应当补生成")
 	}
@@ -190,9 +190,12 @@ func TestNormalizeLoadIsIdempotent(t *testing.T) {
 	if err := json.Unmarshal(first, &feed); err != nil {
 		t.Fatal(err)
 	}
-	installIDCreated, presetSeeded := normalizeLoad(feed)
+	installIDCreated, presetSeeded, idsRenumbered := normalizeLoad(feed)
 	if installIDCreated || presetSeeded {
 		t.Error("已归一化的配置再跑一次不该再补 installId / 种条目")
+	}
+	if idsRenumbered {
+		t.Error("已归一化的配置再跑一次不该再给条目重新编号")
 	}
 	second, _ := json.Marshal(feed)
 	if string(first) != string(second) {

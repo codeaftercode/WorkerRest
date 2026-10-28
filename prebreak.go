@@ -175,7 +175,12 @@ const preBreakWindowName = "prebreak"
 // 无头（-tags server）构建下没有原生窗口，只记内容不建窗 —— 状态与动作照常可用，
 // 所以无头冒烟仍能完整验证 PreBreakState / PreBreakAction 这条链路。
 func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
-	a.closePreBreakWindow()
+	// 两路来源可能同时到：调度器的 onPreNotify 与外卖预通知各自在自己的 goroutine 里。
+	// 不串行的话两边都「先关旧的、再建新的」，后写入 map 的那个赢，先建的成为没人持有的
+	// 野窗 —— 固定名窗口尤其危险，它连按名字都查不到（GetByName 拿到的是另一扇）。
+	a.preBreakMu.Lock()
+	defer a.preBreakMu.Unlock()
+	a.closePreBreakWindowLocked()
 	if serverMode {
 		log.Printf("[prebreak] server 模式无原生窗口，跳过创建（内容已就绪 custom=%v title=%q）",
 			info.Custom, info.Title)
@@ -212,9 +217,12 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 	})
 	// 窗口被系统 / 用户直接关掉（Alt+F4）时清掉引用，免得后续 closePreBreakWindow 拿着
 	// 一个已销毁的窗口去 Close —— 跨 tick 访问销毁过的窗口会抛错。
+	// 只删「自己这一扇」：closePreBreakWindow 摘掉旧引用后紧接着就会建新窗，而 Wails 的
+	// 关闭事件是异步分发的（每个监听器各起一个 goroutine），迟到一步的旧窗回调按名字
+	// delete 会把**新窗**的引用一起删掉 —— 新窗从此无人持有，程序再也关不掉它。
 	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		a.mu.Lock()
-		delete(a.wins, preBreakWindowName)
+		dropWindowRef(a.wins, preBreakWindowName, win)
 		a.mu.Unlock()
 	})
 	a.mu.Lock()
@@ -226,7 +234,17 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 
 // closePreBreakWindow 关掉提前提示窗（没开着时是空操作）。
 // 一律先摘引用再关：关窗会触发 WindowClosing，回调里再查一次 map 也无妨。
+//
+// 走 preBreakMu：与 ShowPreBreakWindow 互斥。否则「窗口自己轮询触发的自愈关窗」可能
+// 插进「关旧窗 → 建新窗」中间，把刚建好的新窗当成旧窗关掉。
 func (a *App) closePreBreakWindow() {
+	a.preBreakMu.Lock()
+	defer a.preBreakMu.Unlock()
+	a.closePreBreakWindowLocked()
+}
+
+// closePreBreakWindowLocked 已持有 preBreakMu 时用（ShowPreBreakWindow 内部）。
+func (a *App) closePreBreakWindowLocked() {
 	a.mu.Lock()
 	w := a.wins[preBreakWindowName]
 	delete(a.wins, preBreakWindowName)

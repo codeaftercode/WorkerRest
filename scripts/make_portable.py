@@ -140,11 +140,11 @@ def build_exe(version: str) -> bool:
 
 
 def copy_roles(dest: str) -> None:
-    """把 supervisors/ 里「带 role.json」的子目录逐个拷进包。
+    """把 supervisors/ 里「带 meta.json」的子目录逐个拷进包。
 
-    只拷 role.json 齐全的目录：scanRoles 不认没有 role.json 的子目录（等于不存在），
+    只拷 meta.json 齐全的目录：scanRoles 不认没有 meta.json 的子目录（等于不存在），
     打进去只是白占体积，用户看到目录还会以为「这个专员怎么没显示」。所以纯素材目录
-    （只有立绘、还没做 role.json）天然不进包，不用另维护排除名单。
+    （只有立绘、还没做 meta.json）天然不进包，不用另维护排除名单。
     """
     out = os.path.join(dest, "supervisors")
     os.makedirs(out, exist_ok=True)
@@ -153,13 +153,13 @@ def copy_roles(dest: str) -> None:
         src = os.path.join(ROLES_SRC, name)
         if not os.path.isdir(src):
             continue
-        if not os.path.isfile(os.path.join(src, "role.json")):
+        if not os.path.isfile(os.path.join(src, "meta.json")):
             skipped.append(name)
             continue
         shutil.copytree(src, os.path.join(out, name))
     print(f"[make-portable] 督休专员目录: {len(os.listdir(out))} 个")
     if skipped:
-        print(f"[make-portable] 跳过无 role.json 的素材目录: {', '.join(skipped)}")
+        print(f"[make-portable] 跳过无 meta.json 的素材目录: {', '.join(skipped)}")
 
 
 def assemble(dest: str, version: str) -> bool:
@@ -226,7 +226,7 @@ def verify_zip(zip_path: str, top: str) -> bool:
         return False
     has_exe = f"{top}/{EXE_NAME}" in names
     has_roles = any(n.startswith(f"{top}/supervisors/") for n in names)
-    has_role_json = any(n.endswith("/role.json") for n in names)
+    has_role_meta = any(n.endswith("/meta.json") for n in names)
     # 立绘可能是 png 也可能是 webp（2026-10 起随包统一 webp），两种都算
     n_roles = sum(
         1 for n in names
@@ -241,12 +241,12 @@ def verify_zip(zip_path: str, top: str) -> bool:
     # （反斜杠会被一部分解压工具当文件名的一部分，解压后文件散落一地）
     escaped = [n for n in names if not n.startswith(top + "/") or "\\" in n]
     ok = (
-        test is None and has_exe and has_roles and has_role_json
+        test is None and has_exe and has_roles and has_role_meta
         and n_sounds == 4 and has_cfg and has_stats and not escaped
     )
     print(
         f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} supervisors={has_roles}"
-        f" role_json={has_role_json} img={n_roles} sounds={n_sounds} cfg={has_cfg}"
+        f" role_meta={has_role_meta} img={n_roles} sounds={n_sounds} cfg={has_cfg}"
         f" stats={has_stats} escaped={len(escaped)} crc={test is None}"
     )
     if escaped:
@@ -351,13 +351,13 @@ def md5(p: str) -> str:
     return h.hexdigest()
 
 
-def find_role_json(root: str, key: str):
-    """在 supervisors/ 下按 key 反查某个督休专员的 role.json（目录名是专员名称，不固定）。"""
+def find_role_meta(root: str, name: str):
+    """在 supervisors/ 下按专员名反查 meta.json（目录名是名字的投影，可能被清洗过）。"""
     sup = os.path.join(root, "supervisors")
     if not os.path.isdir(sup):
         return None
-    for name in os.listdir(sup):
-        p = os.path.join(sup, name, "role.json")
+    for dn in os.listdir(sup):
+        p = os.path.join(sup, dn, "meta.json")
         if not os.path.isfile(p):
             continue
         try:
@@ -365,7 +365,8 @@ def find_role_json(root: str, key: str):
                 d = json.load(f)
         except Exception:
             continue
-        if d.get("key") == key:
+        nm = str((d or {}).get("name") or dn).strip() or dn
+        if nm == name:
             return p
     return None
 
@@ -527,7 +528,7 @@ def main() -> int:
     # 3. 结构核验
     checks = [
         ("exe", os.path.join(dest, EXE_NAME)),
-        ("督休专员目录", find_role_json(dest, "supervisor_default")),
+        ("督休专员目录", find_role_meta(dest, "眼镜主管")),
         ("预置 sounds/", os.path.join(dest, "sounds", "short_start.wav")),
         ("预置 config/settings.json", os.path.join(dest, "config", "settings.json")),
         ("预置 data/stats.json", os.path.join(dest, "data", "stats.json")),

@@ -1,12 +1,11 @@
 {
-  "key": "role_judge",
   "name": "法官",
   "enabled": true,
   "image": "figure.webp",
   "preview": "preview.webp",
   "geom": {
-    "sizePct": 72,
-    "posXPct": 4,
+    "sizePct": 80,
+    "posXPct": 5,
     "posYPct": 0,
     "flip": false
   },
@@ -14,52 +13,52 @@
     "order": "random",
     "items": [
       {
-        "id": "builtin-cmd-role_judge-0",
+        "id": "1",
         "text": "起立。本庭已查明你连续久坐超时，现责令你立即站起，活动肩颈。不得以「马上就好」为由拖延。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-1",
+        "id": "2",
         "text": "休庭。你的身体不是永动机。本庭裁定即刻休庭，离开座椅，走动几步；拒不执行者，视为藐视本庭。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-2",
+        "id": "3",
         "text": "眼睛距屏幕过近、久盯不放，证据确凿。现命令你抬头远眺一会儿，再眨几下眼。本庭不接受「再看一页」的申辩。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-3",
+        "id": "4",
         "text": "本庭注意到你的水杯空置已久，现责令你起身接水并缓慢饮用。久坐加缺水，两项一并纠正，不得异议。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-4",
+        "id": "5",
         "text": "双手离开键盘，双臂上举，肩背舒展，腰部活动。判决即时生效，不许敷衍。本庭要看到实际动作，不采信口头服从。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-5",
+        "id": "6",
         "text": "禁止连续作战。长时间保持同一坐姿，事实清楚，危害明确。本庭裁定每坐满一段时间必须起身短暂休息；「忙完这一阵」不构成合法抗辩。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-6",
+        "id": "7",
         "text": "全体起立，现在宣判：离开电脑，活动身体，立即执行。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-7",
+        "id": "8",
         "text": "本庭责令你离开电脑桌，走到窗边或门口，完成一次短暂步行。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-8",
+        "id": "9",
         "text": "休息期间不得继续盯手机，不得把「站起来」变成「换个姿势看屏幕」。本庭裁定：眼睛与大脑一并休庭。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_judge-9",
+        "id": "10",
         "text": "立即起立，双手离开键盘。本庭不采纳「再打一行」的申辩。",
         "enabled": true
       }

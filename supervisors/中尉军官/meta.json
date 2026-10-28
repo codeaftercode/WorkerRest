@@ -1,12 +1,11 @@
 {
-  "key": "role_lieutenant",
   "name": "中尉军官",
   "enabled": true,
   "image": "figure.webp",
   "preview": "preview.webp",
   "geom": {
-    "sizePct": 72,
-    "posXPct": 4,
+    "sizePct": 80,
+    "posXPct": 5,
     "posYPct": 0,
     "flip": false
   },
@@ -14,52 +13,52 @@
     "order": "random",
     "items": [
       {
-        "id": "builtin-cmd-role_lieutenant-0",
+        "id": "1",
         "text": "屏幕前的同志，我以中尉的身份命令你：立即站起来，双手离开键盘，原地活动肩颈。久坐不是休息，是让疲劳悄悄瓦解你的战斗力。执行，不要讨价还价。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-1",
+        "id": "2",
         "text": "听清楚：身体也是武器，武器需要保养。现在起身，走到窗边远眺一会儿，再喝几口水。这不是建议，是命令。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-2",
+        "id": "3",
         "text": "同志，军纪不允许把战斗力耗在一把椅子上。马上站起来，挺直腰背，深呼吸几次，然后向我报告：头脑是否清醒。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-3",
+        "id": "4",
         "text": "你在屏幕前坐得太久了，这不是坚韧，是疏忽。立即起立，原地踏步一会儿，活动手腕和脚踝。休息是战术动作，不是偷懒。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-4",
+        "id": "5",
         "text": "我命令你暂时离开电脑：站起来，肩向后展，头抬起，眼睛离开屏幕，过一会儿再回来。不要让我重复第二遍。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-5",
+        "id": "6",
         "text": "同志，疲劳不会自己撤退，只会积累成失误。现在起身走动，哪怕只在房间里走一圈。短暂休息是为了继续战斗——立刻执行。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-6",
+        "id": "7",
         "text": "坐姿再端正也不能代替活动。站起来，双手叉腰，缓慢转动腰部，再做几次肩部绕环。这是命令，不是商量。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-7",
+        "id": "8",
         "text": "你盯屏幕的时间已超出合理限度。立即起立，远眺，放松眼部，顺便检查自己是否驼背。军容和状态都要严整，马上行动。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-8",
+        "id": "9",
         "text": "同志，不要向椅子投降。现在站起来，离开屏幕一会儿，活动腿脚，喝点水。休息完再坐下，才算合格的执行。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_lieutenant-9",
+        "id": "10",
         "text": "最后提醒：久坐是隐蔽的敌人，必须主动出击。我命令你立刻起身，活动肩颈、腰背和双腿，歇过来再回到岗位。执行命令，保持清醒。",
         "enabled": true
       }

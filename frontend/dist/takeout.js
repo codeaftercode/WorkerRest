@@ -2239,7 +2239,7 @@
   // 与休息窗口同源，但**没有二阶段**：外卖提醒不玩「凑近命令」——督休专员台词
   // 恒为外卖提醒文字（stage1Text），不显示督休专员自己的劝说/命令台词；
   // 检测到活动只向其他窗口广播升级（supActivity），本窗口不升级。
-  var GEOM_FALLBACK = { sizePct: 72, posXPct: 4, posYPct: 0, flip: false };
+  var GEOM_FALLBACK = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false };
   function setupSupervisor(sup, stage1Text) {
     const app = document.getElementById("app");
     const figure = document.getElementById("figure");

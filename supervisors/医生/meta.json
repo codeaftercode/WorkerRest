@@ -1,12 +1,11 @@
 {
-  "key": "role_doctor",
   "name": "医生",
   "enabled": true,
   "image": "figure.webp",
   "preview": "preview.webp",
   "geom": {
-    "sizePct": 72,
-    "posXPct": 4,
+    "sizePct": 80,
+    "posXPct": 5,
     "posYPct": 0,
     "flip": false
   },
@@ -14,172 +13,172 @@
     "order": "random",
     "items": [
       {
-        "id": "builtin-cmd-role_doctor-0",
+        "id": "1",
         "text": "医嘱：立即停止用眼，起身活动五分钟。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-1",
+        "id": "2",
         "text": "你的视力和腰椎都在向我报警，听医生的。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-2",
+        "id": "3",
         "text": "别和处方讨价还价——去休息。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-3",
+        "id": "4",
         "text": "再盯下去，下次来挂号的还是你自己。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-4",
+        "id": "5",
         "text": "我在值班室看着呢，离开屏幕，执行。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-5",
+        "id": "6",
         "text": "久坐让下肢血流淤滞、血栓风险上升，现在站起来走两分钟，别等腿肿了才动。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-6",
+        "id": "7",
         "text": "前倾坐姿下腰椎间盘压力可达体重近三倍，靠住椅背，立刻起身让椎间盘减压。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-7",
+        "id": "8",
         "text": "低头45度颈椎负荷约22公斤，头给我抬起来，做5次颈部后缩，别让颈后肌群硬扛。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-8",
+        "id": "9",
         "text": "肌肉不收缩，餐后血糖和胰岛素敏感性就变差，每坐30—60分钟必须起身2—3分钟。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-9",
+        "id": "10",
         "text": "久坐会抑制脂蛋白脂肪酶活性、拖慢血脂清除，现在起来走一圈，让代谢系统干活。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-10",
+        "id": "11",
         "text": "每天久坐6—8小时以上，全因死亡和心血管死亡风险显著上升。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-11",
+        "id": "12",
         "text": "久坐让髋屈肌缩短、臀肌失活、骨盆前倾加重，站起来做5次伸髋，别让臀肌继续休眠。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-12",
+        "id": "13",
         "text": "久坐与消极情绪、睡眠变差相关，别硬坐，起身步行几分钟就是处方。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-13",
+        "id": "14",
         "text": "“以后多运动”不能抵消现在的连续久坐。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-14",
+        "id": "15",
         "text": "把手从鼠标上拿开，马上起来走两步！你省这几分钟不动，回头颈肩腰疼起来，理疗费和时间都得加倍还。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-15",
+        "id": "16",
         "text": "别跟我说“再坐五分钟”，你每次都说五分钟。久坐是在给代谢添乱，血糖血脂可不听你解释。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-16",
+        "id": "17",
         "text": "抬头，看远处，站起来！眼睛都盯屏幕盯成这样了，你还想硬撑？远眺几分钟，眼干眼疲劳能缓一缓。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-17",
+        "id": "18",
         "text": "腿给我动起来，别一直蜷着。连续久坐下肢血流淤滞，尤其高危的人，别等腿肿了才后悔。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-18",
+        "id": "19",
         "text": "腰不是铁打的，坐姿再好也不能一坐半天。没有完美坐姿能抵消久坐，给我换姿势、起身、活动。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-19",
+        "id": "20",
         "text": "白天不动，晚上别抱怨睡不好。现在起来走几步，规律打断久坐，睡眠和情绪都少给你添乱。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-20",
+        "id": "21",
         "text": "久坐让下肢血流淤滞、血栓风险上升。现在站起来走几步，别等腿肿了才动。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-21",
+        "id": "22",
         "text": "前倾坐姿下椎间盘承受的压力可达直立时的近三倍——靠住椅背，现在就起身，让椎间盘松一松。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-22",
+        "id": "23",
         "text": "低头 45 度，颈椎负荷约 22 公斤。头抬起来，做 5 次颈部后缩，别让颈后肌群硬扛。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-23",
+        "id": "24",
         "text": "肌肉不收缩，葡萄糖就进不了细胞：餐后血糖清除变慢、胰岛素敏感性下降。所以别死坐——坐一阵就起来缓一缓，这是硬指标。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-24",
+        "id": "25",
         "text": "久坐会抑制脂蛋白脂肪酶活性、拖慢血脂清除。现在起来走一圈，让代谢系统开工。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-25",
+        "id": "26",
         "text": "每天久坐 6—8 小时以上，全因死亡与心血管死亡风险显著上升。这条不是吓唬你，是流行病学结论——起身。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-26",
+        "id": "27",
         "text": "久坐让髋屈肌缩短、臀肌失活、骨盆前倾加重。站起来做 5 次伸髋，别让臀肌继续休眠。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-27",
+        "id": "28",
         "text": "久坐与情绪低落、睡眠质量下降直接相关。起身走一会儿，这是处方，不是安慰。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-28",
+        "id": "29",
         "text": "「以后多运动」抵消不了你现在的连续久坐。起身。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-29",
+        "id": "30",
         "text": "手从鼠标上拿开，马上起来走两步。你现在省的这点时间，将来要拿颈肩腰疼、理疗费和时间加倍还。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-30",
+        "id": "31",
         "text": "别跟我说「再坐一会儿」——你每次都这么说。久坐是在给代谢添乱，血糖血脂不听你解释。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-31",
+        "id": "32",
         "text": "抬头，看远处，站起来。眼睛都盯成这样了还硬撑？远眺一会儿，眼干和视疲劳能缓一缓。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-32",
+        "id": "33",
         "text": "腿动起来，别一直蜷着。连续久坐下肢血流淤滞，有基础病的人更别硬扛。",
         "enabled": true
       },
       {
-        "id": "builtin-cmd-role_doctor-33",
+        "id": "34",
         "text": "腰不是铁打的，坐姿再好也不能一坐半天。没有哪种坐姿能抵消久坐——换姿势、起身、活动。",
         "enabled": true
       }

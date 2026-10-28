@@ -8,14 +8,14 @@ import (
 // 候选专员顺序的回归（2026-10-26）。
 //
 // 需求：设置页「督休专员 → 候选专员」列表支持**拖动立绘调整顺序**并持久化。
-// 顺序落在 config/settings.json 的 supervisor.order（role key 数组），
+// 顺序落在 config/settings.json 的 supervisor.order（专员名数组），
 // 画廊显示顺序与「顺序轮换」的出场次序**共用**这一份 —— 拖一次两边同时生效，
 // 不会出现「画廊一个样、轮换另一个样」的劈叉。
 
-func roleKeys(roles []Role) []string {
+func roleNames(roles []Role) []string {
 	out := make([]string, 0, len(roles))
 	for _, r := range roles {
-		out = append(out, r.Key)
+		out = append(out, r.Name)
 	}
 	return out
 }
@@ -34,7 +34,7 @@ func eqKeys(a, b []string) bool {
 
 // applyRoleOrder：按 order 重排；order 里缺的追加在后，多余的忽略
 func TestApplyRoleOrder(t *testing.T) {
-	roles := []Role{{Key: "a"}, {Key: "b"}, {Key: "c"}}
+	roles := []Role{{Name: "a"}, {Name: "b"}, {Name: "c"}}
 	cases := []struct {
 		name  string
 		order []string
@@ -48,7 +48,7 @@ func TestApplyRoleOrder(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := roleKeys(applyRoleOrder(roles, tc.order))
+			got := roleNames(applyRoleOrder(roles, tc.order))
 			if !eqKeys(got, tc.want) {
 				t.Fatalf("顺序不符: got %v want %v", got, tc.want)
 			}
@@ -89,29 +89,16 @@ func TestNormalizeSupervisorMessagesOrder(t *testing.T) {
 	if len(got) != 2 || got[0] != "b" || got[1] != "a" {
 		t.Fatalf("order 归一不对: %v", got)
 	}
-	// 旧键清理白名单不能把 order 一起删掉（rolesMigrated=true 时尤其要守住）
-	raw3 := map[string]any{"supervisor": map[string]any{
-		"rolesMigrated": true,
-		"roles":         []any{"x"},
-		"order":         []any{"a", "b"},
-	}}
-	normalizeSupervisorMessages(raw3)
-	sup3 := raw3["supervisor"].(map[string]any)
-	if _, ok := sup3["order"]; !ok {
-		t.Fatal("rolesMigrated 清理旧键时不能把 order 一起删掉")
-	}
-	if _, ok := sup3["roles"]; ok {
-		t.Fatal("旧键 roles 应被清掉")
-	}
+
 }
 
 // ListRoles 按保存的顺序返回（设置页画廊与主窗口共用这一份）
 func TestListRolesFollowsSavedOrder(t *testing.T) {
 	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"selection":"sequence","order":["sup-b","sup-a"]}}`)
-	writeRole(t, a.rolesRoot, "sup-a", "甲", true)
-	writeRole(t, a.rolesRoot, "sup-b", "乙", true)
-	writeRole(t, a.rolesRoot, "sup-c", "丙", true)
-	got := roleKeys(a.ListRoles())
+	writeRole(t, a.rolesRoot, "sup-a", "sup-a", true)
+	writeRole(t, a.rolesRoot, "sup-b", "sup-b", true)
+	writeRole(t, a.rolesRoot, "sup-c", "sup-c", true)
+	got := roleNames(a.ListRoles())
 	want := []string{"sup-b", "sup-a", "sup-c"} // order 里没有的 sup-c 追加在后
 	if !eqKeys(got, want) {
 		t.Fatalf("ListRoles 顺序不对: got %v want %v", got, want)
@@ -121,9 +108,9 @@ func TestListRolesFollowsSavedOrder(t *testing.T) {
 // 顺序轮换的出场次序 = 用户拖出来的顺序（画廊顺序 == 轮换次序）
 func TestSequenceRotationFollowsSavedOrder(t *testing.T) {
 	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"selection":"sequence","order":["sup-c","sup-b","sup-a"]}}`)
-	writeRole(t, a.rolesRoot, "sup-a", "甲", true)
-	writeRole(t, a.rolesRoot, "sup-b", "乙", true)
-	writeRole(t, a.rolesRoot, "sup-c", "丙", true)
+	writeRole(t, a.rolesRoot, "sup-a", "sup-a", true)
+	writeRole(t, a.rolesRoot, "sup-b", "sup-b", true)
+	writeRole(t, a.rolesRoot, "sup-c", "sup-c", true)
 	cfg := a.cfg.SupervisorCfg()
 	want := []string{"sup-c", "sup-b", "sup-a"}
 	for i, w := range want {
@@ -131,8 +118,8 @@ func TestSequenceRotationFollowsSavedOrder(t *testing.T) {
 		if st == nil {
 			t.Fatalf("第 %d 次会话为空", i+1)
 		}
-		if st.ImageKey != w {
-			t.Fatalf("第 %d 次轮换应为 %s，实际 %s", i+1, w, st.ImageKey)
+		if st.RoleName != w {
+			t.Fatalf("第 %d 次轮换应为 %s，实际 %s", i+1, w, st.RoleName)
 		}
 	}
 }
@@ -140,8 +127,8 @@ func TestSequenceRotationFollowsSavedOrder(t *testing.T) {
 // 设置页预览用**表单里**的顺序（刚拖完还没落盘也立刻生效）
 func TestSupervisorPreviewUsesFormOrder(t *testing.T) {
 	a := newSupTestApp(t, `{"supervisor":{"enabled":true,"selection":"sequence","order":["sup-a"]}}`)
-	writeRole(t, a.rolesRoot, "sup-a", "甲", true)
-	writeRole(t, a.rolesRoot, "sup-b", "乙", true)
+	writeRole(t, a.rolesRoot, "sup-a", "sup-a", true)
+	writeRole(t, a.rolesRoot, "sup-b", "sup-b", true)
 	st := a.SupervisorPreview(map[string]any{
 		"enabled":   true,
 		"selection": "sequence",
@@ -150,8 +137,8 @@ func TestSupervisorPreviewUsesFormOrder(t *testing.T) {
 	if st == nil {
 		t.Fatal("预览会话为空")
 	}
-	if st.ImageKey != "sup-b" {
-		t.Fatalf("预览应按表单顺序取到 sup-b，实际 %s", st.ImageKey)
+	if st.RoleName != "sup-b" {
+		t.Fatalf("预览应按表单顺序取到 sup-b，实际 %s", st.RoleName)
 	}
 }
 

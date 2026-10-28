@@ -85,13 +85,15 @@ type AppearanceConfig struct {
 	HeightPct    float64 `json:"heightPct"`
 }
 
-// SupervisorConfig 督休专员显示开关（督休专员本体在 supervisors/<名称>/role.json，key 在 role.json 内）
+// SupervisorConfig 督休专员显示开关（督休专员本体在 supervisors/<名称>/meta.json，
+// 名字就是身份 —— 没有内部 id）
 type SupervisorConfig struct {
 	Enabled   bool   `json:"enabled"`
 	Gaze      bool   `json:"gaze"`
 	Selection string `json:"selection"` // fixed | sequence | random
-	FixedKey  string `json:"fixedKey"`
-	// Order 候选专员的展示顺序（role key 数组）。用户在设置页拖动立绘磁贴调整顺序后落盘，
+	// FixedRole 固定显示时指定的督休专员名。查不到（改名 / 删除）就兜底到第一个可用的。
+	FixedRole string `json:"fixedRole"`
+	// Order 候选专员的展示顺序（专员名数组）。用户在设置页拖动立绘磁贴调整顺序后落盘，
 	// 这里读回来即为「顺序轮换」的出场次序 —— 画廊显示顺序与轮换次序共用这一份顺序，
 	// 用户拖一次两边同时生效，不会出现「画廊一个样、轮换另一个样」的劈叉。
 	Order []string `json:"order"`
@@ -394,13 +396,13 @@ func mapInt(m map[string]any, key string, def int64) int64 {
 	return def
 }
 
-// SupervisorCfg 督休专员显示开关（督休专员本体在 supervisors/<名称>/role.json，key 在 role.json 内）
+// SupervisorCfg 督休专员显示开关（督休专员本体在 supervisors/<名称>/meta.json，名字就是身份）
 func (s *Settings) SupervisorCfg() SupervisorConfig {
 	return SupervisorConfig{
 		Enabled:   s.Flag(true, "supervisor", "enabled"),
 		Gaze:      s.Flag(true, "supervisor", "gaze"),
 		Selection: s.normSelection(s.Str("fixed", "supervisor", "selection")),
-		FixedKey:  s.Str("", "supervisor", "fixedKey"),
+		FixedRole: s.Str("", "supervisor", "fixedRole"),
 		Order:     s.StrSlice("supervisor", "order"),
 	}
 }
@@ -835,9 +837,6 @@ func defaultCustomBreakConfig() map[string]any {
 // customBreakPrefix 自定义提醒 id 的前缀（与 types.ts 的 CUSTOM_BREAK_PREFIX 一致）
 const customBreakPrefix = "cb-"
 
-// builtinPrefix 预置条目的 id 前缀（与 config.ts 的 BUILTIN_PREFIX 一致）
-const builtinPrefix = "builtin-"
-
 // normalizeOrder 提醒内容显示方式：只认 fixed / random / sequence，其余回 fixed
 func normalizeOrder(v any) string {
 	if s, ok := v.(string); ok && (s == "fixed" || s == "random" || s == "sequence") {
@@ -846,11 +845,75 @@ func normalizeOrder(v any) string {
 	return "fixed"
 }
 
-// normalizeMsgItems 归一化一组提醒内容条目：丢掉没有文本的、补 id、enabled 只认非 false。
-// dropBuiltin 为真时顺带剔除 `builtin-` 前缀的历史种子条目（自定义提醒的列表默认空）。
-func normalizeMsgItems(v any, dropBuiltin bool) []any {
+// itemID 取出条目的 id：字符串或数字都认（手改配置时可能写成 1 而不是 "1"）。
+func itemID(v any) string {
+	switch x := v.(type) {
+	case string:
+		return strings.TrimSpace(x)
+	case float64:
+		if x == math.Trunc(x) && x >= 0 {
+			return strconv.FormatInt(int64(x), 10)
+		}
+	case int:
+		if x >= 0 {
+			return strconv.Itoa(x)
+		}
+	}
+	return ""
+}
+
+// nextSeqID 列表内可用的最短 id：现有 id 里最大的十进制整数 +1（没有数字 id 就从 "1" 起）。
+//
+// 条目 id 只需要「本列表内唯一且稳定」——固定模式靠它选中一条，删除 / 拖动靠它定位，
+// 跨列表、跨文件都不要求唯一。所以光秃秃的序号就够：meta.json 与 settings.json 都是给
+// 人看的文件，`"id": "3"` 比 `builtin-cmd-role_doctor-3` 或 36 位 uuid 好读得多。
+// 取最大值而不是最小空位：删掉中间某条后新增不会复用刚被删掉的号，fixedId 更不容易指错。
+func nextSeqID(ids []string) string {
+	max := 0
+	for _, s := range ids {
+		if n, err := strconv.Atoi(s); err == nil && n > max {
+			max = n
+		}
+	}
+	return strconv.Itoa(max + 1)
+}
+
+// isSeqID 判断 id 是否已经是「列表内序号」形态（十进制正整数）。
+func isSeqID(s string) bool {
+	n, err := strconv.Atoi(s)
+	return err == nil && n > 0
+}
+
+// seqIDFor 把一个已有 id 收敛成序号：已经是正整数就原样保留（可能不连续，但稳定），
+// 其余情况（uuid / builtin-xxx-N / 手写乱码 / 与本列表里别的条目重号）一律重新编号。
+func seqIDFor(old string, ids []string, seen map[string]bool) string {
+	if isSeqID(old) && !seen[old] {
+		return old
+	}
+	return nextSeqID(ids)
+}
+
+// remapMsgID 按「旧 id → 新 id」把 fixedId 搬到重编号后的那一条上；
+// 映射不到就原样返回，交给调用方按「指向真实条目」的规则再校验一次。
+func remapMsgID(remap map[string]string, id string) string {
+	if id == "" {
+		return ""
+	}
+	if n, ok := remap[id]; ok {
+		return n
+	}
+	return id
+}
+
+// normalizeMsgItems 归一化一组提醒内容条目：丢掉没有文本的、把 id 收敛成列表内序号、
+// enabled 只认非 false。返回的 remap 是「旧 id → 新 id」（只含真被改过的），
+// 调用方必须拿它把 fixedId 搬到新号上，否则固定模式会指空。
+func normalizeMsgItems(v any) ([]any, map[string]string) {
 	arr := anySlice(v)
 	out := make([]any, 0, len(arr))
+	ids := make([]string, 0, len(arr))
+	seen := make(map[string]bool, len(arr))
+	remap := make(map[string]string, len(arr))
 	for _, it := range arr {
 		m, ok := it.(map[string]any)
 		if !ok {
@@ -860,21 +923,18 @@ func normalizeMsgItems(v any, dropBuiltin bool) []any {
 		if !ok {
 			continue
 		}
-		id := ""
-		if s, ok := m["id"].(string); ok {
-			id = s
+		old := itemID(m["id"])
+		id := seqIDFor(old, ids, seen)
+		if old != "" && old != id && !seen[old] {
+			remap[old] = id
 		}
-		if id == "" {
-			id = newUUID()
-		}
-		if dropBuiltin && strings.HasPrefix(id, builtinPrefix) {
-			continue
-		}
+		seen[id] = true
+		ids = append(ids, id)
 		out = append(out, map[string]any{
 			"id": id, "text": text, "enabled": m["enabled"] != false,
 		})
 	}
-	return out
+	return out, remap
 }
 
 // itemsHaveID 判断 id 是否指向列表里真实存在的一条（fixedId 的合法性只看这个）
@@ -891,11 +951,12 @@ func itemsHaveID(items []any, id string) bool {
 }
 
 // normalizeCustomBreaks 自定义提醒归一化（对应 config.ts 的 normalizeCustomBreaks）：
-// 丢弃非法条目、配置按短休息的默认值补齐、缺 id / id 重复的补一枚新 id、
-// 剔除历史上种进去的 `builtin-` 条目。**整体替换** —— 重建后多余的键会被丢掉。
-func normalizeCustomBreaks(raw map[string]any) {
+// 丢弃非法条目、配置按短休息的默认值补齐、缺 id / id 重复的补一枚新 id。**整体替换** ——
+// 重建后多余的键会被丢掉。返回「有提醒内容条目被重编号」（调用方据此决定要不要回写）。
+func normalizeCustomBreaks(raw map[string]any) bool {
 	arr := anySlice(raw["customBreaks"])
 	seen := map[string]bool{}
+	renumbered := false
 	out := make([]any, 0, len(arr))
 	for _, item := range arr {
 		m, ok := item.(map[string]any)
@@ -924,11 +985,11 @@ func normalizeCustomBreaks(raw map[string]any) {
 		}
 		msg, _ := m["messages"].(map[string]any)
 		msgOrder := normalizeOrder(msg["order"])
-		msgItems := normalizeMsgItems(msg["items"], true)
-		msgFixedID := ""
-		if s, ok := msg["fixedId"].(string); ok {
-			msgFixedID = s
+		msgItems, idRemap := normalizeMsgItems(msg["items"])
+		if len(idRemap) > 0 {
+			renumbered = true
 		}
+		msgFixedID := remapMsgID(idRemap, itemID(msg["fixedId"]))
 		if msgOrder != "fixed" || !itemsHaveID(msgItems, msgFixedID) {
 			msgFixedID = ""
 		}
@@ -949,6 +1010,7 @@ func normalizeCustomBreaks(raw map[string]any) {
 		})
 	}
 	raw["customBreaks"] = out
+	return renumbered
 }
 
 // soundMusic 内置提示音（与 config.ts 的 BUILTIN_MUSIC 逐字一致）
@@ -1327,8 +1389,7 @@ func normalizeRoleOrder(v any) []string {
 }
 
 // normalizeSupervisorMessages 督休专员配置归一化（与 config.ts 同义）：
-// selection 只认固定 / 顺序 / 随机；开关类字段只认布尔；视线跟随恒为 true；
-// rolesMigrated 置位后，把可能从导入配置带进来的旧督休专员字段直接清掉。
+// selection 只认固定 / 顺序 / 随机；开关类字段只认布尔；视线跟随恒为 true。
 func normalizeSupervisorMessages(raw map[string]any) {
 	sup, ok := raw["supervisor"].(map[string]any)
 	if !ok {
@@ -1337,15 +1398,15 @@ func normalizeSupervisorMessages(raw map[string]any) {
 	if s, _ := sup["selection"].(string); s != "sequence" && s != "random" {
 		sup["selection"] = "fixed"
 	}
-	if _, ok := sup["fixedKey"].(string); !ok {
-		sup["fixedKey"] = ""
+	if _, ok := sup["fixedRole"].(string); !ok {
+		sup["fixedRole"] = ""
 	}
 	if _, ok := sup["enabled"].(bool); !ok {
 		sup["enabled"] = true
 	}
 	// 视线跟随已改为始终启用、不再可配置
 	sup["gaze"] = true
-	// 候选专员展示顺序：拖动磁贴得到的 key 数组。类型不对就整键丢掉（回落到内置顺序）。
+	// 候选专员展示顺序：拖动磁贴得到的专员名数组。类型不对就整键丢掉（回落到默认顺序）。
 	if v, ok := sup["order"]; ok {
 		if _, isArr := v.([]any); isArr {
 			norm := make([]any, 0, len(v.([]any)))
@@ -1357,21 +1418,13 @@ func normalizeSupervisorMessages(raw map[string]any) {
 			delete(sup, "order")
 		}
 	}
-	migrated := sup["rolesMigrated"] == true
-	sup["rolesMigrated"] = migrated
-	if migrated {
-		for _, k := range []string{"roles", "geom", "messagesByRole", "rolesSeeded", "image", "builtin", "customs"} {
-			if _, ok := sup[k]; ok {
-				delete(sup, k)
-			}
-		}
-	}
 }
 
 // normalizeReminderMessages 提醒内容迁移 + 归一化（对应 config.ts 的同名函数）：
 // 旧版是全局一套 messages，现在短 / 长 / 外卖各自独立一套。旧条目统一归短休息，
 // 显示方式沿用旧 mode，随后删掉旧键。每套配置**重建**成 order / fixedId / seeded / items。
-func normalizeReminderMessages(raw map[string]any) {
+func normalizeReminderMessages(raw map[string]any) bool {
+	renumbered := false
 	if legacy, ok := raw["messages"].(map[string]any); ok {
 		items := []any{}
 		for _, it := range anySlice(legacy["items"]) {
@@ -1417,8 +1470,11 @@ func normalizeReminderMessages(raw map[string]any) {
 	for _, kind := range []string{"short", "long", "takeout"} {
 		cfg, _ := rm[kind].(map[string]any)
 		order := normalizeOrder(cfg["order"])
-		items := normalizeMsgItems(cfg["items"], false)
-		fixedID := strOf(cfg["fixedId"])
+		items, idRemap := normalizeMsgItems(cfg["items"])
+		if len(idRemap) > 0 {
+			renumbered = true
+		}
+		fixedID := remapMsgID(idRemap, strOf(cfg["fixedId"]))
 		if order != "fixed" || !itemsHaveID(items, fixedID) {
 			fixedID = ""
 		}
@@ -1427,6 +1483,7 @@ func normalizeReminderMessages(raw map[string]any) {
 			"seeded": cfg["seeded"] == true, "items": items,
 		}
 	}
+	return renumbered
 }
 
 // seedPresetEntries 把预置提醒内容种进配置（幂等，返回是否有改动）。
@@ -1478,7 +1535,7 @@ func ensureInstallID(raw map[string]any) bool {
 // 「种入了预置条目」这两件事需要立刻落盘。其余归一化结果（旧键清理 / 越界夹紧）
 // **不主动回写** —— 每次启动都改写用户配置会把键序和格式一起动掉，而且在
 // 「验证脚本误指真实配置」时会留下副作用；这些清理结果会在用户下一次保存时一并落盘。
-func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded bool) {
+func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded, idsRenumbered bool) {
 	// ① 安装标识（首次运行 / 老配置升级补一枚）
 	installIDCreated = ensureInstallID(raw)
 	// ② 旧键清理与迁移（必须在归一化之前：迁移写出来的值才是最终值）
@@ -1489,7 +1546,7 @@ func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded bool) {
 	// ④ 声音
 	normalizeSound(raw)
 	// ⑤ 自定义提醒
-	normalizeCustomBreaks(raw)
+	idsRenumbered = normalizeCustomBreaks(raw)
 	// ⑥ 外卖提醒
 	raw["takeout"] = normalizeTakeout(raw)
 	// ⑦ 指定应用运行时暂停 + 首次种入内置会议软件
@@ -1500,12 +1557,12 @@ func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded bool) {
 	// ⑧ 开关类字段（含旧的「休息窗口显示位置」下拉框迁移）
 	normalizeToggles(raw)
 	// ⑨ 提醒内容（含旧 messages 键迁移）
-	normalizeReminderMessages(raw)
+	idsRenumbered = normalizeReminderMessages(raw) || idsRenumbered
 	// ⑩ 督休专员
 	normalizeSupervisorMessages(raw)
 	// ⑪ 预置提醒内容条目（幂等）
 	presetSeeded = seedPresetEntries(raw)
-	return installIDCreated, presetSeeded
+	return installIDCreated, presetSeeded, idsRenumbered
 }
 
 // normalizeForSave 设置页保存 / 导入外来配置后要跑的归一化。
@@ -1550,9 +1607,8 @@ func settingsCandidates(resourcesRoot string) []string {
 // loadSettings 读配置：找到第一份可解析的 settings.json 就用它，在出厂默认之上深合并
 // （缺失字段不会整体退回默认，数组整体替换），再过一遍归一化与迁移。
 //
-// 与 上一版 loadSettingsFrom 的差异：督休专员目录迁移不在本函数内做（上一版 把迁移
-// 塞进了 loadSettingsFrom），而是由 migrate_roles.go 在 App 启动时统一处理（一次性的 sha1
-// 摘要目录迁移 + 旧 key 清理），见该文件与 README「督休专员」。
+// 督休专员目录（supervisors/）不在本函数内扫描：它由 App 在启动时按需读，配置里只存
+// 名字（fixedRole / order），见 README「督休专员」。
 func loadSettings(resourcesRoot string) *Settings {
 	base := defaultSettingsMap()
 	for _, p := range settingsCandidates(resourcesRoot) {
@@ -1569,15 +1625,16 @@ func loadSettings(resourcesRoot string) *Settings {
 		if !ok || merged == nil {
 			continue
 		}
-		installIDCreated, presetSeeded := normalizeLoad(merged)
+		installIDCreated, presetSeeded, idsRenumbered := normalizeLoad(merged)
 		s := &Settings{raw: merged, path: p}
-		// 只有「补生成 installId」或「种入预置条目」才回写（与 上一版的
-		// firstRun||installIdCreated||presetSeeded 同口径）
-		if installIDCreated || presetSeeded {
+		// 三种情况回写：补生成 installId、种入预置条目、提醒内容条目 id 被收敛成序号
+		// （后者是一次性的格式统一，收敛完即为定值，不会每次启动都写盘）
+		if installIDCreated || presetSeeded || idsRenumbered {
 			if err := s.Save(); err != nil {
 				log.Printf("[settings] 初始化结果落盘失败: %v", err)
 			} else {
-				log.Printf("[settings] 已回写初始化结果 %s（补 installId=%v 种入预置=%v）", p, installIDCreated, presetSeeded)
+				log.Printf("[settings] 已回写初始化结果 %s（补 installId=%v 种入预置=%v 条目重编号=%v）",
+					p, installIDCreated, presetSeeded, idsRenumbered)
 			}
 		}
 		return s
@@ -1585,9 +1642,9 @@ func loadSettings(resourcesRoot string) *Settings {
 	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（补 installId、
 	// 种入预置条目），并落盘 —— 与 上一版的 firstRun 分支一致
 	fresh := defaultSettingsMap()
-	installIDCreated, presetSeeded := normalizeLoad(fresh)
+	installIDCreated, presetSeeded, idsRenumbered := normalizeLoad(fresh)
 	s := &Settings{raw: fresh, path: ""}
-	if installIDCreated || presetSeeded {
+	if installIDCreated || presetSeeded || idsRenumbered {
 		if err := s.Save(); err != nil {
 			log.Printf("[settings] 首次运行落盘失败: %v", err)
 		}

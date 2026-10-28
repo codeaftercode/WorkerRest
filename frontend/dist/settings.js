@@ -1,7 +1,8 @@
 "use strict";
 (() => {
-  // 历史源码/types.ts
-  var SUP_GEOM_DEFAULT = { sizePct: 72, posXPct: 4, posYPct: 0, flip: false };
+  // 历史源码/types.ts。2026-10-28 用户要求：默认高度 80%、距左 5%、贴底，
+  // 与 Go 侧 role_write.go 的 supGeomDefault 必须同值（内置 meta.json 也一律这个值）
+  var SUP_GEOM_DEFAULT = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false };
   var SUP_GEOM_LIMITS = {
     sizePct: [20, 100],
     // 距左上限 30%：再往右立绘会挤掉右侧台词的位置（右侧内容要摆在「督休专员右边缘 ↔ 窗口右边缘」中间）
@@ -564,7 +565,7 @@
   var ROLES = [];
   var curSupStage = 1;
   var supPreview = null;
-  var supEditKey = "";
+  var supEditName = "";
   var $ = (id) => document.getElementById(id);
   function applyTitlebarMaximized(max) {
     document.getElementById("titlebar")?.classList.toggle("maximized", max);
@@ -574,6 +575,18 @@
       btn.title = label;
       btn.setAttribute("aria-label", label);
     }
+  }
+  // 预览请求的后端回执：真实提醒窗口（休息 / 外卖）正在显示时后端拒弹，返回 "busy"。
+  // 统一在这里提示，否则点了按钮没反应，用户会以为是卡住了。
+  async function previewBreak(kind, key) {
+    const r = await window.api.previewBreak(kind, key);
+    if (r === "busy") toast("休息提醒窗口正在显示，暂时无法预览");
+    return r;
+  }
+  async function previewTakeout() {
+    const r = await window.api.previewTakeout();
+    if (r === "busy") toast("外卖提醒窗口正在显示，暂时无法预览");
+    return r;
   }
   function toast(msg) {
     const t = $("toast");
@@ -682,45 +695,45 @@
     }
     closePrompt(v);
   }
-  function currentGeomKey() {
-    return supEditKey;
+  function currentGeomName() {
+    return supEditName;
   }
   function currentRoleName() {
-    return ROLES.find((r) => r.key === supEditKey)?.name ?? "\u2014";
+    return ROLES.find((r) => r.name === supEditName)?.name ?? "\u2014";
   }
   function geomOf(key) {
-    return ROLES.find((r) => r.key === key)?.geom ?? null;
+    return ROLES.find((r) => r.name === key)?.geom ?? null;
   }
   // 督休专员显示名是否已被占用（与 Go 侧 roleNameTaken 同口径：忽略大小写）。
-  // excludeKey 是「自己」的 key —— 改名时要排除自己，否则用户不改名直接点确定
+  // excludeName 是「自己」现在的名字 —— 改名时要排除自己，否则用户不改名直接点确定
   // 会被自己的旧名字挡住。
   //
   // 数据源是内存里的 ROLES（ListRoles 的结果），不是磁盘 —— 前端要的是
   // **用户看得见的名字**是否重复，Go 侧还会再兜一层底。
-  function roleNameTaken(name, excludeKey) {
+  function roleNameTaken(name, excludeName) {
     const n = (name ?? "").trim();
     if (!n) return false;
     const lower = n.toLowerCase();
     return ROLES.some(
-      (r) => r.key !== excludeKey && (r.name ?? "").trim().toLowerCase() === lower,
+      (r) => r.name !== excludeName && (r.name ?? "").trim().toLowerCase() === lower,
     );
   }
   // roleNameError 重名检查的错误文案（null = 通过）。
-  // excludeKey 同 roleNameTaken：改名时排除自己。
-  function roleNameError(name, excludeKey) {
+  // excludeName 同 roleNameTaken：改名时排除自己。
+  function roleNameError(name, excludeName) {
     const n = (name ?? "").trim();
     if (!n) return "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A";
-    if (roleNameTaken(n, excludeKey)) {
+    if (roleNameTaken(n, excludeName)) {
       return `\u540D\u79F0\u300C${n}\u300D\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A`;
     }
     return null;
   }
-  // persistRole 把内存里的某个督休专员写回 role.json。
+  // persistRole 把内存里的某个督休专员写回 meta.json。
   // 返回 Promise<boolean>：false = Go 侧拒绝（重名 / 写失败）。
   // 调用方必须能感知这个结果 —— 否则界面显示改了名字、磁盘上却没改，
   // 下次启动又变回去，界面在骗人。
   function persistRole(key) {
-    const role = ROLES.find((r) => r.key === key);
+    const role = ROLES.find((r) => r.name === key);
     if (!role) return Promise.resolve(false);
     try {
       return Promise.resolve(
@@ -742,18 +755,18 @@
     }
   }
   function ensureSupEditKey() {
-    if (supEditKey && ROLES.some((r) => r.key === supEditKey)) return;
+    if (supEditName && ROLES.some((r) => r.name === supEditName)) return;
     if (S.supervisor.selection === "fixed") {
-      // 固定模式：按 fixedKey 选（不再要求 enabled）
-      supEditKey = ROLES.find((r) => r.key === S.supervisor.fixedKey)?.key ?? ROLES[0]?.key ?? "";
+      // 固定模式：按 fixedRole（专员名）选（不再要求 enabled）
+      supEditName = ROLES.find((r) => r.name === S.supervisor.fixedRole)?.name ?? ROLES[0]?.name ?? "";
       return;
     }
     // 随机 / 顺序：优先已勾选立绘，否则列表第一个
     const firstEnabled = ROLES.find((r) => r.enabled);
-    supEditKey = firstEnabled?.key ?? ROLES[0]?.key ?? "";
+    supEditName = firstEnabled?.name ?? ROLES[0]?.name ?? "";
   }
   function commitGeomToRole(g) {
-    const role = ROLES.find((r) => r.key === currentGeomKey());
+    const role = ROLES.find((r) => r.name === currentGeomName());
     if (!role) return false;
     role.geom = { ...g };
     return true;
@@ -772,17 +785,17 @@
     const advRole = $("sup-adv-role");
     if (advRole) advRole.textContent = name;
     for (const btn of document.querySelectorAll("#sup-gallery .role-item")) {
-      btn.classList.toggle("active", btn.dataset.key === supEditKey);
+      btn.classList.toggle("active", btn.dataset.name === supEditName);
     }
   }
   function selectRole(key) {
-    const role = ROLES.find((r) => r.key === key);
+    const role = ROLES.find((r) => r.name === key);
     if (!role) return;
-    supEditKey = key;
+    supEditName = key;
     if (S.supervisor.selection === "fixed") {
       // 固定显示：点选即把该立绘设为固定项（单选框语义：同时取消其它选中）
-      if (S.supervisor.fixedKey !== key) {
-        S.supervisor.fixedKey = key;
+      if (S.supervisor.fixedRole !== key) {
+        S.supervisor.fixedRole = key;
         autoSave();
       }
     } else {
@@ -792,12 +805,12 @@
       autoSave();
     }
     fillSupervisorImageName();
-    fillGeomControls(normalizeSupGeom(geomOf(supEditKey)));
+    fillGeomControls(normalizeSupGeom(geomOf(supEditName)));
     void refreshSupervisorPreview();
     void renderRoleGallery();
   }
   async function renameRole(key) {
-    const role = ROLES.find((r) => r.key === key);
+    const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     const input = await promptDialog({
       title: "\u91CD\u547D\u540D",
@@ -806,7 +819,7 @@
       placeholder: "\u540D\u79F0",
       okText: "\u786E\u5B9A",
       // 重名 → 拒绝保存，留在框里要求重新输入（不关对话框、不丢已输入的名字）。
-      // excludeKey = key：排除自己，否则「不改名直接点确定」会被自己的旧名挡住。
+      // excludeName = key：排除自己，否则「不改名直接点确定」会被自己的旧名挡住。
       //
       // 校验与**保存**都在 validate 里做：Go 侧 SaveRole 才是权威（磁盘上可能已经
       // 多了一个同名专员，前端内存里的 ROLES 不一定知道），它返回 false 就是被拒 ——
@@ -829,6 +842,8 @@
       }
     });
     if (input === null) return;
+    // 改的是名字本身：当前编辑对象的标识要跟着换，否则后面按旧名找不到人
+    supEditName = role.name;
     fillSupervisorImageName();
     autoSave();
     await refreshSupervisorPreview();
@@ -836,13 +851,13 @@
     toast(`\u5DF2\u91CD\u547D\u540D\u4E3A\u300C${role.name}\u300D`);
   }
   async function replaceRoleImage(key) {
-    const role = ROLES.find((r) => r.key === key);
+    const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     const ok = await window.api.replaceSupervisorImage(key);
     if (!ok) return;
     // 换图后缩略图要重读，否则磁贴仍显示旧图
     ROLES = await window.api.listSupervisorRoles();
-    if (supEditKey === key) {
+    if (supEditName === key) {
       // 换的是当前编辑督休专员：预览要重读（Go 侧会按新立绘重新组装会话）
       await refreshSupervisorPreview();
     }
@@ -852,7 +867,7 @@
   }
   // 启用/禁用菜单项已移除：随机/顺序模式改由列表复选框直接控制 role.enabled
   async function removeRole(key) {
-    const role = ROLES.find((r) => r.key === key);
+    const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     const ok = await confirmDialog({
       title: "\u5220\u9664",
@@ -870,9 +885,9 @@
       await renderRoleGallery();
       return;
     }
-    ROLES = ROLES.filter((r) => r.key !== key);
-    if (S.supervisor.fixedKey === key) {
-      S.supervisor.fixedKey = ROLES[0]?.key ?? "";
+    ROLES = ROLES.filter((r) => r.name !== key);
+    if (S.supervisor.fixedRole === key) {
+      S.supervisor.fixedRole = ROLES[0]?.name ?? "";
     }
     // 顺序表里也把这个 key 摘掉：留下的陈旧 key 会让配置随删随涨，
     // 而且用户重新导入同一张图时它会「回到原来的位置」。
@@ -909,9 +924,9 @@
       validate: async (v) => {
         const name = (v ?? "").trim();
         if (!name) return "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A";
-        const err = roleNameError(name, picked.key);
+        const err = roleNameError(name, picked.saved);
         if (err) return err;
-        const ok = await window.api.saveSupervisorRole(picked.key, { name });
+        const ok = await window.api.saveSupervisorRole(picked.saved, { name });
         if (!ok) return "\u540D\u79F0\u5DF2\u5B58\u5728\uFF08\u6216\u4FDD\u5B58\u5931\u8D25\uFF09\uFF0C\u8BF7\u6362\u4E00\u4E2A";
         saved = true;
         return null;
@@ -919,13 +934,14 @@
     });
     if (input === null) {
       // 取消：删掉刚建的目录（名字还没存 → 那个目录对用户没有意义）
-      if (!saved) await window.api.removeSupervisorRole(picked.key);
+      if (!saved) await window.api.removeSupervisorRole(picked.saved);
       return;
     }
     const name = input.trim() || base;
     ROLES = await window.api.listSupervisorRoles();
-    supEditKey = picked.key;
-    if (S.supervisor.selection === "fixed" && !S.supervisor.fixedKey) S.supervisor.fixedKey = picked.key;
+    // 改名已经把落盘名换成用户输入的名字，这里要用最终的 name，不是 picked.saved（旧落盘名）
+    supEditName = name;
+    if (S.supervisor.selection === "fixed" && !S.supervisor.fixedRole) S.supervisor.fixedRole = name;
     fillSupervisorImageName();
     autoSave();
     await refreshSupervisorPreview();
@@ -937,7 +953,7 @@
   }
   function openRoleMenu(key, x, y) {
     closeRoleMenu();
-    const role = ROLES.find((r) => r.key === key);
+    const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     const menu = document.createElement("div");
     menu.id = "sup-role-menu";
@@ -978,7 +994,7 @@
   }
   async function previewRoleFromMenu(key) {
     autoSave();
-    await window.api.previewBreak("short", key);
+    await previewBreak("short", key);
   }
   var GALLERY_H_KEY = "wr.galleryH";
   function galleryMinHeight() {
@@ -1043,7 +1059,7 @@
      必须先按行分组，再在行内按左右比较，最后换算成全局下标。
      顺序落在 config/settings.json 的 supervisor.order（role key 数组），
      Go 侧 ListRoles / 顺序轮换共用这一份 —— 拖一次，画廊顺序与轮换次序同时生效。 */
-  var supDragKey = null;   // 正在拖动的专员 key
+  var supDragName = null;   // 正在拖动的专员 key
   var supDragFrom = -1;    // 拖动源在 ROLES 里的下标
   var supDropIndex = -1;   // 落点：插入到第 n 个磁贴之前（n == 磁贴数 = 插到末尾）
   var supDragEndAt = 0;    // 最近一次拖动结束的时刻（挡掉拖完浏览器补的那一下 click）
@@ -1137,7 +1153,7 @@
     const moved = ROLES.splice(from, 1)[0];
     ROLES.splice(to, 0, moved);
     if (!S.supervisor) S.supervisor = {};
-    S.supervisor.order = ROLES.map((r) => r.key);
+    S.supervisor.order = ROLES.map((r) => r.name);
     void autoSave();
     void renderRoleGallery();
   }
@@ -1145,18 +1161,18 @@
   function bindRoleGalleryDrag() {
     const box = $("sup-gallery");
     box.addEventListener("dragenter", (e) => {
-      if (!supDragKey) return;
+      if (!supDragName) return;
       e.preventDefault();
     });
     box.addEventListener("dragover", (e) => {
-      if (!supDragKey) return;
+      if (!supDragName) return;
       e.preventDefault(); // 不拦住就放不下
       if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
       const idx = computeRoleDropIndex(e.clientX, e.clientY);
       if (idx >= 0) showRoleDropHint(idx);
     });
     box.addEventListener("drop", (e) => {
-      if (!supDragKey) return;
+      if (!supDragName) return;
       e.preventDefault();
       const from = supDragFrom;
       let to = supDropIndex;
@@ -1176,7 +1192,7 @@
       btn.type = "button";
       // 未勾选不改磁贴样式，仅复选框呈未选态
       btn.className = "role-item";
-      btn.dataset.key = r.key;
+      btn.dataset.name = r.name;
       btn.draggable = true;
       const img = document.createElement("img");
       if (r.thumb) img.src = r.thumb;
@@ -1185,10 +1201,10 @@
       const hint = document.createElement("span");
       hint.className = "role-hint";
       hint.textContent = "\u53F3\u952E\u64CD\u4F5C";
-      // 选择指示：固定模式=单选框（按 fixedKey），随机/顺序=复选框（按 enabled）
+      // 选择指示：固定模式=单选框（按 fixedRole 名字），随机/顺序=复选框（按 enabled）
       const sel = document.createElement("span");
       sel.className = "role-sel " + (fixedMode ? "role-radio" : "role-check");
-      sel.classList.toggle("on", fixedMode ? r.key === S.supervisor.fixedKey : r.enabled);
+      sel.classList.toggle("on", fixedMode ? r.name === S.supervisor.fixedRole : r.enabled);
       const cap = document.createElement("span");
       cap.className = "role-cap";
       cap.textContent = r.name;
@@ -1202,28 +1218,28 @@
           supDragEndAt = 0;
           return;
         }
-        selectRole(r.key);
+        selectRole(r.name);
       });
       btn.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        openRoleMenu(r.key, e.clientX, e.clientY);
+        openRoleMenu(r.name, e.clientX, e.clientY);
       });
       btn.addEventListener("dragstart", (e) => {
-        supDragKey = r.key;
-        supDragFrom = ROLES.findIndex((x) => x.key === r.key);
+        supDragName = r.name;
+        supDragFrom = ROLES.findIndex((x) => x.name === r.name);
         supDropIndex = supDragFrom;
         btn.classList.add("dragging");
         box.classList.add("sorting");
         if (e.dataTransfer) {
-          e.dataTransfer.setData("text/plain", r.key);
+          e.dataTransfer.setData("text/plain", r.name);
           e.dataTransfer.effectAllowed = "move";
         }
       });
       btn.addEventListener("dragend", () => {
         btn.classList.remove("dragging");
         box.classList.remove("sorting");
-        supDragKey = null;
+        supDragName = null;
         supDragFrom = -1;
         supDragEndAt = Date.now();
         clearRoleDropHint();
@@ -1318,7 +1334,7 @@
   }
   async function refreshSupervisorPreview(keepUrge = false) {
     const prevUrge = supPreview?.lines.urge;
-    supPreview = await window.api.previewSupervisor(S.supervisor, supEditKey);
+    supPreview = await window.api.previewSupervisor(S.supervisor, supEditName);
     if (supPreview) {
       if (keepUrge && prevUrge) supPreview.lines.urge = prevUrge;
       fillGeomControls(supPreview.geom);
@@ -1805,7 +1821,7 @@
     if (pvBtn) {
       pvBtn.addEventListener("click", async () => {
         autoSave();
-        await window.api.previewBreak(cb.id);
+        await previewBreak(cb.id);
       });
     }
     // 「启用」下一行：暂停休息期间怎么处置（短 / 长休息没有这一行，保持原状）。
@@ -2082,7 +2098,7 @@
     applySelectionUI();
     ensureSupEditKey();
     fillSupervisorImageName();
-    fillGeomControls(normalizeSupGeom(geomOf(currentGeomKey())));
+    fillGeomControls(normalizeSupGeom(geomOf(currentGeomName())));
     $("tk-enabled").checked = S.takeout.enabled;
     mountPauseDrop($("tk-pause"), S.takeout.pauseAction);
     $("tk-lead").value = String(S.takeout.leadSec);
@@ -2172,6 +2188,23 @@
   var MSG_KIND_LABEL = { short: "\u77ED\u4F11\u606F", long: "\u957F\u4F11\u606F", takeout: "\u5916\u5356\u63D0\u9192" };
   var msgBatchTarget = "short";
   var BUILTIN_MSGS = null;
+  // 条目 id = 本列表内的序号（与 Go 侧 nextSeqID 同口径）：取现有最大整数 +1。
+  // 只要求本列表内唯一且稳定（固定模式用它选条，删除/拖动用它定位），不需要 uuid。
+  function nextMsgId(items) {
+    let max = 0;
+    const used = new Set();
+    for (const it of items ?? []) {
+      const s = it == null ? "" : String(it.id ?? "");
+      used.add(s);
+      if (!/^\d+$/.test(s)) continue;
+      const n = Number(s);
+      if (n > max) max = n;
+    }
+    // 跳过已被占用的号（后端收敛前的残留 id 万一是数字又撞上）
+    let n = max + 1;
+    while (used.has(String(n))) n += 1;
+    return String(n);
+  }
   function msgCfgOf(target) {
     const custom = (S.customBreaks ?? []).find((c) => c.id === target);
     if (custom) return custom.messages;
@@ -2187,9 +2220,9 @@
       }
       return cfg;
     }
-    const key = currentGeomKey();
+    const key = currentGeomName();
     if (!key) return null;
-    const role = ROLES.find((r) => r.key === key);
+    const role = ROLES.find((r) => r.name === key);
     if (!role) return null;
     if (!role.messages || !Array.isArray(role.messages.items)) {
       role.messages = { order: "random", items: [] };
@@ -5598,7 +5631,7 @@
   async function autoSave() {
     collectForm();
     await window.api.saveSettings(S);
-    if (supEditKey) persistRole(supEditKey);
+    if (supEditName) persistRole(supEditName);
     applyTheme();
     if (supPreview !== null || document.getElementById("sup-preview")) renderSupervisorPreview(curSupStage);
   }
@@ -5663,7 +5696,7 @@
     ROLES = await window.api.listSupervisorRoles();
     ensureSupEditKey();
     fillSupervisorImageName();
-    fillGeomControls(normalizeSupGeom(geomOf(currentGeomKey())));
+    fillGeomControls(normalizeSupGeom(geomOf(currentGeomName())));
     setupShortcutCapture();
     BUILTIN_MSGS = await window.api.builtinMsgDefaults();
     setupMsgPanels();
@@ -5732,7 +5765,7 @@
     // 这样预览窗能如实反映当前「启用」状态（Go 侧总开关现在始终生效）
     $("sup-break-preview").addEventListener("click", async () => {
       await autoSave();
-      await window.api.previewBreak("short", supEditKey);
+      await previewBreak("short", supEditName);
     });
     for (const id of ["sup-size", "sup-posx", "sup-posy"]) {
       $(id).addEventListener("input", () => {
@@ -5780,7 +5813,7 @@
       }
       $(`${t}-preview`).addEventListener("click", async () => {
         autoSave();
-        await window.api.previewBreak(t);
+        await previewBreak(t);
       });
     }
     $("tl-card").classList.toggle("open", tlExpanded);
@@ -5791,7 +5824,7 @@
     });
     $("tk-preview").addEventListener("click", async () => {
       autoSave();
-      await window.api.previewTakeout();
+      await previewTakeout();
     });
     $("tk-enabled").addEventListener("change", () => updateTakeoutSummary());
     const batchModal = $("batch-modal");
@@ -5813,7 +5846,7 @@
       const beforeLen = cfg.items.length;
       const newIds = [];
       for (const text of lines) {
-        const id = crypto.randomUUID();
+        const id = nextMsgId(cfg.items);
         cfg.items.push({ id, text, enabled: true });
         newIds.push(id);
       }
@@ -5867,7 +5900,7 @@
     });
     $("ap-preview-short").addEventListener("click", async () => {
       autoSave();
-      await window.api.previewBreak("short");
+      await previewBreak("short");
     });
     $("ap-opacity").addEventListener("input", () => {
       $("ap-opacity-val").textContent = parseFloat($("ap-opacity").value).toFixed(2);

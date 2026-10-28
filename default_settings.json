@@ -75,9 +75,8 @@
     "enabled": true,
     "gaze": true,
     "selection": "fixed",
-    "fixedKey": "supervisor_default",
-    "order": [],
-    "rolesMigrated": false
+    "fixedRole": "眼镜主管",
+    "order": []
   },
   "takeout": {
     "enabled": true,
