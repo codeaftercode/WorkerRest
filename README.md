@@ -15,6 +15,9 @@
 - **Windows 10 / 11**（依赖系统 WebView2 运行时：Win11 必带，Win10 通常已通过
   Windows Update 自动安装；缺失时首次启动会提示安装 WebView2 Runtime）
 - **Go 1.26+**
+- **Wails v3**：`github.com/wailsapp/wails/v3 v3.0.0`（正式版；v3 自身也要求 Go 1.26+，
+  与上一条本来就是同一个约束）。关于页「运行环境」显示的是构建信息里的真实依赖版本，
+  升级后在界面上就能看出跑的是 beta 还是正式版
 - （可选）**Node.js + npm** —— 仅渲染层探针 `probe_renderer.py` 需要（Playwright 驱动 Edge）
 
 ## 运行

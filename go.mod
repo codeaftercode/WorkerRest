@@ -4,8 +4,8 @@ go 1.26.3
 
 require (
 	github.com/go-ole/go-ole v1.3.0
-	github.com/wailsapp/wails/v3 v3.0.0-beta.28
-	golang.org/x/sys v0.46.0
+	github.com/wailsapp/wails/v3 v3.0.0
+	golang.org/x/sys v0.48.0
 )
 
 require (

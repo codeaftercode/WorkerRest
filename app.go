@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -1341,9 +1342,28 @@ func (a *App) AppInfo() map[string]any {
 		"platform":     "windows",
 		"roles":        len(scanRoles(a.rolesRoot)),
 		"goVersion":    goVer,
-		"wailsVersion": "v3",
+		"wailsVersion": wailsVersion(),
 		"buildTime":    buildTime,
 	}
+}
+
+// wailsVersion 取 Wails 的真实版本号，读不到时退回 "v3"。
+//
+// 以前这里写死 "v3"：beta 与正式版在关于页长得一模一样，用户报 bug 时说不清自己装的
+// 是哪一版。改成读构建信息里的模块版本（-s -w 只剥符号与调试信息，modinfo 仍在）。
+// 模块版本缺失（源码占位构建、依赖信息被裁剪）或仍是 (devel) 时，退回宽口径 "v3" ——
+// 宁可少显示一点，也不要在关于页摆一个空字符串。
+func wailsVersion() string {
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		for _, d := range bi.Deps {
+			if d.Path == "github.com/wailsapp/wails/v3" {
+				if v := strings.TrimSpace(d.Version); v != "" && v != "(devel)" {
+					return v
+				}
+			}
+		}
+	}
+	return "v3"
 }
 
 // ListRoles 督休专员目录扫描结果（预览图为 data URL，设置页督休专员列表用）

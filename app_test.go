@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -195,5 +196,19 @@ func TestBreakSessEndsOn(t *testing.T) {
 		if got := breakSessEndsOn(c.remaining, c.closedSess, c.cur); got != c.want {
 			t.Fatalf("breakSessEndsOn(%d,%q,%q)=%v，期望 %v", c.remaining, c.closedSess, c.cur, got, c.want)
 		}
+	}
+}
+
+// 关于页的 Wails 版本不能是空串：升级到正式版后这里要真的显示 v3.0.0，
+// 而不是老早写死的 "v3"（beta 与正式版在界面上必须能分辨）。
+// 只钉「非空 + v3 打头」：具体小版本会随依赖走，写死等于每次升级都要改测试。
+func TestWailsVersionReported(t *testing.T) {
+	v := wailsVersion()
+	t.Logf("关于页将显示 Wails %s", v)
+	if v == "" {
+		t.Fatal("wailsVersion 不应为空")
+	}
+	if !strings.HasPrefix(v, "v3") {
+		t.Fatalf("wailsVersion 应以 v3 打头，得到 %q", v)
 	}
 }
