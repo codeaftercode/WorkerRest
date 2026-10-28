@@ -132,6 +132,11 @@ type App struct {
 	// 使用统计（见 stats.go）：天记录 + 名字快照 + 防抖落盘 + 每秒工作累加。
 	// 懒建（statsStore 首次访问时建好并读盘），启动时由 startStats 起后台 goroutine。
 	stats *StatsStore
+
+	// 随包 sounds/ 的启动体检（见 sound_scan.go）：只在新发现 / 有缺失时非空，
+	// 用户处理完或点「暂不」就置 nil，本次运行不再询问。用独立锁，不要与 a.mu 交叉。
+	soundScanMu sync.Mutex
+	soundScan   *SoundScanNotice
 }
 
 func NewApp(app *application.App) *App {
@@ -185,6 +190,9 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 	// 提示音宿主：一个隐藏的 1×1 窗口承载 <audio>（主进程自己放不了声音，见 sound.go）。
 	// 无头构建下只记日志、不建窗。
 	a.initSoundHost()
+	// 随包 sounds/ 体检：用户往里丢了新音频、或删掉了已登记的文件，只记录不擅自改配置
+	//（设置页打开时弹窗逐项询问，见 sound_scan.go）
+	a.startSoundScan()
 	// 不显示设置窗口、直接最小化到托盘的两条路径：开机自启动拉起，或用户勾选了
 	// 「启动时最小化到托盘」（此前只认自启动标志，勾选无效 —— 窗口照常弹出）。
 	// 与 上一版 `if (!launchedAtLogin()) openSettingsWindow(...)` 同口径。

@@ -1203,6 +1203,15 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   content: ""; flex: none; width: 6px; height: 6px; margin-top: 8px;
   border-radius: 50%; background: var(--accent);
 }
+/* 提示音目录体检弹窗（#snd-scan-modal）：一段一个决策，段间细线分隔。
+   高度比统计弹窗那版放宽一点 —— 这里可能同时有两段，按钮不能被滚出视野。 */
+#ss-body { max-height: 320px; }
+.ss-sec + .ss-sec {
+  margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border);
+}
+.ss-sec-title { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--text); }
+.ss-hint { margin: 0 0 6px; font-size: 12px; line-height: 1.6; color: var(--text-2); }
+.ss-sec-actions { margin-top: 8px; display: flex; gap: 8px; }
 
 #toast {
   position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%);

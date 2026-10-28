@@ -599,9 +599,9 @@
   // 悄悄丢了数据。备份文件路径一并给出，用户想抢救原始数据还能找到。
   let statsNoticeShown = false;
   async function showStatsFileNotice() {
-    if (statsNoticeShown) return;
+    if (statsNoticeShown) return false;
     const n = await window.api.getStatsFileNotice();
-    if (!n || statsNoticeShown) return;
+    if (!n || statsNoticeShown) return false;
     statsNoticeShown = true;
     const body = $("st-body");
     body.innerHTML = "";
@@ -615,13 +615,143 @@
     add("\u5224\u5B9A\u539F\u56E0", n.reason);
     add("\u5904\u7406\u65F6\u95F4", n.at);
     $("stats-modal").classList.remove("hidden");
+    return true;
   }
   function bindStatsNotice() {
     $("st-ok").addEventListener("click", () => {
       $("stats-modal").classList.add("hidden");
       void window.api.ackStatsFileNotice();
+      // 统计弹窗关掉之后，才轮到提示音目录的体检结果（同一时刻只弹一个）
+      void showSoundScanNotice();
     });
   }
+  // 随包 sounds/ 的体检结果（见 sound_scan.go）：用户往 exe 旁的 sounds/ 丢了新音频，
+  // 或删掉了已登记条目的文件。**只落一次**；两段各有自己的决策按钮，处理完一段若另一段
+  // 还有内容就继续留着，两段都完自动关。点「暂不处理」= 本次运行不再问（不写盘，
+  // 下次启动会重新扫 —— 文件还在的话那时再问一遍）。
+  var sndScanShown = false;
+
+  function fmtBytes(n) {
+    const v = Number(n) || 0;
+    if (v < 1024) return v + " B";
+    if (v < 1048576) return (v / 1024).toFixed(1) + " KB";
+    return (v / 1048576).toFixed(1) + " MB";
+  }
+
+  // scanSection 生成一段「标题 + 说明 + 列表 + 一个决策按钮」的区块
+  function scanSection(opts) {
+    const sec = document.createElement("div");
+    sec.className = "ss-sec";
+    const title = document.createElement("p");
+    title.className = "ss-sec-title";
+    title.textContent = opts.title;
+    const hint = document.createElement("p");
+    hint.className = "ss-hint";
+    hint.textContent = opts.hint;
+    sec.append(title, hint);
+    for (const row of opts.rows) {
+      const item = document.createElement("div");
+      item.className = "up-item";
+      item.textContent = row.sub ? row.text + " · " + row.sub : row.text;
+      item.title = row.sub || row.text;
+      sec.appendChild(item);
+    }
+    const actions = document.createElement("div");
+    actions.className = "ss-sec-actions";
+    const ok = document.createElement("button");
+    ok.className = "btn mini" + (opts.danger ? " danger" : " primary");
+    ok.textContent = opts.okText;
+    ok.addEventListener("click", async () => {
+      if (ok.disabled) return;
+      ok.disabled = true;
+      let done = false;
+      try {
+        done = await opts.onOk();
+      } catch (err) {
+        console.error("[sound-scan] 处理失败:", err);
+      }
+      if (!done) {
+        ok.disabled = false;
+        toast("处理失败，请重试");
+        return;
+      }
+      sec.remove();
+      if (!$("ss-body").children.length) closeSoundScanModal(false);
+    });
+    actions.appendChild(ok);
+    sec.appendChild(actions);
+    return sec;
+  }
+
+  // dismiss 为真才算「用户主动暂不」：全部处理完自动关闭时不该记这一笔，
+  // 否则日志会写着「用户选择暂不处理」，与事实相反。
+  function closeSoundScanModal(dismiss) {
+    $("snd-scan-modal").classList.add("hidden");
+    $("ss-body").textContent = "";
+    if (dismiss) void window.api.dismissSoundScan();
+  }
+
+  async function showSoundScanNotice() {
+    if (sndScanShown) return false;
+    // 统计文件弹窗优先（它关系到「数据是不是丢了」），没关就不抢位置
+    if (!$("stats-modal").classList.contains("hidden")) return false;
+    const n = await window.api.getSoundScanNotice();
+    const newList = n && Array.isArray(n.new) ? n.new : [];
+    const missList = n && Array.isArray(n.missing) ? n.missing : [];
+    sndScanShown = true;
+    if (!newList.length && !missList.length) return false;
+
+    $("ss-dir").textContent = n.dir ? "目录：" + n.dir : "";
+    const body = $("ss-body");
+    body.textContent = "";
+
+    if (newList.length) {
+      body.appendChild(
+        scanSection({
+          title: "发现 " + newList.length + " 个新提示音",
+          hint: "sounds 目录里有尚未登记的音频。导入后可在「提示音」列表里选用（原地登记：不复制、不改名）。",
+          rows: newList.map((f) => ({ text: f.file, sub: fmtBytes(f.size) })),
+          okText: "全部导入",
+          onOk: async () => {
+            const r = await window.api.importScannedSounds(newList.map((f) => f.file));
+            if (!r || !r.ok || !r.imported) return false;
+            S = await window.api.getSettings();
+            renderSoundMusic();
+            toast("已导入 " + r.imported + " 个提示音");
+            return true;
+          }
+        })
+      );
+    }
+
+    if (missList.length) {
+      body.appendChild(
+        scanSection({
+          title: missList.length + " 个提示音的文件已不在",
+          hint: "这些条目还在配置里，但文件已经找不到（试听会失败）。从配置删除只移除条目，不删除任何文件。",
+          rows: missList.map((m) => ({ text: m.name, sub: m.file })),
+          okText: "从配置删除",
+          danger: true,
+          onOk: async () => {
+            const r = await window.api.dropMissingSounds(missList.map((m) => m.id));
+            if (!r || !r.ok || !r.removed) return false;
+            S = await window.api.getSettings();
+            renderSoundMusic();
+            toast("已从配置删除 " + r.removed + " 条失效提示音");
+            return true;
+          }
+        })
+      );
+    }
+
+    $("snd-scan-modal").classList.remove("hidden");
+    return true;
+  }
+
+  function bindSoundScanModal() {
+    $("ss-close").addEventListener("click", () => closeSoundScanModal(true));
+  }
+
   var cfResolve = null;
   function confirmDialog(opts) {
     $("cf-title").textContent = opts.title;
@@ -6166,7 +6296,11 @@
     await refreshSupervisorPreview();
     // 统计文件损坏重建过就弹窗说明（Go 侧启动时处置，这里取一次告知结果）
     bindStatsNotice();
-    void showStatsFileNotice();
+    bindSoundScanModal();
+    // 统计弹窗优先；它没弹（或没这道坎）才轮到提示音目录的体检结果
+    void (async () => {
+      if (!(await showStatsFileNotice())) await showSoundScanNotice();
+    })();
     window.api.onState((raw) => renderStatus(raw));
     // 统计入账（工作/休息/离开/休息次数/外卖动作）后 Go 侧会推今天的快照：
     // 「今天」卡立刻跟着变，不用等切页、切窗口或手动刷新。

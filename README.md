@@ -122,13 +122,14 @@ python scripts/verify_portable.py
 ## 测试与验证
 
 ```powershell
-go test -tags server ./...         # 单元测试（246 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
+go test -tags server ./...         # 单元测试（295 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
                                    # 系统能力 / 提示音 / 统计 / 督休专员迁移与命名唯一 / 外卖 / 更新 / 睡眠检测
-python scripts/smoke_server.py     # 绑定层无头冒烟：176 项断言
-python scripts/probe_renderer.py   # 渲染层探针：270 项断言 + 截图（需先 npm install）
+python scripts/smoke_server.py     # 绑定层无头冒烟：179 项断言
+python scripts/probe_renderer.py   # 渲染层探针：297 项断言 + 截图（需先 npm install）
 python scripts/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
 python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
 python scripts/probe_stats_file.py # 统计文件自愈探针：19 项（首跑自建 data/ / 损坏改名备份 / 弹窗说明 / Ack 清空）
+python scripts/probe_sound_scan.py # 提示音目录体检探针：27 项（新音频原地登记 / 死条目删除 / 重启不重复提示）
 python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）
 ```
 
@@ -162,6 +163,11 @@ python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / �
 
 - 一律「数据与程序同目录」：配置、统计、用户音频统一落在 exe 旁的 `config/` 与 `data/` 下，
   整目录拷贝 / 删除就是完整的迁移 / 卸载。不再检查 `%APPDATA%`（老版本的历史目录已放弃兼容）。
+- **`sounds/` 在启动时体检一次**（见 `sound_scan.go`）：用户直接把音频丢进 exe 旁的 `sounds/`，
+  或手动删掉某个已登记条目的文件时，设置页会弹窗逐项询问 ——「发现 N 个新提示音」可一键
+  **原地登记**（不复制、不改名，否则原文件下次启动又会被当成新的，变成每次开机都问一遍）；
+  「N 个提示音的文件已不在」可一键**从配置删除**（只删条目，不动任何文件）。启动时只记录、
+  不擅自改配置；点「暂不处理」本次运行不再问，下次启动重新扫。
 - 打包交付的便携目录**自带**两件套：`sounds/`（四个内置提示音）、`config/settings.json`
   （出厂默认，首跑补 installId）——首跑直接在预置文件上继续写。
 - **`data/` 与 `stats.json` 不进安装包**（统计是用户数据，不属于发行物）：

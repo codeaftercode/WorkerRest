@@ -46,6 +46,11 @@
     return v === null || v === undefined ? "" : String(v);
   }
 
+  /** 把可能为 null/undefined 的值收敛成数组（Wails 侧是 []string 参数） */
+  function arr(v) {
+    return Array.isArray(v) ? v : [];
+  }
+
   /**
    * 调一个 Go 绑定。args 是传给 Go 方法的参数（不含窗口名——窗口名由调用处补）。
    * 失败时 resolve 成 null 并打日志：渲染层对 null 都已有兜底分支。
@@ -175,6 +180,22 @@
     },
     deleteMusicSound: function (file) {
       return call("DeleteMusicSound", [str(file)]);
+    },
+    // 随包 sounds/ 的启动体检结果（null = 没有变化，不弹窗）
+    getSoundScanNotice: function () {
+      return call("GetSoundScanNotice");
+    },
+    // 把扫到的新音频原地登记进音乐列表（不复制、不改名）
+    importScannedSounds: function (files) {
+      return call("ImportScannedSounds", [arr(files)]);
+    },
+    // 把「文件已不在」的条目从配置里删掉（只删条目，不删文件）
+    dropMissingSounds: function (ids) {
+      return call("DropMissingSounds", [arr(ids)]);
+    },
+    // 用户选了「暂不 / 保留」：本次运行不再询问
+    dismissSoundScan: function () {
+      return call("DismissSoundScan");
     },
 
     // ---- 指定应用运行时暂停 ----

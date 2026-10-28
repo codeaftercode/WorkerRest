@@ -75,6 +75,11 @@ var wiredCalls = []string{
 	"SoundFileURL",
 	"AddMusicSound",
 	"DeleteMusicSound",
+	// 随包 sounds/ 的启动体检：新音频待导入 / 条目文件缺失（见 sound_scan.go）
+	"GetSoundScanNotice",
+	"ImportScannedSounds",
+	"DropMissingSounds",
+	"DismissSoundScan",
 
 	// ---- 指定应用运行时暂停 ----
 	"ListRunningApps",

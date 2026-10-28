@@ -737,6 +737,22 @@
       </div>
     </div>
   </div>
+  <!-- 随包 sounds/ 的启动体检（见 sound_scan.go）：两个区块各有自己的决策按钮 -->
+  <div id="snd-scan-modal" class="modal hidden">
+    <div class="modal-box cf-box" role="dialog" aria-modal="true" aria-labelledby="ss-title">
+      <div class="cf-head">
+        <span class="cf-icon accent" aria-hidden="true">&#9834;</span>
+        <div class="cf-titles">
+          <h3 id="ss-title">提示音目录有变化</h3>
+          <p class="cf-desc" id="ss-dir"></p>
+        </div>
+      </div>
+      <div class="up-changes" id="ss-body"></div>
+      <div class="modal-actions">
+        <button class="btn" id="ss-close">暂不处理</button>
+      </div>
+    </div>
+  </div>
   <script src="./shim.js"></script>
   <script src="./settings.js"></script>
 </body>
