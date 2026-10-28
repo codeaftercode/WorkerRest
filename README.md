@@ -33,7 +33,7 @@ go build -o build/bin/rest.exe -ldflags "-H windowsgui -s -w" .
 go build -tags server -o build/bin/chibingren_server.exe -ldflags "-s -w" .
 ```
 
-产物 `rest.exe` 约 12.3 MB（已含 embed 的前端资源与图标；四个内置提示音不再
+产物 `rest.exe` 约 12.8 MB（v3.0.0 正式版 + x/sys v0.48.0 下实测 13,449,728 字节）（已含 embed 的前端资源与图标；四个内置提示音不再
 embed 进二进制，打包时随包放在 `sounds/` 目录，开发态是模块根的 `sounds/`）。
 
 ## 打包
