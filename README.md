@@ -14,7 +14,8 @@
 
 - **Windows 10 / 11**（依赖系统 WebView2 运行时：Win11 必带，Win10 通常已通过
   Windows Update 自动安装；缺失时首次启动会提示安装 WebView2 Runtime）
-- **Go 1.26+**
+- **Go 1.26+**（`go.mod` 的语言版本仍是 1.26.3；本仓库用 **1.27.3** 构建与验证，
+  关于页「运行环境」显示的就是编译时的真实 Go 版本）
 - **Wails v3**：`github.com/wailsapp/wails/v3 v3.0.0`（正式版；v3 自身也要求 Go 1.26+，
   与上一条本来就是同一个约束）。关于页「运行环境」显示的是构建信息里的真实依赖版本，
   升级后在界面上就能看出跑的是 beta 还是正式版
@@ -33,8 +34,9 @@ go build -o build/bin/rest.exe -ldflags "-H windowsgui -s -w" .
 go build -tags server -o build/bin/chibingren_server.exe -ldflags "-s -w" .
 ```
 
-产物 `rest.exe` 约 12.8 MB（v3.0.0 正式版 + x/sys v0.48.0 下实测 13,449,728 字节）（已含 embed 的前端资源与图标；四个内置提示音不再
-embed 进二进制，打包时随包放在 `sounds/` 目录，开发态是模块根的 `sounds/`）。
+产物 `rest.exe` 约 13.9 MB（Go 1.27.3 + Wails v3.0.0 下实测 13,949,440 字节），已含
+embed 的前端资源与图标；四个内置提示音不再 embed 进二进制，打包时随包放在 `sounds/`
+目录，开发态是模块根的 `sounds/`。
 
 ## 打包
 
