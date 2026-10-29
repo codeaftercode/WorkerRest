@@ -14,8 +14,9 @@ import (
 
 // TestDefaultWindowSizeIsMeasured 出厂默认尺寸必须等于实测值，且默认值与最小尺寸自洽。
 //
-// 913 / 857 的来源见 window_size.go 顶部：913 是用户选定的默认宽度，857 是在该宽度下
-// 「关于页恰好不出垂直滚动条」的实测高度（857 = 813 内容 + 38 标题栏 + 6 透明边框；847 就滚）。
+// 874 / 858 的来源见 window_size.go 顶部：这是用户 2026-10-29 拖出来的窗口尺寸，他要求以此为出厂值。
+// 高度没有随手放大的余地：宽度 ≥820 时「关于页恰好不出垂直滚动条」的实测边界是 857
+// （857 = 813 内容 + 38 标题栏 + 6 透明边框；847 就滚），858 比它高 1px，同一条件下同样不出滚动条。
 // 最小宽度 760 也是实测的：740 宽时 .row.field 横向溢出 2px、750 起归零。
 func TestDefaultWindowSizeIsMeasured(t *testing.T) {
 	raw, err := os.ReadFile("default_settings.json")
@@ -61,18 +62,18 @@ func TestWindowSizePolicy(t *testing.T) {
 		wantH    int
 		scenario string
 	}{
-		{"未勾选-有上次", WindowSizeConfig{Width: 913, Height: 857, Remember: false, LastWidth: 1024, LastHeight: 800},
-			913, 857, "不自动记录：永远用默认尺寸，上次记录的值不参与"},
-		{"未勾选-无上次", WindowSizeConfig{Width: 913, Height: 857, Remember: false},
-			913, 857, "首次启动：默认尺寸"},
-		{"已勾选-有上次", WindowSizeConfig{Width: 913, Height: 857, Remember: true, LastWidth: 1024, LastHeight: 800},
+		{"未勾选-有上次", WindowSizeConfig{Width: 874, Height: 858, Remember: false, LastWidth: 1024, LastHeight: 800},
+			874, 858, "不自动记录：永远用默认尺寸，上次记录的值不参与"},
+		{"未勾选-无上次", WindowSizeConfig{Width: 874, Height: 858, Remember: false},
+			874, 858, "首次启动：默认尺寸"},
+		{"已勾选-有上次", WindowSizeConfig{Width: 874, Height: 858, Remember: true, LastWidth: 1024, LastHeight: 800},
 			1024, 800, "自动记录：沿用上次尺寸"},
-		{"已勾选-无上次", WindowSizeConfig{Width: 913, Height: 857, Remember: true},
-			913, 857, "刚勾上还没拖过窗口：回落默认尺寸"},
-		{"已勾选-上次不完整", WindowSizeConfig{Width: 913, Height: 857, Remember: true, LastWidth: 1024},
-			913, 857, "只有宽度合法（手改坏 / 旧残留）：整对作废，不要高度 0 的窗"},
-		{"已勾选-上次过小", WindowSizeConfig{Width: 913, Height: 857, Remember: true, LastWidth: 300, LastHeight: 200},
-			913, 857, "小于最小尺寸的记录值不采信"},
+		{"已勾选-无上次", WindowSizeConfig{Width: 874, Height: 858, Remember: true},
+			874, 858, "刚勾上还没拖过窗口：回落默认尺寸"},
+		{"已勾选-上次不完整", WindowSizeConfig{Width: 874, Height: 858, Remember: true, LastWidth: 1024},
+			874, 858, "只有宽度合法（手改坏 / 旧残留）：整对作废，不要高度 0 的窗"},
+		{"已勾选-上次过小", WindowSizeConfig{Width: 874, Height: 858, Remember: true, LastWidth: 300, LastHeight: 200},
+			874, 858, "小于最小尺寸的记录值不采信"},
 		{"默认值过小", WindowSizeConfig{Width: 300, Height: 200, Remember: false},
 			settingsWindowMinWidth, settingsWindowMinHeight, "配置被改成荒唐值：夹进最小尺寸"},
 	}
@@ -141,14 +142,14 @@ func TestNormalizeWindowClampsAndClears(t *testing.T) {
 }
 
 // TestKeepWindowLastSizeIgnoresStalePayload 设置页送回来的旧快照不许覆盖刚记录的尺寸。
-// 场景：用户拖大窗口（Go 记下 1024×800）→ 又改了别的设置 → 前端送回的仍是 913×857 时的快照。
+// 场景：用户拖大窗口（Go 记下 1024×800）→ 又改了别的设置 → 前端送回的仍是 874×858 时的快照。
 func TestKeepWindowLastSizeIgnoresStalePayload(t *testing.T) {
 	cur := map[string]any{"window": map[string]any{
-		"width": float64(913), "height": float64(857), "rememberSize": true,
+		"width": float64(874), "height": float64(858), "rememberSize": true,
 		"lastWidth": float64(1024), "lastHeight": float64(800),
 	}}
 	next := map[string]any{"window": map[string]any{
-		"width": float64(913), "height": float64(857), "rememberSize": false,
+		"width": float64(874), "height": float64(858), "rememberSize": false,
 		"lastWidth": float64(0), "lastHeight": float64(0),
 	}}
 	keepWindowLastSize(cur, next)
@@ -166,7 +167,7 @@ func TestKeepWindowLastSizeIgnoresStalePayload(t *testing.T) {
 func TestSaveWindowLastSizePersists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
-	s := testSettings(t, `{"window":{"width":913,"height":857,"rememberSize":true,"lastWidth":0,"lastHeight":0}}`)
+	s := testSettings(t, `{"window":{"width":874,"height":858,"rememberSize":true,"lastWidth":0,"lastHeight":0}}`)
 	s.path = path
 	a := &App{cfg: s}
 
@@ -185,7 +186,7 @@ func TestSaveWindowLastSizePersists(t *testing.T) {
 		t.Fatalf("落盘的 lastWidth/lastHeight = %v/%v，期望 1024/800", win["lastWidth"], win["lastHeight"])
 	}
 	// 默认尺寸不能被「上次尺寸」顶掉（两对数各管一头）
-	if win["width"] != float64(913) || win["height"] != float64(857) {
+	if win["width"] != float64(874) || win["height"] != float64(858) {
 		t.Fatalf("默认尺寸被改动了: %v/%v", win["width"], win["height"])
 	}
 	// 内存里的配置也要同步：下次 Show 读的就是它
@@ -205,8 +206,8 @@ func TestSaveWindowLastSizePersists(t *testing.T) {
 // TestFitSizeToScreenNoApp 无窗口环境（单测 / server 模式）下不夹紧，原样返回。
 func TestFitSizeToScreenNoApp(t *testing.T) {
 	a := &App{}
-	w, h := a.fitSizeToScreen(913, 857)
-	if w != 913 || h != 857 {
+	w, h := a.fitSizeToScreen(874, 858)
+	if w != 874 || h != 858 {
 		t.Fatalf("没有屏幕信息时应原样返回，实际 %dx%d", w, h)
 	}
 }

@@ -12,9 +12,9 @@
   "long": {
     "enabled": true,
     "mode": "countdown",
-    "intervalMs": 1800000,
+    "intervalMs": 1200000,
     "durationMs": 300000,
-    "notifyBeforeMs": 30000,
+    "notifyBeforeMs": 10000,
     "postponeMs": 300000,
     "slots": []
   },
@@ -22,9 +22,9 @@
   "longEveryNShort": 2,
   "idlePauseMin": 5,
   "dndPause": true,
-  "fullscreenPause": false,
+  "fullscreenPause": true,
   "appPause": {
-    "enabled": false,
+    "enabled": true,
     "seeded": false,
     "items": []
   },
@@ -35,14 +35,14 @@
     "blur": true,
     "fullscreen": false,
     "alwaysOnTop": true,
-    "widthPct": 80,
-    "heightPct": 80,
+    "widthPct": 95,
+    "heightPct": 95,
     "hideOnShare": true
   },
   "allScreens": true,
   "window": {
-    "width": 913,
-    "height": 857,
+    "width": 874,
+    "height": 858,
     "rememberSize": true,
     "lastWidth": 0,
     "lastHeight": 0
@@ -64,17 +64,17 @@
   },
   "reminderMessages": {
     "short": {
-      "order": "fixed",
+      "order": "random",
       "fixedId": "",
       "items": []
     },
     "long": {
-      "order": "fixed",
+      "order": "random",
       "fixedId": "",
       "items": []
     },
     "takeout": {
-      "order": "fixed",
+      "order": "random",
       "fixedId": "",
       "items": []
     }
@@ -82,16 +82,25 @@
   "supervisor": {
     "enabled": true,
     "gaze": true,
-    "selection": "fixed",
+    "selection": "random",
     "fixedRole": "秦始皇",
     "order": []
   },
   "takeout": {
     "enabled": true,
-    "leadSec": 0,
-    "postponeMin": 10,
+    "leadSec": 10,
+    "postponeMin": 2,
     "pauseAction": "postpone",
-    "slots": []
+    "slots": [
+      {
+        "id": "tko-lunch",
+        "hour": 11,
+        "minute": 30,
+        "repeat": "daily",
+        "days": [],
+        "enabled": true
+      }
+    ]
   },
   "autostart": false,
   "startMinimized": false,

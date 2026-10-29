@@ -13,8 +13,8 @@
 const { chromium } = require("playwright");
 
 const BASE = process.env.WR_BASE || "http://127.0.0.1:29731";
-const DEF_W = parseInt(process.env.WR_DEF_W || "913", 10);
-const DEF_H = parseInt(process.env.WR_DEF_H || "857", 10);
+const DEF_W = parseInt(process.env.WR_DEF_W || "874", 10);
+const DEF_H = parseInt(process.env.WR_DEF_H || "858", 10);
 const MIN_W = parseInt(process.env.WR_MIN_W || "760", 10); // 实测的布局下界
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 const TABS = ["general", "timing", "supervisor", "shortcuts", "about"]; // stats 自带横向滚动，不参与

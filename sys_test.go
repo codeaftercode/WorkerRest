@@ -771,18 +771,19 @@ func TestQunsStateMapping(t *testing.T) {
 	}
 }
 
-// 两个开关的默认值：勿扰默认开（老行为不变）；全屏独占默认**关**（新增能力，
-// 开启等于「游戏时不提醒、计时也停」，不能替用户决定）。
+// 两个开关的默认值：勿扰、全屏独占都默认开。
+// 全屏独占原本默认关（新增能力不替用户决定），2026-10-29 用户要求「以当前配置为出厂默认」
+// 后改为开 —— 出厂默认与代码兜底必须同值，否则老配置（缺键走兜底）与新装表现不一致。
 func TestAutoPauseFlagDefaults(t *testing.T) {
 	s := &Settings{raw: map[string]any{}}
 	if !s.DndPause() {
 		t.Fatal("dndPause 缺省应为 true")
 	}
-	if s.FullScreenPause() {
-		t.Fatal("fullscreenPause 缺省应为 false")
+	if !s.FullScreenPause() {
+		t.Fatal("fullscreenPause 缺省应为 true（与 default_settings.json 同值）")
 	}
-	s = &Settings{raw: map[string]any{"dndPause": false, "fullscreenPause": true}}
-	if s.DndPause() || !s.FullScreenPause() {
+	s = &Settings{raw: map[string]any{"dndPause": false, "fullscreenPause": false}}
+	if s.DndPause() || s.FullScreenPause() {
 		t.Fatalf("配置值未生效：dnd=%v fullscreen=%v", s.DndPause(), s.FullScreenPause())
 	}
 }

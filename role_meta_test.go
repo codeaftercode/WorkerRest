@@ -65,6 +65,55 @@ func TestLegacyRoleJSONIsIgnored(t *testing.T) {
 	}
 }
 
+// 仓库自带的 meta.json 里若写了 fixedId，必须指向真实存在的台词 id。
+//
+// 为什么值得钉死：id 会被 normalizeRoleMessages 重编号，fixedId 靠 remapMsgID 跟着搬。
+// 一旦漏搬（或手改时写错号），「固定显示」模式会指向一条不存在的台词 —— 提醒窗口里
+// 没有台词，日志也不报错，只能靠肉眼发现。
+func TestRepoSupFixedIDResolves(t *testing.T) {
+	entries, err := os.ReadDir("supervisors")
+	if err != nil {
+		t.Fatalf("读不到 supervisors/：%v", err)
+	}
+	checked := 0
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		path := filepath.Join("supervisors", e.Name(), "meta.json")
+		if !isRegularFile(path) {
+			continue
+		}
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("读 %s 失败：%v", path, err)
+		}
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			t.Fatalf("解析 %s 失败：%v", path, err)
+		}
+		cfg := normalizeRoleFile(m)
+		if cfg.Messages.FixedID == "" {
+			continue
+		}
+		checked++
+		ok := false
+		for _, it := range cfg.Messages.Items {
+			if it.ID == cfg.Messages.FixedID {
+				ok = true
+				break
+			}
+		}
+		if !ok {
+			t.Errorf("%s 的 fixedId=%q 对不上任何台词 id（有 %d 条）",
+				path, cfg.Messages.FixedID, len(cfg.Messages.Items))
+		}
+	}
+	if checked == 0 {
+		t.Fatal("一份 meta.json 都没检查到 fixedId，测试没意义（路径或字段名变了？）")
+	}
+}
+
 // 导入立绘（createRoleDir → writeRoleFile）只生成 meta.json。
 func TestCreateRoleDirWritesMetaName(t *testing.T) {
 	root := t.TempDir()

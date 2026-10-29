@@ -71,6 +71,15 @@ python scripts/verify_portable.py
   停止（`--no-build` 用上一轮 exe 时最容易踩），再用导出的内容写进便携包；发布后
   `verify_portable.py` 用包里的 exe 再复核一次。单测 `TestEmbeddedDefaultMatchesFile`
   另钉住「编译时快照 == 工作区文件」。
+- **出厂默认 = 作者当时在用的那套配置**（2026-10-29 定）：`default_settings.json` 的每一项
+  都按当天的 `config/settings.json` 取值，所以点「恢复默认设置」得到的就是他日常在用的状态。
+  三类东西不在此列：**声音**（`sound.music` 与内置音由 `normalizeSound` 种入，文件在 `sounds/`）、
+  **督休专员**（`supervisors/` 目录 + 各 `meta.json`，`supervisor` 段仍按出厂 random 口径）、
+  **统计**（另存 `stats.json`）。改默认值时容易漏的三处必须同值：出厂 JSON、Go 侧兜底
+  （`AppearanceCfg` 的透明度 / 宽高百分比 / 全屏、`FullScreenPause`）、操作手册里的默认值文案。
+- **`ResetSettings` 会跑一遍 `normalizeLoad`**：只把出厂 JSON 写下去的话，恢复默认后提醒内容
+  面板、指定应用列表、提示音列表都是空的，要重启一次才种入；跑完之后立刻就是出厂那套值
+  （`installId` 仍保留，`settings.backup.json` 仍先备份）。
 - **exe 文件图标来自仓库根的 `rsrc_windows_amd64.syso`**（随源码入库）：`go build` 会自动链接
   同包目录下的 `*_windows_amd64.syso`，所以 `make_portable.py` 与 ldflags 都不用改。图标源就是
   全项目唯一那份 `frontend/dist/icon.png`，重做图标后重新生成一次即可：
@@ -215,13 +224,14 @@ python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出�
 出厂尺寸写死在 `default_settings.json` 的 `window` 块里（`window_size.go` 顶部有完整推导）：
 
 ```json
-"window": { "width": 913, "height": 857, "rememberSize": true, "lastWidth": 0, "lastHeight": 0 }
+"window": { "width": 874, "height": 858, "rememberSize": true, "lastWidth": 0, "lastHeight": 0 }
 ```
 
-- **默认宽度 913 是用户选定的**（2026-10-29 他自己拖到 913×857 后要求以此为出厂值）。
-- **默认高度 857 是实测的**：`scripts/probe_window_size.py` 起无头服务后逐 2px 扫高度，得到
-  宽度 ≥820 时「关于页恰好不出垂直滚动条」= 857（857−38 标题栏−6 底部透明边框 = 813 = 内容高度，
-  847 就滚）。宽度一旦回落到 760，关于页需要 875 —— 那属于「窗口被用户缩窄，允许出滚动条」，
+- **874 × 858 是用户选定的**（2026-10-29 他把窗口拖到这个尺寸后要求「记住现在的尺寸，设为默认」）。
+- **高度不是随手填的**：`scripts/probe_window_size.py` 起无头服务后逐 2px 扫高度，得到宽度 ≥820 时
+  「关于页恰好不出垂直滚动条」= 857（857−38 标题栏−6 底部透明边框 = 813 = 内容高度，847 就滚）。
+  现在的 858 比它高 1px、宽 874 仍在 ≥820 区间内，同一条件下同样不出滚动条。
+  宽度一旦回落到 760，关于页需要 875 —— 那属于「窗口被用户缩窄，允许出滚动条」，
   不影响出厂值。
 - **最小宽度 760 也是实测的**：同一脚本逐 10px 扫宽度，750 起才没有横向裁切（740 时 `.row.field`
   溢出 2px），取 760 留 10px 余量。两个边界与滚动条是否出现无关（620 / 940 两个高度下结论一致）。

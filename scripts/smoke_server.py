@@ -412,25 +412,38 @@ def main():
             check(all(k in geom for k in ("sizePct", "posXPct", "posYPct")),
                   "几何字段齐全（sizePct/posXPct/posYPct）", geom)
 
-            # 与真实配置里固定的那个督休专员目录对齐
-            fixed = (cfg.get("supervisor") or {}).get("fixedRole") if cfg else None
-            if fixed:
-                rp = os.path.join(role_dir(ROOT, fixed) or "", "meta.json")
-                if os.path.isfile(rp):
-                    rc = read_json(rp)
-                    check(sup.get("name") == rc.get("name"),
-                          "督休专员名 == supervisors/%s/meta.json name" % fixed,
-                          "%s vs %s" % (sup.get("name"), rc.get("name")))
-                    rg = rc.get("geom") or {}
-                    check(geom.get("sizePct") == rg.get("sizePct") and geom.get("posXPct") == rg.get("posXPct"),
-                          "督休专员几何 == supervisors/%s/meta.json geom" % fixed,
-                          "%s vs %s" % (geom, rg))
-                    cmds = [i.get("text") for i in ((rc.get("messages") or {}).get("items") or []) if i.get("enabled")]
-                    check(lines.get("command") in cmds,
-                          "命令台词取自该督休专员 meta.json 的启用条目",
-                          repr(lines.get("command")))
-                else:
-                    print("   （督休专员 %s 的 meta.json 不存在，跳过督休专员对齐）" % fixed)
+            # 与会话里那位督休专员**自己的** meta.json 对齐。
+            #
+            # 不能拿配置里的 fixedRole 当对齐对象：那只在 selection == "fixed" 时才必然
+            # 等于会话里的专员。顺序 / 随机模式（用户可能就是这么设的）会漂到别的专员上，
+            # 写死 fixedRole 会把正确行为判成红。所以先按会话里的名字回查目录，再补一条
+            # 「固定模式下必须就是配置那位」的断言把两种模式都盖住。
+            sup_name = sup.get("name")
+            rp = os.path.join(role_dir(ROOT, sup_name) or "", "meta.json")
+            if os.path.isfile(rp):
+                rc = read_json(rp)
+                dir_name = os.path.basename(os.path.dirname(rp))
+                check(sup_name == rc.get("name"),
+                      "督休专员名 == supervisors/%s/meta.json name" % dir_name,
+                      "%s vs %s" % (sup_name, rc.get("name")))
+                rg = rc.get("geom") or {}
+                check(geom.get("sizePct") == rg.get("sizePct") and geom.get("posXPct") == rg.get("posXPct"),
+                      "督休专员几何 == supervisors/%s/meta.json geom" % dir_name,
+                      "%s vs %s" % (geom, rg))
+                cmds = [i.get("text") for i in ((rc.get("messages") or {}).get("items") or []) if i.get("enabled")]
+                check(lines.get("command") in cmds,
+                      "命令台词取自该督休专员 meta.json 的启用条目",
+                      repr(lines.get("command")))
+            else:
+                print("   （会话里的督休专员 %s 在 supervisors/ 下找不到 meta.json）" % sup_name)
+
+            scfg = (cfg.get("supervisor") or {}) if cfg else {}
+            if scfg.get("selection") == "fixed" and scfg.get("fixedRole"):
+                frp = os.path.join(role_dir(ROOT, scfg["fixedRole"]) or "", "meta.json")
+                if os.path.isfile(frp):
+                    check(sup_name == read_json(frp).get("name"),
+                          "固定轮换模式下会话专员 == 配置 fixedRole（%s）" % scfg["fixedRole"],
+                          sup_name)
 
         # ---- ListRoles / AppInfo / GetState ----
         st, roles = call(base, "ListRoles", [])

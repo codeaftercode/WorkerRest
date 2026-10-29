@@ -406,7 +406,7 @@ func (s *Settings) SupervisorCfg() SupervisorConfig {
 	return SupervisorConfig{
 		Enabled:   s.Flag(true, "supervisor", "enabled"),
 		Gaze:      s.Flag(true, "supervisor", "gaze"),
-		Selection: s.normSelection(s.Str("fixed", "supervisor", "selection")),
+		Selection: s.normSelection(s.Str("random", "supervisor", "selection")),
 		FixedRole: s.Str("", "supervisor", "fixedRole"),
 		Order:     s.StrSlice("supervisor", "order"),
 	}
@@ -414,14 +414,16 @@ func (s *Settings) SupervisorCfg() SupervisorConfig {
 
 func (s *Settings) normSelection(v string) string {
 	switch v {
-	case "sequence", "random":
+	case "fixed", "sequence", "random":
 		return v
 	default:
-		return "fixed"
+		return "random"
 	}
 }
 
-// AppearanceCfg 外观（磁盘结构）
+// AppearanceCfg 提醒窗口外观。这里的兜底值与 default_settings.json 的 appearance 块
+// **必须同值**（用户 2026-10-29 定的出厂默认：透明 0.05、宽高 95%、全屏关）——
+// 两处漂移时，老配置（缺键走兜底）与恢复默认后的表现就不一样，界面上看不出来。
 func (s *Settings) AppearanceCfg() AppearanceConfig {
 	return AppearanceConfig{
 		Color:        s.Str("#4f7cff", "appearance", "color"),
@@ -429,8 +431,8 @@ func (s *Settings) AppearanceCfg() AppearanceConfig {
 		Blur:         s.Flag(true, "appearance", "blur"),
 		Fullscreen:   s.Flag(false, "appearance", "fullscreen"),
 		AlwaysOnTop:  s.Flag(true, "appearance", "alwaysOnTop"),
-		WidthPct:     s.Num(80, "appearance", "widthPct"),
-		HeightPct:    s.Num(80, "appearance", "heightPct"),
+		WidthPct:     s.Num(95, "appearance", "widthPct"),
+		HeightPct:    s.Num(95, "appearance", "heightPct"),
 		HideOnShare:  s.Flag(true, "appearance", "hideOnShare"),
 	}
 }
@@ -1481,8 +1483,8 @@ func normalizeSupervisorMessages(raw map[string]any) {
 	if !ok {
 		return
 	}
-	if s, _ := sup["selection"].(string); s != "sequence" && s != "random" {
-		sup["selection"] = "fixed"
+	if s, _ := sup["selection"].(string); s != "fixed" && s != "sequence" && s != "random" {
+		sup["selection"] = "random"
 	}
 	if _, ok := sup["fixedRole"].(string); !ok {
 		sup["fixedRole"] = ""

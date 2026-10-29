@@ -492,8 +492,8 @@ func (a *App) SupervisorPreview(sup map[string]any, name string) *SupStageInfo {
 	if sup != nil {
 		// 与 上一版的 {...settings, supervisor: sup} 同义：整份替换，缺的字段按默认
 		sel := strOf(sup["selection"])
-		if sel != "sequence" && sel != "random" {
-			sel = "fixed"
+		if sel != "fixed" && sel != "sequence" && sel != "random" {
+			sel = "random"
 		}
 		// 顺序：表单里带了 order 就用表单的（用户刚拖过、还没落盘也能立刻生效），
 		// 没带就沿用磁盘上的那份（前端没这个键时的兼容路径）。

@@ -304,13 +304,24 @@ def main():
         for it in (rm.get("items") or []):
             if it.get("id") == rm.get("fixedId"):
                 want_msg = it.get("text") or ""
-        fixed_key = (cfg.get("supervisor") or {}).get("fixedRole")
-        want_role = ""
+        sup_cfg = cfg.get("supervisor") or {}
+        fixed_key = sup_cfg.get("fixedRole")
+        # 只有「固定轮换」模式下，会话里的专员才**必然**是 fixedRole 那位。顺序 / 随机模式
+        # 会轮换到别的专员（用户可能就这么设的：实机配置被设置页改成过 sequence），那时拿
+        # fixedRole 当基准会把正确行为判成红。所以非固定模式只要求「说话人是磁盘上真实存在
+        # 的某个专员」，固定模式下再额外卡死等于 fixedRole。
+        role_names = set(scan_role_names(ROOT))
+        sel_mode = sup_cfg.get("selection") or "random"
+        # fixed_role_name：设置页「提醒内容」面板展示的那位（永远跟 fixedRole 走，与轮换
+        # 模式无关）；want_role：**会话**里会出场的那位（只有固定模式才必然等于前者）。
+        fixed_role_name = ""
         if fixed_key:
             rp = os.path.join(role_dir(ROOT, fixed_key) or "", "meta.json")
             if os.path.isfile(rp):
-                want_role = json.load(open(rp, encoding="utf-8")).get("name") or ""
-        print("   （对齐基准：settings=%s role=%s）" % (iso_settings if cfg else "未找到", fixed_key or "-"))
+                fixed_role_name = json.load(open(rp, encoding="utf-8")).get("name") or ""
+        want_role = fixed_role_name if sel_mode == "fixed" else ""
+        print("   （对齐基准：settings=%s role=%s mode=%s）"
+              % (iso_settings if cfg else "未找到", fixed_key or "-", sel_mode))
 
         # ---- 设置页（真正的主界面）----
         # 这一节的分量最重：设置页没有自己的默认值，拿到 getSettings() 就直接填表，
@@ -383,8 +394,12 @@ def main():
         check((stg.get("supMsgItems") or 0) >= 1,
               "督休专员台词面板渲染出条目（ListRoles 真的下发了 messages）",
               "items=%s empty=%s" % (stg.get("supMsgItems"), stg.get("supMsgEmpty")))
-        check(stg.get("supMsgRole") == want_role, "台词面板标题 == 当前督休专员名",
-              "%s vs %s" % (stg.get("supMsgRole"), want_role))
+        panel_role = stg.get("supMsgRole")
+        if fixed_role_name:
+            check(panel_role == fixed_role_name, "台词面板标题 == 配置固定的督休专员名",
+                  "%s vs %s" % (panel_role, fixed_role_name))
+        else:
+            check(panel_role in role_names, "台词面板标题是磁盘上某个督休专员名", panel_role)
         # 关于页「软件信息」卡 2026-10 改版：当前版本 / 发布时间两行（运行环境行已移除）。
         # 版本值由 -ldflags 注入（源码里是 dev 占位），所以只断言「形如 v1.2.3 或 dev」，
         # 不钉具体版本号 —— 否则每次发版都要改探针。
@@ -458,7 +473,7 @@ def main():
               "提醒窗口宽度百分比 == 配置 appearance.widthPct",
               "%s vs %s" % (stg.get("apWidthPct"), (cfg.get("appearance") or {}).get("widthPct")))
         # 透明度滑条：步长必须 0.01（用户 2026-10-23 要求「每次最少可以调 0.01」），
-        # 范围仍是 0 ~ 0.5。默认值 0.05 属配置层口径，由 Go 侧用例覆盖。
+        # 范围仍是 0 ~ 0.5。默认值（现为 0）属配置层口径，由 Go 侧 TestAppearanceTransparencyDefault 覆盖。
         check(stg.get("apOpacityStep") == "0.01",
               "透明度滑条步长 = 0.01", stg.get("apOpacityStep"))
         check(stg.get("apOpacityRange") == ["0", "0.5"],
@@ -769,9 +784,13 @@ def main():
                 nw, nh = 0, 0
             check(nw > 100 and nh > 100, "%s提醒窗口：立绘真的解码成功（浏览器解出像素尺寸）" % label, nat)
             check(b.get("lineVisible") is True, "%s提醒窗口：台词气泡可见" % label, b.get("lineVisible"))
+            spk = b.get("speaker")
             if want_role:
-                check(b.get("speaker") == want_role, "%s提醒窗口：说话人 == 配置固定督休专员的名字" % label,
-                      "%s vs %s" % (b.get("speaker"), want_role))
+                check(spk == want_role, "%s提醒窗口：说话人 == 配置固定督休专员的名字" % label,
+                      "%s vs %s" % (spk, want_role))
+            else:
+                check(spk in role_names,
+                      "%s提醒窗口：说话人 == 磁盘上某个督休专员的名字（非固定轮换模式）" % label, spk)
             if want_msg:
                 check(b.get("lineText") == want_msg, "%s提醒窗口：气泡文字 == 配置里的提醒内容" % label,
                       "%r vs %r" % (b.get("lineText"), want_msg))
@@ -826,10 +845,11 @@ def main():
                           "%s vs %s（alpha=%s figBox=%s）" % (sm.get(_sk), fv.get(_fk), fv.get("alpha"), fv.get("figBox")))
             check(isinstance(sm.get("cdX"), int) and sm.get("cdX", 0) > 0,
                   "%s提醒窗口：倒计时环的水平锚点已算出（cdX）" % label, sm.get("cdX"))
-            if want_role:
-                check(b.get("dialogName") == want_role and b.get("dialogNameShown") is True,
+            ref_role = want_role or spk
+            if ref_role:
+                check(b.get("dialogName") == ref_role and b.get("dialogNameShown") is True,
                       "%s提醒窗口：名字标签亮在对话框左上角" % label,
-                      "%r / %s" % (b.get("dialogName"), b.get("dialogNameShown")))
+                      "%r / %s（基准 %r）" % (b.get("dialogName"), b.get("dialogNameShown"), ref_role))
             # 名字标签距窗口左缘：横屏 56px、竖屏 46px（2026-10-24 从 26/16 右移，
             # 与外卖提醒窗口同口径；锁住数值，防止样式被改回去）
             bw, bh = b.get("viewportW") or 0, b.get("viewportH") or 0
@@ -1047,10 +1067,11 @@ def main():
                 check(tk.get("lineText") == info.get("message") and tk.get("lineShown") is True,
                       "外卖窗口：台词 == 外卖提醒文字（不显示督休专员自己的台词）",
                       "%r vs %r" % (tk.get("lineText"), info.get("message")))
-            if want_role:
-                check(tk.get("dialogName") == want_role and tk.get("dialogNameShown") is True,
+            tk_role = want_role or tk.get("speaker")
+            if tk_role:
+                check(tk.get("dialogName") == tk_role and tk.get("dialogNameShown") is True,
                       "外卖窗口：名字标签亮在对话框左上角",
-                      "%r / %s" % (tk.get("dialogName"), tk.get("dialogNameShown")))
+                      "%r / %s（基准 %r）" % (tk.get("dialogName"), tk.get("dialogNameShown"), tk_role))
             rp = tk.get("redpacketInline") or {}
             if tk.get("contentRect"):
                 # 对话框是 fixed、不受 #app 的 overflow 裁剪：贴边后底部两角必须

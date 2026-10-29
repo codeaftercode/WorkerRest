@@ -11,6 +11,7 @@
   },
   "messages": {
     "order": "random",
+    "fixedId": "1",
     "items": [
       {
         "id": "1",

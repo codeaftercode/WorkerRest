@@ -931,7 +931,7 @@
   function applySelectionUI() {
     const btn = $("sup-selection-btn");
     if (!btn) return;
-    applyModeIcon(btn, S.supervisor.selection ?? "fixed");
+    applyModeIcon(btn, S.supervisor.selection ?? "random");
   }
   function fillSupervisorImageName() {
     const name = currentRoleName();
@@ -1821,8 +1821,12 @@
     const plannedAt = LAST_STATE?.fixedNext?.takeout;
     const cfgNext = nextSlotAt(t.slots);
     const next = plannedAt !== void 0 ? { at: plannedAt } : cfgNext && { at: cfgNext.at };
-    const lead = t.leadSec > 0 ? `\u63D0\u524D ${t.leadSec} \u79D2\u901A\u77E5 \xB7 ` : "";
-    el.textContent = `\u56FA\u5B9A\u65F6\u95F4 \xB7 ${active.length} \u6761 \xB7 ${lead}${slotNextText(next)}`;
+    // 标题栏右侧只报「类型 · 条数 · 下次时刻」：提前通知秒数是卡内设置项（下面就有
+    // 输入框），标题行不再复述一遍。分段拼接是为了 next 为空时不留下结尾的「·」。
+    const parts = ["\u56FA\u5B9A\u65F6\u95F4", `${active.length} \u6761`];
+    const nx = slotNextText(next);
+    if (nx) parts.push(nx);
+    el.textContent = parts.join(" \xB7 ");
     el.classList.add("customized");
   }
   function renderSlotRow(slot, opts) {
@@ -2332,8 +2336,8 @@
     for (const id of allBreakIds()) readBreak(id);
     const a = S.appearance;
     a.transparency = parseFloat($("ap-opacity").value);
-    a.widthPct = clampNum($("ap-widthPct"), 60);
-    a.heightPct = clampNum($("ap-heightPct"), 60);
+    a.widthPct = clampNum($("ap-widthPct"), 95);
+    a.heightPct = clampNum($("ap-heightPct"), 95);
     a.fullscreen = $("ap-fullscreen").checked;
     a.alwaysOnTop = $("ap-alwaysOnTop").checked;
     a.hideOnShare = $("ap-hideOnShare").checked;
@@ -5935,7 +5939,7 @@
     void renderRoleGallery();
     const supSelBtn = $("sup-selection-btn");
     supSelBtn.addEventListener("click", () => {
-      const cur = supSelBtn.dataset.mode || S.supervisor.selection || "fixed";
+      const cur = supSelBtn.dataset.mode || S.supervisor.selection || "random";
       const next = DISPLAY_MODE_NEXT[cur] || "fixed";
       S.supervisor.selection = next;
       applyModeIcon(supSelBtn, next);

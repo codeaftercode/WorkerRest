@@ -106,10 +106,14 @@ func (a *App) ResetSettings() map[string]any {
 			return map[string]any{"ok": false, "message": "备份失败：" + err.Error()}
 		}
 	}
-	// 与 上一版的 settings:reset 一致：**只**回到出厂默认 + 保留 installId，
-	// 不再跑一遍归一化 —— 预置条目 / 内置音乐要等下次启动的加载路径才种入。
+	// 回到出厂默认后**立刻**跑一遍与启动完全相同的归一化管线（normalizeLoad）：补 installId、
+	// 种入提醒内容条目与内置提示音、按预置清单补齐「指定应用」列表。
+	//
+	// 不跑这一步的话，用户点完「恢复默认」看到的是空的提醒内容面板 / 空的应用列表 / 空的
+	// 音乐列表，得重启一次才补齐 —— 那与「恢复默认 = 恢复成出厂那套值」不符
+	// （2026-10-29 用户明确要求恢复默认后立刻就是出厂那套值）。
 	fresh := defaultSettingsMap()
-	ensureInstallID(fresh)
+	normalizeLoad(fresh)
 	if installID != "" {
 		fresh["installId"] = installID
 	}

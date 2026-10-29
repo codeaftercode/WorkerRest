@@ -103,11 +103,11 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 	ap := raw["appearance"].(map[string]any)
 	assertAbsent(t, ap, "opacity")
 
-	// supervisor：level 清掉、selection 归一到 fixed、gaze 恒 true
+	// supervisor：level 清掉、selection 归一到 random（缺省口径）、gaze 恒 true
 	sup := raw["supervisor"].(map[string]any)
 	assertAbsent(t, sup, "level")
-	if sup["selection"] != "fixed" {
-		t.Errorf("非法 selection 应回退 fixed，得到 %v", sup["selection"])
+	if sup["selection"] != "random" {
+		t.Errorf("非法 selection 应回退 random，得到 %v", sup["selection"])
 	}
 	if sup["gaze"] != true {
 		t.Errorf("视线跟随应恒为 true，得到 %v", sup["gaze"])
@@ -418,8 +418,9 @@ func TestNormalizeSoundDefaultsSingleId(t *testing.T) {
 }
 
 // TestAppearanceTransparencyDefault 提醒窗口透明度的缺省值。
-// 用户 2026-10-23 定为 0.05，且滑条步长 0.01 —— 这里盯两处容易各自漂移的值：
-// 代码兜底（AppearanceCfg 的 s.Num 缺省）与出厂默认（内嵌 default_settings.json）。
+// 用户 2026-10-29 定的出厂默认是 0.05（轻微透明）；滑条步长仍是 0.01。
+// 这里盯两处容易各自漂移的值：代码兜底（AppearanceCfg 的 s.Num 缺省）与出厂默认（内嵌
+// default_settings.json）—— 两处必须同值，否则老配置与新装用户看到的透明度不一致。
 func TestAppearanceTransparencyDefault(t *testing.T) {
 	const want = 0.05
 	near := func(a, b float64) bool { return math.Abs(a-b) < 1e-9 }
@@ -441,6 +442,45 @@ func TestAppearanceTransparencyDefault(t *testing.T) {
 		raw := map[string]any{"appearance": map[string]any{"transparency": c.in}}
 		if got := (&Settings{raw: raw}).AppearanceCfg().Transparency; !near(got, c.out) {
 			t.Fatalf("transparency=%v 应夹紧到 %v，实得 %v", c.in, c.out, got)
+		}
+	}
+}
+
+// TestAppearanceGeometryDefaults 提醒窗口宽高百分比与「全屏显示」的出厂默认：
+// 95% / 95% / 关（用户 2026-10-29 定的口径）。与透明度同理，代码兜底与内嵌 JSON 必须同值。
+func TestAppearanceGeometryDefaults(t *testing.T) {
+	for i, raw := range []map[string]any{{}, defaultSettingsMap()} {
+		cfg := (&Settings{raw: raw}).AppearanceCfg()
+		if cfg.WidthPct != 95 || cfg.HeightPct != 95 {
+			t.Fatalf("第 %d 组：宽高缺省应为 95%%/95%%，得到 %v%%/%v%%", i+1, cfg.WidthPct, cfg.HeightPct)
+		}
+		if cfg.Fullscreen {
+			t.Fatalf("第 %d 组：「全屏显示」缺省应为关", i+1)
+		}
+	}
+}
+
+// TestSupervisorSelectionDefault 立绘显示方式缺省为「随机显示」。
+// 三处口径：读取兜底（SupervisorCfg）、归一化非法值（normalizeSupervisorMessages）、
+// 出厂 JSON。任一处走「固定显示」，新装用户看到的就与预期不符。
+func TestSupervisorSelectionDefault(t *testing.T) {
+	if got := (&Settings{raw: map[string]any{}}).SupervisorCfg().Selection; got != "random" {
+		t.Fatalf("缺键时显示方式应为 random，得到 %q", got)
+	}
+	if got := (&Settings{raw: defaultSettingsMap()}).SupervisorCfg().Selection; got != "random" {
+		t.Fatalf("出厂默认显示方式应为 random，得到 %q", got)
+	}
+	raw := map[string]any{"supervisor": map[string]any{"selection": "bogus"}}
+	normalizeSupervisorMessages(raw)
+	if got := jsStr(raw["supervisor"].(map[string]any)["selection"]); got != "random" {
+		t.Fatalf("非法 selection 应回退 random，得到 %q", got)
+	}
+	// 显式三种取值都必须原样保留，不能被兜底吞掉
+	for _, v := range []string{"fixed", "sequence", "random"} {
+		r := map[string]any{"supervisor": map[string]any{"selection": v}}
+		normalizeSupervisorMessages(r)
+		if got := jsStr(r["supervisor"].(map[string]any)["selection"]); got != v {
+			t.Fatalf("合法 selection=%q 被改成 %q", v, got)
 		}
 	}
 }
