@@ -58,8 +58,8 @@ async function newPage(browser, w, h, o) {
   }
   // consoleErrors：把页面里的 JS 错误收集起来给断言用。
   // 必须**在 goto 之前**挂上——设置页是 216KB 的一整坨脚本，出错就在加载那一刻。
-  // 拦截 favicon：浏览器会自动请求 /favicon.ico，而 Go 服务的资源里只有 icon.png
-  // （前端产物没有 favicon.ico），会 404。上一版时代这条被 webContents 吞掉，
+  // 拦截 favicon：浏览器会自动请求 /favicon.ico，而前端产物里没有 favicon.ico
+  // （只有 icon.png），会 404。上一版时代这条被 webContents 吞掉，
   // Playwright 会如实上报成 console error，故这里直接拦掉、返回 204。
   await page.route("**/favicon.ico", (route) => route.fulfill({ status: 204, body: "" }));
   if (o.onConsole) {

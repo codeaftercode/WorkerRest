@@ -9,6 +9,9 @@
   --danger: #e5484d;
   --danger-weak: #fdeced;
   --radius: 14px;
+  /* 关于页顶部横幅的底色：取自 sitting_risk.webp 左右边缘像素均值，
+     横幅比图片宽时用它补两侧空白 —— 必须与图片边缘同色，否则会出现竖直接缝。 */
+  --about-banner-bg: #e0d6ce;
   /* 字段行：标签列定宽 → 控件左缘恒在一条竖线上，标签↔控件的距离与窗口宽度无关 */
   --label-w: 200px;
   --row-gap: 16px;
@@ -192,6 +195,30 @@ body {
 .card-head h3 { margin-bottom: 0; }
 
 /* 关于页：在保持卡片满宽（与其他页面一致）的前提下，徽标 / 说明块 / 软按钮沿用 v2 视觉 */
+/* 顶部横幅（久坐风险图）：宽度 = .tab 内容宽（与下方 .card 逐像素同宽），高度恒定 260px。
+   图片按原比例（1440×804 ≈ 1.79）以「高度撑满、宽度自适应」的方式居中显示，窗口变宽时
+   两侧多出的宽度由图片自身的米色底（#e0d6ce，取自原图边缘像素均值）填充 —— 因为色值
+   与图片边缘完全一致，接缝不可见，整体读起来是一块圆角横幅。窗口窄到图片比容器宽时
+   由 overflow:hidden 居中裁掉两侧，人物主体仍在画面中。 */
+#tab-about .about-banner {
+  height: 260px;
+  margin: 0 0 16px;
+  border-radius: var(--radius);
+  background: var(--about-banner-bg);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#tab-about .about-banner img {
+  display: block;
+  height: 100%;
+  width: auto;
+  flex: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
 /* 卡片头：标题 + 副标题在左，徽标推到右侧（覆盖全局 .card-head 的默认对齐） */
 #tab-about .card-head { justify-content: space-between; }
 #tab-about .card-head p { margin-top: 3px; font-size: 11.5px; color: var(--text-2); }

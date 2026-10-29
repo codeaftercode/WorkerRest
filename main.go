@@ -12,11 +12,30 @@ import (
 // 前端资源：frontend/dist 由渲染层构建流程产出（HTML/CSS/JS），shim.js 把
 // window.api 适配到 Go 绑定，使 上一版 renderer 在不改业务代码的前提下直接复用。
 //
+// 图片也统一放这里，只有一份 256×256 的 icon.png 通吃三处：设置窗口标题栏
+// （<img class="tb-icon">）、系统托盘（下面的 trayIcon）、exe 文件图标（构建期由它
+// 生成 rsrc_windows_amd64.syso，见 README「打包」）。不再有 assets/ 目录。
+//
 //go:embed all:frontend/dist
 var assets embed.FS
 
-//go:embed assets/icon.ico
-var trayIcon []byte
+// trayIcon 是系统托盘图标：从上面这份前端资源里取（frontend/dist/icon.png）。
+// 用 PNG 而不是 ICO 是刻意的 —— Wails v3 的 SetIcon 走 w32.CreateSmallHIconFromImage，
+// 该函数 PNG/ICO 都接受（见 wails/v3/pkg/w32/icon.go 的 iconResourceData），系统再按
+// SM_CXSMICON 缩放到托盘尺寸；一份 256 的 PNG 就同时够标题栏（20px）、托盘（16~24px）
+// 和 exe 大图标用，不必维护 64 的 png + 64 的 ico + 256 的 png 三份同图。
+// 包级初始化按依赖顺序执行，assets 先于 trayIcon 就绪；读不到只记日志并返回 nil，
+// 托盘照常创建（只是图标空白），不因为一个图标让整个程序起不来。
+var trayIcon = loadTrayIcon()
+
+func loadTrayIcon() []byte {
+	b, err := assets.ReadFile("frontend/dist/icon.png")
+	if err != nil {
+		log.Printf("[tray] 读取托盘图标失败: %v", err)
+		return nil
+	}
+	return b
+}
 
 func main() {
 	// 自更新分支：必须在构建 Wails 应用之前处理，避免触发单例互斥。

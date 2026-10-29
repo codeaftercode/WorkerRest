@@ -71,6 +71,17 @@ python scripts/verify_portable.py
   停止（`--no-build` 用上一轮 exe 时最容易踩），再用导出的内容写进便携包；发布后
   `verify_portable.py` 用包里的 exe 再复核一次。单测 `TestEmbeddedDefaultMatchesFile`
   另钉住「编译时快照 == 工作区文件」。
+- **exe 文件图标来自仓库根的 `rsrc_windows_amd64.syso`**（随源码入库）：`go build` 会自动链接
+  同包目录下的 `*_windows_amd64.syso`，所以 `make_portable.py` 与 ldflags 都不用改。图标源就是
+  全项目唯一那份 `frontend/dist/icon.png`，重做图标后重新生成一次即可：
+  ```powershell
+  # 1) 用 Pillow 从 icon.png 生成多尺寸 ico（16/24/32/48/64/128/256，资源管理器大图标要 256）
+  # 2) go run github.com/akavel/rsrc -arch amd64 -ico app.ico -o rsrc_windows_amd64.syso
+  ```
+  校验方式：资源管理器里直接看 exe 图标，或解析 PE 资源确认 `RT_GROUP_ICON(14)` 存在
+  （`VersionInfo` 只看版本字段，与图标无关）。**托盘与标题栏不需要另做图**：托盘直接吃这份
+  PNG（Wails v3 的 `w32.CreateSmallHIconFromImage` PNG/ICO 都认，系统再按 `SM_CXSMICON` 缩放），
+  标题栏是同一张图按 20px 显示。
 - **默认检查更新地址 = `https://www.goodgoodlive.com/worker-rest/version.json`**，同时是
   **出厂兜底源**：写在 `default_settings.json` 的 `sites` 里（便携包的 `config/settings.json`
   是它的副本），`update.go` 里还有一份 `defaultUpdateSite` 常量，永远排在候选链**最后**。
@@ -135,6 +146,10 @@ python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / �
 
 - **单测必须带 `-tags server`**：不带时「提前提示窗」用例会因 `a.app == nil` panic（无头形态
   没有原生窗口），这是既有约束，不是回归。
+- `tray_icon_test.go` 钉住图片资产这一层：托盘图标（`frontend/dist/icon.png`，唯一那份图标）
+  必须能从 embed 读到、是合法 PNG，并且**真的走一遍 Wails 的转换链** `w32.CreateSmallHIconFromImage`
+  拿到非零 HICON —— 格式不被接受时托盘只是静默变空白图标，不跑测试发现不了；另外检查 dist 下
+  每张位图非空（图片个数不写死，增删图片不该让测试变红）。
 - 上述脚本全部无头运行，报告写在 `%TEMP%`（`wr_go_smoke_report.txt` 等），退出码 0 = 全通过。
 - 冒烟 / 探针会**隔离配置**（拷真实配置进 `%TEMP%` + `WR_SETTINGS_PATH` 独占），绝不改动
   运行目录里的真实配置与统计。
@@ -148,8 +163,10 @@ python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / �
   supervisors/            内置督休专员模板（17 个专员，立绘均为 webp，约 4.5 MB，随包分发；子目录用专员名称命名，meta.json 里只有名字（名字即身份，没有内部 id）；无 meta.json 的目录只作素材、不进包）
   sounds/                 内置提示音源文件（四个 wav，打包时预置进便携包）
   manual/操作手册.html     随包操作手册（自包含 HTML）
-  frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）
-  assets/icon.ico         托盘图标（go:embed）
+  frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）+ 全部图片资产：
+                          icon.png **全项目唯一图标**（标题栏 20px / 托盘 / exe 图标源三处共用）、
+                          sitting_risk.webp 关于页横幅 —— 整个目录 go:embed 进 exe，运行时只认这里
+  rsrc_windows_amd64.syso exe 文件图标资源（RT_GROUP_ICON，16~256 七档，由 frontend/dist/icon.png 生成）
   default_settings.json   出厂默认配置（go:embed）
   scripts/                验证与打包脚本
 ```

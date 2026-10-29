@@ -13,6 +13,8 @@
        图标一律用内联 SVG：文字符号（制表横线 / 乘号）是字形，落点在基线上、粗细与
        对齐都不可控，跟真正的窗口控制图标不是一个东西，悬停时尤其明显。 -->
   <div id="titlebar">
+    <!-- 项目里只有这一份图标：icon.png。标题栏按 20px 显示，托盘（Go 侧）与 exe
+         文件图标（构建期生成 syso）也都用它，改图只改这一个文件。 -->
     <img class="tb-icon" src="./icon.png" alt="" />
     <div class="tb-title" id="tb-title">吃饼人也敢休息？</div>
     <div class="tb-drag" title="拖动可移动窗口；双击切换最大化 / 还原"></div>
@@ -486,6 +488,15 @@
 
       <!-- 关于（数据与隐私 / 软件信息） -->
       <section class="tab" id="tab-about">
+        <!-- 顶部横幅：久坐风险示意图。高度固定、宽度随内容区（= 下方卡片宽度）拉伸；
+             图片按比例居中、两侧多出来的宽度由图片自身的米色底填充，看起来是一整块。
+             图片直接放 frontend/dist/ 根（和 icon.png 同一个目录）：main.go 的
+             //go:embed all:frontend/dist 会把它打进 exe、BundledAssetFileServer 负责交付。
+             仓库根已没有 assets/ 目录，放 dist 之外的地方运行时加载不到。 -->
+        <div class="about-banner">
+          <img src="./sitting_risk.webp" alt="久坐办公带来的风险示意图：颈前伸、颈椎僵硬、肩颈酸痛、腰肌劳损、鼠标手、下肢血栓等" />
+        </div>
+
         <!-- 卡片 1：软件信息 -->
         <section class="card">
           <div class="card-head">
