@@ -95,9 +95,19 @@ func main() {
 			// 窗口关，所以对所有窗口一起关 —— 这个 App 里没有任何窗口需要捏合缩放。
 			// 页面侧另有 frontend/dist/nozoom.js 做同目的的兜底（touch-action + 拦
 			// Ctrl+滚轮），两层叠加。
+			// --disable-direct-composition：**「共享屏幕时隐藏提醒窗口」的前提**。
+			// Chromium 默认走 DirectComposition 把画面交给 DWM 合成：像素属于渲染进程的
+			// 独立视觉树，不在宿主窗口的重绘表面里。而 SetWindowDisplayAffinity
+			//（Wails 的 ContentProtectionEnabled 底层就调它）只能作用在有重绘表面的
+			// 顶层窗口上 —— 结果是回读亲和性 = 0x11「看起来成功了」，捕获结果里
+			// 却仍是完整画面（2026-10-29 实测：关掉这个开关时窗口内容 99.6% 可见）。
+			// 关掉 DComp 后帧改由窗口表面呈现，亲和性立刻生效（同一份探针实测 0.00%）。
+			// 代价：最终呈现少一次 GPU 合成，滚动/动画略逊于默认路径；本应用的界面
+			// 是静态布局，实测无可见影响。验证脚本 scripts/probe_capture_guard.py。
 			AdditionalBrowserArgs: []string{
 				"--autoplay-policy=no-user-gesture-required",
 				"--disable-pinch",
+				"--disable-direct-composition",
 			},
 		},
 		// 单例运行：第二个实例立即退出（ExitCode），第一个实例收到回调后把
@@ -126,15 +136,22 @@ func main() {
 	app.RegisterService(application.NewService(backend))
 
 	// 主窗口就是设置窗口：路由 /settings.html 是 上一版 renderer 的产物副本
-	//（980×700 / 最小 860×600 / 无边框，与 windows/settingsWindow.ts 同参数）。
+	// （无边框）。尺寸不再写死在这里，而是取自配置的 window 块：
+	//   · 默认尺寸 = 用户选定的 913 × 857（「关于页刚好不出滚动条」的实测高度）
+	//     （测量方法与数字来源见 window_size.go 顶部注释）；
+	//   · 勾选了「自动记录窗口尺寸」时改用上次记录的尺寸。
+	// 最小尺寸是布局下限（常量），不是用户偏好，故不进配置。
+	winW, winH := backend.settingsWindowSize()
+	log.Printf("[boot] 设置窗口初始尺寸 %dx%d（min %dx%d）",
+		winW, winH, settingsWindowMinWidth, settingsWindowMinHeight)
 	// 路由 / 另有一个 Go 版诊断页（index.html），用来手点一次提醒、看环境信息。
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "settings",
 		Title:            "吃饼人也敢休息？",
-		Width:            980,
-		Height:           700,
-		MinWidth:         860,
-		MinHeight:        600,
+		Width:            winW,
+		Height:           winH,
+		MinWidth:         settingsWindowMinWidth,
+		MinHeight:        settingsWindowMinHeight,
 		Frameless:        true,
 		URL:              "/settings.html?win=settings",
 		BackgroundColour: application.NewRGBA(0xf5, 0xf6, 0xfa, 0xff),

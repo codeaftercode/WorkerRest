@@ -63,11 +63,11 @@ ISO = os.path.join(TEMP, "wr_probe_iso")
 # 内置督休专员的固定出场顺序（与 Go 侧 defaultRoleOrder 同源）
 # 注意：这是**顺序**清单，不是「个数」清单 —— 专员的实际个数从磁盘现算（见 scan_role_names）。
 BUILTIN_ROLE_ORDER = [
-    "眼镜主管", "温柔学姐", "医生", "体能教练",
-    "始皇帝", "神秘黑客", "飞行员", "法官",
-    "经济学家", "魔法师", "画家", "战士",
-    "熊猫侠客", "中尉军官", "野蛮女友", "毒舌损友",
-    "霸道总裁",
+    "秦始皇", "神秘黑客", "中尉军官", "熊猫侠客",
+    "医生", "经济学家", "法官", "体能教练",
+    "毒舌损友", "野蛮女友", "霸道总裁", "温柔学姐",
+    "眼镜主管", "飞行员", "画家", "魔法师",
+    "战士",
 ]
 
 
@@ -385,15 +385,15 @@ def main():
               "items=%s empty=%s" % (stg.get("supMsgItems"), stg.get("supMsgEmpty")))
         check(stg.get("supMsgRole") == want_role, "台词面板标题 == 当前督休专员名",
               "%s vs %s" % (stg.get("supMsgRole"), want_role))
-        # 关于页「软件信息」卡 2026-10 改版：当前版本 / 构建时间 / 运行环境三行。
+        # 关于页「软件信息」卡 2026-10 改版：当前版本 / 发布时间两行（运行环境行已移除）。
         # 版本值由 -ldflags 注入（源码里是 dev 占位），所以只断言「形如 v1.2.3 或 dev」，
         # 不钉具体版本号 —— 否则每次发版都要改探针。
         ver = str(stg.get("dVersion") or "").strip()
         check(bool(re.match(r"^(v\d+\.\d+\.\d+|dev)$", ver)),
               "关于页显示当前版本（v<主>.<次>.<修订> 或 dev）", ver)
-        check(bool(str(stg.get("dBuildTime") or "").strip()), "关于页显示构建时间",
+        check(bool(str(stg.get("dBuildTime") or "").strip()), "关于页显示发布时间",
               stg.get("dBuildTime"))
-        check("Go" in str(stg.get("dRuntime") or ""), "关于页运行环境显示 Go 引擎",
+        check(stg.get("dRuntime") is None, "关于页已移除「运行环境」行",
               stg.get("dRuntime"))
 
         # 关键值 vs 配置文件（类型对齐：输入框是字符串，配置里可能是数字）
@@ -431,8 +431,26 @@ def main():
               "全屏独占开关：页面勾上后配置真的是 true",
               fsrt.get("on"))
         check(fsrt.get("off") is False,
-              "全屏独占开关：页面取消后配置回到 false（探针自己还原）",
+              "全屏独占开关：页面取消后配置真的变成 false",
               fsrt.get("off"))
+        # 收尾必须回到初值：真实配置本来开着这个开关时，探针不能把它留成 false
+        # （否则下一条「勾选态 == 磁盘值」自相矛盾，2026-10-29 实测踩到）
+        check(fsrt.get("restored") == bool(stg.get("fullscreenPause")),
+              "全屏独占开关：探针收尾把配置还原成初值",
+              "%s vs %s" % (fsrt.get("restored"), stg.get("fullscreenPause")))
+        # 共享屏幕时隐藏：默认开（Go 侧 Flag(true,…)），缺键时页面也必须呈现勾选态
+        expect_hide = (cfg.get("appearance") or {}).get("hideOnShare", True) is not False
+        check(bool(stg.get("apHideOnShare")) == expect_hide,
+              "共享屏幕时隐藏勾选态 == 配置 appearance.hideOnShare（缺省为开）",
+              "%s vs %s" % (stg.get("apHideOnShare"), expect_hide))
+        sg = m.get("shareGuardRoundTrip") or {}
+        check(sg.get("off") is False,
+              "共享屏幕时隐藏：页面取消后配置真的是 false", sg.get("off"))
+        check(sg.get("on") is True,
+              "共享屏幕时隐藏：页面勾上后配置真的是 true", sg.get("on"))
+        check(bool(sg.get("restored")) == expect_hide,
+              "共享屏幕时隐藏：探针收尾把配置还原成初值",
+              "%s vs %s" % (sg.get("restored"), expect_hide))
         check(stg.get("supSelection") == (cfg.get("supervisor") or {}).get("selection"),
               "督休专员选择方式 == 配置 supervisor.selection",
               "%s vs %s" % (stg.get("supSelection"), (cfg.get("supervisor") or {}).get("selection")))

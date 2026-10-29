@@ -137,6 +137,14 @@ type App struct {
 	// 用户处理完或点「暂不」就置 nil，本次运行不再询问。用独立锁，不要与 a.mu 交叉。
 	soundScanMu sync.Mutex
 	soundScan   *SoundScanNotice
+
+	// 设置窗口尺寸记忆（见 window_size.go）：resize 事件只把尺寸塞进 winSizePending
+	// 并重置定时器，真正的写盘发生在定时器 goroutine 上（拖拽期间不能做文件 IO）。
+	// 用独立小锁而不是 a.mu：定时器回调里要拿 a.mu 落盘，两把锁分开，
+	// 不要与主线程上的配置读写互等。
+	winSizeMu      sync.Mutex
+	winSizePending [2]int
+	winSizeTimer   *time.Timer
 }
 
 func NewApp(app *application.App) *App {
@@ -247,6 +255,14 @@ func (a *App) ServiceShutdown() error {
 	a.stopSystemWatchers()
 	a.stopTrayRefresh()
 	a.destroySoundHost()
+	// 尺寸记忆收尾：托盘「退出」时窗口还开着，resize 的防抖定时器可能没到期
+	a.mu.Lock()
+	rememberSize := a.cfg != nil && a.cfg.WindowSizeCfg().Remember
+	a.mu.Unlock()
+	if rememberSize {
+		a.rememberSettingsWindowSize()
+		a.flushSettingsWindowSize()
+	}
 	// 统计收尾：无条件写一次盘（比 2 秒防抖 / 1 分钟兜底更早生效，退出时不丢账）
 	a.stopStats()
 	log.Println("[boot] 退出")
@@ -851,6 +867,10 @@ func (a *App) ShowBreakWindow(kind string) {
 			URL:              "/break.html?win=break&sup=" + supFlag,
 			BackgroundType:   application.BackgroundTypeTranslucent,
 			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+			// 共享屏幕时隐藏：Wails 在窗口显示后调 SetWindowDisplayAffinity。
+			// 生效前提是 main.go 的 --disable-direct-composition —— 少了它，像素不在
+			// 窗口重绘表面里，标记照样回读成功而捕获照旧可见（那里有实测记录）。
+			ContentProtectionEnabled: ap.HideOnShare,
 			// 窗口身份经 URL 的 ?win=break 下发；JS 字段对 URL 页面不生效（仅占位）
 			JS: `window.__WR_WIN = "break";`,
 			// 无边框窗口在 Windows 上会留一圈原生装饰（阴影/描边），与 上一版一致地关掉
@@ -1048,12 +1068,19 @@ func (a *App) settingsWindow() application.Window {
 }
 
 // ShowSettingsWindow 打开（或唤起）设置窗口。窗口在 main.go 里随应用创建，
-// 这里只负责显示与聚焦——托盘、单实例二次启动、自更新重启恢复都走它。
+// 这里负责「按配置决定这次用多大」+ 显示与聚焦——托盘、单实例二次启动、
+// 自更新重启恢复都走它。
+//
+// 每次都过一遍 applySettingsWindowSize：勾了「自动记录窗口尺寸」就用上次的尺寸，
+// 没勾就回到默认尺寸（用户中途拖大过窗口，关掉再开也应恢复默认，见 window_size.go）。
 func (a *App) ShowSettingsWindow() {
-	if w := a.settingsWindow(); w != nil {
-		w.Show()
-		w.Focus()
+	w := a.settingsWindow()
+	if w == nil {
+		return
 	}
+	a.applySettingsWindowSize(w)
+	w.Show()
+	w.Focus()
 }
 
 // SetActiveTab 前端每次切页时上报当前 tab 名（general/timing/supervisor/stats/
@@ -1162,6 +1189,9 @@ func (a *App) Action(win, name string) error {
 		// 关闭 = 隐藏到托盘（不是销毁）：托盘「设置…」/ 双击要能重新唤起。
 		// Wails 的 Window.Close() 会销毁窗口并从注册表移除，之后 GetByName 拿不到、
 		// ShowSettingsWindow 就无法再显示 —— 所以这里用 Hide 保留窗口对象。
+		// 隐藏前把当前尺寸记下来：防抖 1 秒内关窗时定时器还没到，不主动 flush 就丢了。
+		a.rememberSettingsWindowSize()
+		a.flushSettingsWindowSize()
 		if w := a.settingsWindow(); w != nil {
 			w.Hide()
 			if a.app != nil && a.app.Event != nil {
@@ -1337,8 +1367,9 @@ func structToMap(v any) map[string]any {
 
 // AppInfo 关于页的环境信息。
 //
-// 如实回报引擎为 Wails v3 (Go)，不伪装成 上一版。设置页「软件信息」卡片读取本结构的
-// version / goVersion / wailsVersion / buildTime 渲染（见 settings.html 的软件信息卡片）。
+// 如实回报引擎为 Wails v3 (Go)，不伪装成 上一版。设置页「软件信息」卡片现在只渲染
+// version / buildTime（发布时间）两行；goVersion / wailsVersion 仍然回传，供探针与
+// 排障判断跑的是哪个引擎版本（尤其是 beta 与正式版之分），只是不再上界面。
 func (a *App) AppInfo() map[string]any {
 	goVer := strings.TrimPrefix(runtime.Version(), "go")
 	return map[string]any{
@@ -1406,8 +1437,8 @@ func (a *App) WindowMaximized() bool {
 // 不在源码里写死真实版本号，避免与 tag 分裂。
 var appVersion = "dev"
 
-// buildTime 打包时通过 -ldflags "-X main.buildTime=<RFC3339>" 注入；
-// 开发 / 无头验证不注入则留空，前端「构建时间」回退显示「本地构建」。
+// buildTime 打包时通过 -ldflags "-X main.buildTime=<RFC3339>" 注入，关于页以「发布时间」
+// 展示；开发 / 无头验证不注入则留空，前端回退显示「本地构建」。
 var buildTime = ""
 
 // pauseReasonText 暂停原因键 → 界面文案：内部用稳定的英文键，展示层不该原样抛给用户；

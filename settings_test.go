@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -50,7 +51,7 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 			"long":  map[string]any{"items": []any{map[string]any{"text": "没有 id"}}},
 		},
 	}
-	installIDCreated, presetSeeded, _ := normalizeLoad(raw)
+	installIDCreated, presetSeeded, _, _ := normalizeLoad(raw)
 	if !installIDCreated {
 		t.Fatal("老配置没有 installId，应当补生成")
 	}
@@ -129,7 +130,7 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 		t.Errorf("外卖提前通知秒数应夹到 300，得到 %v / %v", tk["leadSec"], tk["postponeMin"])
 	}
 
-	// appPause：null ⇒ 空配置 + 种入 8 条内置会议软件
+	// appPause：null ⇒ 空配置 + 种入内置会议软件（条数以 appPausePresets 为准，不写死）
 	apz := raw["appPause"].(map[string]any)
 	if apz["seeded"] != true {
 		t.Error("appPause 应被种入并置 seeded=true")
@@ -190,7 +191,7 @@ func TestNormalizeLoadIsIdempotent(t *testing.T) {
 	if err := json.Unmarshal(first, &feed); err != nil {
 		t.Fatal(err)
 	}
-	installIDCreated, presetSeeded, idsRenumbered := normalizeLoad(feed)
+	installIDCreated, presetSeeded, idsRenumbered, _ := normalizeLoad(feed)
 	if installIDCreated || presetSeeded {
 		t.Error("已归一化的配置再跑一次不该再补 installId / 种条目")
 	}
@@ -200,6 +201,47 @@ func TestNormalizeLoadIsIdempotent(t *testing.T) {
 	second, _ := json.Marshal(feed)
 	if string(first) != string(second) {
 		t.Errorf("归一化不收敛（第二次仍改动了配置）\n第一次: %s\n第二次: %s", first, second)
+	}
+}
+
+// TestPruneSuitePresets 早期版本把钉钉 / 企业微信 / 飞书 / WeLink 当成会议软件种进了
+// 「应用暂停」清单，现在只留以会议为主的客户端。这条用例钉两件事：
+//  1. 只摘「软件自己种的」条目（id 恰好是 preset-<小写 exe> 且 exe 原样）；用户手工
+//     添加的、改过进程名的，一律保留 —— 那是用户的决定，不是历史包袱；
+//  2. 摘完幂等：第二次归一化不再报告「有改动」，否则每次启动都会回写配置。
+func TestPruneSuitePresets(t *testing.T) {
+	item := func(id, exe, name string) map[string]any {
+		return map[string]any{"id": id, "exe": exe, "name": name, "enabled": true}
+	}
+	raw := map[string]any{
+		"appPause": map[string]any{
+			"enabled": true,
+			"seeded":  true,
+			// 顺序照真实配置：用户自己的条目在前，种子追加在末尾（normalizeAppPause 按进程名去重，
+			// 保前面的）。公司自己搭的钉钉也走 DingTalk.exe，绝不能因为同名被一起摘掉。
+			"items": []any{
+				item("app-7f3a", "DingTalk.exe", "公司的钉钉"),
+				item("preset-dingtalk.exe", "DingTalk.exe", "钉钉"),
+				item("preset-wxwork.exe", "WXWork.exe", "企业微信"),
+				item("preset-feishu.exe", "Feishu.exe", "飞书"),
+				item("preset-welink.exe", "WeLink.exe", "华为云 WeLink"),
+				item("preset-zoom.exe", "Zoom.exe", "Zoom"), // 会议客户端：留
+			},
+		},
+	}
+	if _, _, _, pruned := normalizeLoad(raw); !pruned {
+		t.Fatal("带综合办公套件预设的配置应报告「摘除了条目」")
+	}
+	var got []string
+	for _, it := range raw["appPause"].(map[string]any)["items"].([]any) {
+		got = append(got, it.(map[string]any)["id"].(string))
+	}
+	want := []string{"app-7f3a", "preset-zoom.exe"}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("摘除结果不对：得到 %v，期望 %v", got, want)
+	}
+	if _, _, _, again := normalizeLoad(raw); again {
+		t.Error("已摘过的配置再跑一次不该再报告摘除（会每次启动都回写）")
 	}
 }
 
@@ -403,6 +445,34 @@ func TestAppearanceTransparencyDefault(t *testing.T) {
 	}
 }
 
+// TestAppearanceHideOnShareDefault 「共享屏幕时隐藏提醒窗口」缺省必须是开。
+//
+// 这个键是「开会共享屏幕时别被同事看见」的兜底：默认关就等于没装 —— 用户不会
+// 为一件自己不知道会发生的事预先去勾开关。所以三处口径必须一致：代码兜底 true、
+// 出厂 JSON true、前端 fillForm 把「缺键」也当成勾选（见 settings.js 的
+// `a.hideOnShare !== false`，此处只钉 Go 侧两条）。
+func TestAppearanceHideOnShareDefault(t *testing.T) {
+	// 1) 缺键（老配置）→ 开
+	if s := (&Settings{raw: map[string]any{}}); !s.AppearanceCfg().HideOnShare {
+		t.Fatal("缺 appearance.hideOnShare 时应视为开启")
+	}
+	// 2) 出厂默认 → 开
+	if s := (&Settings{raw: defaultSettingsMap()}); !s.AppearanceCfg().HideOnShare {
+		t.Fatal("出厂默认应为开启（否则首装用户得不到保护）")
+	}
+	// 3) 显式 false → 真关掉（用户勾掉了要能生效）
+	raw := map[string]any{"appearance": map[string]any{"hideOnShare": false}}
+	if s := (&Settings{raw: raw}); s.AppearanceCfg().HideOnShare {
+		t.Fatal("显式 hideOnShare=false 应被尊重")
+	}
+	// 4) 类型坏了（手改成字符串）→ 回到默认「开」，不是「关」
+	//    方向很重要：坏数据不能把保护关掉
+	bad := map[string]any{"appearance": map[string]any{"hideOnShare": "nope"}}
+	if s := (&Settings{raw: bad}); !s.AppearanceCfg().HideOnShare {
+		t.Fatal("非法取值应兜底为开启，而不是静默关闭保护")
+	}
+}
+
 // TestEmbeddedDefaultMatchesFile 内嵌的出厂默认必须与仓库根的 default_settings.json 一致。
 //
 // 两份默认值分别喂给两条路径：`//go:embed` 的这份是「恢复默认设置」的数据源；
@@ -424,5 +494,49 @@ func TestEmbeddedDefaultMatchesFile(t *testing.T) {
 	// 比语义而非字节：CRLF/LF、缩进差异不算分叉（embed 存的是编译时的工作区字节）
 	if !reflect.DeepEqual(fromDisk, fromEmbed) {
 		t.Fatal("内嵌的出厂默认与 default_settings.json 内容不一致（改动后没重新编译？）")
+	}
+}
+
+// TestDefaultFixedRolePointsAtRealRole 出厂配置的「固定显示」专员必须能对上磁盘上的真人。
+//
+// 首装与「恢复默认设置」后，固定模式按这个名字取人。写错一个字（比如给专员改名只动了
+// meta.json，忘了 sync 这里）不会报错，只会静默落到「第一个可用专员」——界面上完全看不出
+// 异常，只有用户发现出场的人不是自己要的那个。这里的名字比对走 resolveRoleDir，口径与
+// 运行时一致（读 meta.json 的 name，EqualFold）。
+//
+// 存在性**不写死具体专员**：内置专员用户可以删，删掉后本用例只检查「非空 + 名字属于内置
+// 清单」并跳过磁盘比对，避免误报红。真正不能破的是「出厂必须给出一个确定的固定人选」——
+// 留空就等于把选择权交给目录排序，不同机器上可能出场不同的人。
+func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
+	raw, err := os.ReadFile("default_settings.json")
+	if err != nil {
+		t.Fatalf("读 default_settings.json 失败: %v", err)
+	}
+	var cfg struct {
+		Supervisor struct {
+			FixedRole string `json:"fixedRole"`
+		} `json:"supervisor"`
+	}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		t.Fatalf("default_settings.json 解析失败: %v", err)
+	}
+	fixed := strings.TrimSpace(cfg.Supervisor.FixedRole)
+	if fixed == "" {
+		t.Fatal("出厂默认必须指定一个固定督休专员：留空会让首装落到「第一个可用」，不同机器可能不一样")
+	}
+	// 牙齿在这：名字必须是内置清单里的人。写成别的（拼错、或写了个清单外的名字）直接红，
+	// 而且不碰磁盘，用户删专员也不会误报。
+	builtin := false
+	for _, n := range defaultRoleOrder {
+		if strings.EqualFold(n, fixed) {
+			builtin = true
+			break
+		}
+	}
+	if !builtin {
+		t.Fatalf("出厂固定专员 %q 不在 defaultRoleOrder 里：写错了名字，或者它不是内置专员", fixed)
+	}
+	if _, ok := resolveRoleDir("supervisors", fixed); !ok {
+		t.Logf("磁盘上没有专员 %q（内置专员可被用户删除），本轮跳过 meta.json 名字比对", fixed)
 	}
 }

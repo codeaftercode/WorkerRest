@@ -452,9 +452,10 @@ const PROBE_SETTINGS = `(function () {
     title: document.title,
     tbTitle: txt('tb-title'),
     appName: val('appName'),
-    // 关于页「软件信息」卡：当前版本 / 构建时间 / 运行环境（2026-10 改版后的三个 id）
+    // 关于页「软件信息」卡：当前版本 / 发布时间两行（运行环境行已移除）
     dVersion: txt('d-version-val'),
     dBuildTime: txt('d-build-time'),
+    // 运行环境行已从关于页移除：此字段用于断言它确实不再存在（应为 null）
     dRuntime: txt('d-runtime'),
     navCount: cnt('#nav .nav-item'),
     tabCount: cnt('#content .tab'),
@@ -506,6 +507,7 @@ const PROBE_SETTINGS = `(function () {
     apHeightPct: val('ap-heightPct'),
     apFullscreen: chk('ap-fullscreen'),
     apAllScreens: chk('ap-allScreens'),
+    apHideOnShare: chk('ap-hideOnShare'),
     sndVolume: val('snd-volume'),
     sndMode: val('snd-mode'),
     shortMode: dval('short-mode'),
@@ -1107,6 +1109,23 @@ async function run() {
   console.log("[probe] pauseResumed:", JSON.stringify(metrics.pauseResumed));
 
   // ---- 0b. 逐个切换页签 ----
+  // 「提醒窗口」卡片在首屏之下（通用配置要滚一段才看得见）：单独滚过去留一张。
+  // settings.png 只截视口，这张卡片里的开关（置顶 / 所有屏幕 / 共享屏幕时隐藏）
+  // 从来不出现在任何截图里，改版式时等于没有回归依据。截完把滚动位置还原，
+  // 免得影响后面按坐标做的断言。
+  await set.evaluate(
+    "(function(){var el=document.getElementById('ap-hideOnShare');" +
+      " if(!el) return false; el.scrollIntoView({block:'center'}); return true;})()",
+  );
+  await delay(500);
+  await shot(set, "settings_appearance");
+  await set.evaluate(
+    "(function(){var n=document.getElementById('ap-hideOnShare');" +
+      " while(n){ if(n.scrollTop) n.scrollTop=0; n=n.parentElement; }" +
+      " window.scrollTo(0,0); return true;})()",
+  );
+  await delay(300);
+
   metrics.tabs = {};
   for (const tab of ["timing", "supervisor", "stats", "shortcuts", "about"]) {
     const r = await set.evaluate(
@@ -1425,7 +1444,7 @@ async function run() {
   // 静态控件上的 change 由 bindAutoSave 统一接到 autoSave（collectForm + saveSettings），
   // 这里验的就是这条链路；fillForm 的回填另有 stg 断言覆盖。
   // 验完立刻还原，免得影响后面按磁盘配置比对的断言。
-  metrics.fsPauseRoundTrip = { on: null, off: null };
+  metrics.fsPauseRoundTrip = { on: null, off: null, restored: null };
   await set.evaluate(
     "(function(){ var c=document.getElementById('fullscreenPause');" +
       " if(!c) return false; c.checked=true;" +
@@ -1444,7 +1463,57 @@ async function run() {
   metrics.fsPauseRoundTrip.off = await set.evaluate(
     "(function(){ return window.api.getSettings().then(function(s){ return !!s.fullscreenPause; }); })()",
   );
+  // 收尾**必须还原成初值**，不能写死 false：真实配置本来就开着这个开关时，硬写 false 等于
+  // 篡改用户配置，紧接着「勾选态 == 磁盘值」的断言就会自相矛盾（2026-10-29 实测踩到）。
+  const fsWas = !!(metrics.settings && metrics.settings.fullscreenPause === true);
+  await set.evaluate(
+    "(function(){ var c=document.getElementById('fullscreenPause');" +
+      " if(!c) return false; c.checked=" + (fsWas ? "true" : "false") + ";" +
+      " c.dispatchEvent(new Event('change',{bubbles:true})); return true; })()",
+  );
+  await delay(900);
+  metrics.fsPauseRoundTrip.restored = await set.evaluate(
+    "(function(){ return window.api.getSettings().then(function(s){ return !!s.fullscreenPause; }); })()",
+  );
   console.log("[probe] fsPauseRoundTrip:", JSON.stringify(metrics.fsPauseRoundTrip));
+
+  // ---- 5d. 「共享屏幕时隐藏提醒窗口」：勾掉 → 配置 false，勾回 → true ----
+  // 默认是开的（Go 侧 Flag(true,…)），所以两段都要走一遍：只验「勾掉生效」会漏掉
+  // 「本来就是开的时候还能不能写回 true」。收尾同样还原成初值，不写死。
+  metrics.shareGuardRoundTrip = { off: null, on: null, restored: null };
+  const sgWas = !(metrics.settings && metrics.settings.appearance &&
+                  metrics.settings.appearance.hideOnShare === false);
+  await set.evaluate(
+    "(function(){ var c=document.getElementById('ap-hideOnShare');" +
+      " if(!c) return false; c.checked=false;" +
+      " c.dispatchEvent(new Event('change',{bubbles:true})); return true; })()",
+  );
+  await delay(900);
+  metrics.shareGuardRoundTrip.off = await set.evaluate(
+    "(function(){ return window.api.getSettings().then(function(s){" +
+      " return !!(s.appearance && s.appearance.hideOnShare); }); })()",
+  );
+  await set.evaluate(
+    "(function(){ var c=document.getElementById('ap-hideOnShare');" +
+      " if(!c) return false; c.checked=true;" +
+      " c.dispatchEvent(new Event('change',{bubbles:true})); return true; })()",
+  );
+  await delay(900);
+  metrics.shareGuardRoundTrip.on = await set.evaluate(
+    "(function(){ return window.api.getSettings().then(function(s){" +
+      " return !!(s.appearance && s.appearance.hideOnShare); }); })()",
+  );
+  await set.evaluate(
+    "(function(){ var c=document.getElementById('ap-hideOnShare');" +
+      " if(!c) return false; c.checked=" + (sgWas ? "true" : "false") + ";" +
+      " c.dispatchEvent(new Event('change',{bubbles:true})); return true; })()",
+  );
+  await delay(900);
+  metrics.shareGuardRoundTrip.restored = await set.evaluate(
+    "(function(){ return window.api.getSettings().then(function(s){" +
+      " var v = !!(s.appearance && s.appearance.hideOnShare); return v; }); })()",
+  );
+  console.log("[probe] shareGuardRoundTrip:", JSON.stringify(metrics.shareGuardRoundTrip));
 
   // 收尾兜底：WebSocket 事件通道是**延迟**连上的（页面加载完才连），
   // 所以 `net::ERR_ADDRESS_IN_USE` 这类传输层抖动会在 open() 返回**之后**才进

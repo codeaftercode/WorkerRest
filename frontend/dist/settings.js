@@ -72,15 +72,14 @@
   // 外卖两项的默认值（区间不在这里：一律读输入框自己的 min/max，见 clampNum）
   var TAKEOUT_LEAD_DEFAULT = 0;
   var TAKEOUT_POSTPONE_DEFAULT = 10;
+  // 只收「打开它基本就是在开会」的客户端（口径与 settings.go 的 appPausePresets 一致）。
+  // 飞书 / 钉钉 / 企业微信 / WeLink 是综合办公套件：能开会，但日常是消息与审批入口，
+  // 进程常驻并不等于在开会，所以不入列。
   var APP_PAUSE_PRESETS = [
     { exe: "WeMeetApp.exe", label: "\u817E\u8BAF\u4F1A\u8BAE" },
-    { exe: "Feishu.exe", label: "\u98DE\u4E66" },
-    { exe: "DingTalk.exe", label: "\u9489\u9489" },
-    { exe: "WXWork.exe", label: "\u4F01\u4E1A\u5FAE\u4FE1" },
     { exe: "ms-teams.exe", label: "Microsoft Teams" },
     { exe: "Zoom.exe", label: "Zoom" },
-    { exe: "CiscoCollabHost.exe", label: "Webex" },
-    { exe: "WeLink.exe", label: "\u534E\u4E3A\u4E91 WeLink" }
+    { exe: "CiscoCollabHost.exe", label: "Webex" }
   ];
   function appPauseLabel(exe) {
     const k = String(exe ?? "").trim().toLowerCase();
@@ -1008,11 +1007,31 @@
     await renderRoleGallery();
     toast(`\u5DF2\u91CD\u547D\u540D\u4E3A\u300C${role.name}\u300D`);
   }
+  // makeRolePreview 生成并保存磁贴缩略图（导入 / 换图之后调用）。
+  //
+  // 为什么在渲染层做：Go 侧不引图像库（CGO_ENABLED=0，见 role_preview.go 的取舍说明），
+  // 而内核自带 canvas 与 WebP 编码器 —— 由 role_thumb.js 裁掉四边透明区、缩到磁贴高度
+  // （92 CSS px × 2 倍屏 = 184）、压成 6~10 KB 的 WebP，再交回 Go 落盘。
+  // 失败不影响主流程：没有预览图时磁贴会回退到立绘原图（role.go 的 scanRoles）。
+  async function makeRolePreview(key) {
+    try {
+      if (!window.WRRoleThumb) return false;
+      const src = await window.api.roleFigureDataURL(key);
+      if (!src) return false;
+      const dataURL = await window.WRRoleThumb.buildFromDataURL(src);
+      if (!dataURL) return false;
+      return await window.api.saveRolePreview(key, dataURL);
+    } catch (e) {
+      return false;
+    }
+  }
   async function replaceRoleImage(key) {
     const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     const ok = await window.api.replaceSupervisorImage(key);
     if (!ok) return;
+    // 换图时 Go 侧把旧预览图删了（留着就会显示上一张图），这里补一张新的
+    await makeRolePreview(key);
     // 换图后缩略图要重读，否则磁贴仍显示旧图
     ROLES = await window.api.listSupervisorRoles();
     if (supEditName === key) {
@@ -1096,6 +1115,8 @@
       return;
     }
     const name = input.trim() || base;
+    // 建目录时 Go 侧只写了立绘（不复制副本），磁贴缩略图在这里补生成
+    await makeRolePreview(name);
     ROLES = await window.api.listSupervisorRoles();
     // 改名已经把落盘名换成用户输入的名字，这里要用最终的 name，不是 picked.saved（旧落盘名）
     supEditName = name;
@@ -2229,6 +2250,9 @@
     $("longEveryNShort").value = String(S.longEveryNShort);
     $("autostart").checked = S.autostart;
     $("startMinimized").checked = S.startMinimized;
+    // 自动记录窗口尺寸：老配置里可能没有 window 块（deepMerge 会补，但填表这一层
+    // 不能假设后端一定下发），缺了就当「开」——与后端 Flag(true, …) 的默认值一致
+    $("win-remember").checked = !(S.window && S.window.rememberSize === false);
     $("dndPause").checked = S.dndPause;
     // 老配置里没有 fullscreenPause：undefined 传给 checked 会让框呈现未选，
     // 与后端 Flag(false,…) 的默认值一致，所以这里不额外补默认值
@@ -2247,6 +2271,9 @@
     $("ap-fullscreen").checked = a.fullscreen;
     $("ap-alwaysOnTop").checked = a.alwaysOnTop;
     $("ap-allScreens").checked = S.allScreens;
+    // 共享屏幕时隐藏：老配置里没有这个键，缺省按「开」——与 Go 侧 Flag(true,…) 同口径，
+    // 不能写成 !!a.hideOnShare（undefined → false，老用户会被静默关掉保护）
+    $("ap-hideOnShare").checked = a.hideOnShare !== false;
     $("snd-enabled").checked = S.sound.enabled;
     $("snd-volume").value = String(S.sound.volume);
     $("snd-volume-val").textContent = `${Math.round(S.sound.volume * 100)}%`;
@@ -2278,6 +2305,11 @@
     S.longEveryNShort = clampNum($("longEveryNShort"), 2);
     S.autostart = $("autostart").checked;
     S.startMinimized = $("startMinimized").checked;
+    // 只回写 rememberSize：lastWidth / lastHeight 由 Go 独占写（窗口 resize 时记录），
+    // 这里是打开页面那一刻的旧快照，写回去会把刚记下的尺寸顶掉（后端另有一道
+    // keepWindowLastSize 兜底，两边都不许碰）。
+    if (!S.window || typeof S.window !== "object") S.window = {};
+    S.window.rememberSize = $("win-remember").checked;
     S.dndPause = $("dndPause").checked;
     S.fullscreenPause = $("fullscreenPause").checked;
     S.checkUpdateOnStart = $("chk-update").checked;
@@ -2304,6 +2336,7 @@
     a.heightPct = clampNum($("ap-heightPct"), 60);
     a.fullscreen = $("ap-fullscreen").checked;
     a.alwaysOnTop = $("ap-alwaysOnTop").checked;
+    a.hideOnShare = $("ap-hideOnShare").checked;
     S.allScreens = $("ap-allScreens").checked;
     S.sound.enabled = $("snd-enabled").checked;
     S.sound.volume = parseFloat($("snd-volume").value);
@@ -6106,9 +6139,7 @@
     };
     const info = await window.api.appInfo();
     $("d-version-val").textContent = normVer(info.version);
-    const goVer = info.goVersion || "";
-    const wailsVer = info.wailsVersion || "v3";
-    $("d-runtime").textContent = `Go ${goVer} · Wails ${wailsVer}`.replace(/\s+/g, " ").trim();
+    // 发布时间：打包时由 ldflags 注入 RFC3339；源码直跑没有这个时间戳，显示「本地构建」
     const rawBuild = info.buildTime || "";
     $("d-build-time").textContent = rawBuild ? rawBuild.replace("T", " ").slice(0, 16) : "本地构建";
 

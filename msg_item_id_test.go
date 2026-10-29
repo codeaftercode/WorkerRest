@@ -171,7 +171,7 @@ func TestNormalizeLoadRenumbersItemIDs(t *testing.T) {
 			},
 		},
 	}
-	_, _, renumbered := normalizeLoad(raw)
+	_, _, renumbered, _ := normalizeLoad(raw)
 	if !renumbered {
 		t.Fatal("老格式条目 id 应当被判为「已重编号」，否则不会回写盘")
 	}
@@ -190,7 +190,7 @@ func TestNormalizeLoadRenumbersItemIDs(t *testing.T) {
 	if err := json.Unmarshal(b, &feed); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, again := normalizeLoad(feed); again {
+	if _, _, again, _ := normalizeLoad(feed); again {
 		t.Error("已收敛的配置再加载一次不该再报重编号")
 	}
 }

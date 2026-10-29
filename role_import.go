@@ -12,11 +12,15 @@ import (
 // 导入本地图片为新的督休专员（设置页「导入立绘」背后那条路）。
 //
 // 身份就是专员名，所以这里只做三件事：定一个不重名的名字、按名字建目录、
-// 写 figure / preview 与 meta.json。没有内部 id，也没有 sha1 摘要键。
+// 写 figure 与 meta.json。没有内部 id，也没有 sha1 摘要键。
+//
+// 注意这里**不写预览图**：缩略图由渲染层生成（canvas 裁透明边 + 缩到磁贴高度 +
+// 编码 WebP），建目录后由 settings.js 调 SaveRolePreview 补上，见 role_preview.go。
 
-// createRoleDir 新建督休专员目录：把本地图片复制成 figure + preview。
-// 对应 supervisor.ts 的 createRoleDir。与 上一版的差异：preview 直接复制原图（Go 侧
-// 没有 nativeImage 缩图，原生选图 + 生成缩略图是占位项），所以 preview 用与 figure 相同的扩展名。
+// createRoleDir 新建督休专员目录：把本地图片复制成 figure，写 meta.json。
+// 对应 supervisor.ts 的 createRoleDir。与 上一版的差异：上一版用 nativeImage
+// 顺手缩一张 preview.png；Go 侧不引图像库，缩略图改由渲染层事后生成
+// （没有预览图时 scanRoles 会让磁贴回退到原图，界面不会开天窗）。
 //
 // name 是默认名（通常是文件名）：重名时自动退让成「X (2)」，因为这条路不能弹窗问用户。
 // 返回**最终落盘的专员名**（= meta.json 的 name，也是后续所有操作的标识）；失败返回空串。
@@ -55,15 +59,10 @@ func createRoleDir(rolesRoot, name, src string) string {
 		abort()
 		return ""
 	}
-	if err := writeFileAtomic(filepath.Join(dir, "preview"+ext), b); err != nil {
-		abort()
-		return ""
-	}
 	cfg := RoleFile{
 		Name:     display,
 		Enabled:  true,
 		Image:    "figure" + ext,
-		Preview:  "preview" + ext,
 		Geom:     supGeomDefault,
 		Messages: RoleMessages{Order: "random", Items: genericCommandItems()},
 	}

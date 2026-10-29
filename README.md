@@ -15,10 +15,10 @@
 - **Windows 10 / 11**（依赖系统 WebView2 运行时：Win11 必带，Win10 通常已通过
   Windows Update 自动安装；缺失时首次启动会提示安装 WebView2 Runtime）
 - **Go 1.26+**（`go.mod` 的语言版本仍是 1.26.3；本仓库用 **1.27.3** 构建与验证，
-  关于页「运行环境」显示的就是编译时的真实 Go 版本）
+  `appInfo()` 里仍回传编译时的真实 Go 版本，供探针与排障使用）
 - **Wails v3**：`github.com/wailsapp/wails/v3 v3.0.0`（正式版；v3 自身也要求 Go 1.26+，
-  与上一条本来就是同一个约束）。关于页「运行环境」显示的是构建信息里的真实依赖版本，
-  升级后在界面上就能看出跑的是 beta 还是正式版
+  与上一条本来就是同一个约束）。`appInfo().wailsVersion` 读的是构建信息里的真实依赖版本，
+  升级后在探针输出里就能看出跑的是 beta 还是正式版（关于页不再展示这一行）
 - （可选）**Node.js + npm** —— 仅渲染层探针 `probe_renderer.py` 需要（Playwright 驱动 Edge）
 
 ## 运行
@@ -142,6 +142,9 @@ python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围�
 python scripts/probe_stats_file.py # 统计文件自愈探针：19 项（首跑自建 data/ / 损坏改名备份 / 弹窗说明 / Ack 清空）
 python scripts/probe_sound_scan.py # 提示音目录体检探针：27 项（新音频原地登记 / 死条目删除 / 重启不重复提示）
 python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）
+python scripts/verify_window_size.py  # 设置窗口尺寸：14 项（勾选框 / 默认尺寸下恰好不滚 / 宽度边界 / 落盘）
+python scripts/probe_window_size.py   # 尺寸**测量**（不是断言）：逐 10px 扫宽度、逐 2px 扫高度，改版式后重测用
+python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出厂尺寸 / 拖拽记录 / 重启沿用 / 关掉开关回默认）
 ```
 
 - **单测必须带 `-tags server`**：不带时「提前提示窗」用例会因 `a.app == nil` panic（无头形态
@@ -174,7 +177,8 @@ python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / �
 核心模块一览：`breakplan.go`（计划层）、`scheduler.go`（调度器状态机）、`stats.go`（使用统计）、
 `sound.go`（提示音）、`prebreak.go`（提前提示窗）、`takeout.go`（外卖提醒）、
 `sys_*.go`（空闲 / 勿扰 / 进程 / 自启动 / 睡眠检测）、`filedialog.go`（原生文件对话框）、
-`update.go`（检查更新）、`migrate_roles.go`（旧配置督休专员迁移）。
+`window_size.go`（设置窗口的默认 / 最小 / 记住上次尺寸）、`update.go`（检查更新）、
+`migrate_roles.go`（旧配置督休专员迁移）。
 
 ## 数据与配置落点
 
@@ -205,6 +209,32 @@ python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / �
   判据是**目录名口径**而不是字符串相等：`A/B` 与 `AB`、`Alice` 与 `alice`、
   `abc.` 与 `abc` 都算重名（它们会落到同一个目录上）。**同一张图导入两次**也走这条 ——
   第二个自动叫「我的图 (2)」，不会出现两个同名专员抢一个目录。
+
+## 设置窗口尺寸
+
+出厂尺寸写死在 `default_settings.json` 的 `window` 块里（`window_size.go` 顶部有完整推导）：
+
+```json
+"window": { "width": 913, "height": 857, "rememberSize": true, "lastWidth": 0, "lastHeight": 0 }
+```
+
+- **默认宽度 913 是用户选定的**（2026-10-29 他自己拖到 913×857 后要求以此为出厂值）。
+- **默认高度 857 是实测的**：`scripts/probe_window_size.py` 起无头服务后逐 2px 扫高度，得到
+  宽度 ≥820 时「关于页恰好不出垂直滚动条」= 857（857−38 标题栏−6 底部透明边框 = 813 = 内容高度，
+  847 就滚）。宽度一旦回落到 760，关于页需要 875 —— 那属于「窗口被用户缩窄，允许出滚动条」，
+  不影响出厂值。
+- **最小宽度 760 也是实测的**：同一脚本逐 10px 扫宽度，750 起才没有横向裁切（740 时 `.row.field`
+  溢出 2px），取 760 留 10px 余量。两个边界与滚动条是否出现无关（620 / 940 两个高度下结论一致）。
+- `width` / `height` 是**默认尺寸**，`lastWidth` / `lastHeight` 是**上次用过的尺寸**，两对数各管
+  一头 —— 共用一对的话「记住尺寸」一开，默认值就被顶掉，用户取消勾选时没有「默认」可回。
+- 通用配置 → 设置窗口 → **自动记录窗口尺寸**（`window.rememberSize`，出厂 true）：勾选则每次
+  打开都沿用上次尺寸，不勾则始终用默认尺寸（用户中途拖大过窗口，关掉再开也会回到默认并居中）。
+- **`lastWidth` / `lastHeight` 只由 Go 写**：窗口 resize 后防抖 1 秒落盘，隐藏 / 退出时立即 flush。
+  设置页拿到的整份配置是打开页面那一刻的快照，`SaveSettings` 会用 `keepWindowLastSize` 把这两个
+  键还原成当前值 —— 否则用户拖大窗口后再改别的设置，前端会把旧快照送回来把尺寸顶掉。
+- 最小尺寸（760×600）是布局常量、不进配置：宽度小了字段行会横向裁切，高度没有下限（各页都能滚）。
+  运行时还会按主屏工作区夹一次（物理像素 ÷ ScaleFactor），小屏笔记本上宁可矮一点让内容滚动，
+  也不要开出一扇一开机就超出屏幕的窗口。
 
 ## 已知差异（与历史 上一版）
 

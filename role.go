@@ -57,24 +57,28 @@ type RoleFile struct {
 // meta.json 的 name。所以把「医生」改成「值班医生」，它就不再匹配这条默认次序、
 // 自动排到末尾 —— 这是去掉内部 id 的必然代价，也是用户认可的行为（2026-10-28：
 // 自带的与导入的没有区别，也不需要区分）。
+//
+// 2026-10-29 按用户在设置页拖出的实际排布定稿，作为打包发布时的出厂顺序；改这里的
+// 顺序要同步 scripts/probe_renderer.py 与 scripts/smoke_server.py 的 BUILTIN_ROLE_ORDER
+// （那两个是它的镜像，只用于「出厂顺序 vs 磁盘扫描」的断言）。
 var defaultRoleOrder = []string{
-	"眼镜主管",
-	"温柔学姐",
-	"医生",
-	"体能教练",
-	"始皇帝",
+	"秦始皇",
 	"神秘黑客",
-	"飞行员",
-	"法官",
-	"经济学家",
-	"魔法师",
-	"画家",
-	"战士",
-	"熊猫侠客",
 	"中尉军官",
-	"野蛮女友",
+	"熊猫侠客",
+	"医生",
+	"经济学家",
+	"法官",
+	"体能教练",
 	"毒舌损友",
+	"野蛮女友",
 	"霸道总裁",
+	"温柔学姐",
+	"眼镜主管",
+	"飞行员",
+	"画家",
+	"魔法师",
+	"战士",
 }
 
 // isImageName 图片文件名合法性（与 supervisor.ts 的 isImageName 同口径）：
@@ -303,9 +307,20 @@ func scanRoles(root string) []Role {
 			r.Image = asset
 			r.FigurePath = filepath.Join(dir, asset)
 		}
+		// 磁贴缩略图：优先用 preview.*（渲染层生成的 184 高 WebP），**没有就回退到立绘原图**。
+		// 预览图是可选优化而不是必需品（见 role_preview.go）：用户删了预览图、或专员是在
+		// 别处手工放进来的，磁贴也得有画面 —— 回退的代价只是多解码几 MB。
+		//
+		// 找不到实际文件时把 Preview 清空（而不是留着 meta.json 里那个名字）：这个字段
+		// 的含义是「真实存在的预览图」，报一个已经不存在的文件名只会误导调用方。
 		if asset := roleAsset(dir, cfg.Preview, rolePreviewBase); asset != "" {
 			r.Preview = asset
 			r.Thumb = toDataURL(filepath.Join(dir, asset))
+		} else {
+			r.Preview = ""
+		}
+		if r.Thumb == "" && r.FigurePath != "" {
+			r.Thumb = toDataURL(r.FigurePath)
 		}
 		recs = append(recs, rec{role: r, dirName: e.Name()})
 	}

@@ -170,6 +170,14 @@
     replaceSupervisorImage: function (key) {
       return call("ReplaceRoleImage", [str(key)]);
     },
+    // 立绘原图（data URL）：渲染层据此生成磁贴缩略图，见 role_thumb.js
+    roleFigureDataURL: function (key) {
+      return call("RoleFigureDataURL", [str(key)]);
+    },
+    // 把生成好的缩略图（data URL）交回 Go 落盘并回写 meta.json
+    saveRolePreview: function (key, dataURL) {
+      return call("SaveRolePreview", [str(key), str(dataURL)]);
+    },
 
     // ---- 声音 ----
     soundFileUrl: function (file) {

@@ -36,9 +36,17 @@
     "fullscreen": false,
     "alwaysOnTop": true,
     "widthPct": 80,
-    "heightPct": 80
+    "heightPct": 80,
+    "hideOnShare": true
   },
   "allScreens": true,
+  "window": {
+    "width": 913,
+    "height": 857,
+    "rememberSize": true,
+    "lastWidth": 0,
+    "lastHeight": 0
+  },
   "sound": {
     "enabled": true,
     "volume": 0.6,
@@ -75,7 +83,7 @@
     "enabled": true,
     "gaze": true,
     "selection": "fixed",
-    "fixedRole": "眼镜主管",
+    "fixedRole": "秦始皇",
     "order": []
   },
   "takeout": {

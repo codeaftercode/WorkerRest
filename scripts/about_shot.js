@@ -42,7 +42,7 @@ async function shotEl(page, selector, name) {
 
   // 进入关于页
   await set.evaluate(`(function(){var b=document.querySelector('#nav .nav-item[data-tab="about"]');if(b)b.click();})()`);
-  await delay(1500); // 等 appInfo() 异步回填版本 / 运行环境 / 构建时间
+  await delay(1500); // 等 appInfo() 异步回填版本 / 发布时间
   // 截整个 #tab-about 前先回到内容区顶部：切换标签页会保留上一个页面的 scrollTop，
   // 否则 element.screenshot 只截到「视口内那一段」，顶部横幅会被挤出画面。
   await set.evaluate(`(function(){var c=document.getElementById('content');if(c)c.scrollTop=0;})()`);
@@ -79,7 +79,6 @@ async function shotEl(page, selector, name) {
     return {
       appName: g('d-app-name'),
       version: g('d-version-val'),
-      runtime: g('d-runtime'),
       build: g('d-build-time'),
       pillOkText: g('d-update-pill-text'),
       updateLineGone: !document.getElementById('d-update-status'),

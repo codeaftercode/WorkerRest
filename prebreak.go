@@ -190,6 +190,8 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 	if sc := a.app.Screen.GetPrimary(); sc != nil {
 		x, y, w, h = preBreakBounds(sc.WorkArea, info.Custom)
 	}
+	// 共享屏幕时隐藏：提前提示小窗里也有提醒文案，和休息窗口同一个开关
+	hideGuard := a.cfgSnapshot().AppearanceCfg().HideOnShare
 	win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:          preBreakWindowName,
 		Title:         "即将休息",
@@ -202,10 +204,14 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 		DisableResize: true,
 		// 不设它 X/Y 会被无视：Wails 的 InitialPosition 零值 = 整窗居中，
 		// 这就是此前提前提示窗跑到屏幕正中的根因
-		InitialPosition:  application.WindowXY,
-		URL:              preBreakURL(info),
-		BackgroundType:   application.BackgroundTypeTranslucent,
-		BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+		InitialPosition: application.WindowXY,
+		// 共享屏幕时隐藏（同「提醒窗口 → 共享屏幕时隐藏提醒窗口」）：
+		// 提前提示窗里有休息名称与倒计时，被同事看见一样露馅；
+		// 生效前提（--disable-direct-composition）见 main.go 的注释
+		ContentProtectionEnabled: hideGuard,
+		URL:                      preBreakURL(info),
+		BackgroundType:           application.BackgroundTypeTranslucent,
+		BackgroundColour:         application.NewRGBA(0, 0, 0, 0),
 		// 窗口身份经 preBreakURL 的 ?win=prebreak 下发；JS 字段对 URL 页面不生效（仅占位）
 		JS: `window.__WR_WIN = "prebreak";`,
 		Windows: application.WindowsWindow{

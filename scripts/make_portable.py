@@ -117,10 +117,10 @@ def suggest_next(tag: str) -> str:
 
 
 def build_exe(version: str) -> bool:
-    """构建发布版 exe（带版本号 + 构建时间注入 + windowsgui + 去符号）。"""
+    """构建发布版 exe（带版本号 + 发布时间注入 + windowsgui + 去符号）。"""
     exe = EXE_SRC
-    # 构建时间用 RFC3339 且无空格（ISO 格式），避免破坏单条 ldflags 字符串；
-    # 前端「构建时间」行在为空时回退显示「本地构建」。
+    # 发布时间用 RFC3339 且无空格（ISO 格式），避免破坏单条 ldflags 字符串；
+    # 前端「发布时间」行在为空时回退显示「本地构建」。
     build_time = datetime.now().astimezone().isoformat()
     ldflags = f'-X main.appVersion={version} -X main.buildTime={build_time} -H windowsgui -s -w'
     print(f"[make-portable] go build -> {exe} (version={version})")

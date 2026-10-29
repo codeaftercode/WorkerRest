@@ -279,7 +279,7 @@ func TestCreateRoleDirLeavesNoLitterOnFailure(t *testing.T) {
 		t.Fatalf("失败后不该留下目录，实际 %d 个", len(entries))
 	}
 
-	// 正常路径：三样文件齐备，且只扫得到 1 个督休专员
+	// 正常路径：立绘 + meta 齐备，且只扫得到 1 个督休专员
 	root3 := t.TempDir()
 	ok := writeImgSrc(t, t.TempDir(), "图.png", "png-bytes")
 	name := createRoleDir(root3, "图", ok)
@@ -290,9 +290,17 @@ func TestCreateRoleDirLeavesNoLitterOnFailure(t *testing.T) {
 	if !ok2 {
 		t.Fatal("应能按名字反查到目录")
 	}
-	for _, f := range []string{"figure.png", "preview.png", "meta.json"} {
+	for _, f := range []string{"figure.png", "meta.json"} {
 		if !isRegularFile(filepath.Join(dir, f)) {
 			t.Fatalf("目录里应该有 %s", f)
+		}
+	}
+	// 不再复制一份 preview 当缩略图（那是白占磁盘、还会和立绘脱钩）：缩略图由渲染层生成
+	if entries, err := os.ReadDir(dir); err == nil {
+		for _, e := range entries {
+			if strings.HasPrefix(e.Name(), rolePreviewBase) {
+				t.Fatalf("导入后不该出现预览图副本，实际有 %s", e.Name())
+			}
 		}
 	}
 	if n := len(scanRoles(root3)); n != 1 {

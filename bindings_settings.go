@@ -38,6 +38,7 @@ func (a *App) GetSettings() map[string]any {
 func (a *App) SaveSettings(next map[string]any) bool {
 	a.mu.Lock()
 	beforeAutostart := a.cfg.Autostart()
+	beforeHideOnShare := a.cfg.AppearanceCfg().HideOnShare
 	merged, _ := deepMerge(a.cfg.Raw(), next).(map[string]any)
 	if merged == nil {
 		a.mu.Unlock()
@@ -45,6 +46,11 @@ func (a *App) SaveSettings(next map[string]any) bool {
 		return false
 	}
 	s := &Settings{raw: merged, path: a.cfg.Path()}
+	// window.lastWidth / lastHeight 是 **Go 独占写**的运行时状态（窗口 resize 时记的），
+	// 而设置页拿到的整份 S 是打开页面那一刻的快照：用户拖大窗口后再改别的设置，
+	// 前端会把旧值原样送回来，深合并后就把刚记下的尺寸顶掉了。所以合并后一律
+	// 以当前配置里的值为准 —— 前端只允许改 rememberSize（勾选框），无权写尺寸。
+	keepWindowLastSize(a.cfg.Raw(), merged)
 	normalizeForSave(merged)
 	if err := s.Save(); err != nil {
 		a.mu.Unlock()
@@ -58,6 +64,12 @@ func (a *App) SaveSettings(next map[string]any) bool {
 
 	if w := a.settingsWindow(); w != nil && title != "" {
 		w.SetTitle(title)
+	}
+	// 「共享屏幕时隐藏」：窗口按需新建，正常无需事后补；但提醒窗正在显示时用户
+	// 改了这个开关，当前那扇窗得跟着变 —— 否则复选框看着勾上了，屏幕上那扇却
+	// 还是能被共享出去。只在值真变了时动，避免每次 autoSave 都去碰窗口。
+	if a.cfgSnapshot().AppearanceCfg().HideOnShare != beforeHideOnShare {
+		a.syncCaptureGuardToLive()
 	}
 	// 开机自启动只在用户真的改了它时才广播（与 上一版「用户没碰就别动系统」同口径），
 	// 同理也只有这一刻才去动注册表 —— 启动路径上完全不碰它。
@@ -288,9 +300,11 @@ func (a *App) clearRoleFromSettings(name string) {
 // if (!picked) return;` 紧接着取 `picked.name.trim()` —— 返回一个带 canceled 的**对象**
 // 是真值，会一路走到 `undefined.trim()` 直接抛错。
 //
-// 预览图：上一版用 nativeImage 把立绘缩到 192 宽写 preview.png；Go 侧不引图像库
-// （保持依赖简洁），preview 直接复制原图（createRoleDir 已按此实现）——磁贴只是显示用，
-// 原图 data URL 完全够用，唯一代价是磁贴加载略重一点。
+// 预览图：上一版用 nativeImage 把立绘缩到 192 宽写 preview.png；本工程不在 Go 侧引
+// 图像库（CGO_ENABLED=0，引 golang.org/x/image 会让 exe 涨 1.16 MB），缩略图改由
+// **渲染层**生成 —— 建完目录后 settings.js 调 RoleFigureDataURL 取原图、canvas 裁掉
+// 透明边并缩到磁贴高度（184）、编码 WebP，再交 SaveRolePreview 落盘（见 role_preview.go）。
+// 这一步失败也不影响导入：没有 preview.* 时 scanRoles 会让磁贴回退到立绘原图。
 func (a *App) PickSupervisorImage() map[string]any {
 	if !a.dialogAvailable() {
 		log.Printf("[role] 无头 / server 模式无法弹选图对话框，返回取消")
@@ -504,6 +518,12 @@ func (a *App) wireSettingsWindow(w application.Window) {
 	w.OnWindowEvent(events.Common.WindowMaximise, func(*application.WindowEvent) { push(true) })
 	w.OnWindowEvent(events.Common.WindowUnMaximise, func(*application.WindowEvent) { push(false) })
 	w.OnWindowEvent(events.Common.WindowRestore, func(*application.WindowEvent) { push(false) })
+	// 尺寸记忆：拖拽改大小 → 防抖 1 秒后写进配置（「自动记录窗口尺寸」没勾时内部直接返回）。
+	// 回调里只登记尺寸 + 重置定时器，写盘在定时器自己的 goroutine 上做，
+	// 拖拽期间不会因为文件 IO 卡住主线程。
+	w.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) {
+		a.rememberSettingsWindowSize()
+	})
 }
 
 // copyFile 复制文件（用于恢复默认前的备份）

@@ -175,11 +175,11 @@ func uniqueRoleDir(root, base, exclude string) string {
 	}
 }
 
-// replaceRoleImage 替换某个已有督休专员的立绘：把新图复制成 figure<ext> 与 preview<ext>，
-// 并回写 meta.json 的 image / preview 字段（名字 / 启停 / 几何 / 台词等读取侧字段原样保留）。
+// replaceRoleImage 替换某个已有督休专员的立绘：把新图复制成 figure<ext>，并回写 meta.json
+// 的 image 字段、把 preview 置空（名字 / 启停 / 几何 / 台词等读取侧字段原样保留）。
 //
-// 与 createRoleDir（新建督休专员）不同：这里身份（名字）不变，只换图。旧扩展名不同的立绘 /
-// 预览文件一并清理（按 figure.* / preview.* 通配），避免不同扩展名的残留文件占着目录。
+// 与 createRoleDir（新建督休专员）不同：这里身份（名字）不变，只换图。旧预览图**全部删除**，
+// 由渲染层随后重新生成（settings.js → SaveRolePreview）；旧扩展名不同的立绘也一并清理。
 // 返回是否成功（名字非法 / 督休专员不存在 / 源文件不合法或过大 / 写入失败都会返回 false）。
 func replaceRoleImage(root, name, src string) bool {
 	if strings.TrimSpace(name) == "" {
@@ -218,21 +218,18 @@ func replaceRoleImage(root, name, src string) bool {
 	// 立绘也没有预览图了 —— FigurePath 为空 → 永远出不了场（buildSupervisorSessionWith
 	// 过滤 FigurePath == ""），而 meta.json 里还指着已经不存在的旧文件名。
 	fig := "figure" + ext
-	prev := "preview" + ext
 	if err := writeFileAtomic(filepath.Join(dir, fig), b); err != nil {
 		log.Printf("[role] 写入新立绘失败 %s: %v", name, err)
 		return false
 	}
-	if err := writeFileAtomic(filepath.Join(dir, prev), b); err != nil {
-		log.Printf("[role] 写入新预览图失败 %s: %v", name, err)
-		return false
-	}
-	// 再清掉**扩展名不同**的旧文件（figure.* / preview.* 通配），避免残留占着目录。
-	// 刚写好的那两个要跳过。
+	// 旧预览图**全部删掉**（而不是覆盖）：新立绘的缩略图由渲染层事后重新生成
+	// （settings.js → SaveRolePreview）。留着旧副本，磁贴上就会显示上一张图 ——
+	// 那正是「preview 直接复制原图」时代的老毛病。
+	// 先写新立绘、再删旧文件：中途失败也不会落到「既没有立绘也没有预览图」。
 	for _, pat := range []string{"figure.*", "preview.*"} {
 		if matches, _ := filepath.Glob(filepath.Join(dir, pat)); matches != nil {
 			for _, m := range matches {
-				if base := filepath.Base(m); base == fig || base == prev {
+				if filepath.Base(m) == fig {
 					continue
 				}
 				_ = os.Remove(m)
@@ -240,7 +237,8 @@ func replaceRoleImage(root, name, src string) bool {
 		}
 	}
 	base.Image = fig
-	base.Preview = prev
+	// 预览图待生成：置空而不是指向一个已删掉的文件，读侧靠 roleAsset 兜底
+	base.Preview = ""
 	if err := writeRoleFileAt(dir, base); err != nil {
 		log.Printf("[role] 回写 meta.json 失败 %s: %v", name, err)
 		return false

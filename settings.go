@@ -83,6 +83,11 @@ type AppearanceConfig struct {
 	AlwaysOnTop  bool    `json:"alwaysOnTop"`
 	WidthPct     float64 `json:"widthPct"`
 	HeightPct    float64 `json:"heightPct"`
+	// HideOnShare 共享屏幕时隐藏提醒窗口：给提醒窗口打上「排除出屏幕捕获」
+	// （Windows 的 WDA_EXCLUDEFROMCAPTURE），会议软件整屏 / 窗口共享时看不到它。
+	// 默认开（出厂 json 同为 true）——这是「别被同事看见」的兜底，默认关等于没装。
+	// 只影响提醒窗口（休息 / 提前提示 / 外卖），不影响设置窗口与督休画廊。
+	HideOnShare bool `json:"hideOnShare"`
 }
 
 // SupervisorConfig 督休专员显示开关（督休专员本体在 supervisors/<名称>/meta.json，
@@ -426,6 +431,7 @@ func (s *Settings) AppearanceCfg() AppearanceConfig {
 		AlwaysOnTop:  s.Flag(true, "appearance", "alwaysOnTop"),
 		WidthPct:     s.Num(80, "appearance", "widthPct"),
 		HeightPct:    s.Num(80, "appearance", "heightPct"),
+		HideOnShare:  s.Flag(true, "appearance", "hideOnShare"),
 	}
 }
 
@@ -1168,18 +1174,19 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 	}
 }
 
-// appPausePreset 内置的常用远程会议软件（与 types.ts 的 APP_PAUSE_PRESETS 逐字一致）
+// appPausePreset 内置的常用视频会议软件（与 frontend/dist/settings.js 的 APP_PAUSE_PRESETS 逐字一致）。
+//
+// **只收「打开它基本就是在开会」的客户端**。飞书 / 钉钉 / 企业微信 / WeLink 刻意不入列：
+// 它们当然也能开会，但日常更多是看消息、批流程、写文档，拿「进程在不在」判断「正在开会」
+// 会大面积误伤 —— 一整天挂着企业微信的人会被判成一直在开会，休息提醒永远不响。
+// 2026-10-29 按这个口径把四个综合办公套件从清单里摘掉（老配置里的残留见 pruneSuitePresets）。
 type appPausePreset struct{ exe, label string }
 
 var appPausePresets = []appPausePreset{
 	{"WeMeetApp.exe", "腾讯会议"},
-	{"Feishu.exe", "飞书"},
-	{"DingTalk.exe", "钉钉"},
-	{"WXWork.exe", "企业微信"},
 	{"ms-teams.exe", "Microsoft Teams"},
 	{"Zoom.exe", "Zoom"},
 	{"CiscoCollabHost.exe", "Webex"},
-	{"WeLink.exe", "华为云 WeLink"},
 }
 
 // appPauseLabel 内置清单里某个可执行文件名对应的软件名；不在清单里返回空串
@@ -1278,6 +1285,55 @@ func seedAppPause(cfg map[string]any) map[string]any {
 	return map[string]any{"enabled": cfg["enabled"] == true, "seeded": true, "items": out}
 }
 
+// suitePresetExes 早期版本误种进「应用暂停」清单的综合办公套件（小写可执行文件名）。
+//
+// 它们能开会，但日常是消息 / 审批 / 文档入口，用它判断「正在开会」会把一整天挂着
+// 企业微信的人判成全程在会。现在清单只留以会议为主的客户端，这几个老条目由
+// pruneSuitePresets 从存量配置里摘掉。
+var suitePresetExes = map[string]bool{
+	"feishu.exe":   true,
+	"dingtalk.exe": true,
+	"wxwork.exe":   true,
+	"welink.exe":   true,
+}
+
+// pruneSuitePresets 把早期版本自动种入的综合办公套件从 items 里摘掉（幂等、一次性纠正）。
+//
+// 只动「软件自己种的」那几条：id 必须恰好是 preset-<小写 exe>，且 exe 没被改过。
+// 用户手工添加的条目 id 是随机串，改过进程名的 id 也对不上 —— 那两种情况是用户的决定，
+// 一律保留。第二个返回值表示"真的摘掉了"，调用方据此触发一次落盘，免得磁盘上一直留着
+// 用户手翻 json 就能看见的残留。
+func pruneSuitePresets(cfg map[string]any) (map[string]any, bool) {
+	items := anySlice(cfg["items"])
+	if len(items) == 0 {
+		return cfg, false
+	}
+	out := make([]any, 0, len(items))
+	removed := 0
+	for _, it := range items {
+		m, ok := it.(map[string]any)
+		if !ok {
+			out = append(out, it)
+			continue
+		}
+		exe := strings.ToLower(strings.TrimSpace(strOf(m["exe"])))
+		if suitePresetExes[exe] && strings.EqualFold(strings.TrimSpace(strOf(m["id"])), "preset-"+exe) {
+			removed++
+			continue
+		}
+		out = append(out, it)
+	}
+	if removed == 0 {
+		return cfg, false
+	}
+	next := make(map[string]any, len(cfg))
+	for k, v := range cfg {
+		next[k] = v
+	}
+	next["items"] = out
+	return next, true
+}
+
 // normalizeToggles 开关类字段的归一化 + 迁移（与 config.ts 的 normalizeToggles 同义）
 //
 //   - 旧键 screens（休息窗口显示位置下拉框）→ allScreens 布尔值，然后删掉旧键；
@@ -1305,6 +1361,36 @@ func normalizeToggles(raw map[string]any) {
 	}
 	if _, ok := raw["startMinimized"].(bool); !ok {
 		raw["startMinimized"] = false
+	}
+}
+
+// normalizeWindow 归一化「设置窗口尺寸」块（window）。
+//
+// 逐条对应用户可能手改出来的坏值：
+//   - width / height 夹进 [最小尺寸, 上限]，非法（缺失 / 非数字 / 越界）回落实测默认值。
+//     比最小尺寸还小的窗口会把卡片里的字段行横向裁掉，这种值不能交给用户去排查；
+//   - lastWidth / lastHeight 只认「两个都 ≥ 最小尺寸」的一对，否则整对归零
+//     （0 = 还没记录过，打开时回落到默认尺寸）。一边合法一边 0 是最坑的：
+//     拿它去开窗会得到一扇高度 0 的窗；
+//   - rememberSize 只认布尔，缺省 true（出厂就是「自动记录」）。
+func normalizeWindow(raw map[string]any) {
+	cfg, ok := raw["window"].(map[string]any)
+	if !ok {
+		cfg = map[string]any{}
+		raw["window"] = cfg
+	}
+	cfg["width"] = float64(clampInt(mapInt(cfg, "width", settingsWindowDefaultWidth), settingsWindowMinWidth, settingsWindowMaxWidth))
+	cfg["height"] = float64(clampInt(mapInt(cfg, "height", settingsWindowDefaultHeight), settingsWindowMinHeight, settingsWindowMaxHeight))
+	lw, lh := int(mapInt(cfg, "lastWidth", 0)), int(mapInt(cfg, "lastHeight", 0))
+	if validWindowSize(lw, lh) {
+		cfg["lastWidth"] = float64(lw)
+		cfg["lastHeight"] = float64(lh)
+	} else {
+		cfg["lastWidth"] = float64(0)
+		cfg["lastHeight"] = float64(0)
+	}
+	if _, ok := cfg["rememberSize"].(bool); !ok {
+		cfg["rememberSize"] = true
 	}
 }
 
@@ -1531,11 +1617,12 @@ func ensureInstallID(raw map[string]any) bool {
 
 // normalizeLoad 加载路径的归一化，**顺序逐条对应 config.ts 的 loadSettingsFrom**。
 //
-// 返回值刻意与 上一版的 LoadedSettings 对齐：只有「补生成了 installId」或
-// 「种入了预置条目」这两件事需要立刻落盘。其余归一化结果（旧键清理 / 越界夹紧）
-// **不主动回写** —— 每次启动都改写用户配置会把键序和格式一起动掉，而且在
-// 「验证脚本误指真实配置」时会留下副作用；这些清理结果会在用户下一次保存时一并落盘。
-func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded, idsRenumbered bool) {
+// 返回值刻意与 上一版的 LoadedSettings 对齐：只有「补生成了 installId」「种入了预置条目」
+// 「提醒条目重编号」以及「摘掉了早期误种的应用暂停条目」这几件事需要立刻落盘。
+// 其余归一化结果（旧键清理 / 越界夹紧）**不主动回写** —— 每次启动都改写用户配置会把键序
+// 和格式一起动掉，而且在「验证脚本误指真实配置」时会留下副作用；这些清理结果会在用户
+// 下一次保存时一并落盘。
+func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded, idsRenumbered, appsPruned bool) {
 	// ① 安装标识（首次运行 / 老配置升级补一枚）
 	installIDCreated = ensureInstallID(raw)
 	// ② 旧键清理与迁移（必须在归一化之前：迁移写出来的值才是最终值）
@@ -1549,20 +1636,22 @@ func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded, idsRenum
 	idsRenumbered = normalizeCustomBreaks(raw)
 	// ⑥ 外卖提醒
 	raw["takeout"] = normalizeTakeout(raw)
-	// ⑦ 指定应用运行时暂停 + 首次种入内置会议软件
-	raw["appPause"] = normalizeAppPause(raw)
+	// ⑦ 指定应用运行时暂停：归一化 → 摘掉早期误种的综合办公套件 → 首次种入内置会议软件
+	raw["appPause"], appsPruned = pruneSuitePresets(normalizeAppPause(raw))
 	if raw["appPause"].(map[string]any)["seeded"] != true {
 		raw["appPause"] = seedAppPause(raw["appPause"].(map[string]any))
 	}
 	// ⑧ 开关类字段（含旧的「休息窗口显示位置」下拉框迁移）
 	normalizeToggles(raw)
+	// ⑧·5 设置窗口尺寸（window 块，老配置没有就按出厂默认补一块）
+	normalizeWindow(raw)
 	// ⑨ 提醒内容（含旧 messages 键迁移）
 	idsRenumbered = normalizeReminderMessages(raw) || idsRenumbered
 	// ⑩ 督休专员
 	normalizeSupervisorMessages(raw)
 	// ⑪ 预置提醒内容条目（幂等）
 	presetSeeded = seedPresetEntries(raw)
-	return installIDCreated, presetSeeded, idsRenumbered
+	return installIDCreated, presetSeeded, idsRenumbered, appsPruned
 }
 
 // normalizeForSave 设置页保存 / 导入外来配置后要跑的归一化。
@@ -1578,6 +1667,7 @@ func normalizeForSave(raw map[string]any) {
 	normalizeSound(raw)
 	raw["appPause"] = normalizeAppPause(raw)
 	normalizeToggles(raw)
+	normalizeWindow(raw)
 }
 
 // mapOf 取子对象；缺失 / 类型不符时给一个空 map（对应 JS 里对 undefined 做 {...x}）
@@ -1625,16 +1715,16 @@ func loadSettings(resourcesRoot string) *Settings {
 		if !ok || merged == nil {
 			continue
 		}
-		installIDCreated, presetSeeded, idsRenumbered := normalizeLoad(merged)
+		installIDCreated, presetSeeded, idsRenumbered, appsPruned := normalizeLoad(merged)
 		s := &Settings{raw: merged, path: p}
 		// 三种情况回写：补生成 installId、种入预置条目、提醒内容条目 id 被收敛成序号
 		// （后者是一次性的格式统一，收敛完即为定值，不会每次启动都写盘）
-		if installIDCreated || presetSeeded || idsRenumbered {
+		if installIDCreated || presetSeeded || idsRenumbered || appsPruned {
 			if err := s.Save(); err != nil {
 				log.Printf("[settings] 初始化结果落盘失败: %v", err)
 			} else {
-				log.Printf("[settings] 已回写初始化结果 %s（补 installId=%v 种入预置=%v 条目重编号=%v）",
-					p, installIDCreated, presetSeeded, idsRenumbered)
+				log.Printf("[settings] 已回写初始化结果 %s（补 installId=%v 种入预置=%v 条目重编号=%v 摘除套件预设=%v）",
+					p, installIDCreated, presetSeeded, idsRenumbered, appsPruned)
 			}
 		}
 		return s
@@ -1642,9 +1732,9 @@ func loadSettings(resourcesRoot string) *Settings {
 	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（补 installId、
 	// 种入预置条目），并落盘 —— 与 上一版的 firstRun 分支一致
 	fresh := defaultSettingsMap()
-	installIDCreated, presetSeeded, idsRenumbered := normalizeLoad(fresh)
+	installIDCreated, presetSeeded, idsRenumbered, appsPruned := normalizeLoad(fresh)
 	s := &Settings{raw: fresh, path: ""}
-	if installIDCreated || presetSeeded || idsRenumbered {
+	if installIDCreated || presetSeeded || idsRenumbered || appsPruned {
 		if err := s.Save(); err != nil {
 			log.Printf("[settings] 首次运行落盘失败: %v", err)
 		}

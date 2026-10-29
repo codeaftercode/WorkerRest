@@ -581,10 +581,13 @@ func (a *App) showTakeoutWindowsAt(slot TimeSlot, preview bool, postponedCount i
 			AlwaysOnTop:   ap.AlwaysOnTop,
 			DisableResize: true,
 			// 不设它 X/Y 会被无视：Wails 的 InitialPosition 零值 = 整窗居中
-			InitialPosition:  application.WindowXY,
-			URL:              "/takeout.html?win=takeout",
-			BackgroundType:   application.BackgroundTypeTranslucent,
-			BackgroundColour: application.NewRGBA(0, 0, 0, 0),
+			InitialPosition: application.WindowXY,
+			// 共享屏幕时隐藏（同「提醒窗口 → 共享屏幕时隐藏提醒窗口」）：
+			// 外卖提醒里也有「该点外卖啦」这类文案，被同事看见一样尴尬
+			ContentProtectionEnabled: ap.HideOnShare,
+			URL:                      "/takeout.html?win=takeout",
+			BackgroundType:           application.BackgroundTypeTranslucent,
+			BackgroundColour:         application.NewRGBA(0, 0, 0, 0),
 			// 窗口身份经 URL 的 ?win=takeout 下发；JS 字段对 URL 页面不生效（仅占位）
 			JS: `window.__WR_WIN = "takeout";`,
 			Windows: application.WindowsWindow{
