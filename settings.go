@@ -512,9 +512,10 @@ func (s *Settings) AppName() string { return normalizeAppName(s.Str("", "appName
 // Autostart 开机自启动开关
 func (s *Settings) Autostart() bool { return s.Flag(false, "autostart") }
 
-// UpdateSites 更新源地址列表：每一项都是 http/https 地址，指向一份远程 version.json。
-// 只保留 http/https 开头的非空串；其余（空串 / 非法 scheme / 非数组）一律丢弃，
-// 返回 nil 表示「未配置任何更新源」。供 update.go 依次容错拉取版本信息用。
+// UpdateSites 更新源地址列表：每一项都指向一份远程 version.json。
+// **只保留 https**（http 明文源已禁用，回环地址例外，仅为单测的 httptest 保留，
+// 判定见 update_trust.go 的 checkUpdateURL）；其余（空串 / 非法 scheme / 非数组）
+// 一律丢弃，返回 nil 表示「未配置任何更新源」。供 update.go 依次容错拉取版本信息用。
 func (s *Settings) UpdateSites() []string {
 	arr, ok := s.lookup("sites").([]any)
 	if !ok {
@@ -530,19 +531,25 @@ func (s *Settings) UpdateSites() []string {
 		if str == "" {
 			continue
 		}
-		lower := strings.ToLower(str)
-		if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
-			out = append(out, str)
+		// 用与下载/清单同一套判定，避免「配置层放行、下载层拒绝」的两套口径。
+		if err := checkUpdateURL(str); err != nil {
+			continue
 		}
+		out = append(out, str)
 	}
 	return out
 }
 
 // SetSites 直接覆盖本地更新源列表（远程 version.json 下发的 sites 会走这里替换本地）。
 // 调用方应只在远程确实返回了非空 sites 时才调用，避免把本地更新源误清空。
+// 写入前再过滤一次协议：远程下发值等同于不可信输入，这层是「万一上游漏了」的兜底。
 func (s *Settings) SetSites(sites []string) {
 	raw := make([]any, 0, len(sites))
 	for _, it := range sites {
+		it = strings.TrimSpace(it)
+		if it == "" || checkUpdateURL(it) != nil {
+			continue
+		}
 		raw = append(raw, it)
 	}
 	s.raw["sites"] = raw

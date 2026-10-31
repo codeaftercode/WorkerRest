@@ -17,14 +17,18 @@ import (
 	"time"
 )
 
-// 检查更新 + 自动更新：更新源由配置里的 `sites` 数组给出，每一项都是 http/https
-// 地址，指向一份远程 version.json（格式见用户需求）。依次容错拉取第一项、失败取
-// 下一项、全失败提示失败。
+// 检查更新 + 自动更新：更新源由配置里的 `sites` 数组给出，每一项都是 **https**
+// 地址（http 明文源已禁用，见 update_trust.go），指向一份远程 version.json。
+// 依次容错拉取第一项、失败取下一项、全失败提示失败。
+//
+// 信任边界（审计 BLOCKER-2，细节见 update_trust.go）：清单必须给出 rest.zip 的
+// sha256，下载后逐字节校验；协议只认 https（重定向也校验）；下载与解压都有体积上限。
+// 缺哈希 / 全是 http 源时**拒绝更新**，而不是降级成「只靠 TLS」。
 //
 // 自动更新流程（Windows 下运行中的 exe 被文件锁占用，不能原地覆盖）：
 //  1. version.json 的 url 是数组：取第一项补全为完整包地址（不以 .zip 结尾的拼上
-//     /rest.zip，以 / 结尾的只拼 rest.zip）下载 rest.zip；下载失败取下一项、同样
-//     补全后重试，全部失败才报错；
+//     /rest.zip，以 / 结尾的只拼 rest.zip）下载 rest.zip 并校验 sha256；下载或校验
+//     失败取下一项、同样补全后重试，全部失败才报错；
 //  2. 解压到 <运行目录>/update，读取解压目录及其子目录下所有 json 配置，按
 //     「顶层键」增量合并进本地配置（本地已有键不覆盖、本地无则新增），随后落盘；
 //  3. 把包内的新 exe 暂存为 update/rest.stage.exe，写 pending.json，
@@ -96,13 +100,17 @@ func withFallbackPackage(urls []string) []string {
 	return out
 }
 
-// versionInfo 远程 version.json 的结构
+// versionInfo 远程 version.json 的结构。
+// SHA256 是 rest.zip 的哈希（必填，见 update_trust.go 的信任边界说明）；
+// Size 是可选的大小提示，只用于提前报错，真正的判据仍是哈希。
 type versionInfo struct {
 	Version string   `json:"version"`
 	Date    string   `json:"date"`
 	URL     []string `json:"url"`
 	Sites   []string `json:"sites"`
 	Changes []string `json:"changes"`
+	SHA256  string   `json:"sha256"`
+	Size    int64    `json:"size"`
 }
 
 // updateCheckResult 一次检查的落库形状（字段名与渲染层读的 st.status / st.current /
@@ -112,7 +120,10 @@ type updateCheckResult struct {
 	Current string `json:"current"`
 	Latest  string `json:"latest,omitempty"`
 	// URLs 下载地址数组（version.json 的 url 字段）：StartUpdate 按顺序补全下载。
-	URLs    []string `json:"url,omitempty"`
+	URLs []string `json:"url,omitempty"`
+	// SHA256 更新包的哈希：检查时从清单取、随状态一起持久化，StartUpdate 用它校验
+	// 下载下来的包。缺这个值等同于「不允许更新」。
+	SHA256  string   `json:"sha256,omitempty"`
 	Date    string   `json:"date,omitempty"`
 	Changes []string `json:"changes,omitempty"`
 	Message string   `json:"message,omitempty"`
@@ -129,6 +140,9 @@ func (r updateCheckResult) toMap() map[string]any {
 	}
 	if len(r.URLs) > 0 {
 		m["url"] = r.URLs
+	}
+	if r.SHA256 != "" {
+		m["sha256"] = r.SHA256
 	}
 	if r.Date != "" {
 		m["date"] = r.Date
@@ -343,10 +357,15 @@ func (a *App) checkForUpdate() updateCheckResult {
 	}
 	// 远程 version.json 可下发更新源 sites：非空则覆盖（替换）本地配置里的 sites，
 	// 让更新源可由服务端集中管控；空则保留本地原有值（避免误清空唯一更新源）。
+	// 下发值同样过 https 白名单 —— 否则「远程改源」就是绕开协议约束的后门。
 	if len(info.Sites) > 0 {
-		a.cfg.SetSites(info.Sites)
-		if err := a.cfg.Save(); err != nil {
-			log.Printf("[update] 写入远程下发的更新源失败: %v", err)
+		if cleaned := sanitizeUpdateURLs(info.Sites); len(cleaned) > 0 {
+			a.cfg.SetSites(cleaned)
+			if err := a.cfg.Save(); err != nil {
+				log.Printf("[update] 写入远程下发的更新源失败: %v", err)
+			}
+		} else {
+			log.Printf("[update] 远程下发的 sites 全不合规，保留本地更新源")
 		}
 	}
 	latest := strings.TrimSpace(info.Version)
@@ -358,11 +377,39 @@ func (a *App) checkForUpdate() updateCheckResult {
 		if len(info.URL) == 0 {
 			return updateCheckResult{Status: "error", Current: current, Message: "响应里没有下载地址"}
 		}
+		// 地址先过协议白名单：清单里全是 http 源时，不对外宣称「有更新」——
+		// 让用户看到「有新版但装不了」再失败，比直接说清原因更糟。
+		urls := sanitizeUpdateURLs(info.URL)
+		if len(urls) == 0 {
+			return updateCheckResult{
+				Status:  "error",
+				Current: current,
+				Message: "更新清单里的下载地址均不合法（只允许 https），已拒绝更新",
+			}
+		}
+		// 校验值缺失同样拒绝：没有哈希就只能靠 TLS，那正是本次要堵的口子。
+		sum, err := parseSHA256(info.SHA256)
+		if err != nil {
+			return updateCheckResult{
+				Status:  "error",
+				Current: current,
+				Message: "更新清单缺少有效的 sha256 校验值，已拒绝更新（" + err.Error() + "）",
+			}
+		}
+		// 清单声明的体积超上限时提前报错，别让用户等一个注定被中断的下载。
+		if info.Size > maxPackageBytes {
+			return updateCheckResult{
+				Status:  "error",
+				Current: current,
+				Message: fmt.Sprintf("更新包声明体积 %d 字节，超过上限 %d，已拒绝更新", info.Size, maxPackageBytes),
+			}
+		}
 		st := updateCheckResult{
 			Status:  "update-available",
 			Current: current,
 			Latest:  latest,
-			URLs:    info.URL,
+			URLs:    urls,
+			SHA256:  sum,
 			Date:    info.Date,
 			Changes: info.Changes,
 		}
@@ -385,7 +432,7 @@ func (a *App) checkForUpdate() updateCheckResult {
 
 // fetchVersionJSON 依次尝试 sites 中的地址，第一项成功即返回；全部失败返回 error。
 func fetchVersionJSON(sites []string) (versionInfo, error) {
-	client := &http.Client{Timeout: updateTimeout}
+	client := newUpdateClient(updateTimeout)
 	var lastErr error
 	for _, site := range sites {
 		info, err := fetchOneVersionJSON(client, site)
@@ -402,6 +449,11 @@ func fetchVersionJSON(sites []string) (versionInfo, error) {
 }
 
 func fetchOneVersionJSON(client *http.Client, url string) (versionInfo, error) {
+	// 协议白名单在这一层也走一遍：配置里的 sites 已经过滤过，但 reachable
+	// 的第二道（重定向）在 client 里，这里管「原始地址」。
+	if err := checkUpdateURL(url); err != nil {
+		return versionInfo{}, err
+	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return versionInfo{}, err
@@ -415,8 +467,17 @@ func fetchOneVersionJSON(client *http.Client, url string) (versionInfo, error) {
 	if res.StatusCode != http.StatusOK {
 		return versionInfo{}, fmt.Errorf("HTTP %d", res.StatusCode)
 	}
+	// 体积上限：清单正常只有几百字节，读到上限还没结束就说明不对。
+	// （json.Decoder 直接读 body 会被一个超大响应拖住，所以先限长再解析。）
+	body, err := io.ReadAll(io.LimitReader(res.Body, maxVersionJSONBytes+1))
+	if err != nil {
+		return versionInfo{}, err
+	}
+	if len(body) > maxVersionJSONBytes {
+		return versionInfo{}, fmt.Errorf("version.json 超过 %d 字节上限", maxVersionJSONBytes)
+	}
 	var info versionInfo
-	if err := json.NewDecoder(res.Body).Decode(&info); err != nil {
+	if err := json.Unmarshal(body, &info); err != nil {
 		return versionInfo{}, fmt.Errorf("响应解析失败")
 	}
 	return info, nil
@@ -657,6 +718,12 @@ func (a *App) StartUpdate() map[string]any {
 	if len(urls) == 0 {
 		return map[string]any{"status": "error", "message": "缺少下载地址"}
 	}
+	// 校验值先取出并规范化：状态可能是上个版本持久化下来的（那时还没有 sha256），
+	// 这种「没有哈希的待更新状态」一律拒绝，绝不降级成「只靠 TLS」。
+	wantSHA, err := parseSHA256(statusString(st, "sha256"))
+	if err != nil {
+		return map[string]any{"status": "error", "message": "更新清单缺少有效的 sha256 校验值，已拒绝更新"}
+	}
 	latest, _ := st["latest"].(string)
 	date, _ := st["date"].(string)
 	changes := anySliceToStrings(st["changes"])
@@ -677,7 +744,7 @@ func (a *App) StartUpdate() map[string]any {
 	}
 
 	archive := filepath.Join(updateDir, packageName)
-	if err := downloadPackage(urls, archive); err != nil {
+	if err := downloadPackage(urls, archive, wantSHA); err != nil {
 		return map[string]any{"status": "error", "message": "下载更新包失败：" + err.Error()}
 	}
 	if err := extractZip(archive, updateDir); err != nil {
@@ -740,9 +807,21 @@ func (a *App) StartUpdate() map[string]any {
 	return nil // 不会到达
 }
 
-// downloadFile 下载 url 到 dest（流式写盘，避免大文件占内存）
+// downloadFile 下载 url 到 dest（流式写盘，避免大文件占内存）。
+//
+// 三道闸：协议白名单（含重定向）、Content-Length 预检、实际写入字节上限 ——
+// 最后一道必须有，服务端可以不发 Content-Length 或用 chunked 慢慢灌。
 func downloadFile(url, dest string) error {
-	client := &http.Client{Timeout: 10 * time.Minute}
+	return downloadFileLimited(url, dest, maxPackageBytes)
+}
+
+// downloadFileLimited 是 downloadFile 的可注入上限版本（单测用小上限验证截断逻辑，
+// 不必真造 64 MiB 的响应）。
+func downloadFileLimited(url, dest string, limit int64) error {
+	if err := checkUpdateURL(url); err != nil {
+		return err
+	}
+	client := newUpdateClient(10 * time.Minute)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -756,15 +835,34 @@ func downloadFile(url, dest string) error {
 	if res.StatusCode != http.StatusOK {
 		return fmt.Errorf("HTTP %d", res.StatusCode)
 	}
+	if res.ContentLength > limit {
+		return fmt.Errorf("更新包体积 %d 字节，超过上限 %d", res.ContentLength, limit)
+	}
 	out, err := os.Create(dest)
 	if err != nil {
 		return err
 	}
-	defer out.Close()
-	if _, err := io.Copy(out, res.Body); err != nil {
+	n, err := io.Copy(out, io.LimitReader(res.Body, limit+1))
+	if cerr := out.Close(); err == nil {
+		err = cerr
+	}
+	if err != nil {
+		_ = os.Remove(dest)
 		return err
 	}
+	if n > limit {
+		_ = os.Remove(dest)
+		return fmt.Errorf("更新包超过 %d 字节上限，已中断下载", limit)
+	}
 	return nil
+}
+
+// statusString 从更新状态 map 里取一个字符串字段（缺失/非字符串都返回空串）。
+func statusString(st map[string]any, key string) string {
+	if s, ok := st[key].(string); ok {
+		return s
+	}
+	return ""
 }
 
 // statusURLs 从更新状态 map 里取出下载地址数组：内存里是 []string，
@@ -795,13 +893,25 @@ func normalizePackageURL(raw string) string {
 	return u + "/" + packageName
 }
 
-// downloadPackage 按 urls 顺序依次补全地址并下载，任一地址成功即返回；
+// downloadPackage 按 urls 顺序依次补全地址、下载并**校验 sha256**，任一地址通过即返回；
 // 全部失败返回最后一次的错误（空数组 / 全空白项同样报错）。
-func downloadPackage(urls []string, dest string) error {
+//
+// 哈希不符时删除已下载的文件再换下一个镜像 —— 换镜像本身是安全的，因为每个镜像都要过
+// 同一道哈希；而「哈希不符但继续装」绝对不允许。
+func downloadPackage(urls []string, dest string, wantSHA string) error {
+	want, err := parseSHA256(wantSHA)
+	if err != nil {
+		return fmt.Errorf("拒绝下载：%w", err)
+	}
 	var lastErr error
 	for _, raw := range urls {
 		u := normalizePackageURL(raw)
 		if u == "" {
+			continue
+		}
+		if err := checkUpdateURL(u); err != nil {
+			log.Printf("[update] 跳过不合规下载地址 %s: %v", u, err)
+			lastErr = err
 			continue
 		}
 		log.Printf("[update] 尝试下载更新包: %s", u)
@@ -810,6 +920,13 @@ func downloadPackage(urls []string, dest string) error {
 			lastErr = err
 			continue
 		}
+		if err := verifySHA256(dest, want); err != nil {
+			log.Printf("[update] 更新包校验失败，丢弃后换下一镜像: %v", err)
+			_ = os.Remove(dest)
+			lastErr = err
+			continue
+		}
+		log.Printf("[update] 更新包校验通过: sha256=%s…", head8(want))
 		return nil
 	}
 	if lastErr == nil {
@@ -820,12 +937,24 @@ func downloadPackage(urls []string, dest string) error {
 
 // extractZip 把 zip 包解压到 dest（保留目录结构）。
 // 用标准库 archive/zip：更新包改 zip 后不再依赖第三方 7z reader。
+//
+// 除目录穿越外还挡 zip bomb：条目数与解压总量都有上限，且落盘时再用 LimitReader
+// 兜一层 —— 条目声明的 UncompressedSize 可以造假，实际写出来的字节数才是真的。
 func extractZip(archive, dest string) error {
+	return extractZipLimited(archive, dest, maxExtractTotalBytes, maxExtractEntries)
+}
+
+// extractZipLimited 是 extractZip 的可注入上限版本（单测用小上限验证截断逻辑）。
+func extractZipLimited(archive, dest string, maxTotal int64, maxEntries int) error {
 	r, err := zip.OpenReader(archive)
 	if err != nil {
 		return err
 	}
 	defer r.Close()
+	if len(r.File) > maxEntries {
+		return fmt.Errorf("更新包条目过多（%d > %d）", len(r.File), maxEntries)
+	}
+	var written int64
 	for _, f := range r.File {
 		// 包内路径统一按 / 归一（Windows 压出来的 zip 可能带反斜杠）
 		name := strings.ReplaceAll(f.Name, "\\", "/")
@@ -840,6 +969,9 @@ func extractZip(archive, dest string) error {
 				return err
 			}
 			continue
+		}
+		if f.UncompressedSize64 > uint64(maxTotal) {
+			return fmt.Errorf("更新包含异常大的条目：%s（%d 字节）", f.Name, f.UncompressedSize64)
 		}
 		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
 			return err
@@ -857,13 +989,17 @@ func extractZip(archive, dest string) error {
 			rc.Close()
 			return err
 		}
-		if _, err := io.Copy(out, rc); err != nil {
-			out.Close()
-			rc.Close()
-			return err
-		}
+		// +1 是为了「多读一个字节」就能判定越界，而不是静默截断。
+		n, err := io.Copy(out, io.LimitReader(rc, maxTotal-written+1))
 		out.Close()
 		rc.Close()
+		if err != nil {
+			return err
+		}
+		if written+n > maxTotal {
+			return fmt.Errorf("更新包解压后超过 %d 字节上限", maxTotal)
+		}
+		written += n
 	}
 	return nil
 }
@@ -891,12 +1027,17 @@ func findNewExe(dir string) string {
 
 // mergeConfigFromDir 遍历目录及其子目录下所有 json 文件，把每个文件的顶层键按
 // 「本地无则新增、本地有则不改」合并进 raw（与用户需求的配置项增量合并同义）。
+// 单文件大小也设上限：配置补丁正常只有几 KB，超过 1 MiB 的「配置」只会是畸形包。
 func mergeConfigFromDir(dir string, raw map[string]any) error {
 	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
 		if !strings.HasSuffix(strings.ToLower(d.Name()), ".json") {
+			return nil
+		}
+		if info, err := d.Info(); err == nil && info.Size() > 1<<20 {
+			log.Printf("[update] 跳过过大的配置文件 %s（%d 字节）", path, info.Size())
 			return nil
 		}
 		data, err := os.ReadFile(path)

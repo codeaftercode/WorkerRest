@@ -33,6 +33,10 @@
 version.json 的 changes：上一个 tag 到当前 tag 之间的提交标题，按时间顺序（旧→新）
 自动编号（"1. xxx"）；首个 tag 没有上一个 tag，changes 留空。
 
+version.json 的 sha256 / size：**由本脚本从刚生成的 rest.zip 现算**，不是手填。
+客户端只认「哈希对得上」的包（对不上就丢弃、换镜像、全失败则拒绝更新），
+所以这两个字段缺失时打包直接失败 —— 没有哈希的清单等于没有更新通道。
+
 用法：python scripts/make_portable.py [--no-build] [--out DIR]
   --no-build   跳过 go build，直接用 build/bin/rest.exe 组装（已构建过时用）
   --out DIR    交付根目录（默认 release/；产物落在其下 WorkerRest-<tag>/ 里）
@@ -326,14 +330,28 @@ def make_update_zip(src_exe: str, dest_zip: str) -> tuple:
     return True, ""
 
 
-def write_version_json(dest: str, tag: str, changes, date_text: str = "") -> bool:
-    """生成自动更新清单：version 用 tag 全称，date 用 YYYY.MM.DD，changes 已编号。"""
+def sha256_of(p: str) -> str:
+    h = hashlib.sha256()
+    with open(p, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def write_version_json(dest: str, tag: str, changes, package_path: str, date_text: str = "") -> bool:
+    """生成自动更新清单：version 用 tag 全称，date 用 YYYY.MM.DD，changes 已编号，
+    sha256/size 由 package_path（rest.zip）现算 —— 客户端拿它校验下载下来的包。"""
+    if not package_path or not os.path.isfile(package_path):
+        print("[make-portable] FAIL: 更新包不存在，无法计算 sha256（先确认第 6 步成功）")
+        return False
     doc = {
         "version": tag,
         "date": date_text or datetime.now().strftime("%Y.%m.%d"),
         "url": list(UPDATE_BASE_URLS),
         "sites": list(UPDATE_SITES),
         "changes": list(changes),
+        "sha256": sha256_of(package_path),
+        "size": os.path.getsize(package_path),
     }
     try:
         with open(dest, "w", encoding="utf-8", newline="\n") as f:
@@ -341,6 +359,7 @@ def write_version_json(dest: str, tag: str, changes, date_text: str = "") -> boo
     except OSError as e:
         print(f"[make-portable] FAIL: 写 version.json 失败: {e}")
         return False
+    print(f"[make-portable] version.json sha256={doc['sha256']} size={doc['size']}")
     return True
 
 
@@ -568,6 +587,7 @@ def main() -> int:
         print(f"[make-portable] 交付目录: {final_dir}")
 
     # 6. 自动更新包 rest.zip（只含 rest.exe，最大压缩；自动更新下载的就是它）
+    final_pkg = ""
     if ok:
         stage_pkg = os.path.join(stage_parent, UPDATE_PACKAGE_NAME)
         made, why = make_update_zip(EXE_SRC, stage_pkg)
@@ -579,12 +599,13 @@ def main() -> int:
             ok = False
             print(f"[make-portable] FAIL: {why}")
 
-    # 7. 自动更新清单 version.json（changes = 上一个 tag 到当前 tag 的提交标题）
+    # 7. 自动更新清单 version.json（changes = 上一个 tag 到当前 tag 的提交标题；
+    #    sha256/size = 上面那个 rest.zip 的现算值，客户端据此校验下载的包）
     version_json = ""
     if ok:
         changes = [f"{i}. {c}" for i, c in enumerate(gitver.commits_between(prev, tag), 1)]
         vj = os.path.join(release_dir, "version.json")
-        if write_version_json(vj, tag, changes):
+        if write_version_json(vj, tag, changes, final_pkg):
             version_json = vj
             print(f"[make-portable] 版本清单: {vj}")
             for c in changes:

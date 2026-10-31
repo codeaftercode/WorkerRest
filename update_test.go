@@ -3,13 +3,16 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -125,13 +128,46 @@ func TestFetchVersionJSONFallback(t *testing.T) {
 	}
 }
 
-// TestCheckForUpdateURLArray 端到端验证：真实 version.json 形状（url 为数组）经
-// checkForUpdate 落成状态 map 的 url 数组，StartUpdate 侧能原样取出并按规则补全。
+// TestVersionInfoParsesPackagedManifest 钉住「打包脚本产出的清单」与 Go 侧结构的
+// 字段口径一致（键名见 scripts/make_portable.py 的 write_version_json）。
+// 任何一边改名都会让线上更新瞬间失效，所以这层契约必须有测试，而不是靠「记得同步」。
+func TestVersionInfoParsesPackagedManifest(t *testing.T) {
+	doc := `{
+	  "version": "v0.9.4",
+	  "date": "2026.10.31",
+	  "url": ["https://www.goodgoodlive.com/worker-rest/"],
+	  "sites": ["https://www.goodgoodlive.com/worker-rest/version.json"],
+	  "changes": ["1. 示例"],
+	  "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+	  "size": 12345
+	}`
+	var info versionInfo
+	if err := json.Unmarshal([]byte(doc), &info); err != nil {
+		t.Fatalf("解析打包清单失败: %v", err)
+	}
+	if info.Version != "v0.9.4" || info.Date != "2026.10.31" {
+		t.Fatalf("version/date 未对上: %+v", info)
+	}
+	if len(info.URL) != 1 || len(info.Sites) != 1 || len(info.Changes) != 1 {
+		t.Fatalf("数组字段未对上: %+v", info)
+	}
+	if _, err := parseSHA256(info.SHA256); err != nil {
+		t.Fatalf("清单里的 sha256 应能被接受: %v", err)
+	}
+	if info.Size != 12345 {
+		t.Fatalf("size 未对上: %d", info.Size)
+	}
+}
+
+// TestCheckForUpdateURLArray 端到端验证：真实 version.json 形状（url 为数组 + sha256）
+// 经 checkForUpdate 落成状态 map 的 url 数组与 sha256，StartUpdate 侧能原样取出并按规则补全。
 func TestCheckForUpdateURLArray(t *testing.T) {
 	t.Setenv("WR_SETTINGS_PATH", filepath.Join(t.TempDir(), "settings.json"))
+	const sum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	body := `{"version":"v1.1.0","date":"2026.10.23",` +
 		`"url":["https://nav.hcctc.cn/temp/","https://www.goodgoodlive.com/worker-rest/"],` +
 		`"sites":["https://a/version.json","https://b/version.json"],` +
+		`"sha256":"` + sum + `",` +
 		`"changes":["修复了一些已知问题"]}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -151,13 +187,75 @@ func TestCheckForUpdateURLArray(t *testing.T) {
 	if !reflect.DeepEqual(st.URLs, want) {
 		t.Fatalf("url 数组未透传：%v", st.URLs)
 	}
-	// 状态 map 往返后 StartUpdate 仍能取出同一份数组
-	if got := statusURLs(st.toMap()); !reflect.DeepEqual(got, want) {
+	if st.SHA256 != sum {
+		t.Fatalf("sha256 未透传：%q", st.SHA256)
+	}
+	// 状态 map 往返后 StartUpdate 仍能取出同一份数组与哈希
+	m := st.toMap()
+	if got := statusURLs(m); !reflect.DeepEqual(got, want) {
 		t.Fatalf("statusURLs 回读不符：%v", got)
+	}
+	if got := statusString(m, "sha256"); got != sum {
+		t.Fatalf("状态 map 里 sha256 丢失：%q", got)
 	}
 	// 补全规则：目录项 → <目录>/rest.zip
 	if got := normalizePackageURL(want[1]); got != "https://www.goodgoodlive.com/worker-rest/rest.zip" {
 		t.Fatalf("补全结果不符：%s", got)
+	}
+}
+
+// TestCheckForUpdateRejectsUntrustedManifest 清单缺 sha256 / 只给 http 源时，
+// 必须报 error 并说明原因，而不是对外宣称「有更新」再让人点进去失败。
+func TestCheckForUpdateRejectsUntrustedManifest(t *testing.T) {
+	const sum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	cases := []struct {
+		name string
+		body string
+		want string // message 里应出现的片段
+	}{
+		{
+			name: "缺 sha256",
+			body: `{"version":"v1.1.0","url":["https://a.example/rest.zip"]}`,
+			want: "sha256",
+		},
+		{
+			name: "sha256 格式不对",
+			body: `{"version":"v1.1.0","url":["https://a.example/rest.zip"],"sha256":"deadbeef"}`,
+			want: "sha256",
+		},
+		{
+			name: "下载地址全是 http",
+			body: `{"version":"v1.1.0","url":["http://a.example/rest.zip","ftp://b/x"],"sha256":"` + sum + `"}`,
+			want: "https",
+		},
+		{
+			name: "清单声明体积超上限",
+			body: `{"version":"v1.1.0","url":["https://a.example/rest.zip"],` +
+				`"sha256":"` + sum + `","size":99999999999}`,
+			want: "超过上限",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv("WR_SETTINGS_PATH", filepath.Join(t.TempDir(), "settings.json"))
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(c.body))
+			}))
+			defer srv.Close()
+
+			cfg := &Settings{raw: defaultSettingsMap()}
+			cfg.SetSites([]string{srv.URL + "/version.json"})
+			a := &App{cfg: cfg, mu: sync.Mutex{}}
+
+			st := a.checkForUpdate()
+			if st.Status != "error" {
+				t.Fatalf("应拒绝更新（error），实得 %+v", st)
+			}
+			if !strings.Contains(st.Message, c.want) {
+				t.Fatalf("message 应含 %q，实得 %q", c.want, st.Message)
+			}
+		})
 	}
 }
 
@@ -365,6 +463,7 @@ func TestStatusURLsShapes(t *testing.T) {
 // （目录项会先补全为 /rest.zip），全部失败才报错，空数组直接报错。
 func TestDownloadPackageFallback(t *testing.T) {
 	body := []byte("fake-zip-bytes")
+	goodSum := fmt.Sprintf("%x", sha256.Sum256(body))
 	srvOK := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/rest.zip" {
 			w.WriteHeader(http.StatusNotFound)
@@ -382,7 +481,7 @@ func TestDownloadPackageFallback(t *testing.T) {
 	dest := filepath.Join(dir, "rest.zip")
 
 	// 第一项 500、第二项是目录（需拼 /rest.zip）→ 应容错成功
-	if err := downloadPackage([]string{srvFail.URL, srvOK.URL}, dest); err != nil {
+	if err := downloadPackage([]string{srvFail.URL, srvOK.URL}, dest, goodSum); err != nil {
 		t.Fatalf("应容错下载成功，却报错: %v", err)
 	}
 	got, err := os.ReadFile(dest)
@@ -391,16 +490,33 @@ func TestDownloadPackageFallback(t *testing.T) {
 	}
 
 	// 全部失败 → 报错
-	if err := downloadPackage([]string{srvFail.URL}, dest); err == nil {
+	if err := downloadPackage([]string{srvFail.URL}, dest, goodSum); err == nil {
 		t.Fatalf("全部失败时应报错")
 	}
 	// 空数组 → 报错
-	if err := downloadPackage(nil, dest); err == nil {
+	if err := downloadPackage(nil, dest, goodSum); err == nil {
 		t.Fatalf("空地址数组应报错")
 	}
 	// 第一项直接是完整 .zip 地址 → 不拼后缀直接下
-	if err := downloadPackage([]string{srvOK.URL + "/rest.zip"}, dest); err != nil {
+	if err := downloadPackage([]string{srvOK.URL + "/rest.zip"}, dest, goodSum); err != nil {
 		t.Fatalf("完整 .zip 地址应直接下载: %v", err)
+	}
+
+	// 哈希不符 → 必须报错，且不留下「看起来能用」的包
+	badSum := fmt.Sprintf("%x", sha256.Sum256([]byte("another-bytes")))
+	if err := downloadPackage([]string{srvOK.URL}, dest, badSum); err == nil {
+		t.Fatalf("哈希不符时应报错")
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		t.Fatalf("校验失败后应删除下载的文件（err=%v）", err)
+	}
+	// 没有哈希 → 直接拒绝，连下载都不做
+	if err := downloadPackage([]string{srvOK.URL}, dest, ""); err == nil {
+		t.Fatalf("缺少 sha256 时应拒绝下载")
+	}
+	// 全 http 明文地址 → 拒绝
+	if err := downloadPackage([]string{"http://example.invalid/pkg/"}, dest, goodSum); err == nil {
+		t.Fatalf("http 明文下载地址应被拒绝")
 	}
 }
 
@@ -627,7 +743,7 @@ func TestRunAutoUpdateCheckRecordsDay(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"version":"99.0.0","date":"2026.10.23","url":["http://example.invalid/pkg/"]}`)
+		_, _ = io.WriteString(w, `{"version":"99.0.0","date":"2026.10.23","url":["https://example.invalid/pkg/"],"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`)
 	}))
 	defer srv.Close()
 
@@ -667,7 +783,7 @@ func TestRunAutoUpdateCheckRecordsDay(t *testing.T) {
 func TestAutoUpdateLoopDispatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"version":"99.0.0","date":"2026.10.23","url":["http://example.invalid/pkg/"]}`)
+		_, _ = io.WriteString(w, `{"version":"99.0.0","date":"2026.10.23","url":["https://example.invalid/pkg/"],"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`)
 	}))
 	defer srv.Close()
 
@@ -691,10 +807,19 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 	}
 	var stopped atomic.Bool
 	block := make(chan struct{})
+	// parked：循环已经彻底挂住（不再碰配置目录）的信号。
+	// 没有它就只能靠「LastUpdateCheck 非空」判断，而那一步是**先写内存再落盘**——
+	// 轮询看到值时 Save 可能还在写 settings.json.tmp，接着 t.TempDir 的清理会撞上
+	// 「目录非空」而偶发失败（全量跑时更容易复现）。
+	parked := make(chan struct{}, 1)
 	autoUpdateSleep = func(d time.Duration) {
 		// 一旦真正查过一次（或测试收尾），就把循环挂住：虚拟时间不再往前走，
 		// 免得它在毫秒内又跑到第二天、再触发一次检查。
 		if stopped.Load() || a.cfg.LastUpdateCheck() != "" {
+			select {
+			case parked <- struct{}{}:
+			default:
+			}
 			<-block
 		}
 		clockMu.Lock()
@@ -713,6 +838,13 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 		time.Sleep(5 * time.Millisecond)
 	}
 	stopped.Store(true)
+
+	// 等循环真的挂住：它挂住的时刻一定在 Save 之后，这时目录才算静止。
+	select {
+	case <-parked:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("自动更新循环没有按预期挂起（可能仍在反复检查）")
+	}
 
 	if got := a.cfg.LastUpdateCheck(); got != "2026-10-23" {
 		t.Fatalf("应在假时钟当天（2026-10-23）完成检查，实得 %q", got)
@@ -841,7 +973,8 @@ func TestWithFallbackSite(t *testing.T) {
 // 完成检查 —— 「装完没配 sites 也能更新」是兜底地址存在的意义。
 func TestCheckForUpdateFallsBackToDefaultSite(t *testing.T) {
 	body := `{"version":"v99.0.0","date":"2026.10.23",` +
-		`"url":["https://x/pkg.zip"],"changes":["x"]}`
+		`"url":["https://x/pkg.zip"],"changes":["x"],` +
+		`"sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(body))

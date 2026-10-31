@@ -218,10 +218,27 @@ def main():
     if os.path.isfile(vj):
         try:
             with open(vj, encoding="utf-8") as f:
-                vj_sites = [str(x).strip() for x in (json.load(f).get("sites") or [])]
+                vj_doc = json.load(f)
+            vj_sites = [str(x).strip() for x in (vj_doc.get("sites") or [])]
             check(cfg_sites == vj_sites,
                   "预置配置的 sites == version.json 的 sites（发布更新源不漂移）",
                   "%s vs %s" % (cfg_sites, vj_sites))
+            # 3b-2. 清单里的 sha256 必须真的是同目录 rest.zip 的哈希：客户端只认它，
+            #       写错（或改了包没重算）会让所有用户卡在「校验失败，已拒绝更新」。
+            pkg = os.path.join(os.path.dirname(vj), "rest.zip")
+            want = str(vj_doc.get("sha256") or "").strip().lower()
+            if os.path.isfile(pkg):
+                h = hashlib.sha256()
+                with open(pkg, "rb") as pf:
+                    for chunk in iter(lambda: pf.read(65536), b""):
+                        h.update(chunk)
+                got = h.hexdigest()
+                check(want == got, "version.json 的 sha256 == rest.zip 实际哈希", "%s vs %s" % (want, got))
+                check(int(vj_doc.get("size") or 0) == os.path.getsize(pkg),
+                      "version.json 的 size == rest.zip 体积",
+                      "%s vs %s" % (vj_doc.get("size"), os.path.getsize(pkg)))
+            else:
+                check(False, "同版本 rest.zip 在 version.json 旁边", pkg)
         except Exception as e:  # noqa: BLE001
             check(False, "version.json 可解析", repr(e))
     else:

@@ -308,7 +308,8 @@ func hasPrefix(s, p string) bool {
 	return len(s) >= len(p) && s[:len(p)] == p
 }
 
-// TestUpdateSites 验证更新源地址过滤：只保留 http/https，丢空串/非法 scheme/非数组。
+// TestUpdateSites 验证更新源地址过滤：**只保留 https**（http 明文源已禁用，
+// 回环地址例外 —— 单测的 httptest 就靠它），丢空串/非法 scheme/非数组。
 func TestUpdateSites(t *testing.T) {
 	cases := []struct {
 		raw  map[string]any
@@ -318,13 +319,16 @@ func TestUpdateSites(t *testing.T) {
 		{map[string]any{"sites": "not-an-array"}, nil},
 		{
 			map[string]any{"sites": []any{
-				"http://a/version.json",
+				"http://a/version.json", // 明文源：丢弃（审计 BLOCKER-2）
 				"https://b/version.json",
-				"ftp://c/x",         // 非法 scheme
-				"",                  // 空串
-				"  http://d/x.json", // 带空白仍保留（调用方 trim 后下发）
+				"ftp://c/x",                      // 非法 scheme
+				"",                               // 空串
+				"  https://d/x.json  ",           // 带空白：trim 后保留
+				"http://127.0.0.1:8080/x.json",   // 回环 http：保留（单测/本机调试）
+				"http://localhost:9000/ver.json", // 回环 http：保留
 			}},
-			[]string{"http://a/version.json", "https://b/version.json", "http://d/x.json"},
+			[]string{"https://b/version.json", "https://d/x.json",
+				"http://127.0.0.1:8080/x.json", "http://localhost:9000/ver.json"},
 		},
 	}
 	for _, c := range cases {
@@ -352,8 +356,13 @@ func TestSetSitesReplacesLocal(t *testing.T) {
 		},
 		path: "",
 	}
-	// 远程下发一组新的 sites（含空白，应原样写入、由 UpdateSites 在读取时 trim）
-	s.SetSites([]string{"https://new-1/version.json", "  https://new-2/version.json  "})
+	// 远程下发一组新的 sites：带空白要 trim，http 明文项（不可信输入）要丢弃
+	s.SetSites([]string{
+		"https://new-1/version.json",
+		"  https://new-2/version.json  ",
+		"http://evil.example/version.json",
+		"",
+	})
 
 	stored, ok := s.raw["sites"].([]any)
 	if !ok {

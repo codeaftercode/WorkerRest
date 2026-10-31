@@ -55,7 +55,7 @@ python scripts/verify_portable.py
 | `WorkerRest-portable.zip` | 便携目录 zip（含约 4.5 MB 督休专员立绘），解压即用 |
 | `WorkerRest-portable/` | 同名散装目录 |
 | `rest.zip` | 只含 `rest.exe` 的自动更新包（最大压缩，软件下载的就是它） |
-| `version.json` | 自动更新清单（version / date / url / sites / changes） |
+| `version.json` | 自动更新清单（version / date / url / sites / changes / sha256 / size） |
 
 同一版本的四种产物都落在 `release/WorkerRest-<tag>/` 里；目录名与压缩包名**不带版本号**，
 版本只体现在父目录名与 `version.json` 里。
@@ -105,6 +105,17 @@ python scripts/verify_portable.py
 - `version.json` 的 `changes` 取「上一个 tag → 当前 tag」的提交标题，按时间顺序自动编号；
   首个 tag 没有上一个 tag，`changes` 为空。这是机械摘要，脚本跑完最后会提示**手动改写
   `release/WorkerRest-<tag>/version.json` 的 `changes`**，改成面向用户的发布说明。
+- **更新包的完整性只认 `sha256`**（`version.json` 的 `sha256` / `size` 由
+  `make_portable.py` 从刚生成的 `rest.zip` 现算，不是手填；改过 `rest.zip` 就必须重算）。
+  客户端的规矩（实现见 `update_trust.go`）：
+  - 只接受 **https** 源，`http://` 明文源一律丢弃（唯一例外是回环地址，仅为单测的
+    httptest 保留）；**重定向的每一跳也重新校验**，所以 https 302 到 http 会被拦下；
+  - 清单缺 `sha256`、格式不对、或 `url` 全是 http → `checkForUpdate` 直接返回 error
+    并说明原因，**不会**降级成「只靠 TLS」；
+  - 下载后逐字节比对哈希，不符就删掉换下一个镜像；全部失败则拒绝更新；
+  - 体积上限：清单 1 MiB、更新包 64 MiB、解压总量 192 MiB、条目数 2048
+    （防 zip bomb），超限即中断。
+  打包脚本在 `rest.zip` 缺失或未生成时会直接失败——没有哈希的清单等于没有更新通道。
 - 解压即用，无需安装。**不做 NSIS 安装器**——单二进制天然绿色，便携目录 zip 即交付形态。
 - 便携运行的数据（配置 / 统计 / 用户音频）落在 exe 旁的 `config/` 与 `data/`，跟着程序走；
   直接删掉整个目录就是完全卸载。
