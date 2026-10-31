@@ -644,7 +644,8 @@ func (st *StatsStore) StartNotify() {
 				fn := st.onChange
 				st.mu.Unlock()
 				if fn != nil {
-					fn()
+					// onChange 是 App 侧的推送函数（读配置 + 发事件），可能 nil deref
+					guardRun("stats.notify", fn)
 				}
 			}
 		}
@@ -669,13 +670,15 @@ func (st *StatsStore) StartAutoFlush(intervalMs int) {
 			case <-st.stopCh:
 				return
 			case <-t.C:
-				st.mu.Lock()
-				st.autoFlushTicks++
-				dirty := st.dirty
-				st.mu.Unlock()
-				if dirty {
-					st.Flush()
-				}
+				guardRun("stats.autoflush", func() {
+					st.mu.Lock()
+					st.autoFlushTicks++
+					dirty := st.dirty
+					st.mu.Unlock()
+					if dirty {
+						st.Flush()
+					}
+				})
 			}
 		}
 	}()
@@ -1236,44 +1239,49 @@ func (st *StatsStore) StartWorkAccumulator(isBreak, isIdle func() bool) {
 			case <-st.stopCh:
 				return
 			case <-t.C:
-				now := st.nowFn()
-				// 睡眠检测：墙钟跳变 - 唤醒 tick 跳变 > 阈值 → 这中间睡过一觉。
-				// 醒来后第一跳就触发，把睡眠整段补记成离开并跳过工作记账（见 NotifySlept）。
-				if haveTick && st.wakeTickFn != nil {
-					if tick, ok := st.wakeTickFn(); ok {
-						if detectSleep(now-last, tick-lastTick) > 0 {
-							st.NotifySlept(last, now)
-							last = now
+				// 整拍包进闭包：里面的 continue 一律改写成 return（闭包返回 = 本拍结束，
+				// continue 的语义不变），换来一次 panic 只丢一拍。last / lastTick / haveTick
+				// 在闭包外声明，闭包直接改它们 —— 跨拍状态照常延续。
+				guardRun("stats.workacc", func() {
+					now := st.nowFn()
+					// 睡眠检测：墙钟跳变 - 唤醒 tick 跳变 > 阈值 → 这中间睡过一觉。
+					// 醒来后第一跳就触发，把睡眠整段补记成离开并跳过工作记账（见 NotifySlept）。
+					if haveTick && st.wakeTickFn != nil {
+						if tick, ok := st.wakeTickFn(); ok {
+							if detectSleep(now-last, tick-lastTick) > 0 {
+								st.NotifySlept(last, now)
+								last = now
+								lastTick = tick
+								return
+							}
 							lastTick = tick
-							continue
 						}
-						lastTick = tick
 					}
-				}
-				from := last
-				last = now
-				// 休息 = 这一跳归休息：顺手推进休息计时（休息时长同样是实时入账的，
-				// 否则进行中的休息只能等 break-end 才写盘，断电就整次丢掉）
-				if isBreak() {
-					st.endStreakAt(now)
-					st.OnBreakTick()
-					continue
-				}
-				st.mu.Lock()
-				a, b, ok := countedSpan(from, now, st.sleepStartedAt, st.sleepEndedAt)
-				st.mu.Unlock()
-				if !ok {
-					// 整跳都在睡眠里 → 连续工作段断在这里
-					st.endStreakAt(now)
-					continue
-				}
-				// 空闲（含「大跳时按当时的空闲值归属」这一条）：这一跳不计工作 ——
-				// 那段由离开段负责记进 AwayMs（App 侧的监视会调 BeginAway 搬过去）
-				if isIdle() {
-					st.endStreakAt(now)
-					continue
-				}
-				st.accountWorkTick(a, b)
+					from := last
+					last = now
+					// 休息 = 这一跳归休息：顺手推进休息计时（休息时长同样是实时入账的，
+					// 否则进行中的休息只能等 break-end 才写盘，断电就整次丢掉）
+					if isBreak() {
+						st.endStreakAt(now)
+						st.OnBreakTick()
+						return
+					}
+					st.mu.Lock()
+					a, b, ok := countedSpan(from, now, st.sleepStartedAt, st.sleepEndedAt)
+					st.mu.Unlock()
+					if !ok {
+						// 整跳都在睡眠里 → 连续工作段断在这里
+						st.endStreakAt(now)
+						return
+					}
+					// 空闲（含「大跳时按当时的空闲值归属」这一条）：这一跳不计工作 ——
+					// 那段由离开段负责记进 AwayMs（App 侧的监视会调 BeginAway 搬过去）
+					if isIdle() {
+						st.endStreakAt(now)
+						return
+					}
+					st.accountWorkTick(a, b)
+				})
 			}
 		}
 	}()

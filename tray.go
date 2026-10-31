@@ -110,7 +110,7 @@ func (a *App) startTrayRefresh() {
 			case <-ch:
 				return
 			case <-t.C:
-				a.refreshTray()
+				guardRun("tray.refresh", a.refreshTray)
 			}
 		}
 	}()

@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"runtime/debug"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -38,6 +39,22 @@ func loadTrayIcon() []byte {
 }
 
 func main() {
+	// 主 goroutine 的 panic 兜底（第三层，见 recoverguard.go）。
+	// 放在最前面：application.New 内部、自更新分支都在它覆盖范围内。
+	// 这里能做的只有「留下现场 + 让用户看到一句人话」，做不到继续运行 ——
+	// 主 goroutine 的栈已经展开，进程状态不可信。
+	defer func() {
+		if r := recover(); r != nil {
+			// 若还没走到 log.SetOutput（例如参数解析阶段就炸了），这里补上，
+			// 保证现场一定落盘而不是写进 GUI 那片无效的 stderr。
+			log.SetOutput(appLogWriter())
+			log.Printf("[panic] 主 goroutine: %v\n%s", r, debug.Stack())
+			if !serverMode {
+				promptPanicExit("主线程")
+			}
+			os.Exit(panicExitCode)
+		}
+	}()
 	// 自更新分支：必须在构建 Wails 应用之前处理，避免触发单例互斥。
 	//   --self-update <pending>：替换旧 exe 并启动 --updated 新进程（见 update.go）。
 	//   --updated <pending>：正常启动，并把 pending 路径交给前端展示更新摘要。

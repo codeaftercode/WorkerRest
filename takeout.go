@@ -473,14 +473,17 @@ func (a *App) startTakeoutWatcher() {
 			case <-ch:
 				return
 			case <-t.C:
-				a.checkTakeoutReminders()
-				// 每 5 秒纠一次「窗口跑出显示器工作区」（拔掉外接屏后原窗口坐标作废）。
-				// 放在 checkTakeoutReminders 之外：外卖关掉时那条会提前 return，而休息窗 /
-				// 提前提示窗一样可能跑到不可见区域。
-				n++
-				if n%5 == 0 {
-					a.ensureWindowsOnScreen()
-				}
+				// 每秒一跳：包 panic 兜底，丢一拍不丢整条循环（见 recoverguard.go）
+				guardRun("takeout.tick", func() {
+					a.checkTakeoutReminders()
+					// 每 5 秒纠一次「窗口跑出显示器工作区」（拔掉外接屏后原窗口坐标作废）。
+					// 放在 checkTakeoutReminders 之外：外卖关掉时那条会提前 return，而休息窗 /
+					// 提前提示窗一样可能跑到不可见区域。
+					n++
+					if n%5 == 0 {
+						a.ensureWindowsOnScreen()
+					}
+				})
 			}
 		}
 	}()
@@ -763,12 +766,21 @@ func (a *App) startRaiseLoop() {
 			case <-ch:
 				return
 			case <-t.C:
-				if !a.hasTakeoutWindows() {
-					a.stopRaiseLoop()
+				// return 写在闭包里只退出一轮，所以「该收摊了」用变量带出来，
+				// 由外层 return 真正结束这条 goroutine。
+				stop := false
+				guardRun("takeout.raise", func() {
+					if !a.hasTakeoutWindows() {
+						a.stopRaiseLoop()
+						stop = true
+						return
+					}
+					if a.raise.anyBreakActive() {
+						a.raiseTakeoutWindows()
+					}
+				})
+				if stop {
 					return
-				}
-				if a.raise.anyBreakActive() {
-					a.raiseTakeoutWindows()
 				}
 			}
 		}
@@ -840,34 +852,38 @@ func (a *App) ensureSupActivityWatch() {
 			case <-ch:
 				return
 			case <-t.C:
-				a.mu.Lock()
-				w := &a.supWatch
-				w.Polls++
-				a.mu.Unlock()
-				tk, ok := lastInputTick()
-				if !ok {
-					// 读取中途失效：整段降级（但 Go 侧无秒级来源，直接停止比较）
-					continue
-				}
-				active := hasTick && tk != lastTick
-				lastTick = tk
-				hasTick = true
-				if !active {
-					continue
-				}
-				now := nowMs()
-				if now-lastSentAt < supBroadcastGapMs {
-					continue
-				}
-				lastSentAt = now
-				a.mu.Lock()
-				a.supWatch.Pulses++
-				n := a.broadcastSupActive()
-				first := a.supWatch.Pulses == 1
-				a.mu.Unlock()
-				if first {
-					log.Printf("[sup-watch] global input pulse: mode=tick to=%d", n)
-				}
+				// 整拍包进闭包：里面的 continue 一律改写成 return —— 闭包返回就等于
+				// 「这一拍结束」，与 continue 同义，换来一次 panic 只丢一拍。
+				guardRun("sup.watch", func() {
+					a.mu.Lock()
+					w := &a.supWatch
+					w.Polls++
+					a.mu.Unlock()
+					tk, ok := lastInputTick()
+					if !ok {
+						// 读取中途失效：整段降级（但 Go 侧无秒级来源，直接停止比较）
+						return
+					}
+					active := hasTick && tk != lastTick
+					lastTick = tk
+					hasTick = true
+					if !active {
+						return
+					}
+					now := nowMs()
+					if now-lastSentAt < supBroadcastGapMs {
+						return
+					}
+					lastSentAt = now
+					a.mu.Lock()
+					a.supWatch.Pulses++
+					n := a.broadcastSupActive()
+					first := a.supWatch.Pulses == 1
+					a.mu.Unlock()
+					if first {
+						log.Printf("[sup-watch] global input pulse: mode=tick to=%d", n)
+					}
+				})
 			}
 		}
 	}()

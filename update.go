@@ -660,7 +660,13 @@ func (a *App) autoUpdateLoop() {
 		action := autoUpdateTick(&st, today, now,
 			a.idle != nil && a.idle.IsActive(), a.schedPaused(), done, autoUpdateRand)
 		if action == autoActCheck {
-			a.runAutoUpdateCheck(today)
+			// 网络请求 + JSON 解析 + 落盘，是这条循环里唯一有实质 panic 风险的部分。
+			// 被 panic 打断时不能立刻重试（一秒内连炸三次就会触发熔断），退到下一轮排期。
+			if !guardRunOK("update.check", func() { a.runAutoUpdateCheck(today) }) {
+				// 轮询粒度只有 2 秒，直接重试等于连炸；退一分钟再说
+				log.Printf("[update] 本次自动检查异常中断，1 分钟后重新排期")
+				autoUpdateSleep(time.Minute)
+			}
 			continue // 立刻下一拍：成功则 done 生效，失败则重新按当天规则排期
 		}
 		autoUpdateSleep(autoCheckPoll)

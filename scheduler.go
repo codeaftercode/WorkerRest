@@ -145,7 +145,9 @@ func (s *Scheduler) loop() {
 		case <-s.stopCh:
 			return
 		case <-ticker.C:
-			s.onTick()
+			// 包一层 panic 兜底：调度器是整程序的心跳，一跳里的 nil deref 不该让
+			// GUI 直接消失（见 recoverguard.go）。丢一拍，下半秒继续。
+			guardRun("scheduler.tick", s.onTick)
 		}
 	}
 }

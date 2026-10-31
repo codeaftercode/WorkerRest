@@ -143,7 +143,7 @@ func (s *IdleState) loop(ch chan struct{}) {
 		case <-ch:
 			return
 		case <-t.C:
-			s.Sample()
+			guardRun("idle.sample", s.Sample)
 		}
 	}
 }

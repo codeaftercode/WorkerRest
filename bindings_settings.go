@@ -561,6 +561,8 @@ func revealPath(path, arg string) bool {
 		log.Printf("[shell] 打开失败 %s: %v", path, err)
 		return false
 	}
-	go func() { _ = cmd.Wait() }()
+	// 只为回收子进程（explorer 退出后不留僵尸）。包兜底是为了让「全仓裸 goroutine 为零」
+	// 这条能被源码扫描测试钉住 —— 少一个例外，检查就少一处人工判断。
+	go func() { guardRun("shell.wait", func() { _ = cmd.Wait() }) }()
 	return true
 }

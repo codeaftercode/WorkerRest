@@ -101,7 +101,7 @@ func (h *HotkeyManager) run() {
 	procPeekMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0, 0) // PM_NOREMOVE
 	tid, _, _ := procGetCurrentThreadId.Call()
 	h.threadID.Store(uint32(tid))
-	h.apply()
+	guardRun("hotkeys.apply", h.apply)
 	for {
 		r, _, _ := procGetMessageW.Call(uintptr(unsafe.Pointer(&m)), 0, 0, 0)
 		if r == 0 || r == ^uintptr(0) { // WM_QUIT / 错误
@@ -110,9 +110,9 @@ func (h *HotkeyManager) run() {
 		}
 		switch m.message {
 		case wmHotkey:
-			h.dispatch(int(m.wParam))
+			guardRun("hotkeys.dispatch", func() { h.dispatch(int(m.wParam)) })
 		case hkReloadMsg:
-			h.apply()
+			guardRun("hotkeys.apply", h.apply)
 		}
 	}
 }

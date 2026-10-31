@@ -79,7 +79,7 @@ func (a *App) stopSystemWatchers() {
 // `void tick()` + `setInterval(tick, …)` 就是这个形状）。
 func (a *App) watchLoop(stop <-chan struct{}, name string, intervalMs int, immediate bool, fn func()) {
 	if immediate {
-		fn()
+		guardRun("sys."+name, fn)
 	}
 	t := time.NewTicker(time.Duration(intervalMs) * time.Millisecond)
 	defer t.Stop()
@@ -89,7 +89,7 @@ func (a *App) watchLoop(stop <-chan struct{}, name string, intervalMs int, immed
 			log.Printf("[sys] %s监视已停止", name)
 			return
 		case <-t.C:
-			fn()
+			guardRun("sys."+name, fn)
 		}
 	}
 }
