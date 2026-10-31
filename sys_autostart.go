@@ -17,7 +17,7 @@ import (
 //   · 没有「reg.exe 输出按 OEM 代码页（GBK）编码」的乱码问题（那边要 TextDecoder('gbk') 转码）；
 //   · 写的是宽字符字符串，含中文与空格的路径天然正确。
 //
-// 涉及的三个位置（都在 HKCU，不需要管理员）：
+// 涉及的两处键（都在 HKCU，不需要管理员）：
 //
 //	…\CurrentVersion\Run                             ← 启动项本体，值名 = AppUserModelId
 //	…\Explorer\StartupApproved\Run                    ← 「启动已批准」标记
@@ -28,12 +28,9 @@ import (
 //
 // 返回值统一为「是否成功 + 说明」，由调用方决定要不要打日志，绝不抛错影响主程序。
 
-// runValueName HKCU Run 键里的值名 —— 与 上一版的 RUN_VALUE_NAME 保持一致
-// （即 app.setAppUserModelId 用的那个）。
-//
-// ⚠️ 两个版本必须用同一个值名：上一版与 Go 版会先后在同一台机器上跑过，
-// 值名不一致就会在注册表里留下孤儿项，「任务管理器 → 启动」里会显示两个条目。
-const runValueName = "com.lwb.workerrest"
+// runValueName HKCU Run 键里的值名，同时也是本进程的 AppUserModelId。
+// 与单例 UniqueID、站点域名统一在同一个反向域名下。
+const runValueName = "com.goodgoodlive.workerrest"
 
 // autostartFlag 注册 Run 键时带在命令行末尾的参数，启动时据此判断「这次是开机自启动拉起来的」，
 // 从而只起托盘、不弹设置窗口。与 上一版的 AUTOSTART_FLAG 同名同义。

@@ -634,10 +634,10 @@ func TestAutostartRegistryRoundTrip(t *testing.T) {
 	}
 }
 
-func TestAutostartValueNameMatchesPrevVersion(t *testing.T) {
-	// 两个版本必须用同一个值名，否则注册表里会留下孤儿项、任务管理器显示两个条目
-	if runValueName != "com.lwb.workerrest" {
-		t.Fatalf("值名应为 com.lwb.workerrest，得到 %q", runValueName)
+func TestAutostartValueName(t *testing.T) {
+	// 值名同时是 AppUserModelId，统一在 com.goodgoodlive.workerrest 下。
+	if runValueName != "com.goodgoodlive.workerrest" {
+		t.Fatalf("值名应为 com.goodgoodlive.workerrest，得到 %q", runValueName)
 	}
 	if autostartFlag != "--autostart" {
 		t.Fatalf("标记参数应为 --autostart，得到 %q", autostartFlag)

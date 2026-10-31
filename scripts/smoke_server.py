@@ -675,8 +675,8 @@ def main():
                   "枚举到的进程数 > 5（不像空壳）", len(procs.get("names") or []))
 
             auto = probe.get("autostart") or {}
-            check(isinstance(auto, dict) and auto.get("valueName") == "com.lwb.workerrest",
-                  "自启动值名与上一版一致（怕留注册表孤儿项）", auto.get("valueName"))
+            check(isinstance(auto, dict) and auto.get("valueName") == "com.goodgoodlive.workerrest",
+                  "自启动值名 = com.goodgoodlive.workerrest", auto.get("valueName"))
             check(isinstance(auto.get("exists"), bool) and isinstance(auto.get("wanted"), bool),
                   "自启动读回 {exists, wanted} 两个布尔", auto)
 
