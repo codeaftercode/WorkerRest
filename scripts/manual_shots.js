@@ -27,7 +27,13 @@ async function open(browser, url, w, h, opts) {
   await delay(o.wait || 1400);
   return page;
 }
+// WR_ONLY=m_about,m_stats 只重拍这几张：改了一处界面时不必把 16 张全部重拍，
+// 但**流程仍然完整跑一遍**（页面状态是逐步累积出来的，跳过步骤会拍出错误的状态），
+// 只是不落盘别的图。build_manual.py 用的仍是目录里整批 16 张。
+const ONLY = (process.env.WR_ONLY || "").split(",").map((s) => s.trim()).filter(Boolean);
+
 async function shot(page, name) {
+  if (ONLY.length && !ONLY.includes(name)) return;
   await page.screenshot({ path: path.join(OUT, name + ".png") });
   console.log("[shot] " + name);
 }

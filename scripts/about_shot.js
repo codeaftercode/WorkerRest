@@ -54,10 +54,70 @@ async function shotEl(page, selector, name) {
   await set.screenshot({ path: path.join(OUT, "verify_settings_viewport.png") });
   console.log("[shot] verify_settings_viewport -> viewport");
 
+  // 开源鸣谢弹窗：入口在「软件信息」卡片第二行（#d-notices）。
+  // 截图 + 读出实测样式，用来确认它与其它弹窗（同一套 .modal / .cf-box 体系）完全一致，
+  // 且正文真的读到了（不是空壳）。
+  await set.evaluate(`(function(){var b=document.getElementById('d-notices');if(b)b.click();})()`);
+  await delay(900); // 等 getThirdPartyNotices() 回来
+  await shotEl(set, "#notices-modal .nt-box", "verify_notices_light");
+  const nt = await set.evaluate(`(function(){
+    var m=document.getElementById('notices-modal');
+    var b=document.getElementById('nt-body');
+    var box=m.querySelector('.nt-box');
+    var cs=b?getComputedStyle(b):null;
+    var rows=document.querySelectorAll('#tab-about .rows .row');
+    return {
+      open: !m.classList.contains('hidden'),
+      title: (document.getElementById('nt-title')||{}).textContent,
+      chars: b?b.textContent.length:0,
+      startsWith: b?b.textContent.slice(0,12):'',
+      hasCRLF: b?b.textContent.indexOf('\\r') >= 0 : null,
+      scrollH: b?b.scrollHeight:0, clientH: b?b.clientHeight:0,
+      canScroll: b? b.scrollHeight > b.clientHeight : null,
+      fontSize: cs?cs.fontSize:null, lineHeight: cs?cs.lineHeight:null,
+      fontFamily: cs?cs.fontFamily.split(',')[0]:null,
+      color: cs?cs.color:null, bg: cs?cs.backgroundColor:null,
+      boxW: box?Math.round(box.getBoundingClientRect().width):0,
+      exportText: (document.getElementById('nt-export')||{}).textContent,
+      closeText: (document.getElementById('nt-close')||{}).textContent,
+      rowsCount: rows.length,
+      rowHeights: Array.prototype.map.call(rows, function(r){return Math.round(r.getBoundingClientRect().height);}),
+      // 「版本 | 发布时间」同一行：核对主值与注脚的字号/字重差、分隔符颜色，以及是否真的只有一行
+      verRow: (function(){
+        var n=document.getElementById('d-version-val'), b=document.getElementById('d-build-time');
+        var s=document.querySelector('#tab-about .ver-sep');
+        if(!n||!b) return null;
+        var cn=getComputedStyle(n), cb=getComputedStyle(b), cs=s?getComputedStyle(s):null;
+        var rn=n.getBoundingClientRect(), rb=b.getBoundingClientRect();
+        return {
+          text: (n.textContent||'') + ' | ' + (b.textContent||''),
+          numFont: cn.fontSize + '/' + cn.fontWeight, buildFont: cb.fontSize + '/' + cb.fontWeight,
+          buildColor: cb.color, sepColor: cs?cs.color:null,
+          sameLine: Math.abs((rn.top+rn.height/2) - (rb.top+rb.height/2)) < 3,
+          sepBetween: !!s && s.getBoundingClientRect().left >= rn.right - 0.5 && s.getBoundingClientRect().right <= rb.left + 0.5,
+        };
+      })(),
+      linkColor: (function(){var l=document.getElementById('d-notices');return l?getComputedStyle(l).color:null;})(),
+    };
+  })()`);
+  console.log("NOTICES_FIELDS " + JSON.stringify(nt, null, 0));
+  await set.evaluate(`(function(){var b=document.getElementById('nt-close');if(b)b.click();})()`);
+  await delay(250);
+
   // 切深色主题
   await set.evaluate(`(function(){var r=document.querySelector('#content input[name=theme][value=dark]');if(r){r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}));} })()`);
   await delay(800);
   await shotEl(set, "#tab-about", "verify_about_dark");
+  // 深色下的许可弹窗：用的是同一套 CSS 变量，这里截图确认没有哪个颜色写死在浅色上
+  await set.evaluate(`(function(){var b=document.getElementById('d-notices');if(b)b.click();})()`);
+  await delay(600);
+  await shotEl(set, "#notices-modal .nt-box", "verify_notices_dark");
+  // 再来一张整视口：弹窗是 position:fixed，元素截图的裁剪在滚动后会带伪影，
+  // 视口截图才能确认「遮罩 + 居中 + 贴合主题」的真实观感
+  await set.screenshot({ path: path.join(OUT, "verify_notices_dark_viewport.png") });
+  console.log("[shot] verify_notices_dark_viewport -> viewport");
+  await set.evaluate(`(function(){var b=document.getElementById('nt-close');if(b)b.click();})()`);
+  await delay(200);
 
   // 读出关键字段，确认渲染正确
   const data = await set.evaluate(`(function(){

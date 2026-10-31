@@ -27,12 +27,16 @@
 # 开发运行（GUI，直接启动设置窗口）
 go run .
 
-# 构建 GUI 产物（无控制台窗口，去符号）
-go build -o build/bin/rest.exe -ldflags "-H windowsgui -s -w" .
+# 构建 GUI 产物（无控制台窗口，去符号，不带构建机路径）
+go build -trimpath -o build/bin/rest.exe -ldflags "-H windowsgui -s -w" .
 
 # 无头构建（验证专用：没有原生窗口，但照样服务资源与绑定端点）
-go build -tags server -o build/bin/chibingren_server.exe -ldflags "-s -w" .
+go build -trimpath -tags server -o build/bin/chibingren_server.exe -ldflags "-s -w" .
 ```
+
+`-trimpath` 不是可选项：不加它，二进制里每个源文件都以 `D:/…/xxx.go` 的绝对路径存在
+（panic 栈、运行时符号），等于把构建机的目录结构和用户名一起发出去。加了之后路径统一
+变成 `workerrest/xxx.go`。`scripts/verify_portable.py` 有一条断言专门扫这个泄漏。
 
 产物 `rest.exe` 约 13.9 MB（Go 1.27.3 + Wails v3.0.0 下实测 13,949,440 字节），已含
 embed 的前端资源与图标；四个内置提示音不再 embed 进二进制，打包时随包放在 `sounds/`
@@ -56,6 +60,8 @@ python scripts/verify_portable.py
 | `WorkerRest-portable/` | 同名散装目录 |
 | `rest.zip` | 只含 `rest.exe` 的自动更新包（最大压缩，软件下载的就是它） |
 | `version.json` | 自动更新清单（version / date / url / sites / changes / sha256 / size） |
+| `THIRD-PARTY-NOTICES.txt` | 开源鸣谢清单（同一份也内嵌在 exe 里，见「开源鸣谢」一节） |
+| `清除开机自启动项.bat` | 删目录前清掉注册表里的开机自启动项（便携版没有卸载器） |
 
 同一版本的四种产物都落在 `release/WorkerRest-<tag>/` 里；目录名与压缩包名**不带版本号**，
 版本只体现在父目录名与 `version.json` 里。
@@ -118,7 +124,12 @@ python scripts/verify_portable.py
   打包脚本在 `rest.zip` 缺失或未生成时会直接失败——没有哈希的清单等于没有更新通道。
 - 解压即用，无需安装。**不做 NSIS 安装器**——单二进制天然绿色，便携目录 zip 即交付形态。
 - 便携运行的数据（配置 / 统计 / 用户音频）落在 exe 旁的 `config/` 与 `data/`，跟着程序走；
-  直接删掉整个目录就是完全卸载。
+  直接删掉整个目录就是完全卸载。唯一的目录外残留是注册表里的开机自启动项（只有勾过才有），
+  删目录前先跑包里的 `清除开机自启动项.bat`：它只删 `HKCU\…\Run` 与
+  `HKCU\…\Explorer\StartupApproved\Run` 里本软件那一项，不删文件、不碰别的软件。
+  这个脚本**刻意不叫「卸载.bat」**——它不删任何文件，叫卸载会让用户以为删完目录就干净了。
+  脚本里的值名与 `sys_autostart.go` 的 `runValueName` 是两份真源，`make_portable.py`
+  打包前会解析源码逐字比对（连键路径一起），不一致直接停；`verify_zip` 断言包里有它。
 
 ## 检查更新：自动 vs 手动
 
@@ -157,6 +168,8 @@ go test -tags server ./...         # 单元测试（295 用例）：契约 / shi
                                    # 系统能力 / 提示音 / 统计 / 督休专员迁移与命名唯一 / 外卖 / 更新 / 睡眠检测
 python scripts/smoke_server.py     # 绑定层无头冒烟：179 项断言
 python scripts/probe_renderer.py   # 渲染层探针：297 项断言 + 截图（需先 npm install）
+node   scripts/a11y_audit.js         # 可访问性静态审计：无名控件 / 活区 / 对话框语义，写 build/a11y_audit.json
+node   scripts/probe_a11y_focus.js # 对话框焦点管理行为探针：101 项（进得去 / Tab 跑不出 / 关后回得来）
 python scripts/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
 python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
 python scripts/probe_stats_file.py # 统计文件自愈探针：19 项（首跑自建 data/ / 损坏改名备份 / 弹窗说明 / Ack 清空）
@@ -176,6 +189,13 @@ python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出�
 - 上述脚本全部无头运行，报告写在 `%TEMP%`（`wr_go_smoke_report.txt` 等），退出码 0 = 全通过。
 - 冒烟 / 探针会**隔离配置**（拷真实配置进 `%TEMP%` + `WR_SETTINGS_PATH` 独占），绝不改动
   运行目录里的真实配置与统计。
+- **可访问性两条线**：`scripts/a11y_audit.js` 看静态语义（新增输入框必须配 `label[for]` 或
+  `aria-label`，新增对话框必须 `role` + `aria-modal` + `aria-labelledby`）；`scripts/probe_a11y_focus.js`
+  看行为（打开聚焦、Tab 循环、关闭归还）。对话框开关一律只改 `class="hidden"`，焦点由
+  `settings.js` 顶部的 MutationObserver 统一接管 —— **不要**在各调用点再手写 `focus()`。
+- `make_portable.py` 组装前会核对 **exe 比源码新**：`--no-build` 复用上一轮产物时，只要改过
+  任何非测试 `*.go` 或任一 `//go:embed` 资源（`frontend/dist/**` 等）就会被拒（rc=1），
+  信息里直接列出比 exe 新的文件。这是 `build/bin` 里放旧 exe 也不至于发错包的兜底。
 
 ## 目录结构
 
@@ -230,20 +250,72 @@ python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出�
   `abc.` 与 `abc` 都算重名（它们会落到同一个目录上）。**同一张图导入两次**也走这条 ——
   第二个自动叫「我的图 (2)」，不会出现两个同名专员抢一个目录。
 
+## 开源鸣谢（第三方许可）
+
+随包声明的第三方组件、版本与许可全文在仓库根 `THIRD-PARTY-NOTICES.txt`。文件内部只有三段，
+**不含任何说明性文字、也不写文件级标题**（弹窗标题已经叫「开源鸣谢」，正文再顶一遍是重复）：
+致谢 → 组件清单（名称 / 版本 / 协议，列对齐）→ 逐段许可全文（78 字符横线分隔）。
+它由生成器从**构建事实**推导（不是手抄清单）：
+
+```powershell
+python scripts/gen_notices.py           # 重新生成（依赖或 Go 版本变了才需要）
+python scripts/gen_notices.py --check   # 只校验：与当前构建不一致则退出码 1
+```
+
+- 收录口径 = **实际参与构建**的组件：Go 模块取自 `go list -deps`（与 `go version -m`
+  读出的内嵌依赖一致）、Go 标准库与运行时、以及内联进 `frontend/dist` 产物的库
+  （`qrcode` / `dijkstrajs`）。未被链接的 `go.sum` 条目不在其列。
+- 同一份文件两个去处：`//go:embed` 进 exe（`notices.go`），并由打包脚本放到便携包根目录。
+  只把声明编译进机器码、却没有读取入口，等于没有复现 —— 所以设置页「关于 → 软件信息 →
+  开源鸣谢」可读全文，并可「另存为…」导出一份（内容与内嵌文本相同，导出时转 CRLF）。
+- **依赖变了必须重新生成**：`make_portable.py` 在 `go build` **之前**跑 `--check`，过期直接
+  停止 —— 清单是编进 exe 的，编进去之后所有校验都看不出「一致地过期」。单测
+  `TestNoticesCoversLinkedModules` 用 `go list -deps` 两个方向核对（不缺、也不多声明）。
+- 升级前端内联库时，把 npm 包里的许可原文放回 `scripts/notices/`，并同步 `gen_notices.py`
+  的 `FRONTEND`（含产物指纹串）：指纹在 bundle 里找不到会直接报错，防止清单悄悄过期。
+- 这份文件只声明**第三方**组件；本仓库自己的代码没有单独的 `LICENSE` 文件。
+
+## 后台 goroutine 的 panic 兜底
+
+Wails v3 只保护**绑定方法**（`pkg/application/bindings.go` 把 panic 转成 `CallError`，
+前端 promise reject、进程存活）。但调度 tick、空闲/勿扰/应用占用监视、托盘刷新、外卖检查、
+统计落盘、自动更新排期这些循环都跑在本项目自建的 goroutine 里，不在框架保护范围内 ——
+一处 nil deref 就会让进程直接终止，而发布版是 GUI 子系统，用户看到的是「窗口和托盘图标
+一起消失，日志里什么都没有」。
+
+`recoverguard.go` 给这些循环加了统一兜底：
+
+| 层次 | 行为 |
+|---|---|
+| `guardRun(name, fn)` | 包住**每一轮**（不是循环外层）。panic 只丢这一拍，记日志后继续 |
+| 日志限流 | 每个位置首次打全栈，之后 5 分钟内不再重复（循环里每 500 ms 炸一次时，全栈会把 2 MiB×3 的滚动日志瞬间填满，把第一次的现场冲掉） |
+| 熔断 | 同一位置 2 秒内连炸 3 次 → 判定不可恢复（典型是 panic 落在 Lock 与 Unlock 之间、互斥量没释放，后续 tick 全卡死），落盘 + 弹 `MessageBoxW` 指出日志路径 + 以退出码 1 退出 |
+| `main()` 顶层 recover | 兜住主 goroutine，同样落盘 + 提示 |
+
+- **约定：临界区里不放会 panic 的业务调用。** `recover` 无法代你解锁（`sync.Mutex` 没有
+  「外部释放」），panic 落在锁段中间时这一层救不回来，只能靠熔断收场。锁段保持「只读字段 /
+  只赋值」的短小形状，是这套机制成立的前提。
+- `guardRunOK` 额外返回「这一轮是否跑完」：自动更新检查 panic 后不能立刻重试
+  （轮询粒度 2 秒，一秒内连炸三次正好撞熔断阈值），拿到 false 改为退避一分钟。
+- `TestBackgroundGoroutinesAreGuarded` 扫全仓：任何一个起了后台 goroutine 的文件里没有
+  `guardRun` 就红 —— 新增循环忘了包兜底，测试直接拦住。
+
 ## 设置窗口尺寸
 
 出厂尺寸写死在 `default_settings.json` 的 `window` 块里（`window_size.go` 顶部有完整推导）：
 
 ```json
-"window": { "width": 874, "height": 858, "rememberSize": true, "lastWidth": 0, "lastHeight": 0 }
+"window": { "width": 874, "height": 857, "rememberSize": true, "lastWidth": 0, "lastHeight": 0 }
 ```
 
-- **874 × 858 是用户选定的**（2026-10-29 他把窗口拖到这个尺寸后要求「记住现在的尺寸，设为默认」）。
-- **高度不是随手填的**：`scripts/probe_window_size.py` 起无头服务后逐 2px 扫高度，得到宽度 ≥820 时
-  「关于页恰好不出垂直滚动条」= 857（857−38 标题栏−6 底部透明边框 = 813 = 内容高度，847 就滚）。
-  现在的 858 比它高 1px、宽 874 仍在 ≥820 区间内，同一条件下同样不出滚动条。
-  宽度一旦回落到 760，关于页需要 875 —— 那属于「窗口被用户缩窄，允许出滚动条」，
-  不影响出厂值。
+- **874 是用户选定的宽度**（2026-10-29 他把窗口拖到这个尺寸后要求「记住现在的尺寸，设为默认」）。
+- **高度不是随手填的**：`scripts/probe_window_size.py` 起无头服务后逐 2px 扫高度，取宽度 ≥820 时
+  「关于页恰好不出垂直滚动条」的那一档。2026-10-31 关于页先因「第三方许可」一行抬到 893，
+  同一天又把「发布时间」并进「版本」行、删掉独立的一行（−36px 行高），边界回落到 **857**
+  （`857 − 44（38 标题栏 + 6 底部透明边框）= 813 = 内容区高度`；855 就滚 2px）。
+  **关于页内容或底部 padding 一变，就必须重跑该脚本重取高度**，否则 `verify_window_size.py` 的
+  「出厂尺寸下关于页恰好不滚」会红。宽度一旦回落到 760，关于页需要更高的窗口 —— 那属于
+  「窗口被用户缩窄，允许出滚动条」，不影响出厂值。
 - **最小宽度 760 也是实测的**：同一脚本逐 10px 扫宽度，750 起才没有横向裁切（740 时 `.row.field`
   溢出 2px），取 760 留 10px 余量。两个边界与滚动条是否出现无关（620 / 940 两个高度下结论一致）。
 - `width` / `height` 是**默认尺寸**，`lastWidth` / `lastHeight` 是**上次用过的尺寸**，两对数各管

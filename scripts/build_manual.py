@@ -10,6 +10,15 @@ import os
 
 SHOTS_DIR = "C:/Users/lwb/AppData/Local/Temp/wr_manual_shots"
 STYLE_FILE = "C:/Users/lwb/AppData/Local/Temp/manual_style.css"
+# 沙箱 / CI 里 TEMP 不一定是 C:\Users\<名>\AppData\Local\Temp（本机被 WorkBuddy 改指到
+# 别的目录），所以先跟随 TEMP，再回退到老固定路径 —— 两边都试，避免「脚本跑完了、
+# 读不到截图」这种闷头失败。
+_LEGACY_TEMP = "C:/Users/lwb/AppData/Local/Temp"
+_TEMP = os.environ.get("TEMP") or _LEGACY_TEMP
+if not os.path.isdir(os.path.join(_TEMP, "wr_manual_shots")):
+    _TEMP = _LEGACY_TEMP
+SHOTS_DIR = os.path.join(_TEMP, "wr_manual_shots")
+STYLE_FILE = os.path.join(_TEMP, "manual_style.css")
 OUT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
                         "manual", "操作手册.html")
 
@@ -41,6 +50,14 @@ def b64(name):
 def fig(placeholder, caption):
     return ('<figure><img src="__%s__" alt="%s" />'
             '<figcaption>%s</figcaption></figure>' % (placeholder, caption, caption))
+
+if not os.path.exists(STYLE_FILE):
+    raise SystemExit(
+        "缺少样式文件：%s\n"
+        "它不随源码入库，需要从现有 manual/操作手册.html 的 <style> 块提取一次。" % STYLE_FILE)
+if not os.path.isdir(SHOTS_DIR):
+    raise SystemExit(
+        "缺少截图目录：%s\n先跑 python scripts/manual_shots.py 生成 16 张界面截图。" % SHOTS_DIR)
 
 STYLE = open(STYLE_FILE, encoding="utf-8").read()
 
@@ -76,7 +93,7 @@ BODY = """
 
 <p>吃饼人也敢休息？是一款常驻系统托盘的休息提醒软件：按照你设定的节奏定时弹出休息提醒，
 督促你进行短休息（眨眼、远眺、活动颈肩）与长休息（起身走动），缓解眼疲劳与久坐压力；
-另有外卖提醒帮你在饭点前下单。所有配置与统计数据都保存在本机，不联网、不上传。</p>
+另有外卖提醒帮你在饭点前下单。所有配置与统计数据都保存在本机，不上传；除了检查更新，软件不访问网络。</p>
 
 <h3>核心特性</h3>
 
@@ -153,7 +170,7 @@ __FIG_general_light__
 <tr><td>应用列表（折叠）</td><td>三种添加入口：从运行的应用选择 / 从应用安装路径选择 / 手动输入应用名称。按可执行文件名匹配（如 Code.exe），忽略路径、不区分大小写；左侧是可执行文件名（按它匹配），右侧是软件名（可改，仅用于显示）</td></tr>
 <tr><td rowspan="3">设置窗口</td><td>标题</td><td>显示在窗口标题与系统通知里（托盘悬停提示不带此前缀），最长 30 个字，可改成你喜欢的名字</td></tr>
 <tr><td>主题</td><td>浅色 / 深色；设置窗口与各弹窗的配色，默认浅色</td></tr>
-<tr><td>自动记录窗口尺寸</td><td>勾选（默认）后每次打开设置窗口都沿用上次关闭时的尺寸；取消勾选则始终用默认尺寸（874 × 858，关于页恰好不需要滚动的高度）</td></tr>
+<tr><td>自动记录窗口尺寸</td><td>勾选（默认）后每次打开设置窗口都沿用上次关闭时的尺寸；取消勾选则始终用默认尺寸（874 × 857，关于页恰好不需要滚动的高度）</td></tr>
 <tr><td rowspan="8">提醒窗口</td><td>背景颜色</td><td>休息窗口的底色，同时用作强调色（按钮 / 进度环）；右下角的提前提示小窗也跟随它，并按底色深浅自动换文字颜色（浅底深字 / 深底浅字），可一键「恢复默认」</td></tr>
 <tr><td>透明度</td><td>休息 / 提醒窗口的背景透明程度，有效范围 0 ~ 0.5，每次调整 0.01（数值越大越透明，默认 0.05 = 轻微透明）</td></tr>
 <tr><td>窗口宽度 / 高度</td><td>占屏幕的百分比（20 ~ 100），非全屏时生效，默认 95% / 95%</td></tr>
@@ -373,7 +390,8 @@ __FIG_about__
 <tbody>
 <tr><td rowspan="2">外观</td><td>标题</td><td>标题显示在窗口标题与系统通知里（托盘悬停提示不带此前缀），最长 30 个字，可改成你喜欢的名字</td></tr>
 <tr><td>主题</td><td>可选浅色 / 深色（默认浅色）</td></tr>
-<tr><td rowspan="4">软件信息</td><td>版本信息</td><td>显示当前版本号（如 v1.0.0）</td></tr>
+<tr><td rowspan="5">软件信息</td><td>软件版本</td><td>显示版本号与发布时间（如 v1.0.0 | 2026-10-31 12:00；源码直跑显示「本地构建」）</td></tr>
+<tr><td>开源鸣谢</td><td>查看本程序用到的开源项目与第三方库：名称、版本号、开源协议，以及每份许可全文（清单内嵌在程序里，可「另存为」导出一份 txt）</td></tr>
 <tr><td>检查更新</td><td>向更新源查询是否有新版本（无更新源时提示不可达）</td></tr>
 <tr><td>恢复默认设置</td><td>一键恢复出厂默认；当前配置会先备份为 settings.backup.json（每次覆盖），督休专员目录与已导入的音乐文件不受影响，开机自启动一并关闭</td></tr>
 <tr><td>退出软件</td><td>彻底退出（关闭窗口不会退出）</td></tr>
@@ -449,7 +467,11 @@ __FIG_takeout__
 
 <h2 id="s7"><span class="no">7</span>数据与隐私</h2>
 
-<p>软件无账户、无遥测，不联网上传任何数据。</p>
+<p>软件无账户、无遥测，不上传任何数据。</p>
+<p>需要联网的只有检查更新（可在「关于」页取消勾选「自动检查更新」）：向
+https://www.goodgoodlive.com/worker-rest/version.json 取版本信息，有新版本时再下载
+https://www.goodgoodlive.com/worker-rest/rest.zip。全程只取不送——本机的配置、统计、
+使用习惯都不会上传。外卖提醒里的优惠券二维码是给手机扫的，软件自己不去访问那个地址。</p>
 <p>配置保存在本机 settings.json，使用统计保存在同目录 stats.json（写入临时文件后原子改名，防止损坏）。</p>
 <p>统计文件在第一次启动时自动创建（安装包里不带它，升级也不会覆盖）；万一被改坏或读不出来，程序会先把原文件改名成 stats_日期_时间.json 备份，再新建一份空表，并在设置页弹窗说明备份位置——原始数据始终留在 data 目录里。</p>
 <p>自定义音乐与自定义立绘会复制进配置目录，原文件移动或删除后仍可用。</p>
@@ -472,6 +494,7 @@ __FIG_takeout__
 <tr><td>统计能保留多久？</td><td>统计长期保留，没有 400 天的上限；历史明细可筛选任意日期范围查看。</td></tr>
 <tr><td>提示音支持哪些格式？</td><td>wav / mp3 / ogg / m4a / flac 等；休息开始与结束共用同一套音乐列表。</td></tr>
 <tr><td>我直接把音频丢进程序的 sounds 目录，能用吗？</td><td>可以。下次启动时设置页会提示「发现 N 个新提示音」，点「全部导入」就登记进音乐列表 —— 原地登记，不复制文件、不改名（所以下次启动不会再把它当成新的）。反过来，如果某个已登记条目的文件被删掉了，会提示「N 个提示音的文件已不在」，可一键从配置删除该条目（只删条目，不动任何文件）。点「暂不处理」本次运行不再提醒，下次启动重新检查。</td></tr>
+<tr><td>怎么彻底卸载？</td><td>本软件是绿色便携版，没有安装器：删掉整个文件夹就是卸载。只有一处目录外的残留——如果你勾过「开机自启动」，注册表里会留下一条指向本软件 exe 的启动项；删文件夹前先双击包里的「清除开机自启动项.bat」，它只删这一项，不删任何文件、也不碰别的软件。已经删了文件夹也没关系，脚本还能跑。</td></tr>
 </tbody>
 </table>
 
