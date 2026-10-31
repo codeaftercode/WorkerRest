@@ -142,24 +142,60 @@ def build_exe(version: str) -> bool:
     runtime.Caller、DWARF 全是它）。加了之后文件路径变成 `workerrest/xxx.go`。
     注意它与 -X main.buildTime=<当前时间> 天然互斥于「逐字节可复现」——
     剥离路径是为了不泄漏，不是为了 bit-for-bit 复现。
+
+    构建前用**本次 tag 版本**在临时目录重生成一份 syso 并临时替换仓库根的
+    rsrc_windows_amd64.syso，go build 链接完再恢复。这是为了消除「打了新 tag →
+    仓库里 syso 版本号还是旧的 → 必须先 commit 一份新 syso → tag 又不在 HEAD 上」的
+    死锁：VERSIONINFO 版本号必须跟 tag 走，但 syso 又随源码入库（commit 会顶掉 tag），
+    所以只能在构建这瞬间用显式版本号现算一份，不动仓库、不留脏文件。
     """
     exe = EXE_SRC
     # 发布时间用 RFC3339 且无空格（ISO 格式），避免破坏单条 ldflags 字符串；
     # 前端「版本 | 发布时间」行在时间为空时回退显示「本地构建」。
     build_time = datetime.now().astimezone().isoformat()
     ldflags = f'-X main.appVersion={version} -X main.buildTime={build_time} -H windowsgui -s -w'
-    print(f"[make-portable] go build -trimpath -> {exe} (version={version})")
-    r = subprocess.run(
-        ["go", "build", "-trimpath", "-o", exe, "-ldflags", ldflags, "."],
-        cwd=ROOT,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-    )
-    if r.returncode != 0:
-        out = r.stdout.decode("utf-8", "replace")
-        print(f"[make-portable] FAIL: go build 失败\n{out}")
-        return False
-    return os.path.exists(exe)
+
+    syso = os.path.join(ROOT, "rsrc_windows_amd64.syso")
+    gen = os.path.join(HERE, "gen_windows_res.py")
+    backup = syso + ".buildbak"
+    tmp_syso = None
+    try:
+        # 用本次 tag 版本生成正确版本的 syso（临时），并临时替换仓库根的，供 go build 链接
+        import tempfile
+        fd, tmp_syso = tempfile.mkstemp(prefix="wr-syso-", suffix=".syso")
+        os.close(fd)
+        r = subprocess.run(
+            [sys.executable, gen, "--version", version, "--out", tmp_syso],
+            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+        )
+        if r.returncode != 0:
+            out = ((r.stdout or "") + (r.stderr or "")).strip()
+            print(f"[make-portable] FAIL: 生成 syso 失败\n{out}")
+            return False
+        print("[make-portable] " + ((r.stdout or "").strip().splitlines()[-1] if r.stdout else ""))
+        if os.path.isfile(syso):
+            os.replace(syso, backup)
+        os.replace(tmp_syso, syso)
+        tmp_syso = None
+
+        print(f"[make-portable] go build -trimpath -> {exe} (version={version})")
+        r = subprocess.run(
+            ["go", "build", "-trimpath", "-o", exe, "-ldflags", ldflags, "."],
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+        )
+        if r.returncode != 0:
+            out = r.stdout.decode("utf-8", "replace")
+            print(f"[make-portable] FAIL: go build 失败\n{out}")
+            return False
+        return os.path.exists(exe)
+    finally:
+        # 无论成败都恢复仓库根 syso，绝不留脏文件或半替换状态
+        if os.path.isfile(backup):
+            os.replace(backup, syso)
+        if tmp_syso and os.path.isfile(tmp_syso):
+            os.remove(tmp_syso)
 
 
 def copy_roles(dest: str) -> None:
@@ -607,7 +643,7 @@ def check_exe_freshness(exe: str) -> str:
     )
 
 
-def check_winres(exe: str) -> str:
+def check_winres(exe: str, version: str) -> str:
     """exe 必须带图标 + VERSIONINFO + MANIFEST 三类 Windows 资源，返回空串表示通过。
 
     审计 域2-4 逮到过「exe 既无 VERSIONINFO 也无应用清单」：.syso 只嵌了图标
@@ -615,15 +651,20 @@ def check_winres(exe: str) -> str:
     supportedOS 清单。这里让 verify_windows_res.py 解析 PE 的 .rsrc 节断言三类资源
     齐全，把「发出去的 exe 缺版本信息」挡在打包之前。
 
-    同时跑 gen_windows_res.py --check：syso 里的 VERSIONINFO 版本号是「最近的 tag（去 v，
-    不足四段补 0）」，随源码入库。打了新 tag 后如果忘了重新生成 syso，这里
-    能发现「syso 的版本号与当前 git 版本不一致」—— 和 ldflags 注入的 appVersion 一样，
-    版本来源唯一（git tag），任何一处漂移都要挡。
+    版本号一致性：exe 的 VERSIONINFO 必须等于**本次 tag 版本**（build_exe 已用该版本
+    显式生成 syso，这里用 --expect-version 复核 exe 里确实编进了对的版本，防「生成的
+    syso 没用上 / 版本传错」这类静默漂移）。不再拿「仓库 syso 的版本号 == git 最新 tag」
+    来卡 —— 那正是「打 tag 后 syso 必须 commit 一份新版本」死锁的来源：版本号只在
+    build_exe 这一瞬间用显式值现算，仓库里的 syso 保持上一个 tag 的版本即可，不必
+    为它多提交一次。
+
+    图标/manifest 内容一致性：仍跑 gen_windows_res.py --check，但只核对图标与清单的
+    内容没漂移（版本号不参与比对）—— 图标/清单变了却忘了重新生成，还是要挡。
     """
     script = os.path.join(HERE, "verify_windows_res.py")
     if not os.path.isfile(script):
         return f"找不到 {script}"
-    r = subprocess.run([sys.executable, script, exe],
+    r = subprocess.run([sys.executable, script, exe, "--expect-version", version],
                        cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
     out = ((r.stdout or "") + (r.stderr or "")).strip()
@@ -631,7 +672,7 @@ def check_winres(exe: str) -> str:
         return out or "exe 的 Windows 资源（图标/VERSIONINFO/MANIFEST）校验失败"
     print("[make-portable] " + (out or "Windows 资源（图标/VERSIONINFO/MANIFEST）ok"))
 
-    # syso 与当前 git 版本一致（tag 变了要重新生成，否则 VERSIONINFO 版本号是旧的）
+    # 图标/清单内容没漂移（版本号不比对，见函数 docstring）
     gen = os.path.join(HERE, "gen_windows_res.py")
     if not os.path.isfile(gen):
         return f"找不到 {gen}"
@@ -640,8 +681,8 @@ def check_winres(exe: str) -> str:
                         encoding="utf-8", errors="replace")
     out2 = ((r2.stdout or "") + (r2.stderr or "")).strip()
     if r2.returncode != 0:
-        return out2 or "syso 与当前 git 版本不一致"
-    print("[make-portable] " + (out2 or "syso 与当前版本一致"))
+        return out2 or "syso 的图标/清单内容与当前源码不一致"
+    print("[make-portable] " + (out2 or "syso 图标/清单与源码一致"))
     return ""
 
 
@@ -662,6 +703,42 @@ def check_notices() -> str:
     if r.returncode != 0:
         return out or "开源鸣谢清单与当前构建不一致"
     print("[make-portable] " + (out or "开源鸣谢清单 ok"))
+    return ""
+
+
+def check_toolchain() -> str:
+    """发布工具链必须与 go.mod 声明的 `toolchain` 指令一致，返回空串表示通过。
+
+    go.mod 的 toolchain 指令是「发布用哪个 Go 构建」的唯一真源（有了它，任何机器上
+    默认 GOTOOLCHAIN=auto 都会切到同一版本）。这里在构建前显式校验「实际运行的 go
+    == 声明的版本」：一旦有人用 GOTOOLCHAIN=local 或别的 go 入口悄悄换了工具链，
+    编进 exe 的运行时版本就和清单里声明的不一致 —— 声明与实物不符，比漏声明更糟。
+
+    这条与 check_notices 里 gen_notices.py 的同名校验互补：那边管「清单里写的版本
+    对不对」，这边管「构建 exe 的工具链对不对」，两头都钉住才算钉死。
+    """
+    go_mod = os.path.join(ROOT, "go.mod")
+    try:
+        with open(go_mod, encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        return f"读不到 go.mod：{e}"
+    m = re.search(r"^toolchain\s+(go[\d.]+)\s*$", text, re.M)
+    if not m:
+        # 没声明 toolchain 指令：退回 go 指令版本，但这是「未固定」状态，也应提醒
+        m = re.search(r"^go\s+([\d.]+)\s*$", text, re.M)
+        if not m:
+            return "go.mod 里既没有 toolchain 指令也没有 go 指令"
+        return ""  # 无 toolchain 指令：不强制，交给 gen_notices 的兜底
+    declared = m.group(1)
+
+    actual = subprocess.run(["go", "env", "GOVERSION"], cwd=ROOT,
+                            capture_output=True, text=True,
+                            encoding="utf-8", errors="replace").stdout.strip()
+    if actual != declared:
+        return (f"工具链版本漂移：go.mod 声明 {declared}，但实际运行的 go 是 {actual}。"
+                f"请用声明的工具链构建（默认 GOTOOLCHAIN=auto 会自动切换），"
+                f"或更新 go.mod 的 toolchain 指令。")
     return ""
 
 
@@ -759,6 +836,12 @@ def main() -> int:
         print("[make-portable] FAIL: " + why)
         return 1
 
+    # 1a. 发布工具链必须与 go.mod 声明一致（否则编进 exe 的运行时版本与清单不符）
+    why = check_toolchain()
+    if why:
+        print("[make-portable] FAIL: " + why)
+        return 1
+
     # 1b. 构建 exe
     if not args.no_build:
         if not build_exe(version):
@@ -778,7 +861,7 @@ def main() -> int:
 
     # 1c2. exe 必须带图标 + VERSIONINFO + MANIFEST（审计 域2-4）：缺版本信息/清单的
     #       exe 发出去后属性页看不到版本号、也没有长路径感知与 supportedOS 声明。
-    why = check_winres(EXE_SRC)
+    why = check_winres(EXE_SRC, version)
     if why:
         print("[make-portable] FAIL: " + why)
         return 1

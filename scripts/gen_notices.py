@@ -72,6 +72,30 @@ def find_go():
     raise SystemExit("找不到 go：设置 GO_BIN 环境变量，或把 go 加进 PATH")
 
 
+def declared_toolchain():
+    """发布工具链的唯一真源：go.mod 里的 `toolchain` 指令（缺省退回 `go` 指令版本）。
+
+    为什么不再从 `go env GOVERSION` 现算：后者返回的是「正在运行的工具链」，它随
+    本机装的 go、GOTOOLCHAIN 环境变量漂移。清单里那行「Go standard library & runtime」
+    的版本号一旦跟着漂，同一份源码在不同机器上会生成不同清单，`--check` 与打包门禁
+    就会随机红 —— 这不是「声明与实物一致」，而是「构建工具链版本没固定」的伪随机。
+
+    有了 `toolchain` 指令，任何机器上 `go build`（默认 GOTOOLCHAIN=auto）都会切到同一
+    版本，`go env GOVERSION` 也确定性地返回它。这里读 go.mod 里声明的那一个，作为
+    「应当使用的版本」；再与实际运行版本比对（见 build()），不一致就明确报错。
+    """
+    go_mod = os.path.join(ROOT, "go.mod")
+    with open(go_mod, "r", encoding="utf-8", errors="replace") as f:
+        text = f.read()
+    m = re.search(r"^toolchain\s+(go[\d.]+)\s*$", text, re.M)
+    if m:
+        return m.group(1)
+    m = re.search(r"^go\s+([\d.]+)\s*$", text, re.M)
+    if m:
+        return "go" + m.group(1)
+    raise SystemExit("go.mod 里既没有 toolchain 指令也没有 go 指令，无法确定发布工具链版本")
+
+
 def go(go_bin, *args):
     r = subprocess.run([go_bin, *args], cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace")
@@ -169,7 +193,18 @@ def build():
 
     modcache = go(go_bin, "env", "GOMODCACHE").strip()
     goroot = go(go_bin, "env", "GOROOT").strip()
-    gover = go(go_bin, "env", "GOVERSION").strip()  # 形如 go1.27.3
+
+    # 版本来源 = go.mod 的 toolchain/go 指令（唯一真源），而非 `go env GOVERSION`。
+    # 但必须与实际运行的工具链一致：不一致说明本机用了别的 go 在构建，清单一旦按
+    # 声明版本写，就会和实际链接进 exe 的运行时版本对不上。这里是「声明==实物」的
+    # 最后一道防线 —— 漂移时明确报错，而不是静默写错。
+    gover = declared_toolchain()
+    actual = go(go_bin, "env", "GOVERSION").strip()  # 形如 go1.27.3
+    if actual != gover:
+        raise SystemExit(
+            "工具链版本漂移：go.mod 声明 %s，但实际运行的 go 是 %s。\n"
+            "请用声明的工具链构建（默认 GOTOOLCHAIN=auto 会自动切换），或更新 go.mod 的 "
+            "toolchain 指令后重新生成清单。" % (gover, actual))
 
     sections = []  # (标题, 来源, [(文件名, 正文)], 清单行)
 

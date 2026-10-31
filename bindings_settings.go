@@ -146,24 +146,6 @@ func (a *App) ResetSettings() map[string]any {
 	return map[string]any{"ok": true, "backupPath": backupPath}
 }
 
-// OpenManual 打开随包操作手册（自包含 HTML）。打包版从 exe 旁的 manual/ 取，
-// 开发态开模块根下的 manual/；缺失返回 false 由页面提示。
-func (a *App) OpenManual() bool {
-	exe, _ := os.Executable()
-	cands := []string{filepath.Join(filepath.Dir(exe), "manual", "操作手册.html")}
-	// 开发态：模块根下的 manual/（supervisors/ 同款回退）
-	if root := nearestModuleRoot(filepath.Dir(exe)); root != "" {
-		cands = append(cands, filepath.Join(root, "manual", "操作手册.html"))
-	}
-	for _, c := range cands {
-		if _, err := os.Stat(c); err == nil {
-			return revealPath(c, "")
-		}
-	}
-	log.Printf("[manual] 操作手册缺失，已查找：%v", cands)
-	return false
-}
-
 // OpenExternal 外链（开源许可 / 发布页）：只放行 https，其余 scheme 一律拒绝——
 // 渲染层任何一处外链被注入都不能变成任意协议唤起。
 func (a *App) OpenExternal(url string) bool {

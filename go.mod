@@ -2,6 +2,8 @@ module workerrest
 
 go 1.26.3
 
+toolchain go1.27.3
+
 require (
 	github.com/go-ole/go-ole v1.3.0
 	github.com/wailsapp/wails/v3 v3.0.0

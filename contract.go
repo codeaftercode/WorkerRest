@@ -50,14 +50,13 @@ var wiredCalls = []string{
 	"SaveRolePreview",
 	"SupervisorPreview",
 
-	// ---- 关于页 / 更新 / 手册 / 外链 ----
+	// ---- 关于页 / 更新 / 外链 ----
 	"AppInfo",
 	"UpdateStatus",
 	"CheckUpdate",
 	"StartUpdate",
 	"PendingUpdate",
 	"IgnoreVersion",
-	"OpenManual",
 	"OpenExternal",
 	"ExportReport",
 	// 开源鸣谢：关于页入口读清单、另存为导出一份（见 notices.go）

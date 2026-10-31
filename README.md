@@ -92,17 +92,24 @@ python scripts/verify_portable.py
   - **RT_GROUP_ICON / RT_ICON** —— exe 文件图标（16~256 七档，源是全项目唯一那份
     `frontend/dist/icon.png`）
   - **RT_VERSION(16)** —— 文件/产品版本、公司、描述（资源管理器「属性 → 详细信息」可见）；
-    版本号取「当前提交的 tag，无 tag 则最近 tag +.dev」（与 ldflags 注入的 `appVersion` 同源）
+    版本号取「当前提交的 tag，无 tag 则最近 tag」（与 ldflags 注入的 `appVersion` 同源）
   - **RT_MANIFEST(24)** —— 应用清单，声明 `longPathAware`（Win10 1607+ 长路径）与
     `supportedOS`（Win7~11）。**不声明 `dpiAware`**：Wails 运行时已
     `SetProcessDpiAwarenessContext(PER_MONITOR_V2)`，清单里再写会冲突
-  重新生成（改了图标 / 打了新 tag 之后）：
+  重新生成（**改了图标 / 改了清单**之后；打新 tag **不必**重新生成，见下）：
   ```bash
   python scripts/gen_windows_res.py          # 重新生成 syso（同时落盘 versioninfo.json / app.manifest）
-  python scripts/gen_windows_res.py --check  # 核对当前 syso 是否与源码/版本一致（打包门禁里会跑）
+  python scripts/gen_windows_res.py --check  # 核对当前 syso 的图标/清单内容是否与源码一致（打包门禁里会跑）
   ```
   校验方式：`python scripts/verify_windows_res.py <exe>` 解析 PE 断言三类资源齐全；
-  `make_portable.py` 打包前会自动跑 `check_winres`（资源齐全 + syso 与版本一致两重门禁）。
+  `make_portable.py` 打包前会自动跑 `check_winres`（资源齐全 + exe 的 VERSIONINFO 版本号
+  == 本次 tag + syso 图标/清单内容未漂移三重门禁）。
+
+  **版本号怎么跟着 tag 走而不产生死锁**：仓库里的 syso 版本号是「最近一次生成时的 tag」，
+  打新 tag 后它自然是旧的。`make_portable.py` 在 `go build` 前用本次 tag 版本在**临时目录**
+  现算一份正确版本的 syso（`gen_windows_res.py --version <tag> --out <临时路径>`）临时替换
+  仓库根供链接，构建完恢复 —— 所以不需要「重生成 syso → commit → 挪 tag」的手工四步，
+  也不污染工作树。仓库里的 syso 只在「图标或清单内容变了」时才需要真正重新生成并提交。
   **托盘与标题栏不需要另做图**：托盘直接吃这份 PNG（Wails v3 的
   `w32.CreateSmallHIconFromImage` PNG/ICO 都认，系统再按 `SM_CXSMICON` 缩放），标题栏是
   同一张图按 20px 显示。
