@@ -105,7 +105,7 @@
         </div>
         <div class="card">
           <h3>设置窗口</h3>
-          <div class="row field"><label>标题</label><input type="text" id="appName" maxlength="30" placeholder="吃饼人也敢休息？" /></div>
+          <div class="row field"><label for="appName">标题</label><input type="text" id="appName" maxlength="30" placeholder="吃饼人也敢休息？" /></div>
           <div class="row field"><label>主题</label>
             <div class="inline">
               <label class="switch-row"><input type="radio" name="theme" value="light" /> 浅色</label>
@@ -130,9 +130,9 @@
               <button type="button" class="btn ghost" id="ap-preview-short">预览</button>
             </div>
           </div>
-          <div class="row field"><label>透明度</label><div class="slider-row"><input type="range" id="ap-opacity" min="0" max="0.5" step="0.01" /><span class="slider-val" id="ap-opacity-val"></span></div></div>
-          <div class="row field"><label>窗口宽度（屏幕百分比）</label><input type="number" id="ap-widthPct" min="20" max="100" /></div>
-          <div class="row field"><label>窗口高度（屏幕百分比）</label><input type="number" id="ap-heightPct" min="20" max="100" /></div>
+          <div class="row field"><label for="ap-opacity">透明度</label><div class="slider-row"><input type="range" id="ap-opacity" min="0" max="0.5" step="0.01" /><span class="slider-val" id="ap-opacity-val"></span></div></div>
+          <div class="row field"><label for="ap-widthPct">窗口宽度（屏幕百分比）</label><input type="number" id="ap-widthPct" min="20" max="100" /></div>
+          <div class="row field"><label for="ap-heightPct">窗口高度（屏幕百分比）</label><input type="number" id="ap-heightPct" min="20" max="100" /></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-fullscreen" /> 全屏显示<span class="q-mark" title="忽略窗口宽度、窗口高度参数">?</span> </label></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-alwaysOnTop" /> 窗口置顶 </label></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-allScreens" /> 在所有屏幕显示 </label></div>
@@ -146,7 +146,7 @@
           </div>
           <!-- 总开关放在卡片内容第一行（与「时间规划」三张提醒卡一致）：勾选框在左、「启用」在右 -->
           <div class="row check"><label class="switch-row"><input type="checkbox" id="snd-enabled" /> 启用</label></div>
-          <div class="row field"><label>音量</label><div class="slider-row"><input type="range" id="snd-volume" min="0" max="1" step="0.05" /><span class="slider-val" id="snd-volume-val"></span></div></div>
+          <div class="row field"><label for="snd-volume">音量</label><div class="slider-row"><input type="range" id="snd-volume" min="0" max="1" step="0.05" /><span class="slider-val" id="snd-volume-val"></span></div></div>
           <!-- 提示音：默认折叠（自建折叠面板，不走提醒内容的 .msg-panel 接线）；
                「播放方式」为标题行的图标按钮（全局生效的播放策略），与列表展开/收起无关 -->
           <div class="fold-panel" id="snd-music-panel">
@@ -204,10 +204,10 @@
             <button class="btn ghost" id="short-preview" title="预览短休息">预览</button>
           </div>
           <div class="row field"><label>触发方式</label><div class="cdrop-host" id="short-mode"></div></div>
-          <div class="row field bk-countdown" data-break="short"><label>间隔（分钟）</label><input type="number" id="short-interval" min="1" max="480" /></div>
-          <div class="row field"><label>时长（秒）</label><input type="number" id="short-duration" min="5" max="600" /></div>
-          <div class="row field"><label>提前通知（秒）</label><input type="number" id="short-notify" min="0" max="300" /></div>
-          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="short-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示「推迟」按钮" /></div>
+          <div class="row field bk-countdown" data-break="short"><label for="short-interval">间隔（分钟）</label><input type="number" id="short-interval" min="1" max="480" /></div>
+          <div class="row field"><label for="short-duration">时长（秒）</label><input type="number" id="short-duration" min="5" max="600" /></div>
+          <div class="row field"><label for="short-notify">提前通知（秒）</label><input type="number" id="short-notify" min="0" max="300" /></div>
+          <div class="row field"><label for="short-postpone">可推迟（分钟）</label><input type="number" id="short-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示「推迟」按钮" /></div>
           <!-- 提醒时间列表：固定时间方式的时刻表，默认折叠（与提醒内容面板同一套外观；
                行不可拖动、无单选框，只有行首的启停勾选框）。「＋」新增放标题行右侧 -->
           <div class="slot-fixed" data-break="short">
@@ -245,12 +245,12 @@
             <button class="btn ghost" id="long-preview" title="预览长休息">预览</button>
           </div>
           <div class="row field"><label>触发方式</label><div class="cdrop-host" id="long-mode"></div></div>
-          <div class="row field bk-countdown" data-break="long"><label>间隔（分钟）</label><input type="number" id="long-interval" min="1" max="480" /></div>
-          <div class="row field"><label>时长（分钟）</label><input type="number" id="long-duration" min="1" max="60" /></div>
-          <div class="row field"><label>提前通知（秒）</label><input type="number" id="long-notify" min="0" max="300" /></div>
-          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="long-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示「推迟」按钮" /></div>
+          <div class="row field bk-countdown" data-break="long"><label for="long-interval">间隔（分钟）</label><input type="number" id="long-interval" min="1" max="480" /></div>
+          <div class="row field"><label for="long-duration">时长（分钟）</label><input type="number" id="long-duration" min="1" max="60" /></div>
+          <div class="row field"><label for="long-notify">提前通知（秒）</label><input type="number" id="long-notify" min="0" max="300" /></div>
+          <div class="row field"><label for="long-postpone">可推迟（分钟）</label><input type="number" id="long-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示「推迟」按钮" /></div>
           <div class="row field" id="longEveryNRow">
-            <label>每 N 次短休息后 1 次长休息<span class="q-mark" title="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
+            <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" title="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
             <input type="number" id="longEveryNShort" min="1" max="20" />
           </div>
           <div class="slot-fixed" data-break="long">
@@ -294,8 +294,8 @@
             <label>暂停休息时<span class="q-mark pause-scope-help" title="「暂停休息」指：系统空闲 5 分钟自动暂停、系统勿扰 / 专注 / 演示模式自动暂停、全屏独占应用运行时自动暂停、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
             <div class="cdrop-host" id="tk-pause"></div>
           </div>
-          <div class="row field"><label>提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>
-          <div class="row field"><label>可推迟（分钟）</label><input type="number" id="tk-postpone" min="0" max="120" title="窗口上点「推迟」后，间隔多久再次提醒；0 = 不显示「推迟」按钮" /></div>
+          <div class="row field"><label for="tk-lead">提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>
+          <div class="row field"><label for="tk-postpone">可推迟（分钟）</label><input type="number" id="tk-postpone" min="0" max="120" title="窗口上点「推迟」后，间隔多久再次提醒；0 = 不显示「推迟」按钮" /></div>
           <div class="slot-fixed">
             <div class="slot-head">
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
@@ -387,9 +387,9 @@
               <div class="subhead">显示</div>
               <div class="row check"><label class="switch-row"><input type="checkbox" id="sup-flip" /> 水平翻转（左右镜像）</label></div>
               <div class="subhead">尺寸与位置</div>
-              <div class="row field"><label>立绘高度 <span id="sup-size-val"></span></label><input type="range" id="sup-size" min="20" max="100" step="1" /></div>
-              <div class="row field"><label>距窗口左侧 <span id="sup-posx-val"></span></label><input type="range" id="sup-posx" min="0" max="30" step="1" /></div>
-              <div class="row field"><label>距窗口底边 <span id="sup-posy-val"></span></label><input type="range" id="sup-posy" min="0" max="40" step="1" /></div>
+              <div class="row field"><label for="sup-size">立绘高度 <span id="sup-size-val"></span></label><input type="range" id="sup-size" min="20" max="100" step="1" /></div>
+              <div class="row field"><label for="sup-posx">距窗口左侧 <span id="sup-posx-val"></span></label><input type="range" id="sup-posx" min="0" max="30" step="1" /></div>
+              <div class="row field"><label for="sup-posy">距窗口底边 <span id="sup-posy-val"></span></label><input type="range" id="sup-posy" min="0" max="40" step="1" /></div>
               <div class="row inline">
                 <button class="btn ghost" id="sup-geom-reset">恢复默认尺寸与位置</button>
               </div>
@@ -623,8 +623,11 @@
     </main>
   </div>
   <div id="toast" class="hidden"></div>
+  <!-- 读屏播报用的常驻活区：toast 本身是 display:none 切换的，屏幕阅读器不会念「刚显示出来」
+       的节点，所以文字同时写进这个视觉不可见但常驻的 status 区（见 settings.js 的 toast()） -->
+  <div id="sr-status" class="sr-only" role="status" aria-live="polite" aria-atomic="true"></div>
   <div id="batch-modal" class="modal hidden">
-    <div class="modal-box">
+    <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="batch-title">
       <h3 id="batch-title">批量新增提醒内容</h3>
       <textarea id="msg-batch-text" rows="8" placeholder="每行一条提醒内容，空行将被忽略"></textarea>
       <div class="modal-actions">
@@ -663,7 +666,7 @@
       <div class="pm-row">
         <!-- 输入框前的文字前缀：只有需要时（如新建自定义提醒）才由 promptDialog 填上并显示 -->
         <label id="pm-label" class="pm-label hidden"></label>
-        <input type="text" id="pm-input" class="modal-input" maxlength="20" />
+        <input type="text" id="pm-input" class="modal-input" maxlength="20" aria-labelledby="pm-title" />
       </div>
       <!-- 校验失败提示（重名等）：提交被拒时留在框里，要求用户重新输入 -->
       <p id="pm-error" class="pm-error hidden"></p>

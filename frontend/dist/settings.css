@@ -1132,6 +1132,21 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .rc-detail table { width: 100%; font-size: 12px; }
 
 /* Toast */
+/* 只给读屏软件看的活区：#toast 平时是 display:none，屏幕阅读器不会念一个「刚被显示出来」
+   的新节点；常驻的 .sr-only 区域 + role=status 才是能被播报的载体。视觉上完全不可见，
+   也不参与布局（绝对定位 + 1px 裁切）。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
 .hidden { display: none !important; }
 
 /* 触发方式：倒计时 / 固定时间两套设置项互斥显示；不适用的行变暗并禁用 */
@@ -1572,6 +1587,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   cursor: pointer;
 }
 .cdrop-item:hover { background: var(--bg); }
+.cdrop-item:focus-visible { background: var(--bg); outline: 2px solid var(--accent); outline-offset: -2px; }
 .cdrop-item[aria-selected='true'] { color: var(--accent); }
 .cdrop-item[aria-selected='true']::before {
   content: ''; position: absolute; left: 2px; top: 7px; bottom: 7px; width: 3px;

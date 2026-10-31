@@ -159,8 +159,10 @@
   // 自绘下拉：「暂停休息时」与「触发方式」共用这一套（外观见 settings.css 的 .cdrop）。
   // 原生 <select> 的选项由浏览器绘制，缩进改不了、也放不下每项的「?」，所以自己画。
   // items = [{value,label,hint}]，def = 取值非法时的兜底项，onPick = 用户选中后的回调。
+  // name = 下拉的可访问名（兄弟 <label> 是纯视觉文字、不带 for，读屏念不到），
+  //        挂在按钮的 aria-label 上；缺省空串表示没有独立名字（调用方应传入）。
   // 实例按宿主元素记（WeakMap，见 PAUSE_DROPS）：自定义提醒卡每次重建都换新元素。
-  function mountDrop(host, items, value, def, onPick) {
+  function mountDrop(host, items, value, def, onPick, name) {
     if (!host) return null;
     // 宿主宽度来自 .cdrop-host（180px，与输入框同列同宽）：静态那处写在 HTML 里，
     // JS 新建的卡片这里统一补上，免得下拉铺满整列。
@@ -180,6 +182,7 @@
     btn.className = "cdrop-btn";
     btn.setAttribute("aria-haspopup", "listbox");
     btn.setAttribute("aria-expanded", "false");
+    if (name) btn.setAttribute("aria-label", name);
     const cur = document.createElement("span");
     cur.className = "cdrop-cur";
     const caret = document.createElement("span");
@@ -211,12 +214,22 @@
     host.appendChild(root);
 
     let outside = null;
-    function open() {
+    function focusItem(which) {
+      // 键盘/点击都要落到同一个「当前项」，焦点随选中项走；菜单收起时给回按钮。
+      const el = which && which.isConnected ? which : menu.children[0];
+      if (el) el.focus();
+    }
+    function open(focus) {
       root.classList.add("open");
       menu.classList.remove("hidden");
       btn.setAttribute("aria-expanded", "true");
       outside = (e) => { if (!root.contains(e.target)) close(); };
       document.addEventListener("pointerdown", outside, true);
+      if (focus) {
+        const idx = Array.from(menu.children).findIndex(
+          (it) => it.dataset.value === root.dataset.value);
+        focusItem(menu.children[idx >= 0 ? idx : 0]);
+      }
     }
     function close() {
       root.classList.remove("open");
@@ -238,12 +251,51 @@
         item.setAttribute("aria-selected", on ? "true" : "false");
       }
     }
+    // 键盘导航（listbox 语义）：按钮上 Enter/Space/↑/↓ 展开，菜单内 ↑/↓/Home/End 移动焦点、
+    // Enter/Space 选中、Escape 关闭回按钮、Tab 关闭让焦点自然移出。
+    function moveTo(e, dir) {
+      const all = Array.from(menu.children);
+      const i = all.indexOf(document.activeElement);
+      const next = all[(i < 0 ? -1 : i) + dir];
+      if (next) { e.preventDefault(); next.focus(); }
+    }
     btn.addEventListener("click", (e) => {
       e.stopPropagation();
-      if (root.classList.contains("open")) close(); else open();
+      if (root.classList.contains("open")) close(); else open(true);
     });
     btn.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") close();
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        open(true);
+        if (e.key === "ArrowUp") {
+          const all = Array.from(menu.children);
+          (all[all.length - 1] || menu.children[0]).focus();
+        }
+      } else if (e.key === "Escape") {
+        close();
+      }
+    });
+    menu.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") moveTo(e, 1);
+      else if (e.key === "ArrowUp") moveTo(e, -1);
+      else if (e.key === "Home") { e.preventDefault(); menu.children[0].focus(); }
+      else if (e.key === "End") { e.preventDefault(); menu.children[menu.children.length - 1].focus(); }
+      else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const act = document.activeElement;
+        if (act && act.dataset && act.dataset.value != null) {
+          root.dataset.value = act.dataset.value;
+          render();
+          close();
+          btn.focus();
+          if (onPick) onPick(act.dataset.value);
+        }
+      } else if (e.key === "Escape") {
+        close();
+        btn.focus();
+      } else if (e.key === "Tab") {
+        close();
+      }
     });
     const api = {
       get: () => root.dataset.value,
@@ -255,7 +307,7 @@
   }
   // 「暂停休息时」：选中即存盘（原生 select 的 change 原来由 bindAutoSaveEl 兜着）。
   function mountPauseDrop(host, value) {
-    return mountDrop(host, PAUSE_ACTIONS, pauseActionOf(value), "postpone", () => { void autoSave(); });
+    return mountDrop(host, PAUSE_ACTIONS, pauseActionOf(value), "postpone", () => { void autoSave(); }, "暂停休息时");
   }
   // 「触发方式」：切换后联动显示「间隔」/「提醒时间」，再重算摘要并存盘。
   function mountBreakModeDrop(id) {
@@ -269,7 +321,7 @@
       applyBreakModeUI();
       updateBreakSummary(id);
       void autoSave();
-    });
+    }, "触发方式");
   }
   function dropValue(host, def) {
     const api = host ? PAUSE_DROPS.get(host) : null;
@@ -605,8 +657,122 @@
     const t = $("toast");
     t.textContent = msg;
     t.classList.remove("hidden");
+    // 视觉提示 + 语音播报两条通道：toast 显示 2.2 s 后消失，读屏靠常驻的 #sr-status。
+    // 同一个 msg 连发两次时先进空串，否则内容没变、活区不会重新播报（「又超时了」这类）。
+    const live = $("sr-status");
+    if (live) {
+      live.textContent = "";
+      requestAnimationFrame(() => { live.textContent = msg; });
+    }
     setTimeout(() => t.classList.add("hidden"), 2200);
   }
+  // ---- 对话框焦点管理（可访问性：域8 的「role=dialog 无焦点管理证据」）----
+  // 十个 .modal 全靠 classList 加/减 hidden 开关，调用点散在二十多处。逐个改必然漏，
+  // 所以用 MutationObserver 盯 class 变化，统一做三件事：
+  //   · 打开 → 记住触发元素，把焦点送进对话框（[data-autofocus] 优先，其次第一个可聚焦元素）
+  //   · 打开期间 → Tab / Shift+Tab 在对话框内循环（原生 <dialog> 的免费能力，这里是手写的）
+  //   · 关闭 → 焦点还给触发元素；它若已被重渲染掉，退到页面里第一个可见可聚焦控件
+  // 这就是「对话框有没有焦点管理」的全部判定内容：焦点进得去、跑不出、回得来。
+  const MODAL_IDS = [
+    "batch-modal", "confirm-modal", "prompt-modal", "app-pick-modal", "color-modal",
+    "update-modal", "updated-modal", "stats-modal", "snd-scan-modal", "notices-modal",
+  ];
+  const FOCUSABLE_SEL = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  let modalOpener = null;
+  function modalIsOpen(el) {
+    return !!el && !el.classList.contains("hidden");
+  }
+  function openModalEl() {
+    for (const m of document.querySelectorAll(".modal")) if (modalIsOpen(m)) return m;
+    return null;
+  }
+  function focusablesIn(root) {
+    return [...root.querySelectorAll(FOCUSABLE_SEL)].filter(
+      (el) => el.offsetParent !== null || el === document.activeElement,
+    );
+  }
+  function focusIntoModal(m) {
+    const box = m.querySelector(".modal-box") || m;
+    // 对话框自己已经聚焦过（如鸣谢正文、命名输入框）就不抢
+    if (box.contains(document.activeElement)) return;
+    const target = box.querySelector("[data-autofocus]") || focusablesIn(box)[0];
+    if (target) {
+      target.focus();
+    } else {
+      // 没有任何可聚焦控件（纯说明框）：让容器自己接焦点，Tab 从这里开始循环
+      box.setAttribute("tabindex", "-1");
+      box.focus();
+    }
+  }
+  function onModalOpened(m) {
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !m.contains(active)) modalOpener = active;
+    focusIntoModal(m);
+    // 内容可能是异步填进去的（鸣谢正文要等 api 回来）：下一帧再补一次
+    requestAnimationFrame(() => {
+      if (modalIsOpen(m)) focusIntoModal(m);
+    });
+  }
+  function onModalClosed() {
+    const opener = modalOpener;
+    modalOpener = null;
+    // 已经有下一个对话框接上了（统计提示关掉 → 立刻弹提示音体检）：焦点交给新的那个，
+    // 不要抢回旧触发元素
+    if (openModalEl()) return;
+    if (opener && opener.isConnected && opener.offsetParent !== null) {
+      opener.focus();
+      return;
+    }
+    // 触发元素被重渲染掉（动态列表行等）：退到页面里第一个可见可聚焦控件
+    const scope = document.querySelector("main") || document.body;
+    const fallback = focusablesIn(scope).find((el) => !el.closest(".modal"));
+    if (fallback) fallback.focus();
+  }
+  const modalOpenState = new Map();
+  const modalObserver = new MutationObserver((records) => {
+    for (const r of records) {
+      const el = r.target;
+      if (!(el instanceof HTMLElement) || !el.classList.contains("modal")) continue;
+      const open = modalIsOpen(el);
+      if (modalOpenState.get(el) === open) continue;
+      modalOpenState.set(el, open);
+      if (open) onModalOpened(el);
+      else onModalClosed();
+    }
+  });
+  for (const id of MODAL_IDS) {
+    const el = $(id);
+    if (!el) continue;
+    modalOpenState.set(el, modalIsOpen(el));
+    modalObserver.observe(el, { attributes: true, attributeFilter: ["class"] });
+  }
+  // Tab 循环：只在有对话框打开时接管；页面本身不拦 Tab
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    const m = openModalEl();
+    if (!m) return;
+    const box = m.querySelector(".modal-box") || m;
+    const items = focusablesIn(box);
+    if (!items.length) {
+      e.preventDefault();
+      return;
+    }
+    const first = items[0];
+    const last = items[items.length - 1];
+    const active = document.activeElement;
+    if (!box.contains(active)) {
+      e.preventDefault();
+      first.focus();
+      return;
+    }
+    if (e.shiftKey && active === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && active === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }, true);
   // 统计文件损坏：Go 侧已把原文件改名成 stats_<日期_时间>.json 备份，并重建空表
   //（见 stats.go 的 Load）。必须让用户知道——否则历史统计「凭空归零」，看起来像软件
   // 悄悄丢了数据。备份文件路径一并给出，用户想抢救原始数据还能找到。
