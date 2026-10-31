@@ -47,6 +47,7 @@ version.json 的 sha256 / size：**由本脚本从刚生成的 rest.zip 现算**
 """
 
 import argparse
+import glob
 import hashlib
 import json
 import os
@@ -75,6 +76,18 @@ TEMP = os.environ.get("TEMP", ROOT)
 # 运行产物目录：便携目录跑过一次后会留下这些，组装发布目录时清掉
 # （logs/ 是 2026-10 起 logging.go 默认写的 <exe>/logs/app.log，不属于安装包内容）
 RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json", "logs"]
+
+# 开源鸣谢清单：同一份文件有两个去处 ——（a）被 //go:embed 嵌进 exe（见 notices.go），
+# （b）随便携包放在根目录。只发 exe 的用户靠内嵌 + 关于页入口，收整包的用户直接能读。
+NOTICES_NAME = "THIRD-PARTY-NOTICES.txt"
+NOTICES_SRC = os.path.join(ROOT, NOTICES_NAME)
+
+# 清除开机自启动项脚本：便携版没有安装器（删文件夹就算卸载），但用户勾过「开机自启动」
+# 就往注册表里写过一项，删了文件夹之后它指向一个不存在的 exe，任务管理器「启动」页里
+# 还留着一条。随包放这个小脚本专门清它 —— 名字必须如实说明「只清这一项」，
+# 不能叫「卸载」：它不删任何文件，叫卸载会让用户以为删完了。
+CLEANER_NAME = "清除开机自启动项.bat"
+CLEANER_SRC = os.path.join(HERE, CLEANER_NAME)
 
 # 交付目录默认 release/（项目内；被 IDE/杀软锁住时用 --out 重定向）
 DEFAULT_OUT = os.path.join(ROOT, "release")
@@ -122,15 +135,22 @@ def suggest_next(tag: str) -> str:
 
 
 def build_exe(version: str) -> bool:
-    """构建发布版 exe（带版本号 + 发布时间注入 + windowsgui + 去符号）。"""
+    """构建发布版 exe（带版本号 + 发布时间注入 + windowsgui + 去符号 + 去路径）。
+
+    -trimpath 是**分发必需**：不加它，每个源文件都会以 `D:/Projects/.../xxx.go`
+    的形式进二进制，等于把开发机的目录结构、用户名一起发出去（panic 栈、
+    runtime.Caller、DWARF 全是它）。加了之后文件路径变成 `workerrest/xxx.go`。
+    注意它与 -X main.buildTime=<当前时间> 天然互斥于「逐字节可复现」——
+    剥离路径是为了不泄漏，不是为了 bit-for-bit 复现。
+    """
     exe = EXE_SRC
     # 发布时间用 RFC3339 且无空格（ISO 格式），避免破坏单条 ldflags 字符串；
-    # 前端「发布时间」行在为空时回退显示「本地构建」。
+    # 前端「版本 | 发布时间」行在时间为空时回退显示「本地构建」。
     build_time = datetime.now().astimezone().isoformat()
     ldflags = f'-X main.appVersion={version} -X main.buildTime={build_time} -H windowsgui -s -w'
-    print(f"[make-portable] go build -> {exe} (version={version})")
+    print(f"[make-portable] go build -trimpath -> {exe} (version={version})")
     r = subprocess.run(
-        ["go", "build", "-o", exe, "-ldflags", ldflags, "."],
+        ["go", "build", "-trimpath", "-o", exe, "-ldflags", ldflags, "."],
         cwd=ROOT,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -171,6 +191,12 @@ def assemble(dest: str, version: str) -> bool:
         shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest, exist_ok=True)
     shutil.copy2(EXE_SRC, os.path.join(dest, EXE_NAME))
+    # 开源鸣谢清单：与内嵌进 exe 的那份逐字节相同（打包前已 --check 过）
+    if os.path.isfile(NOTICES_SRC):
+        shutil.copy2(NOTICES_SRC, os.path.join(dest, NOTICES_NAME))
+    # 清除开机自启动项脚本：便携版没有卸载器，用户删文件夹前用它把注册表里那一项清掉
+    if os.path.isfile(CLEANER_SRC):
+        shutil.copy2(CLEANER_SRC, os.path.join(dest, CLEANER_NAME))
     copy_roles(dest)
     # 清掉运行时残留（supervisors/ 里理论上没有，但 exe 同目录可能被组装源污染）
     for rel in RUNTIME_REL:
@@ -237,6 +263,11 @@ def verify_zip(zip_path: str, top: str) -> bool:
     # 预置三件套：四个内置提示音 + 出厂默认配置 + 空统计表
     n_sounds = sum(1 for n in names if n.startswith(f"{top}/sounds/") and n.endswith(".wav"))
     has_cfg = f"{top}/config/settings.json" in names
+    # 开源鸣谢清单必须在根目录：它是 MIT / BSD-3「随分发复现」义务的载体之一，
+    # 内嵌进 exe 的那份用户未必看得到，包里这份是「打开就能读」的最短路径
+    has_notices = f"{top}/{NOTICES_NAME}" in names
+    # 清启动项脚本：便携版「卸载」只剩这一处残留，脚本丢了用户就只能自己手改注册表
+    has_cleaner = f"{top}/{CLEANER_NAME}" in names
     # 统计是用户数据：安装包与更新包里**必须没有** data/（首跑自动创建，见 stats.go Load）
     data_entries = [n for n in names if n.startswith(f"{top}/data/") or n == f"{top}/stats.json"]
     no_data = not data_entries
@@ -245,13 +276,19 @@ def verify_zip(zip_path: str, top: str) -> bool:
     escaped = [n for n in names if not n.startswith(top + "/") or "\\" in n]
     ok = (
         test is None and has_exe and has_roles and has_role_meta
-        and n_sounds == 4 and has_cfg and no_data and not escaped
+        and n_sounds == 4 and has_cfg and has_notices and has_cleaner
+        and no_data and not escaped
     )
     print(
         f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} supervisors={has_roles}"
         f" role_meta={has_role_meta} img={n_roles} sounds={n_sounds} cfg={has_cfg}"
-        f" no_data={no_data} escaped={len(escaped)} crc={test is None}"
+        f" notices={has_notices} cleaner={has_cleaner} no_data={no_data}"
+        f" escaped={len(escaped)} crc={test is None}"
     )
+    if not has_notices:
+        print(f"[make-portable] FAIL: 包里缺 {top}/{NOTICES_NAME}（开源鸣谢清单）")
+    if not has_cleaner:
+        print(f"[make-portable] FAIL: 包里缺 {top}/{CLEANER_NAME}（清除开机自启动项脚本）")
     if data_entries:
         print(f"[make-portable] FAIL: 包里不该有统计文件 / data 目录: {data_entries[:5]}")
     if escaped:
@@ -489,6 +526,160 @@ def check_embedded_defaults(exe: str) -> str:
     return ""
 
 
+# ---- exe 新鲜度：`--no-build` 的防线 ----
+# build/bin 里会留着上一轮的 exe（审计 域2-3 逮到过一条 6 天前的产物），`--no-build`
+# 会把它原样打进发布包。check_embedded_defaults 只能发现「内嵌默认与磁盘不一致」，
+# 代码层面的过期（改了逻辑、修了 bug、换了前端资源）在那里完全看不出来 ——
+# 所以再补一条时间线核对：exe 必须比**所有会被编进它的东西**新。
+_EMBED_DIRECTIVE = re.compile(r"^\s*//go:embed\s+(.+)$", re.MULTILINE)
+
+
+def _compiled_sources() -> list:
+    """可能改变 exe 内容的文件全集：非测试 *.go、go.mod/go.sum、`//go:embed` 的资源。
+
+    直接解析 `//go:embed` 指令而不是手写一份资源清单：漏写清单的代价是「新加的内嵌
+    资源改了也放行」，而那正是这条防线要防的事。`all:` 前缀只表示「连隐藏文件一起」，
+    剥掉后按普通 glob 处理。
+    """
+    files = []
+    for name in sorted(os.listdir(ROOT)):
+        if name.endswith(".go") and not name.endswith("_test.go"):
+            files.append(os.path.join(ROOT, name))
+    for name in ("go.mod", "go.sum"):
+        p = os.path.join(ROOT, name)
+        if os.path.isfile(p):
+            files.append(p)
+    for name in sorted(os.listdir(ROOT)):
+        if not name.endswith(".go"):
+            continue
+        try:
+            with open(os.path.join(ROOT, name), encoding="utf-8", errors="replace") as f:
+                src = f.read()
+        except OSError:
+            continue
+        for m in _EMBED_DIRECTIVE.finditer(src):
+            for raw in m.group(1).split():
+                pat = raw[4:] if raw.startswith("all:") else raw
+                for hit in glob.glob(os.path.join(ROOT, pat), recursive=True):
+                    if os.path.isdir(hit):
+                        for dirpath, _dirs, names in os.walk(hit):
+                            files.extend(os.path.join(dirpath, n) for n in names)
+                    else:
+                        files.append(hit)
+    seen, out = set(), []
+    for p in files:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out
+
+
+def check_exe_freshness(exe: str) -> str:
+    """exe 不能比源码/资源旧，返回空串表示通过。
+
+    1 秒容差：go build 与源文件写入可能落在同一秒，亚秒级差异不构成「过期」；
+    真正过期的产物差的是小时/天，不会被容差放过。
+    """
+    try:
+        exe_m = os.path.getmtime(exe)
+    except OSError as e:  # noqa: BLE001
+        return f"取 {exe} 的修改时间失败：{e}"
+    newer = []
+    for p in _compiled_sources():
+        try:
+            m = os.path.getmtime(p)
+        except OSError:
+            continue
+        if m > exe_m + 1:
+            newer.append((m, p))
+    if not newer:
+        return ""
+    newer.sort(reverse=True)
+    shown = "\n".join(
+        f"    {datetime.fromtimestamp(m):%Y-%m-%d %H:%M:%S}  {os.path.relpath(p, ROOT)}"
+        for m, p in newer[:5]
+    )
+    return (
+        "exe 比源码旧，拒绝打包（--no-build 最常踩这个坑：build/bin 里留着上一轮的产物）\n"
+        f"    exe       {datetime.fromtimestamp(exe_m):%Y-%m-%d %H:%M:%S}  {exe}\n"
+        f"  比 exe 新的文件共 {len(newer)} 个（按时间倒序取前 5）：\n{shown}\n"
+        "  处理：去掉 --no-build 重新构建，或先手动 go build 再打包。"
+    )
+
+
+def check_notices() -> str:
+    """开源鸣谢清单必须与当前构建一致，返回空串表示通过。
+
+    必须在 `go build` **之前**跑：清单是被 //go:embed 编进 exe 的，一旦编进去，
+    后面的所有校验都看不出问题（内嵌与仓库文件会"一致地过期"）。
+    依赖升版本 / 换 Go 版本后忘了重新生成，就在这里挡住，而不是发给用户一份
+    声明与实际链接版本不符的包 —— 那比漏声明更糟。
+    """
+    script = os.path.join(HERE, "gen_notices.py")
+    if not os.path.isfile(script):
+        return f"找不到 {script}"
+    r = subprocess.run([sys.executable, script, "--check"], cwd=ROOT,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace")
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
+    if r.returncode != 0:
+        return out or "开源鸣谢清单与当前构建不一致"
+    print("[make-portable] " + (out or "开源鸣谢清单 ok"))
+    return ""
+
+
+def autostart_facts() -> dict:
+    """从 sys_autostart.go 解析出值名与两处键路径（唯一真源在 Go 源码里）。
+
+    清脚本里硬编码了一份，打包时逐字比对。不比对的话，改了值名脚本还在删旧名字 ——
+    这种失败对用户是静默的：屏幕上说「已删除」，开机照样启动，而且无从察觉。
+    """
+    path = os.path.join(ROOT, "sys_autostart.go")
+    try:
+        with open(path, encoding="utf-8") as f:
+            src = f.read()
+    except OSError:
+        return {}
+    out = {}
+    m = re.search(r'^const runValueName\s*=\s*"([^"]+)"', src, re.M)
+    if m:
+        out["value"] = m.group(1)
+    for key, name in (("run", "runKeyPath"), ("approved", "approvedKeyPath")):
+        m = re.search(r"^\s*%s\s*=\s*`([^`]+)`" % name, src, re.M)
+        if m:
+            out[key] = m.group(1)
+    return out
+
+
+def check_cleaner() -> str:
+    """随包的「清除开机自启动项」脚本必须存在、可被 cmd 正确读取、且与 Go 侧同源。"""
+    if not os.path.isfile(CLEANER_SRC):
+        return f"找不到 {CLEANER_SRC}"
+    raw = open(CLEANER_SRC, "rb").read()
+    if raw.startswith(b"\xef\xbb\xbf"):
+        return f"{CLEANER_NAME} 带 UTF-8 BOM：cmd 会把首行读成 '\ufeff@echo off' 并报错"
+    try:
+        text = raw.decode("gbk")
+    except UnicodeDecodeError as e:
+        # 中文 Windows 的 cmd 用 OEM 代码页 936 读批处理；存成 UTF-8 会满屏乱码
+        return f"{CLEANER_NAME} 不是 GBK 编码：{e}"
+    if raw.count(b"\r\n") != raw.count(b"\n"):
+        return f"{CLEANER_NAME} 有裸 LF 换行：cmd 的标签/多行块会解析异常"
+    facts = autostart_facts()
+    if not facts.get("value"):
+        return "解析不出 sys_autostart.go 的 runValueName（清脚本无法核对）"
+    if facts["value"] not in text:
+        return (f"{CLEANER_NAME} 里的值名与 sys_autostart.go 不一致："
+                f"源码是 {facts['value']}，脚本里没有")
+    for key in ("run", "approved"):
+        want = "HKCU\\" + facts.get(key, "")
+        if not facts.get(key):
+            return f"解析不出 sys_autostart.go 的 {key}KeyPath"
+        if want not in text:
+            return f"{CLEANER_NAME} 缺少键路径 {want}"
+    print(f"[make-portable] 清启动项脚本 ok（值名 {facts['value']}）")
+    return ""
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Go 版便携目录打包")
     ap.add_argument("--no-build", action="store_true", help="跳过 go build，直接用已有 exe")
@@ -524,7 +715,13 @@ def main() -> int:
     else:
         print("[make-portable] 没有更早的 tag：version.json 的 changes 留空")
 
-    # 1. 构建 exe
+    # 1. 构建 exe 之前先核对许可清单（它要被编进 exe，过期就必须在这里停）
+    why = check_notices()
+    if why:
+        print("[make-portable] FAIL: " + why)
+        return 1
+
+    # 1b. 构建 exe
     if not args.no_build:
         if not build_exe(version):
             return 1
@@ -532,13 +729,28 @@ def main() -> int:
         print(f"[make-portable] FAIL: 找不到 {EXE_SRC}（先构建，或用 --no-build 前先 go build）")
         return 1
 
-    # 1b. exe 里「恢复默认设置」用的内嵌默认，必须与要进包的 default_settings.json 一致。
+    # 1c. exe 必须比源码新：`--no-build` 拿上一轮产物是合法用法，但「上一轮」必须是
+    #     在**当前源码**上构建的。刚 go build 过时这里天然通过（成本只有一次 mtime 遍历），
+    #     过期就停 —— 发出去的是代码没变的旧行为，比打不出包更糟。
+    why = check_exe_freshness(EXE_SRC)
+    if why:
+        print("[make-portable] FAIL: " + why)
+        return 1
+    print("[make-portable] exe 比源码新")
+
+    # 1d. exe 里「恢复默认设置」用的内嵌默认，必须与要进包的 default_settings.json 一致。
     #     不构建（--no-build）拿上一轮 exe 时最容易在这里翻车，所以卡在组装之前。
     why = check_embedded_defaults(EXE_SRC)
     if why:
         print("[make-portable] FAIL: " + why)
         return 1
     print("[make-portable] 内嵌出厂默认 == default_settings.json")
+
+    # 1e. 随包的清启动项脚本：编码/换行能被 cmd 正确读取，且值名与 Go 源码同源
+    why = check_cleaner()
+    if why:
+        print("[make-portable] FAIL: " + why)
+        return 1
 
     # 2. 组装（在系统临时目录做，避免 release/ 历史产物被锁）
     stage_parent = os.path.join(TEMP, "wr-portable-build")
@@ -551,6 +763,8 @@ def main() -> int:
         ("督休专员目录", find_role_meta(dest, "眼镜主管")),
         ("预置 sounds/", os.path.join(dest, "sounds", "short_start.wav")),
         ("预置 config/settings.json", os.path.join(dest, "config", "settings.json")),
+        ("开源鸣谢清单", os.path.join(dest, NOTICES_NAME)),
+        ("清除开机自启动项脚本", os.path.join(dest, CLEANER_NAME)),
     ]
     ok = True
     for name, p in checks:

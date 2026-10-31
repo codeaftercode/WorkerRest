@@ -43,6 +43,7 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import version as gitver  # noqa: E402
 from make_portable import dump_embedded_defaults  # noqa: E402  （打包侧同一套导出逻辑）
+from make_portable import CLEANER_NAME, autostart_facts  # noqa: E402  （清启动项脚本同源核对）
 TEMP = os.environ.get("TEMP", ROOT)
 LOG = os.path.join(TEMP, "wr_portable_verify.log")
 REPORT = os.path.join(TEMP, "wr_portable_verify_report.txt")
@@ -184,6 +185,21 @@ def main():
     check(n_wav == 4, "预置 sounds/ 有四个内置提示音", "wav=%d" % n_wav)
     preset_cfg = os.path.join(iso, "config", "settings.json")
     check(os.path.isfile(preset_cfg), "预置 config/settings.json 随包存在", preset_cfg)
+    # 开源鸣谢清单：随包一份，且与仓库里那份**逐字节相同**。
+    # 内嵌进 exe 的是同一份文件，所以这一条同时钉住「声明与分发物一致」：
+    # 包里被别处替换/漏更新都会红。
+    notices_ship = os.path.join(iso, "THIRD-PARTY-NOTICES.txt")
+    notices_repo = os.path.join(ROOT, "THIRD-PARTY-NOTICES.txt")
+    if os.path.isfile(notices_ship) and os.path.isfile(notices_repo):
+        with open(notices_ship, "rb") as f:
+            ship_hash = hashlib.sha256(f.read()).hexdigest()
+        with open(notices_repo, "rb") as f:
+            repo_hash = hashlib.sha256(f.read()).hexdigest()
+        check(ship_hash == repo_hash, "随包开源鸣谢清单 == 仓库清单（sha256）",
+              "%s vs %s" % (ship_hash[:12], repo_hash[:12]))
+    else:
+        check(False, "开源鸣谢清单随包存在",
+              notices_ship if not os.path.isfile(notices_ship) else notices_repo)
     # 首跑自建的空表（不再是「预置文件」）：Load 见文件缺失就建目录 + 写空表
     runtime_stats = os.path.join(iso, "data", "stats.json")
     check(os.path.isfile(runtime_stats), "首跑自动创建 data/stats.json", runtime_stats)
@@ -262,6 +278,29 @@ def main():
     except Exception as e:  # noqa: BLE001
         check(False, "能取出 exe 内嵌出厂默认并与预置配置比对", repr(e))
 
+    # 3d. 构建路径卫生：exe 里不能带构建机的绝对源码路径（`-trimpath` 的意义）。
+    #     判据不写死本机路径，而用「盘符绝对路径 + .go 结尾」这个特征：
+    #     未加 -trimpath 时每个源文件都会以 D:/.../xxx.go 的形式进二进制（panic 栈、
+    #     运行时符号），加了之后统一变成 workerrest/xxx.go，不可能再出现盘符。
+    try:
+        with open(exe, "rb") as ef:
+            blob = ef.read()
+        leaks = []
+        for sep in ("\\", "/"):
+            needle = ROOT.replace("\\", sep).encode("utf-8")
+            if needle in blob:
+                leaks.append(needle.decode("utf-8", "replace"))
+        if ROOT.encode("utf-16-le") in blob:
+            leaks.append(ROOT + "（UTF-16）")
+        drive_go = re.findall(rb"[A-Za-z]:[\\/][^\x00\r\n]{0,120}?\.go\b", blob)
+        check(not leaks and not drive_go,
+              "exe 不含构建机绝对路径（-trimpath 生效）",
+              "泄漏 %d 处，样例：%s" % (len(leaks) + len(drive_go),
+                                        (leaks + [x.decode("latin1") for x in drive_go[:3]])[:3])
+              if (leaks or drive_go) else "（干净）")
+    except Exception as e:  # noqa: BLE001
+        check(False, "能扫描 exe 的构建路径泄漏", repr(e))
+
     # 4. 没往 APPDATA 写**配置**（隔离 APPDATA 里不该出现任何 settings.json）。
     #    注意：WebView2 会自己在 APPDATA 下建 <exe名>/EBWebView 浏览器缓存目录，
     #    那是浏览器引擎的固有行为（上一版同样会在 APPDATA 建缓存），
@@ -278,6 +317,26 @@ def main():
     role_meta = find_role_meta(iso, "眼镜主管")
     check(bool(role_meta) and os.path.isfile(role_meta),
           "supervisors/ 随包完整（眼镜主管 在）", role_meta or "(未找到)")
+
+    # 6. 清启动项脚本：便携版没有卸载器，用户「卸载」= 删文件夹，注册表里那一项就成死路径。
+    #    脚本丢了等于只能自己手改注册表；值名不一致等于屏幕上说删掉了、开机照样启动。
+    cleaner = os.path.join(src, CLEANER_NAME)
+    if check(os.path.isfile(cleaner), "随包清除开机自启动项脚本在", cleaner):
+        with open(cleaner, "rb") as f:
+            ship_raw = f.read()
+        with open(os.path.join(ROOT, "scripts", CLEANER_NAME), "rb") as f:
+            repo_raw = f.read()
+        check(ship_raw == repo_raw, "随包清启动项脚本 == 仓库脚本（逐字节）", "")
+        facts = autostart_facts()
+        try:
+            ship_text = ship_raw.decode("gbk")
+        except UnicodeDecodeError as e:  # noqa: BLE001
+            ship_text = ""
+            check(False, "随包脚本是 GBK 编码（cmd 按 936 读取）", repr(e))
+        if ship_text:
+            check(bool(facts.get("value")) and facts["value"] in ship_text,
+                  "脚本里的值名 == sys_autostart.go 的 runValueName",
+                  facts.get("value") or "(源码解析失败)")
 
     with open(REPORT, "w", encoding="utf-8") as f:
         f.write("便携版验证：%d 项断言，失败 %d 项\n\n" % (checks, len(failures)))
