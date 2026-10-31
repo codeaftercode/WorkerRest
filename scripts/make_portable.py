@@ -607,6 +607,44 @@ def check_exe_freshness(exe: str) -> str:
     )
 
 
+def check_winres(exe: str) -> str:
+    """exe 必须带图标 + VERSIONINFO + MANIFEST 三类 Windows 资源，返回空串表示通过。
+
+    审计 域2-4 逮到过「exe 既无 VERSIONINFO 也无应用清单」：.syso 只嵌了图标
+    （早期 rsrc 方案），资源管理器属性页看不到版本号，也没有 longPathAware /
+    supportedOS 清单。这里让 verify_windows_res.py 解析 PE 的 .rsrc 节断言三类资源
+    齐全，把「发出去的 exe 缺版本信息」挡在打包之前。
+
+    同时跑 gen_windows_res.py --check：syso 里的 VERSIONINFO 版本号是「最近的 tag（去 v，
+    不足四段补 0）」，随源码入库。打了新 tag 后如果忘了重新生成 syso，这里
+    能发现「syso 的版本号与当前 git 版本不一致」—— 和 ldflags 注入的 appVersion 一样，
+    版本来源唯一（git tag），任何一处漂移都要挡。
+    """
+    script = os.path.join(HERE, "verify_windows_res.py")
+    if not os.path.isfile(script):
+        return f"找不到 {script}"
+    r = subprocess.run([sys.executable, script, exe],
+                       cwd=ROOT, capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
+    out = ((r.stdout or "") + (r.stderr or "")).strip()
+    if r.returncode != 0:
+        return out or "exe 的 Windows 资源（图标/VERSIONINFO/MANIFEST）校验失败"
+    print("[make-portable] " + (out or "Windows 资源（图标/VERSIONINFO/MANIFEST）ok"))
+
+    # syso 与当前 git 版本一致（tag 变了要重新生成，否则 VERSIONINFO 版本号是旧的）
+    gen = os.path.join(HERE, "gen_windows_res.py")
+    if not os.path.isfile(gen):
+        return f"找不到 {gen}"
+    r2 = subprocess.run([sys.executable, gen, "--check"],
+                        cwd=ROOT, capture_output=True, text=True,
+                        encoding="utf-8", errors="replace")
+    out2 = ((r2.stdout or "") + (r2.stderr or "")).strip()
+    if r2.returncode != 0:
+        return out2 or "syso 与当前 git 版本不一致"
+    print("[make-portable] " + (out2 or "syso 与当前版本一致"))
+    return ""
+
+
 def check_notices() -> str:
     """开源鸣谢清单必须与当前构建一致，返回空串表示通过。
 
@@ -737,6 +775,13 @@ def main() -> int:
         print("[make-portable] FAIL: " + why)
         return 1
     print("[make-portable] exe 比源码新")
+
+    # 1c2. exe 必须带图标 + VERSIONINFO + MANIFEST（审计 域2-4）：缺版本信息/清单的
+    #       exe 发出去后属性页看不到版本号、也没有长路径感知与 supportedOS 声明。
+    why = check_winres(EXE_SRC)
+    if why:
+        print("[make-portable] FAIL: " + why)
+        return 1
 
     # 1d. exe 里「恢复默认设置」用的内嵌默认，必须与要进包的 default_settings.json 一致。
     #     不构建（--no-build）拿上一轮 exe 时最容易在这里翻车，所以卡在组装之前。

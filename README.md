@@ -86,17 +86,26 @@ python scripts/verify_portable.py
 - **`ResetSettings` 会跑一遍 `normalizeLoad`**：只把出厂 JSON 写下去的话，恢复默认后提醒内容
   面板、指定应用列表、提示音列表都是空的，要重启一次才种入；跑完之后立刻就是出厂那套值
   （配置里那枚固定键仍保留，`settings.backup.json` 仍先备份）。
-- **exe 文件图标来自仓库根的 `rsrc_windows_amd64.syso`**（随源码入库）：`go build` 会自动链接
-  同包目录下的 `*_windows_amd64.syso`，所以 `make_portable.py` 与 ldflags 都不用改。图标源就是
-  全项目唯一那份 `frontend/dist/icon.png`，重做图标后重新生成一次即可：
-  ```powershell
-  # 1) 用 Pillow 从 icon.png 生成多尺寸 ico（16/24/32/48/64/128/256，资源管理器大图标要 256）
-  # 2) go run github.com/akavel/rsrc -arch amd64 -ico app.ico -o rsrc_windows_amd64.syso
+- **exe 的 Windows 资源（图标 + VERSIONINFO + MANIFEST）来自仓库根的 `rsrc_windows_amd64.syso`**
+  （随源码入库）：`go build` 会自动链接同包目录下的 `*_windows_amd64.syso`，所以
+  `make_portable.py` 与 ldflags 都不用改。三类资源由 `goversioninfo` 一个工具生成：
+  - **RT_GROUP_ICON / RT_ICON** —— exe 文件图标（16~256 七档，源是全项目唯一那份
+    `frontend/dist/icon.png`）
+  - **RT_VERSION(16)** —— 文件/产品版本、公司、描述（资源管理器「属性 → 详细信息」可见）；
+    版本号取「当前提交的 tag，无 tag 则最近 tag +.dev」（与 ldflags 注入的 `appVersion` 同源）
+  - **RT_MANIFEST(24)** —— 应用清单，声明 `longPathAware`（Win10 1607+ 长路径）与
+    `supportedOS`（Win7~11）。**不声明 `dpiAware`**：Wails 运行时已
+    `SetProcessDpiAwarenessContext(PER_MONITOR_V2)`，清单里再写会冲突
+  重新生成（改了图标 / 打了新 tag 之后）：
+  ```bash
+  python scripts/gen_windows_res.py          # 重新生成 syso（同时落盘 versioninfo.json / app.manifest）
+  python scripts/gen_windows_res.py --check  # 核对当前 syso 是否与源码/版本一致（打包门禁里会跑）
   ```
-  校验方式：资源管理器里直接看 exe 图标，或解析 PE 资源确认 `RT_GROUP_ICON(14)` 存在
-  （`VersionInfo` 只看版本字段，与图标无关）。**托盘与标题栏不需要另做图**：托盘直接吃这份
-  PNG（Wails v3 的 `w32.CreateSmallHIconFromImage` PNG/ICO 都认，系统再按 `SM_CXSMICON` 缩放），
-  标题栏是同一张图按 20px 显示。
+  校验方式：`python scripts/verify_windows_res.py <exe>` 解析 PE 断言三类资源齐全；
+  `make_portable.py` 打包前会自动跑 `check_winres`（资源齐全 + syso 与版本一致两重门禁）。
+  **托盘与标题栏不需要另做图**：托盘直接吃这份 PNG（Wails v3 的
+  `w32.CreateSmallHIconFromImage` PNG/ICO 都认，系统再按 `SM_CXSMICON` 缩放），标题栏是
+  同一张图按 20px 显示。
 - **默认检查更新地址 = `https://www.goodgoodlive.com/worker-rest/version.json`**，同时是
   **出厂兜底源**：写在 `default_settings.json` 的 `sites` 里（便携包的 `config/settings.json`
   是它的副本），`update.go` 里还有一份 `defaultUpdateSite` 常量，永远排在候选链**最后**。
@@ -209,7 +218,10 @@ python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出�
   frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）+ 全部图片资产：
                           icon.png **全项目唯一图标**（标题栏 20px / 托盘 / exe 图标源三处共用）、
                           sitting_risk.webp 关于页横幅 —— 整个目录 go:embed 进 exe，运行时只认这里
-  rsrc_windows_amd64.syso exe 文件图标资源（RT_GROUP_ICON，16~256 七档，由 frontend/dist/icon.png 生成）
+  rsrc_windows_amd64.syso exe 的 Windows 资源（RT_GROUP_ICON/RT_ICON + RT_VERSION + RT_MANIFEST，
+                          由 scripts/gen_windows_res.py 用 goversioninfo 生成，随源码入库）
+  versioninfo.json        VERSIONINFO 的源配置（gen_windows_res.py 生成，与 syso 同源留档）
+  app.manifest            应用清单源（longPathAware + supportedOS，gen_windows_res.py 生成）
   default_settings.json   出厂默认配置（go:embed）
   scripts/                验证与打包脚本
 ```
