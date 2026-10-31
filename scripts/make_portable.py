@@ -134,6 +134,21 @@ def suggest_next(tag: str) -> str:
     return f"v{major}.{minor}.{patch + 1}"
 
 
+def _move(src: str, dst: str) -> None:
+    """原子替换文件，跨磁盘时自动回退到 shutil.move（copy+delete）。
+
+    os.replace 在同盘是原子改名，但 Windows 上跨盘会抛 WinError 17
+    （「系统无法将文件移到不同的磁盘驱动器」）。$TEMP 与项目目录不在同一盘时
+    （如本机 $TEMP 被指向 C 盘、项目在 D 盘），构建期临时 syso 落在 $TEMP 而
+    目标 syso 在项目根，直接 os.replace 必然失败。这里对跨盘失败做一次降级。
+    """
+    try:
+        os.replace(src, dst)
+    except OSError:
+        # 跨盘：move 会退化为 copy2 + unlink，语义等价（目标已存在则覆盖）
+        shutil.move(src, dst)
+
+
 def build_exe(version: str) -> bool:
     """构建发布版 exe（带版本号 + 发布时间注入 + windowsgui + 去符号 + 去路径）。
 
@@ -174,8 +189,8 @@ def build_exe(version: str) -> bool:
             return False
         print("[make-portable] " + ((r.stdout or "").strip().splitlines()[-1] if r.stdout else ""))
         if os.path.isfile(syso):
-            os.replace(syso, backup)
-        os.replace(tmp_syso, syso)
+            _move(syso, backup)
+        _move(tmp_syso, syso)
         tmp_syso = None
 
         print(f"[make-portable] go build -trimpath -> {exe} (version={version})")
@@ -193,7 +208,7 @@ def build_exe(version: str) -> bool:
     finally:
         # 无论成败都恢复仓库根 syso，绝不留脏文件或半替换状态
         if os.path.isfile(backup):
-            os.replace(backup, syso)
+            _move(backup, syso)
         if tmp_syso and os.path.isfile(tmp_syso):
             os.remove(tmp_syso)
 

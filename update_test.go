@@ -815,7 +815,7 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 	autoUpdateSleep = func(d time.Duration) {
 		// 一旦真正查过一次（或测试收尾），就把循环挂住：虚拟时间不再往前走，
 		// 免得它在毫秒内又跑到第二天、再触发一次检查。
-		if stopped.Load() || a.cfg.LastUpdateCheck() != "" {
+		if stopped.Load() || a.lastUpdateCheckLocked() != "" {
 			select {
 			case parked <- struct{}{}:
 			default:
@@ -834,7 +834,7 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 	go a.autoUpdateLoop()
 
 	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) && a.cfg.LastUpdateCheck() == "" {
+	for time.Now().Before(deadline) && a.lastUpdateCheckLocked() == "" {
 		time.Sleep(5 * time.Millisecond)
 	}
 	stopped.Store(true)
@@ -846,7 +846,7 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 		t.Fatalf("自动更新循环没有按预期挂起（可能仍在反复检查）")
 	}
 
-	if got := a.cfg.LastUpdateCheck(); got != "2026-10-23" {
+	if got := a.lastUpdateCheckLocked(); got != "2026-10-23" {
 		t.Fatalf("应在假时钟当天（2026-10-23）完成检查，实得 %q", got)
 	}
 	if st := a.snapshotUpdateStatus(); st["status"] != "update-available" {

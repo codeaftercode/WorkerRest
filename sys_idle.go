@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 	"unsafe"
@@ -33,7 +34,13 @@ const (
 
 // idleSampleInterval 采样间隔。写成变量（不是常量）是为了让单测把它拉成小时级 ——
 // 否则后台 goroutine 会和单测里手动推进的假时钟互相干扰，断言变成掷骰子。
-var idleSampleInterval = idleSampleMs * time.Millisecond
+// 用 atomic.Int64（纳秒）而不是 time.Duration：noBackLoop 在别的测试里写它，而
+// 另一个测试启动的 App 后台采样 goroutine 同时在 loop 里读它，普通全局变量会 race。
+var idleSampleInterval atomic.Int64
+
+func init() {
+	idleSampleInterval.Store(int64(idleSampleMs) * int64(time.Millisecond))
+}
 
 // ---------- Win32：最后一次键鼠输入时刻 ----------
 
@@ -136,7 +143,7 @@ func (s *IdleState) Stop() {
 }
 
 func (s *IdleState) loop(ch chan struct{}) {
-	t := time.NewTicker(idleSampleInterval)
+	t := time.NewTicker(time.Duration(idleSampleInterval.Load()))
 	defer t.Stop()
 	for {
 		select {

@@ -279,7 +279,11 @@ func (a *App) publishUpdateStatus(st updateCheckResult) {
 }
 
 // persistUpdateResult 把当前检查结果写入配置并落盘（nil 表示清除）。
+// cfg 的读写必须持 a.mu（autoUpdateLoop 是后台 goroutine，主线程也会同时访问 cfg，
+// 见 race 检测），这里与其它 cfg 写入点一致：锁内做 SetLastUpdateResult + Save。
 func (a *App) persistUpdateResult(m map[string]any) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
 	a.cfg.SetLastUpdateResult(m)
 	if err := a.cfg.Save(); err != nil {
 		log.Printf("[update] 写入更新状态失败: %v", err)
@@ -644,19 +648,33 @@ func (a *App) startAutoUpdateCheck() {
 	go a.autoUpdateLoop()
 }
 
+// lastUpdateCheckLocked 持锁读取「上次检查日期」。cfg 的读写必须持 a.mu：
+// autoUpdateLoop 是后台 goroutine，主线程（设置页、其它 goroutine）会同时访问 cfg，
+// 直接摸 a.cfg.LastUpdateCheck() 会与 persistUpdateResult / runAutoUpdateCheck 的写
+// 竞争（race 检测已实锤），统一走这里。
+func (a *App) lastUpdateCheckLocked() string {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.LastUpdateCheck()
+}
+
 // autoUpdateLoop 常驻调度循环：进程活多久就转多久，跨天自动进入下一天。
 func (a *App) autoUpdateLoop() {
 	var st autoUpdateState
 	for {
 		// 用户中途关掉「自动检查更新」就不再排期（重新打开需重启软件才生效，
 		// 与「开关只在启动时读一次」的既有口径一致）
-		if !a.cfg.Flag(true, "checkUpdateOnStart") {
+		// 读 cfg 必须持 a.mu：本循环是后台 goroutine，主线程同时会读写 cfg。
+		a.mu.Lock()
+		enabled := a.cfg.Flag(true, "checkUpdateOnStart")
+		done := a.cfg.LastUpdateCheck() == autoUpdateNow().Format("2006-01-02")
+		a.mu.Unlock()
+		if !enabled {
 			log.Printf("[update] 自动检查更新已关闭，停止调度")
 			return
 		}
 		today := autoUpdateNow().Format("2006-01-02")
 		now := autoUpdateNow()
-		done := a.cfg.LastUpdateCheck() == today
 		action := autoUpdateTick(&st, today, now,
 			a.idle != nil && a.idle.IsActive(), a.schedPaused(), done, autoUpdateRand)
 		if action == autoActCheck {
@@ -685,9 +703,14 @@ func (a *App) runAutoUpdateCheck(today string) {
 	a.publishUpdateStatus(st)
 	// 当天去重：只有真正判定出结果（已是最新 / 有更新）才记今天查过了；
 	// error（如网络抖动）不记，当天后面还会按规则再排一次。
+	// 写 cfg 必须持 a.mu（本函数跑在 autoUpdateLoop 后台 goroutine 里），
+	// 网络请求 checkForUpdate 已在上方锁外完成。
 	if st.Status != "error" {
+		a.mu.Lock()
 		a.cfg.SetLastUpdateCheck(today)
-		if err := a.cfg.Save(); err != nil {
+		err := a.cfg.Save()
+		a.mu.Unlock()
+		if err != nil {
 			log.Printf("[update] 写入上次检查日期失败: %v", err)
 		}
 	}

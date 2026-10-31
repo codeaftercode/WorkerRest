@@ -41,9 +41,9 @@ func (p *probeClock) newIdle() *IdleState {
 // noBackLoop 把采样间隔拉到小时级：单测自己手动调 Sample 推进，后台 goroutine 别来抢
 func noBackLoop(t *testing.T) {
 	t.Helper()
-	old := idleSampleInterval
-	idleSampleInterval = time.Hour
-	t.Cleanup(func() { idleSampleInterval = old })
+	old := idleSampleInterval.Load()
+	idleSampleInterval.Store(int64(time.Hour))
+	t.Cleanup(func() { idleSampleInterval.Store(old) })
 }
 
 // ---------- 空闲状态机 ----------
