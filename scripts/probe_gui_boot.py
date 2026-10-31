@@ -11,7 +11,7 @@
     （日志里会刷 `webview2: process failed`），但**主进程的启动链路、日志、系统能力探测
     完全不受影响**，断言就只打在这一层。
 
-隔离：`WR_SETTINGS_PATH` 指向 `%TEMP%` 里的真实配置副本（加载路径会回写 installId /
+隔离：`WR_SETTINGS_PATH` 指向 `%TEMP%` 里的真实配置副本（加载路径会回写固定键 /
 预置条目）；启动路径本来就不碰注册表（只有用户改「开机自启动」时才写）。
 
 用法：python scripts/probe_gui_boot.py [--seconds 12] [--keep-exe]
@@ -169,7 +169,12 @@ def main():
     # 提示音：宿主窗口与播放链路同样只有 GUI 下才存在（无头构建连窗都不建）
     check("[sound] 播放宿主窗口已创建" in text,
           "播放宿主窗口真的建出来了（隐藏 1×1，承载 <audio>）", "")
-    check("Handling request url=/sound.html" in text,
+    # 这行由 Wails 的 assetFileServer 经 **slog** 打出（kv 形式）：
+    #   msg="[AssetFileServerFS] Handling request" url=/sound.html file=sound.html
+    # 所以只能断言 url=... 这一段 —— 早期写的「Handling request url=/sound.html」
+    # 把 msg 与 kv 用空格硬拼起来，slog 输出里 msg 是带引号的，永远匹配不上
+    # （而且当时 appLogger 返回 nil → 这些行被 slog 丢进 io.Discard，压根没有）。
+    check("url=/sound.html" in text,
           "宿主页面真的被资源服务交付了（sound.html 请求进了 AssetFileServer）", "")
     check("[sound] 播放" in text,
           "休息开始 / 结束时真的走了播放链路（日志留痕）", "")

@@ -62,6 +62,14 @@ async function newPage(browser, w, h, o) {
   // （只有 icon.png），会 404。上一版时代这条被 webContents 吞掉，
   // Playwright 会如实上报成 console error，故这里直接拦掉、返回 204。
   await page.route("**/favicon.ico", (route) => route.fulfill({ status: 204, body: "" }));
+  // 替身 shim：把 shim.js 换成一段直接返回窗口数据的桩，用来进「不启用督休专员」这类
+  // 探针没有真实会话可用的状态（真实路径下窗口数据由 Go 的 breakCurrent/takeoutCurrent
+  // 给，督休专员是否启用写在设置里，探针不该为此改用户配置）。必须在 goto 之前挂。
+  if (o.mockShim) {
+    await page.route("**/shim.js", (route) =>
+      route.fulfill({ status: 200, contentType: "application/javascript", body: o.mockShim })
+    );
+  }
   if (o.onConsole) {
     page.on("console", (msg) => {
       if (msg.type() === "error") {
@@ -532,6 +540,35 @@ const PROBE_SETTINGS = `(function () {
     supMsgRole: txt('sup-msg-role'),
     supMsgItems: cnt('.msg-panel[data-kind="sup"] .msg-list .msg-item'),
     supMsgEmpty: cnt('.msg-panel[data-kind="sup"] .msg-list .msg-empty'),
+    // 督休专员预览面板的名字牌：必须与真实提醒窗口同款（竖排金字 + 印泥墨块 + 牌外碎点环）。
+    // 旧版是「圆角胶囊小徽标」（纯 --accent 底 + 边框）—— 预览与真机对不上。
+    // 取数照 PROBE_BREAK 的 dialogNameSeal 那一套，另加竖排/字体/位置三项。
+    supPreviewName: (function () {
+      var n = document.getElementById('sup-preview-name');
+      if (!n) return null;
+      var cs = getComputedStyle(n);
+      var af = getComputedStyle(n, '::after');
+      var ink = (cs.backgroundImage.match(/seal-ink-\\d+\\.svg/) || [])[0] || null;
+      var sp = (af.backgroundImage || '').match(/seal-specks-\\d+\\.svg/);
+      var r = n.getBoundingClientRect();
+      var box = document.getElementById('sup-preview');
+      var br = box ? box.getBoundingClientRect() : null;
+      return {
+        text: (n.textContent || '').trim(),
+        shown: !!(r.width > 0 && r.height > 0),
+        ink: ink, specks: sp ? sp[0] : null,
+        // 碎点层必须是「比盒子大一圈」的伪元素：负 inset 才装得下牌外的碎点
+        afterInset: parseFloat(af.top), afterContent: af.content,
+        clip: cs.backgroundClip,
+        writing: cs.writingMode,
+        serif: /serif/i.test(cs.fontFamily),
+        w: Math.round(r.width), h: Math.round(r.height),
+        // 相对预览面板的偏移：真机里这块恒是立绘头部左侧的空白区（贴左、中上部）
+        dx: br ? Math.round(r.left - br.left) : null,
+        dy: br ? Math.round(r.top - br.top) : null,
+        boxH: br ? Math.round(br.height) : null
+      };
+    })(),
     scPostpone: val('sc-postpone'),
     statsDate: txt('stats-date'),
     statusText: txt('data-status'),
@@ -661,7 +698,75 @@ const PROBE_BREAK = `(function () {
   var skipRect = skipEl ? skipEl.getBoundingClientRect() : null;
   var nameEl = document.getElementById('dialog-name');
   var nameRect = nameEl ? nameEl.getBoundingClientRect() : null;
+  // ---- 倒计时数字 vs 圆环：字号由「环尺寸 × 位数」派生（break.css 的 --cd-w 表），
+  // 硬要求是 tick-pop 的 1.22 倍峰值也不越内径圆，同时不许把数字缩到看不见。
+  // 逐组现量（切 body 的 has-supervisor、改 data-cd-digits 与文本），量完恢复现场 ——
+  // 后面的断言与截图都还依赖原本的有专员版式。
+  var cdFit = function (digits, wantSup, text) {
+    var bd = document.body;
+    var hadSup = bd.classList.contains('has-supervisor');
+    var cd = document.getElementById('countdown');
+    var wrap = document.querySelector('.ring-wrap');
+    var prevText = cd ? cd.textContent : '';
+    var prevDigits = wrap ? wrap.dataset.cdDigits : null;
+    bd.classList.toggle('has-supervisor', wantSup);
+    if (wrap) wrap.dataset.cdDigits = String(digits);
+    if (cd) cd.textContent = text;
+    void bd.offsetWidth;
+    var wr = wrap.getBoundingClientRect();
+    if (cd) cd.classList.remove('tick');
+    void bd.offsetWidth;
+    if (cd) cd.classList.add('tick');
+    var peak = cd ? cd.getBoundingClientRect() : wr;
+    if (cd) {
+      var anims = cd.getAnimations();
+      if (anims.length) {
+        anims[0].pause();
+        anims[0].currentTime = 0;
+        peak = cd.getBoundingClientRect();
+        anims[0].cancel();
+      }
+      cd.classList.remove('tick');
+    }
+    var R = wr.width / 2;
+    var innerR = R * 0.78;            // ring-inner-rim / liquidClip 都是 r=78（viewBox 200）
+    var center = document.querySelector('.count-center');
+    var kids = [].slice.call(center.children).filter(function (e) {
+      return getComputedStyle(e).display !== 'none' && e.offsetHeight > 0;
+    });
+    var top = 1e9, bot = -1e9;
+    kids.forEach(function (e) {
+      var r = e.getBoundingClientRect();
+      if (r.top < top) top = r.top;
+      if (r.bottom > bot) bot = r.bottom;
+    });
+    // 整列高不含数字的 tick 峰值 → 数字框上下各多 0.11em
+    var peakCol = (bot - top) + 0.22 * (cd ? parseFloat(getComputedStyle(cd).fontSize) : 0);
+    var out = {
+      digits: digits, hasSup: wantSup, text: text,
+      ring: +wr.width.toFixed(1),
+      font: cd ? +parseFloat(getComputedStyle(cd).fontSize).toFixed(1) : null,
+      // 数字框四角到环心的距离 / 内径半径（>1 就是探出圆环）
+      cornerRatio: +(Math.hypot(peak.width / 2, peak.height / 2) / innerR).toFixed(3),
+      halfWRatio: +((peak.width / 2) / innerR).toFixed(3),
+      colRatio: +(peakCol / (2 * innerR)).toFixed(3),
+      autoDigits: prevDigits,
+    };
+    if (cd) cd.textContent = prevText;
+    if (wrap) {
+      if (prevDigits) wrap.dataset.cdDigits = prevDigits;
+      else delete wrap.dataset.cdDigits;
+    }
+    bd.classList.toggle('has-supervisor', hadSup);
+    void bd.offsetWidth;
+    return out;
+  };
+  // 3 位=默认短休 300 秒（最常见的溢出场景）、4 位=自定义提醒 >999 秒、
+  // 2 位=短时提醒；有/无督休专员各测一遍（两者环尺寸与环内其它元素的字号都不同）。
+  var countdownFit = [cdFit(3, true, '300'), cdFit(4, true, '1200'), cdFit(2, false, '99'), cdFit(3, false, '300')];
   return {
+    countdownFit: countdownFit,
+    countdownDigits: (document.querySelector('.ring-wrap') || { dataset: {} }).dataset.cdDigits || null,
     shim: window.__WR_SHIM || null,
     hasSupervisor: document.body.classList.contains('has-supervisor'),
     hasSup: document.body.classList.contains('has-supervisor'),
@@ -713,10 +818,196 @@ const PROBE_BREAK = `(function () {
       rectLeft: Math.round(skipRect.left), rectTop: Math.round(skipRect.top),
       rectRight: Math.round(skipRect.right), rectBottom: Math.round(skipRect.bottom),
     } : null,
-    // 名字标签：横屏 left:56px、竖屏 left:46px（与外卖窗口同口径）
+    // 题名：竖排金色宋体，位置与字号都由 break.js 按立绘 alpha 剖面实测写入
+    // （不再有固定 left:56/46）。这里采回定位结果 + 渲染层自己算的「遮挡列数」，
+    // 让 probe_renderer.py 能断言「零遮挡」这条硬承诺，而不是死记一个像素值。
     dialogNameLeft: nameRect ? Math.round(nameRect.left) : null,
+    // 布局框（不含变换）：rect 里含 1.03 / 1.08 的「凑近」缩放，绕立绘双脚放大时
+    // 牌子边缘本来就会外扩（立绘自己也一样），那不是布局错。窗口内断言钉布局框。
+    dialogNameLayout: (function () {
+      var n = document.getElementById('dialog-name');
+      if (!n) return null;
+      return { left: n.offsetLeft, top: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight };
+    })(),
+    dialogNameTop: nameRect ? Math.round(nameRect.top) : null,
+    dialogNameRight: nameRect ? Math.round(nameRect.right) : null,
+    dialogNameBottom: nameRect ? Math.round(nameRect.bottom) : null,
+    dialogNameVertical: nameEl ? getComputedStyle(nameEl).writingMode === 'vertical-rl' : null,
+    dialogNamePositioned: nameEl ? nameEl.dataset.rt === '1' : null,
+    dialogNameHit: nameEl && nameEl.dataset.rtHit != null ? Number(nameEl.dataset.rtHit) : null,
+    dialogNameFs: nameEl && nameEl.dataset.rtFs != null ? Number(nameEl.dataset.rtFs) : null,
+    // 牌面必须包住所有字：竖排折列时 Chromium 的 shrink-to-fit 只按一列算宽，
+    // 溢出列会整列漏到红底外面（实测漏过一整列 21px）。这里量「文字 Range 是否
+    // 超出 content box」——以前用 scrollWidth/scrollHeight，会被碎点层（负 inset
+    // 的 ::after）撑大而误报。
+    dialogNameOverflow: nameEl ? (function () {
+      // 文字必须落在自己的 content box 内。不能再用 scrollWidth/scrollHeight：
+      // 碎点层是负 inset 的 ::after，会把滚动区撑大，永远判成「溢出」（实测误报）。
+      var n = document.getElementById('dialog-name');
+      if (!n) return null;
+      var cs2 = getComputedStyle(n), r2 = n.getBoundingClientRect();
+      var rg = document.createRange(); rg.selectNodeContents(n);
+      var t = rg.getBoundingClientRect();
+      var cw = r2.width - parseFloat(cs2.paddingLeft) - parseFloat(cs2.paddingRight);
+      var ch = r2.height - parseFloat(cs2.paddingTop) - parseFloat(cs2.paddingBottom);
+      // 容差 6.5px：竖排 Range 的横向包围盒天生比 content box 宽 2.6~4.1px（实测四种名字），
+      // 那是字形侧边距不是溢出；真正漏出去的一整列是 17~26px，还抓得到。
+      return t.width > cw + 6.5 || t.height > ch + 6.5;
+    })() : null,
+    // 墨块只有盒子的 82%×93%，毛边位移再吃掉约 2.25%×1.5%；文字到盒边只有 padding。
+    // 两者相减就是「字外侧还剩多少红」—— 竖排 10 字（盒高 227）曾是负的，字从墨块上下
+    // 探出去压在背景上。0.09/0.035 镜像 scripts/make_seal_ink.py 的 a=41/50、b=93/100。
+    dialogNameRedPad: nameEl ? (function () {
+      var n2 = document.getElementById('dialog-name');
+      if (!n2) return null;
+      var cs3 = getComputedStyle(n2), r3 = n2.getBoundingClientRect();
+      return {
+        x: +(parseFloat(cs3.paddingLeft) - r3.width * 0.09).toFixed(1),
+        y: +(parseFloat(cs3.paddingTop) - r3.height * 0.035).toFixed(1)
+      };
+    })() : null,
+    // 红印泥牌底必须真的画出来：底色是第二层 background-image（裁进 border-box），
+    // 用 background-color 时它只会被第一层 text 的 clip 裁掉 —— 牌面变透明，
+    // 看着「有红底」其实只有内阴影+高光圈，金主题下牌子直接融进背景。
+    // 也不能只写 -webkit-background-clip: text（单值会把整条列表丢掉）。
+    dialogNameClip: nameEl ? getComputedStyle(nameEl).backgroundClip : null,
+    // 层数要数 url()（墨块图）+ 渐变，只数 linear-gradient 会在牌底换成图之后误报
+    dialogNameLayers: nameEl ? (getComputedStyle(nameEl).backgroundImage.match(/url\\(|(?:linear|radial|conic)-gradient\\(/g) || []).length : null,
+    // 牌底必须是「墨块图」：纯色填充画不出印泥的不规则轮廓
+    dialogNameInk: nameEl ? /url\\(/.test(getComputedStyle(nameEl).backgroundImage) : null,
+    // 每次出场随机换一枚「章」：JS 把选中的那一档写进 --rt-ink / --rt-specks，
+    // 这里把解析出来的文件名报回去，Python 侧核对「确实是 N 选 1 里的一档、
+    // 两个变量指向同一档、且文件真的存在」（只写死 url 的旧实现会一直报 1）。
+    dialogNameSeal: nameEl ? (function () {
+      var cs = getComputedStyle(nameEl);
+      var ink = (cs.backgroundImage.match(/seal-ink-\\d+\\.svg/) || [])[0] || null;
+      var af = getComputedStyle(nameEl, '::after');
+      var sp = (af.backgroundImage || '').match(/seal-specks-\\d+\\.svg/);
+      return {
+        ink: ink, specks: sp ? sp[0] : null,
+        // 碎点层必须是「比盒子大一圈」的伪元素：负 inset 才装得下牌外的碎点
+        afterInset: parseFloat(af.top),
+        afterContent: af.content
+      };
+    })() : null,
+    // 二阶段的「凑近 + 脉动」是 CSS 的 scale 属性（原点 50% 100% = 立绘盒底边中点）。
+    // 题名牌必须绕同一个点放大，否则牌面会绕自己的牌心长大、整体往人物身上挪
+    // （8% 的缩放 ≈ 15px）。这里把牌子的 transform-origin 换算回页面坐标，跟立绘
+    // 底边中点比对：dx/dy 都该是 0（允许 1.5px 的取整误差）。
+    dialogNameZoom: nameEl && img ? (function () {
+      var n = document.getElementById('dialog-name');
+      var im = document.getElementById('figure-img');
+      if (!n || !im) return null;
+      var cs2 = getComputedStyle(n);
+      var to = (cs2.transformOrigin || '').split(' ');
+      var ox = parseFloat(to[0]), oy = parseFloat(to[1]);
+      var sc = (cs2.scale || 'none').split(' ');
+      var sx = parseFloat(sc[0]), sy = parseFloat(sc.length > 1 ? sc[1] : sc[0]);
+      if (!isFinite(sx)) sx = 1;
+      if (!isFinite(sy)) sy = 1;
+      // 牌子自身已经按 scale 放大过，local 原点在页面上是 ox*sx（不是 ox）——漏乘
+      // 这一下会精确地差 (s-1)*ox，看起来像「差了几个像素」，其实是算错了。
+      var nb = n.getBoundingClientRect(), ib = im.getBoundingClientRect();
+      return {
+        dx: +((nb.left + ox * sx) - (ib.left + ib.width / 2)).toFixed(1),
+        dy: +((nb.top + oy * sy) - ib.bottom).toFixed(1),
+        scale: cs2.scale || null
+      };
+    })() : null,
+    // 对话框内「提醒内容」的排版：短休 / 长休 / 外卖是 .supervisor-line（台词），
+    // 自定义提醒是 .messages（框里只放自己的提醒内容）。两者都挂 .dialog-text 且
+    // 互斥显示 —— 取实际渲染出来的那一个。四个窗口这块必须是同一套：居中、同字号
+    // 同字重、不透明、不溢出框。以前自定义是 15px/400/opacity .72 的淡小字，外卖
+    // 那条虽然字号对，但 .content 是 display:block + text-align:left，整句贴在左边。
+    dialogText: (function () {
+      var c = document.querySelector('.content');
+      if (!c) return null;
+      var els = c.querySelectorAll('.dialog-text'), el = null;
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].offsetHeight > 0) { el = els[i]; break; }
+      }
+      if (!el) return null;
+      var cs2 = getComputedStyle(el), r2 = el.getBoundingClientRect();
+      var cr = c.getBoundingClientRect(), ccs = getComputedStyle(c);
+      var padB = parseFloat(ccs.paddingBottom);
+      return {
+        cls: el.className, chars: el.textContent.trim().length,
+        // opacity 是字符串（"1"），转成数字：断言侧要按数值比，别按字符串
+        align: cs2.textAlign, weight: cs2.fontWeight, opacity: parseFloat(cs2.opacity),
+        fs: parseFloat(cs2.fontSize),
+        // 文字块中心 − 对话框中心（正 = 偏右）。居中要求 |offCenter| ≤ 0.5px。
+        offCenter: +(((r2.left + r2.right) / 2) - (cr.left + cr.width / 2)).toFixed(1),
+        // 溢出：文字底越过「框底 − 下内边距」为正（> 1 即溢出）
+        overflowY: +(r2.bottom - (cr.bottom - padB)).toFixed(1),
+        // 缩到 --dlg-fs-min 仍装不下时 JS 给框加 .tall 让它长高（不裁字）
+        tall: c.classList.contains('tall'),
+        boxH: +cr.height.toFixed(1),
+        contentAlign: ccs.textAlign
+      };
+    })(),
     errors: window.__WR_ERRORS || []
   };
+})()`;
+// 「不启用督休专员」时的提醒内容排版。真实路径下这个状态要改用户配置里的
+// supervisor.enabled，探针不碰配置 —— 改用替身 shim（见 newPage 的 mockShim）直接
+// 返回一份 supervisor:null 的窗口数据，走的是同一份 HTML/CSS/JS，只是数据不同。
+const PROBE_NOSUP = `(function () {
+  var content = document.querySelector('.content');
+  if (!content) return { error: 'no .content' };
+  var els = content.querySelectorAll('.dialog-text'), el = null;
+  for (var i = 0; i < els.length; i++) {
+    if (els[i].offsetHeight > 0) { el = els[i]; break; }
+  }
+  if (!el) return { error: 'no visible .dialog-text' };
+  var cs = getComputedStyle(el);
+  var rr = document.createRange();
+  rr.selectNodeContents(el);
+  var tr = rr.getBoundingClientRect();
+  var out = {
+    cls: el.className,
+    chars: el.textContent.trim().length,
+    fmt: el.tagName.toLowerCase() + (el.children.length ? '+' + el.children.length + 'p' : ''),
+    fs: +parseFloat(cs.fontSize).toFixed(2),
+    weight: cs.fontWeight,
+    opacity: parseFloat(cs.opacity),
+    align: cs.textAlign,
+    lh: +parseFloat(cs.lineHeight).toFixed(1),
+    wrap: cs.overflowWrap,
+    hasSup: document.body.classList.contains('has-supervisor'),
+    // 文字块中心 − 窗口中心：居中要求 |offCenter| ≤ 0.5px
+    offCenter: +(((tr.left + tr.right) / 2) - innerWidth / 2).toFixed(1),
+    // 横向越界（文字超出窗口左右边）与纵向越界（超出窗口底边）
+    overX: Math.round(Math.max(0, tr.right - innerWidth) + Math.max(0, -tr.left)),
+    overY: Math.round(Math.max(0, tr.bottom - innerHeight)),
+    lines: Math.round(el.offsetHeight / parseFloat(cs.lineHeight))
+  };
+  // 外卖窗口：块序必须是 红包 → 徽标 → 提醒内容 → 按钮，「外卖提醒」标题不得压内容
+  var rp = document.querySelector('.tk-redpacket');
+  if (rp) {
+    var ids = ['.tk-redpacket', '#tk-badges', '#tk-msg', '.tk-actions'];
+    var tops = [];
+    for (var k = 0; k < ids.length; k++) {
+      var e = document.querySelector(ids[k]);
+      if (e && e.offsetHeight > 0) tops.push({ s: ids[k], top: +e.getBoundingClientRect().top.toFixed(1) });
+    }
+    out.order = tops.map(function (t) { return t.s; });
+    out.orderAsc = tops.every(function (t, i) { return i === 0 || tops[i - 1].top < t.top; });
+    // 相邻两块上边距差（必须为正，否则就是上下压在一起）
+    var gaps = [];
+    for (var g = 1; g < tops.length; g++) gaps.push(+(tops[g].top - tops[g - 1].top).toFixed(1));
+    out.gaps = gaps;
+    // 「外卖提醒」标题浮在红包框上方（absolute + bottom:100%），与提醒内容不得相交 ——
+    // 这就是 2026-10-30「提醒内容与标题重合」那个 bug 的判据。
+    var title = document.querySelector('.rp-title'), msg = document.querySelector('#tk-msg');
+    if (title && msg && msg.offsetHeight > 0) {
+      var a = title.getBoundingClientRect(), b = msg.getBoundingClientRect();
+      var oy = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      var ox = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      out.titleOverlap = oy > 1 && ox > 1 ? +oy.toFixed(1) : 0;
+      out.titleGap = +(b.top - a.bottom).toFixed(1);
+    }
+  }
+  return out;
 })()`;
 const PROBE_PREBREAK = `(function () {
   var txt = function (id) { var e = document.getElementById(id); return e ? e.textContent : null; };
@@ -958,6 +1249,82 @@ const PROBE_TAKEOUT = `(async function () {
     lineShown: line ? !line.classList.contains('hidden') : null,
     dialogName: (function () { var n = document.getElementById('dialog-name'); return n ? n.textContent : null; })(),
     dialogNameShown: (function () { var n = document.getElementById('dialog-name'); return n ? !n.classList.contains('hidden') : false; })(),
+    // 题名定位结果（与休息窗口同口径）：竖排、按立绘 alpha 剖面实测、零遮挡
+    dialogNameVertical: (function () { var n = document.getElementById('dialog-name'); return n ? getComputedStyle(n).writingMode === 'vertical-rl' : null; })(),
+    dialogNamePositioned: (function () { var n = document.getElementById('dialog-name'); return n ? n.dataset.rt === '1' : null; })(),
+    dialogNameHit: (function () { var n = document.getElementById('dialog-name'); return n && n.dataset.rtHit != null ? Number(n.dataset.rtHit) : null; })(),
+    dialogNameFs: (function () { var n = document.getElementById('dialog-name'); return n && n.dataset.rtFs != null ? Number(n.dataset.rtFs) : null; })(),
+    dialogNameOverflow: (function () {
+      // 文字必须落在自己的 content box 内。不能再用 scrollWidth/scrollHeight：
+      // 碎点层是负 inset 的 ::after，会把滚动区撑大，永远判成「溢出」（实测误报）。
+      var n = document.getElementById('dialog-name');
+      if (!n) return null;
+      var cs2 = getComputedStyle(n), r2 = n.getBoundingClientRect();
+      var rg = document.createRange(); rg.selectNodeContents(n);
+      var t = rg.getBoundingClientRect();
+      var cw = r2.width - parseFloat(cs2.paddingLeft) - parseFloat(cs2.paddingRight);
+      var ch = r2.height - parseFloat(cs2.paddingTop) - parseFloat(cs2.paddingBottom);
+      // 容差 6.5px：竖排 Range 的横向包围盒天生比 content box 宽 2.6~4.1px（实测四种名字），
+      // 那是字形侧边距不是溢出；真正漏出去的一整列是 17~26px，还抓得到。
+      return t.width > cw + 6.5 || t.height > ch + 6.5;
+    })(),
+    // 同 PROBE_BREAK 的 dialogNameRedPad（外卖窗口的牌子同一套几何）
+    dialogNameRedPad: (function () {
+      var n2 = document.getElementById('dialog-name');
+      if (!n2) return null;
+      var cs3 = getComputedStyle(n2), r3 = n2.getBoundingClientRect();
+      return { x: +(parseFloat(cs3.paddingLeft) - r3.width * 0.09).toFixed(1),
+               y: +(parseFloat(cs3.paddingTop) - r3.height * 0.035).toFixed(1) };
+    })(),
+    // 同休息窗口：红印泥牌底是第二层 background-image，clip 必须是双值列表
+    dialogNameClip: (function () { var n = document.getElementById('dialog-name'); return n ? getComputedStyle(n).backgroundClip : null; })(),
+    dialogNameLayers: (function () { var n = document.getElementById('dialog-name'); return n ? (getComputedStyle(n).backgroundImage.match(/url\\(|(?:linear|radial|conic)-gradient\\(/g) || []).length : null; })(),
+    dialogNameInk: (function () { var n = document.getElementById('dialog-name'); return n ? /url\\(/.test(getComputedStyle(n).backgroundImage) : null; })(),
+    // 与 PROBE_BREAK 的 dialogNameSeal 同一套（外卖窗口同样每次换一枚章）
+    dialogNameSeal: (function () {
+      var n = document.getElementById('dialog-name');
+      if (!n) return null;
+      var cs = getComputedStyle(n);
+      var ink = (cs.backgroundImage.match(/seal-ink-\\d+\\.svg/) || [])[0] || null;
+      var af = getComputedStyle(n, '::after');
+      var sp = (af.backgroundImage || '').match(/seal-specks-\\d+\\.svg/);
+      return { ink: ink, specks: sp ? sp[0] : null,
+               afterInset: parseFloat(af.top), afterContent: af.content };
+    })(),
+    // 缩放原点必须与立绘重合（外卖窗口恒定一阶段，但牌面同样跟着一起缩放）：
+    // 与 PROBE_BREAK 的 dialogNameZoom 同一套算法，见那里的说明。
+    dialogNameZoom: (function () {
+    var n = document.getElementById('dialog-name');
+    var im = document.getElementById('figure-img');
+    if (!n || !im) return null;
+    var cs2 = getComputedStyle(n);
+    var to = (cs2.transformOrigin || '').split(' ');
+    var ox = parseFloat(to[0]), oy = parseFloat(to[1]);
+    var sc = (cs2.scale || 'none').split(' ');
+    var sx = parseFloat(sc[0]), sy = parseFloat(sc.length > 1 ? sc[1] : sc[0]);
+    if (!isFinite(sx)) sx = 1;
+    if (!isFinite(sy)) sy = 1;
+    // 牌子自身已经按 scale 放大过，local 原点在页面上是 ox*sx（不是 ox）——漏乘
+    // 这一下会精确地差 (s-1)*ox，看起来像「差了几个像素」，其实是算错了。
+    var nb = n.getBoundingClientRect(), ib = im.getBoundingClientRect();
+    return {
+      dx: +((nb.left + ox * sx) - (ib.left + ib.width / 2)).toFixed(1),
+      dy: +((nb.top + oy * sy) - ib.bottom).toFixed(1),
+      scale: cs2.scale || null
+    };
+    })(),
+    dialogNameRect: (function () {
+      var n = document.getElementById('dialog-name');
+      if (!n) return null;
+      var r = n.getBoundingClientRect();
+      return { left: Math.round(r.left), top: Math.round(r.top), right: Math.round(r.right), bottom: Math.round(r.bottom) };
+    })(),
+    // 布局框（不含缩放），同 PROBE_BREAK 的说明
+    dialogNameLayout: (function () {
+      var n = document.getElementById('dialog-name');
+      if (!n) return null;
+      return { left: n.offsetLeft, top: n.offsetTop, w: n.offsetWidth, h: n.offsetHeight };
+    })(),
     supMetrics: (function () {
       var c = document.querySelector('.content');
       if (!c || !c.dataset.supMetrics) return null;
@@ -999,6 +1366,43 @@ const PROBE_TAKEOUT = `(async function () {
     })(),
     accent: cs.getPropertyValue('--accent').trim(),
     rounded: (document.getElementById('app') || {}).dataset ? document.getElementById('app').dataset.rounded : null,
+    // 对话框内「提醒内容」的排版：短休 / 长休 / 外卖是 .supervisor-line（台词），
+    // 自定义提醒是 .messages（框里只放自己的提醒内容）。两者都挂 .dialog-text 且
+    // 互斥显示 —— 取实际渲染出来的那一个。四个窗口这块必须是同一套：居中、同字号
+    // 同字重、不透明、不溢出框。以前自定义是 15px/400/opacity .72 的淡小字，外卖
+    // 那条虽然字号对，但 .content 是 display:block + text-align:left，整句贴在左边。
+    dialogText: (function () {
+      var c = document.querySelector('.content');
+      if (!c) return null;
+      var els = c.querySelectorAll('.dialog-text'), el = null;
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].offsetHeight > 0) { el = els[i]; break; }
+      }
+      if (!el) return null;
+      var cs2 = getComputedStyle(el), r2 = el.getBoundingClientRect();
+      var cr = c.getBoundingClientRect(), ccs = getComputedStyle(c);
+      var padB = parseFloat(ccs.paddingBottom);
+      return {
+        cls: el.className, chars: el.textContent.trim().length,
+        // opacity 是字符串（"1"），转成数字：断言侧要按数值比，别按字符串
+        align: cs2.textAlign, weight: cs2.fontWeight, opacity: parseFloat(cs2.opacity),
+        fs: parseFloat(cs2.fontSize),
+        // 文字块中心 − 对话框中心（正 = 偏右）。居中要求 |offCenter| ≤ 0.5px。
+        offCenter: +(((r2.left + r2.right) / 2) - (cr.left + cr.width / 2)).toFixed(1),
+        // 溢出：文字底越过「框底 − 下内边距」为正（> 1 即溢出）
+        overflowY: +(r2.bottom - (cr.bottom - padB)).toFixed(1),
+        // 缩到 --dlg-fs-min 仍装不下时 JS 给框加 .tall 让它长高（不裁字）
+        tall: c.classList.contains('tall'),
+        boxH: +cr.height.toFixed(1),
+        contentAlign: ccs.textAlign
+      };
+    })(),
+    // 徽标行（提前提醒 / 已推迟 N 次）本身是 flex，block 父级里的 text-align
+    // 管不到它的子项 —— 必须自己 justify-content:center，否则仍贴在左边
+    badgesJustify: (function () {
+      var b = document.querySelector('.tk-badges');
+      return b ? getComputedStyle(b).justifyContent : null;
+    })(),
     errors: window.__WR_ERRORS || []
   };
 })()`;
@@ -1159,6 +1563,30 @@ async function run() {
         };
       });
       console.log("[probe] edgeGutter:", JSON.stringify(metrics.edgeGutter));
+      // 预览面板的名字牌要等这页真的切过来才有盒子：别的页签是 display:none，
+      // getBoundingClientRect 全是 0（首屏 PROBE_SETTINGS 量出来的 dx/dy/boxH 都是 0 就是这个原因）。
+      // 所以「显示了吗、摆在哪」这类断言只能在这里量。
+      metrics.supPreviewGeom = await set.evaluate(() => {
+        const n = document.getElementById("sup-preview-name");
+        const box = document.getElementById("sup-preview");
+        const content = document.querySelector(".sup-preview-content");
+        if (!n || !box) return null;
+        const r = n.getBoundingClientRect();
+        const br = box.getBoundingClientRect();
+        const cr = content ? content.getBoundingClientRect() : null;
+        return {
+          text: (n.textContent || "").trim(),
+          shown: !!(r.width > 0 && r.height > 0),
+          dx: Math.round(r.left - br.left),
+          dy: Math.round(r.top - br.top),
+          boxW: Math.round(br.width),
+          boxH: Math.round(br.height),
+          plateH: Math.round(r.height),
+          // 牌底不能压到台词框：真机里牌子在立绘头部左侧，恒在对话条之上
+          aboveContent: cr ? r.bottom <= cr.top + 1 : null,
+        };
+      });
+      console.log("[probe] supPreviewGeom:", JSON.stringify(metrics.supPreviewGeom));
     }
   }
   console.log("[probe] tabs:", JSON.stringify(metrics.tabs));
@@ -1362,7 +1790,17 @@ async function run() {
     var line = document.getElementById("supervisor-line");
     var rect = function (el) { var r = el.getBoundingClientRect();
       return { h: +r.height.toFixed(1), top: +r.top.toFixed(1) }; };
-    var box0 = rect(box), line0 = rect(line);
+    // 题名牌相对立绘的归一化纵向位置：二阶段立绘放大 8%（头顶抬高约 50px），
+    // 牌面若不跟着动，这个值会从 0.014 跳到 0.08 量级 —— 就是「人凑过来了、
+    // 牌子掉在原地」那种观感。归一化到立绘盒高，窗口尺寸与缩放都自动消掉。
+    var nameEl = document.getElementById("dialog-name");
+    var imgEl = document.getElementById("figure-img");
+    var plateV = function () {
+      if (!nameEl || !imgEl) return null;
+      var nb = nameEl.getBoundingClientRect(), ib = imgEl.getBoundingClientRect();
+      return ib.height > 0 ? +((nb.top - ib.top) / ib.height).toFixed(4) : null;
+    };
+    var box0 = rect(box), line0 = rect(line), pv0 = plateV();
     var n0 = window.__WR_SUP_ACTIVE || 0;
     try { await window.api.supActivity(); } catch (e) { return { error: String(e) }; }
     var n1 = n0;
@@ -1372,9 +1810,10 @@ async function run() {
     }
     // 二阶段换成督休专员的命令台词（通常比一阶段的提醒内容长）：对话框高度必须不变，
     // 否则「进入二阶段」这一瞬间整块框会长高、倒计时环跟着上移，整屏跳一下。
-    var box2 = rect(box), line2 = rect(line);
+    var box2 = rect(box), line2 = rect(line), pv2 = plateV();
     return {
       pulsesBefore: n0, pulsesAfter: n1, stage: app.dataset.stage,
+      plateVBefore: pv0, plateVAfter: pv2,
       boxHBefore: box0.h, boxHAfter: box2.h,
       lineHBefore: line0.h, lineHAfter: line2.h,
       lineChars: line ? line.textContent.length : 0,
@@ -1404,6 +1843,47 @@ async function run() {
   console.log("[probe] takeout:", JSON.stringify(metrics.takeout));
   metrics.nozoom.takeout = await tk.evaluate(NOZOOM_PROBE);
   console.log("[probe] nozoom/takeout:", JSON.stringify(metrics.nozoom.takeout));
+
+  // ---- 5a. 不启用督休专员：四类窗口的提醒内容排版 ----
+  // 探针跑在用户真实配置上，而「督休专员关掉」是配置项（supervisor.enabled），
+  // 不改配置就进不去这个状态 —— 所以这一组用替身 shim 直接喂一份 supervisor:null
+  // 的窗口数据。HTML/CSS/JS 全是同一份，只有数据不同，量的就是这条分支本身。
+  const NS_TEXT = "别饿着肚子硬撑，胃是要慢慢养的，先把手上的活放一放，去吃点热乎的东西。";
+  const mockBreakNoSup = (text, type) => `window.api = {
+    breakCurrent: async function () { return {
+      appearance: { color: "#4f7cff", transparency: 0.05, fullscreen: false },
+      messages: [${JSON.stringify(text)}], name: ${JSON.stringify(type === "cb-1" ? "自定义提醒" : "短休息")},
+      durationMs: 300000, endsAt: Date.now() + 300000, type: ${JSON.stringify(type)},
+      endEarlyShortcut: "Ctrl+Alt+X", preview: false, supervisor: null }; },
+    action: function () {}, closeWindow: function () {},
+    on: function () {}, off: function () {}, supActivity: async function () {} };`;
+  const mockTakeoutNoSup = (text, withQr) => `window.api = {
+    takeoutCurrent: async function () { return {
+      id: "tk", at: Date.now(), hour: 12, minute: 0, firedAt: Date.now(), preview: false,
+      meal: "午餐", leadSec: 60, postponeMin: 10, postponedCount: 2, message: ${JSON.stringify(text)},
+      appearance: { color: "#4f7cff", transparency: 0.05, fullscreen: false },
+      supervisor: null,
+      redPacketData: ${withQr ? JSON.stringify({ url: "https://example.com/wr/takeout-coupon?id=probe" }) : "null"} }; },
+    takeoutAction: function () {}, closeWindow: function () {},
+    on: function () {}, off: function () {}, supActivity: async function () {} };`;
+  metrics.noSup = {};
+  for (const [label, path, mock, shotName] of [
+    ["break_short", "/break.html?win=break&sup=0", mockBreakNoSup(NS_TEXT, "short"), "nosup_break_short"],
+    ["break_custom", "/break.html?win=break&sup=0", mockBreakNoSup(NS_TEXT, "cb-1"), null],
+    ["takeout_qr", "/takeout.html?win=takeout&sup=0", mockTakeoutNoSup(NS_TEXT, true), "nosup_takeout_qr"],
+    ["takeout_noqr", "/takeout.html?win=takeout&sup=0", mockTakeoutNoSup(NS_TEXT, false), null],
+  ]) {
+    const nsErr = [];
+    const p = await open(browser, BASE + path, 1100, 720, {
+      transparent: true, frame: false, onConsole: nsErr, mockShim: mock,
+    });
+    const m = await p.evaluate(PROBE_NOSUP);
+    m.consoleErrors = nsErr;
+    metrics.noSup[label] = m;
+    if (shotName) await shot(p, shotName);
+    console.log("[probe] noSup/" + label + ":", JSON.stringify(m));
+    await p.close().catch(() => {});
+  }
 
   // ---- 5b. 「可推迟」为 0：提前提示窗与外卖窗口都不显示「推迟」按钮 ----
   await main.evaluate(
@@ -1481,8 +1961,12 @@ async function run() {
   // 默认是开的（Go 侧 Flag(true,…)），所以两段都要走一遍：只验「勾掉生效」会漏掉
   // 「本来就是开的时候还能不能写回 true」。收尾同样还原成初值，不写死。
   metrics.shareGuardRoundTrip = { off: null, on: null, restored: null };
-  const sgWas = !(metrics.settings && metrics.settings.appearance &&
-                  metrics.settings.appearance.hideOnShare === false);
+  // 往返结束后要还原成**进页面时的那个值**。取的是页面勾选框自己（PROBE_SETTINGS 量到的
+  // apHideOnShare），不是 settings.appearance.hideOnShare —— 后者在 PROBE_SETTINGS 里根本
+  // 不存在（那里只有 ap* 一组拍平字段），undefined === false 恒为 false，于是 sgWas 恒等于
+  // true，每次都把用户本来就关掉的开关「还原」成打开；收尾再拿这份被改过的配置去比对
+  // 开场时的勾选态，就成了必然误报（2026-10-30 真实配置 hideOnShare=false 时才暴露）。
+  const sgWas = !(metrics.settings && metrics.settings.apHideOnShare === false);
   await set.evaluate(
     "(function(){ var c=document.getElementById('ap-hideOnShare');" +
       " if(!c) return false; c.checked=false;" +

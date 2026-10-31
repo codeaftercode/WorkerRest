@@ -226,12 +226,12 @@ func TestRemoveRoleClearsFixedRoleAndOrder(t *testing.T) {
 // 模拟写失败的办法：在目标位置放一个**同名目录**，让改名落不下去。
 func TestReplaceRoleImageKeepsOldImageOnWriteFailure(t *testing.T) {
 	root := t.TempDir()
-	writeRoleDir(t, root, "角色", map[string]any{
-		"name": "角色", "enabled": true,
+	writeRoleDir(t, root, "督休专员", map[string]any{
+		"name": "督休专员", "enabled": true,
 		"image": "figure.png", "preview": "preview.png",
 	}, map[string]string{"figure.png": "old-figure", "preview.png": "old-preview"})
 
-	dir := filepath.Join(root, "角色")
+	dir := filepath.Join(root, "督休专员")
 	// 让新图（figure.webp）的落盘失败：在目标位置放一个**非空目录**占位。
 	// 必须非空 —— 空目录会被 os.Remove 顺手删掉（旧代码「先删后写」那一步），
 	// 注入就失效了；非空目录删不掉，写入必然失败。
@@ -240,7 +240,7 @@ func TestReplaceRoleImageKeepsOldImageOnWriteFailure(t *testing.T) {
 	}
 	src := writeImgSrc(t, t.TempDir(), "新图.webp", "new-bytes")
 
-	if replaceRoleImage(root, "角色", src) {
+	if replaceRoleImage(root, "督休专员", src) {
 		t.Fatal("写入失败时 replaceRoleImage 应返回 false")
 	}
 	for _, name := range []string{"figure.png", "preview.png"} {

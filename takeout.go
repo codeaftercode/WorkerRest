@@ -101,7 +101,7 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int, 
 	if atMs <= 0 {
 		atMs = slotAlertAt(slot, 0, now.UnixMilli())
 	}
-	// 红包二维码指向本机专属领取地址：installId 是每台设备一枚的 UUID，
+	// 红包二维码指向本机专属领取地址：id 取配置里那枚固定键（每台机器一枚，首次运行生成），
 	// 服务端（www.goodgoodlive.com）按 id 区分来源。只要显示外卖提醒窗口就必须展示优惠券，
 	// 因此这里无条件带上地址（不再有开关）。
 	// t = 毫秒时间戳：每次弹窗都重新生成地址，供服务端做时效判断 / 缓存刷新，
@@ -137,9 +137,9 @@ func (a *App) buildTakeoutInfo(slot TimeSlot, preview bool, postponedCount int, 
 	return info
 }
 
-// takeoutID 生成本次外卖会话 id（对应 上一版的 `${Date.now()}-${random36}`；Go 侧用 UUID 同样唯一）
+// takeoutID 生成本次外卖会话 id（对应 上一版的 `${Date.now()}-${random36}`；Go 侧用随机唯一串同样唯一）
 func takeoutID() string {
-	return newUUID()
+	return newRandomID()
 }
 
 // ---------- 触发与推迟（对应 main.ts 的 checkTakeoutReminders） ----------

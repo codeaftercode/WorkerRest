@@ -294,10 +294,138 @@ func sameDir(a, b string) bool {
 	return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
 }
 
+// ---------- 音乐副本的文件名 ----------
+
+// isLegacyMusicName 旧版导入留下的副本名：music-<8-4-4-4-12 位十六进制>.<ext>。
+// 新版统一成 music-<序号>.<ext>，用户打开目录能看懂哪个是哪个。
+func isLegacyMusicName(name string) bool {
+	ext := filepath.Ext(name)
+	if ext == "" {
+		return false
+	}
+	base := strings.TrimSuffix(name, ext)
+	if !strings.HasPrefix(base, "music-") {
+		return false
+	}
+	key := base[len("music-"):]
+	if len(key) != 36 {
+		return false
+	}
+	for i := 0; i < len(key); i++ {
+		c := key[i]
+		switch i {
+		case 8, 13, 18, 23:
+			if c != '-' {
+				return false
+			}
+		default:
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// nextMusicIndex 目录里 music-<N>.<ext> 的最大序号 +1（一条都没有就从 1 开始）
+func nextMusicIndex(dir string) int {
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return 1
+	}
+	max := 0
+	for _, e := range ents {
+		if e.IsDir() {
+			continue
+		}
+		base := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
+		if !strings.HasPrefix(base, "music-") {
+			continue
+		}
+		if n, err := strconv.Atoi(strings.TrimPrefix(base, "music-")); err == nil && n > max {
+			max = n
+		}
+	}
+	return max + 1
+}
+
+// freeMusicPath 在 dir 里找一个还没被占用的 music-<序号>.<ext>。
+// 循环是为了防同名（用户手动放了一个同名文件、或两个导入同时进来）。
+func freeMusicPath(dir, ext string) string {
+	for i := 0; i < 1000; i++ {
+		p := filepath.Join(dir, fmt.Sprintf("music-%d.%s", nextMusicIndex(dir), ext))
+		if _, err := os.Stat(p); os.IsNotExist(err) {
+			return p
+		}
+	}
+	return ""
+}
+
+// rewriteMusicPath 把配置里所有指向 oldPath 的音乐条目改到 newPath
+// （大小写不敏感：Windows 路径本就不区分，配置里存的是用户选文件时的原样大小写）。
+func rewriteMusicPath(cfg map[string]any, oldPath, newPath string) int {
+	snd, ok := cfg["sound"].(map[string]any)
+	if !ok {
+		return 0
+	}
+	list, ok := snd["music"].([]any)
+	if !ok {
+		return 0
+	}
+	n := 0
+	for _, it := range list {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		if s, ok := m["file"].(string); ok && s != "" &&
+			strings.EqualFold(filepath.Clean(s), filepath.Clean(oldPath)) {
+			m["file"] = newPath
+			n++
+		}
+	}
+	return n
+}
+
+// migrateMusicFileNames 把旧版的随机长名副本改成 music-<序号>.<ext>，并同步配置里的绝对路径。
+// 返回改了几条（>0 表示调用方需要落盘）。幂等：改完就不再匹配旧命名，下次启动不会重做。
+// 只在启动阶段调用：那时调度器与监视器都还没起，不存在并发读配置。
+func (a *App) migrateMusicFileNames() int {
+	dir := a.customSoundDir()
+	if dir == "" {
+		return 0
+	}
+	ents, err := os.ReadDir(dir)
+	if err != nil {
+		return 0
+	}
+	cfg := a.cfg.Raw()
+	changed := 0
+	for _, e := range ents {
+		if e.IsDir() || !isLegacyMusicName(e.Name()) {
+			continue
+		}
+		oldPath := filepath.Join(dir, e.Name())
+		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(e.Name()), "."))
+		dest := freeMusicPath(dir, ext)
+		if dest == "" {
+			continue
+		}
+		if err := os.Rename(oldPath, dest); err != nil {
+			log.Printf("[sound] 音乐副本改名失败 %s: %v", oldPath, err)
+			continue
+		}
+		rewriteMusicPath(cfg, oldPath, dest)
+		changed++
+		log.Printf("[sound] 音乐副本改为可读名：%s → %s", e.Name(), filepath.Base(dest))
+	}
+	return changed
+}
+
 // ---------- 导入 / 删除（供设置页的音乐列表用） ----------
 
 // importMusicSound 把用户选中的音频复制进音频目录作为一条音乐（每条一个独立副本，
-// 与单曲循环的自定义提示音互不影响：music-<uuid>.<ext>）。
+// 与单曲循环的自定义提示音互不影响：music-<序号>.<ext>）。
 // 返回条目与空错误串；格式不支持 / 文件不可读 / 超限 / 复制失败返回 nil 与原因。
 func (a *App) importMusicSound(src string) (map[string]any, string) {
 	src = strings.TrimSpace(src)
@@ -319,7 +447,12 @@ func (a *App) importMusicSound(src string) (map[string]any, string) {
 		return nil, "创建音频目录失败"
 	}
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(src), "."))
-	dest := filepath.Join(dir, "music-"+newUUID()+"."+ext)
+	// 文件名用递增序号（music-1.mp3、music-2.mp3）：用户在目录里能对上号，
+	// 也不用担心随机长串被误认成别的东西。
+	dest := freeMusicPath(dir, ext)
+	if dest == "" {
+		return nil, "音频目录里没有可用的文件序号"
+	}
 	if err := copyFile(src, dest); err != nil {
 		log.Printf("[sound] 复制音乐失败: %v", err)
 		return nil, "复制失败"

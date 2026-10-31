@@ -19,7 +19,7 @@
   - 预置两件套（运行数据随包分发，首跑直接在预置文件上继续写）：
       sounds/               四个内置提示音（源文件在模块根 sounds/，不再 embed 进二进制）
       config/settings.json  出厂默认配置（与 go:embed 的 default_settings.json 同一
-                            份文件，天然零漂移；installId 是空串，首跑自动补生成并回写）
+                            份文件，天然零漂移；固定键是空串，首跑自动补生成并回写）
   - **不预置 data/ 与 stats.json**：用户的统计数据不属于安装包。首跑由 stats.go 的
     Load 自己建 data/stats.json（见其四情形说明）；文件损坏时也会改名备份再重建。
   - 运行时残留（exe 同目录跑过一次后留下的 config/data/sounds 等）组装前一律清掉。
@@ -69,7 +69,8 @@ EXE_SRC = os.path.join(ROOT, "build", "bin", EXE_NAME)
 TEMP = os.environ.get("TEMP", ROOT)
 
 # 运行产物目录：便携目录跑过一次后会留下这些，组装发布目录时清掉
-RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json"]
+# （logs/ 是 2026-10 起 logging.go 默认写的 <exe>/logs/app.log，不属于安装包内容）
+RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json", "logs"]
 
 # 交付目录默认 release/（项目内；被 IDE/杀软锁住时用 --out 重定向）
 DEFAULT_OUT = os.path.join(ROOT, "release")
@@ -175,7 +176,7 @@ def assemble(dest: str, version: str) -> bool:
         elif os.path.exists(p):
             os.remove(p)
     # 预置两件套：sounds/（内置提示音）、config/settings.json（出厂默认）。
-    # 首跑直接在预置文件上继续写（installId 由 Go 侧 ensureInstallID 补生成并回写）。
+    # 首跑直接在预置文件上继续写（固定键由 Go 侧补生成并回写）。
     # data/ 与 stats.json **不进包**：统计是用户数据，首跑由 stats.go 的 Load 自己建
     # （缺就建空表、坏就改名备份后重建），更新时也不会被安装包覆盖或删除。
     shutil.copytree(SOUNDS_SRC, os.path.join(dest, "sounds"))

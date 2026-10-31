@@ -1,5 +1,19 @@
 "use strict";
 (() => {
+  // 本地唯一 id：16 字节随机数的十六进制串（32 位）。只在本列表内做定位用，
+  // 不用平台自带的加密级随机 id（老内核没这个接口，这里也不需要标准格式）。
+  function newId() {
+    const b = new Uint8Array(16);
+    for (let i = 0; i < b.length; i++) b[i] = (Math.random() * 256) | 0;
+    try {
+      if (window.crypto && window.crypto.getRandomValues) window.crypto.getRandomValues(b);
+    } catch {
+      // 退化到上面的 Math.random 已经够用
+    }
+    let s = "";
+    for (let i = 0; i < b.length; i++) s += b[i].toString(16).padStart(2, "0");
+    return s;
+  }
   // 历史源码/types.ts。2026-10-28 用户要求：默认高度 80%、距左 5%、贴底，
   // 与 Go 侧 role_write.go 的 supGeomDefault 必须同值（内置 meta.json 也一律这个值）
   var SUP_GEOM_DEFAULT = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false };
@@ -1463,6 +1477,8 @@
       $("sup-preview-trim")
     );
     supRelayout();
+    // 立绘尺寸/位置一变，名字牌要跟着重新贴边（拖滑条时逐帧走这里）
+    placeSupNamePlate();
   }
   function fillGeomControls(g) {
     $("sup-size").value = String(g.sizePct);
@@ -1483,6 +1499,41 @@
       flip: $("sup-flip").checked
     };
   }
+  // 预览面板的名字牌与真实提醒窗口同款：每次重绘随机换一枚「章」（牌底 + 碎点同下标），
+  // 并避开上一次。档数与 frontend/dist 里的 seal-ink-1..6.svg、两份提醒页 JS 的
+  // SEAL_VARIANTS 一致 —— 改档数要一起改（探针会红）。
+  var PREVIEW_SEAL_VARIANTS = 6;
+  var previewLastSeal = 0;
+  function pickPreviewSeal(el) {
+    if (!el) return;
+    var i = 1 + Math.floor(Math.random() * PREVIEW_SEAL_VARIANTS);
+    if (i === previewLastSeal) i = (i % PREVIEW_SEAL_VARIANTS) + 1;
+    previewLastSeal = i;
+    el.style.setProperty("--rt-ink", 'url("seal-ink-' + i + '.svg")');
+    el.style.setProperty("--rt-specks", 'url("seal-specks-' + i + '.svg")');
+  }
+  // 名字牌的摆位：真机里这块固定在「立绘头部左侧的空白窄缝」，位置是 layoutRoleTitle()
+  // 按立绘 alpha 剖面量出来的，不是写死的百分比 —— 预览必须同样按实测摆，否则立绘一靠左
+  // 牌子就压到人物脸上（面板比真机窗口窄，差几个像素就是压不压脸的区别）。
+  // 量的是 figureVisibleRect()（去掉透明边距后的可见边），与对话框摆位同源。
+  function placeSupNamePlate() {
+    const box = $("sup-preview");
+    const fig = document.querySelector(".sup-preview-fig");
+    const n = $("sup-preview-name");
+    if (!box || !fig || !n || n.classList.contains("hidden")) return;
+    const br = box.getBoundingClientRect();
+    if (br.width <= 0) return;                     // 页签没切过来，量不到（保持 CSS 默认值）
+    const fb = fig.getBoundingClientRect();
+    const vis = figureVisibleRect(fig, fb.top);
+    const w = n.offsetWidth || 27;
+    const h = n.offsetHeight || 60;
+    // 横向：牌子右缘贴住立绘可见左缘（留 6px 缝），缝不够就贴面板左缘 2px
+    const left = Math.round(Math.max(2, Math.min(10, vis.left - br.left - w - 6)));
+    // 纵向：牌顶与头顶齐平（真机就是钉在头部那一行），再夹进面板
+    const top = Math.round(Math.min(Math.max(vis.top - br.top + 4, 8), Math.max(8, br.height - h - 8)));
+    n.style.left = `${left}px`;
+    n.style.top = `${top}px`;
+  }
   function renderSupervisorPreview(stage) {
     curSupStage = stage;
     const box = $("sup-preview");
@@ -1498,6 +1549,7 @@
     $("sup-preview-line").textContent = supPreview ? stage === 2 ? supPreview.lines.command || supPreview.lines.urge : supPreview.lines.urge : "\u65E0\u6CD5\u8BFB\u53D6\u7ACB\u7ED8\u6587\u4EF6";
     // 说话人由对话框左上角的名字牌承载（与休息窗口的 dialog-name 同款），不再挂在台词上
     const previewName = $("sup-preview-name");
+    pickPreviewSeal(previewName);
     if (supPreview?.name) {
       previewName.textContent = supPreview.name;
       previewName.classList.remove("hidden");
@@ -1509,6 +1561,10 @@
       const img = $("sup-preview-img");
       img.src = supPreview.image;
       applyFigureTrim($("sup-preview-trim"), img, supPreview.geom.flip === true);
+      // 立绘解码完才会量到真实的可见左缘，落位要等这一刻（applyFigureTrim 内部
+      // 也是等 load 再量，这里跟它同一条时机）
+      img.addEventListener("load", placeSupNamePlate, { once: true });
+      placeSupNamePlate();
     }
   }
   async function refreshSupervisorPreview(keepUrge = false) {
@@ -1801,7 +1857,7 @@
   }
   function newSlot() {
     const { hour, minute } = defaultSlotTime();
-    return { id: crypto.randomUUID(), hour, minute, repeat: "daily", days: [], enabled: true };
+    return { id: newId(), hour, minute, repeat: "daily", days: [], enabled: true };
   }
   function updateTakeoutSummary() {
     const el = $("tk-summary");
@@ -2103,7 +2159,7 @@
       return;
     }
     const cb = {
-      id: `${CUSTOM_BREAK_PREFIX}${crypto.randomUUID()}`,
+      id: `${CUSTOM_BREAK_PREFIX}${newId()}`,
       name,
       config: defaultCustomBreakConfig(),
       // 提醒内容**默认为空**：不预置任何内置条目，用户自己加几条就是几条（默认固定显示）
@@ -2384,7 +2440,7 @@
   var msgBatchTarget = "short";
   var BUILTIN_MSGS = null;
   // 条目 id = 本列表内的序号（与 Go 侧 nextSeqID 同口径）：取现有最大整数 +1。
-  // 只要求本列表内唯一且稳定（固定模式用它选条，删除/拖动用它定位），不需要 uuid。
+  // 只要求本列表内唯一且稳定（固定模式用它选条，删除/拖动用它定位），不需要全局唯一串。
   function nextMsgId(items) {
     let max = 0;
     const used = new Set();
@@ -5467,7 +5523,7 @@
       const key = exe.toLowerCase();
       if (!exe || have.has(key)) continue;
       have.add(key);
-      const item = { id: crypto.randomUUID(), exe, name: appPauseLabel(exe), enabled: true };
+      const item = { id: newId(), exe, name: appPauseLabel(exe), enabled: true };
       S.appPause.items.push(item);
       added.push(item);
     }
@@ -5924,7 +5980,7 @@
       }
       for (const it of r.items) {
         S.sound.music.push({
-          id: `sm-${crypto.randomUUID()}`,
+          id: `sm-${newId()}`,
           file: it.file,
           name: it.name,
           enabled: true
@@ -6304,7 +6360,7 @@
         const ok = await confirmDialog({
           title: "\u6062\u590D\u9ED8\u8BA4\u8BBE\u7F6E",
           desc: "\u786E\u5B9A\u628A\u5168\u90E8\u8BBE\u7F6E\u6062\u590D\u4E3A\u51FA\u5382\u9ED8\u8BA4\uFF1F",
-          detail: "\u5F53\u524D\u914D\u7F6E\u4F1A\u5148\u5907\u4EFD\u6210 settings.backup.json\uFF08\u6BCF\u6B21\u8986\u76D6\uFF09\u3002\u5B89\u88C5 ID \u4FDD\u7559\uFF0C\u865A\u62DF\u89D2\u8272\u76EE\u5F55\u4E0E\u5DF2\u5BFC\u5165\u7684\u97F3\u4E50\u6587\u4EF6\u4E0D\u53D7\u5F71\u54CD\uFF1B\u5F00\u673A\u81EA\u542F\u52A8\u4F1A\u4E00\u5E76\u5173\u95ED\u3002",
+          detail: "\u5F53\u524D\u914D\u7F6E\u4F1A\u5148\u5907\u4EFD\u6210 settings.backup.json\uFF08\u6BCF\u6B21\u8986\u76D6\uFF09\u3002\u7763\u4F11\u4E13\u5458\u76EE\u5F55\u4E0E\u5DF2\u5BFC\u5165\u7684\u97F3\u4E50\u6587\u4EF6\u4E0D\u53D7\u5F71\u54CD\uFF1B\u5F00\u673A\u81EA\u542F\u52A8\u4F1A\u4E00\u5E76\u5173\u95ED\u3002",
           okText: "\u6062\u590D\u9ED8\u8BA4"
         });
         if (!ok) return;

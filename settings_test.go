@@ -51,15 +51,15 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 			"long":  map[string]any{"items": []any{map[string]any{"text": "没有 id"}}},
 		},
 	}
-	installIDCreated, presetSeeded, _, _ := normalizeLoad(raw)
-	if !installIDCreated {
-		t.Fatal("老配置没有 installId，应当补生成")
+	configKeyCreated, presetSeeded, _, _ := normalizeLoad(raw)
+	if !configKeyCreated {
+		t.Fatal("老配置没有固定键，应当补生成")
 	}
 	if !presetSeeded {
 		t.Fatal("老配置没有 seeded 标记，应当种入预置条目")
 	}
 	if got := raw["installId"].(string); got == "" {
-		t.Fatal("installId 应已写入")
+		t.Fatal("固定键应已写入")
 	}
 
 	assertAbsent(t, raw, "screens", "idlePause", "workTime")
@@ -191,9 +191,9 @@ func TestNormalizeLoadIsIdempotent(t *testing.T) {
 	if err := json.Unmarshal(first, &feed); err != nil {
 		t.Fatal(err)
 	}
-	installIDCreated, presetSeeded, idsRenumbered, _ := normalizeLoad(feed)
-	if installIDCreated || presetSeeded {
-		t.Error("已归一化的配置再跑一次不该再补 installId / 种条目")
+	configKeyCreated, presetSeeded, idsRenumbered, _ := normalizeLoad(feed)
+	if configKeyCreated || presetSeeded {
+		t.Error("已归一化的配置再跑一次不该再补固定键 / 种条目")
 	}
 	if idsRenumbered {
 		t.Error("已归一化的配置再跑一次不该再给条目重新编号")

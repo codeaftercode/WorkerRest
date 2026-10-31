@@ -79,7 +79,7 @@ python scripts/verify_portable.py
   （`AppearanceCfg` 的透明度 / 宽高百分比 / 全屏、`FullScreenPause`）、操作手册里的默认值文案。
 - **`ResetSettings` 会跑一遍 `normalizeLoad`**：只把出厂 JSON 写下去的话，恢复默认后提醒内容
   面板、指定应用列表、提示音列表都是空的，要重启一次才种入；跑完之后立刻就是出厂那套值
-  （`installId` 仍保留，`settings.backup.json` 仍先备份）。
+  （配置里那枚固定键仍保留，`settings.backup.json` 仍先备份）。
 - **exe 文件图标来自仓库根的 `rsrc_windows_amd64.syso`**（随源码入库）：`go build` 会自动链接
   同包目录下的 `*_windows_amd64.syso`，所以 `make_portable.py` 与 ldflags 都不用改。图标源就是
   全项目唯一那份 `frontend/dist/icon.png`，重做图标后重新生成一次即可：
@@ -199,7 +199,7 @@ python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出�
   「N 个提示音的文件已不在」可一键**从配置删除**（只删条目，不动任何文件）。启动时只记录、
   不擅自改配置；点「暂不处理」本次运行不再问，下次启动重新扫。
 - 打包交付的便携目录**自带**两件套：`sounds/`（四个内置提示音）、`config/settings.json`
-  （出厂默认，首跑补 installId）——首跑直接在预置文件上继续写。
+  （出厂默认，首跑补上固定键）——首跑直接在预置文件上继续写。
 - **`data/` 与 `stats.json` 不进安装包**（统计是用户数据，不属于发行物）：
   - 首跑：`data/` 目录与空的 `data/stats.json` 由程序自动创建（见 `stats.go` 的 `Load`）；
   - 损坏：文件**读不出来**时不动它、只从空表开始用；**格式错误（解析失败 / 不是 JSON 对象）**

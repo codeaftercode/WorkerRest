@@ -230,7 +230,7 @@ func (a *App) ImportScannedSounds(files []string) map[string]any {
 			}
 			have[key] = true
 			music = append(music, map[string]any{
-				"id":      "sm-" + newUUID(),
+				"id":      "sm-" + newRandomID(),
 				"file":    f.File,
 				"name":    f.Name,
 				"enabled": true,

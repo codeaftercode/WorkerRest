@@ -738,28 +738,69 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   box-shadow: 0 -14px 30px rgba(0, 0, 0, 0.38);
   border-radius: 0;
 }
-/* 名字牌：对话框左上角凸出（与休息窗口的 .dialog-name 同款，字号收一档） */
+/* 名字牌：与休息窗口的 .dialog-name 同款「竖排金字 + 红印泥墨块」，只是整体缩一档。
+   规则本身必须与 break.css 那两条（.dialog-name / .dialog-name::after）逐项对齐，
+   改那边时这里同步 —— 预览的全部意义就是「所见即真机」。
+   减掉的只有 JS 那条定位链：真机的位置由 layoutRoleTitle() 按立绘 alpha 剖面算出来
+   （写 inline left/top），预览里改用面板百分比锚点（top 19% 取自真机 139/720 的实测比例），
+   立绘被推到窗口最左边时牌面也在左侧窄缝里，观感一致。 */
 .sup-preview .dialog-name {
   position: absolute;
-  top: 0;
-  left: 14px;
-  transform: translateY(-55%);
-  padding: 3px 14px 4px;
-  background: var(--accent);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 7px;
+  /* 立绘头部左侧的空白区（真机里这块恒是空的天/背景，不会被立绘盖住） */
+  left: 10px;
+  top: 19%;
+  z-index: 9;
+  writing-mode: vertical-rl;
+  margin: 0;
+  /* 上下比左右厚：墨块要盖住字，还得留出毛边位移的地方（同 break.css 的比例，等比缩） */
+  padding: 10px 6px;
+  border: none;
+  font-family: "Source Han Serif SC", "Noto Serif SC", "Source Han Serif CN",
+               "Songti SC", "STSong", SimSun, "宋体", serif;
   font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.35;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-  text-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
+  font-weight: 400;
+  letter-spacing: 0.10em;
+  line-height: 1.26;
+  /* 长名靠 max-height 折出第二列（竖排的列从右往左叠，盒子左缘钉死 left:10px，
+     第二列往右长，不会顶出面板左缘被裁） */
+  white-space: normal;
+  max-height: 84px;
+  color: transparent;
+  /* 双层背景：第一层金字渐变裁进字形，第二层墨块裁进 border-box（三个坑见 break.css：
+     不能用 background-color、-webkit- 那条必须最后再写一遍、不能拿负 z-index 伪元素挂底） */
+  background-color: transparent;
+  background-image:
+    linear-gradient(102deg,
+      #c19434 0%, #dcb96f 12%, #f7e7bc 27%, #fffcf2 43%,
+      #eed69a 58%, #d3a24c 76%, #c19434 100%),
+    var(--rt-ink, url("seal-ink-1.svg"));
+  background-size: auto, 100% 100%;
+  background-repeat: no-repeat, no-repeat;
+  background-position: 0 0, 0 0;
+  background-clip: text, border-box;
+  -webkit-background-clip: text, border-box;
+  -webkit-text-stroke: 0.25px #e8c069;
+  /* 影子只能 drop-shadow（跟墨块 alpha）；box-shadow 画的是盒子矩形，会露出直角 */
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+  pointer-events: none;
 }
+/* 牌外那圈细碎印泥：与 break.css 同一条（负 inset 用百分比、不用固定像素，
+   否则会被 drop-shadow 的滤镜区域裁掉） */
+.sup-preview .dialog-name::after {
+  content: "";
+  position: absolute;
+  inset: -9%;
+  background-image: var(--rt-specks, url("seal-specks-1.svg"));
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+/* 第二阶段（命令）：真机这里只把描边提亮一档，牌面底色不变 —— 不要把背景改回纯红，
+   那会把墨块盖掉（旧版就是这么写的，预览与真机对不上） */
 .sup-preview[data-stage='2'] .dialog-name {
-  background: #b83232;
-  border-color: rgba(255, 130, 130, 0.7);
+  -webkit-text-stroke-color: #f3d189;
 }
-/* 督休专员关闭提示：督休专员未启用时作为预览面板中央的占位提示（与立绘/对话框互斥显示）。
+/* 督休专员未启用提示：督休专员未启用时作为预览面板中央的占位提示（与立绘/对话框互斥显示）。
    放在 .sup-preview 直接子级，靠 .hidden 控制显隐；data-enabled='0' 时立绘与对话框被隐藏，
    只留背景 + 这条提示。 */
 .sup-preview-badge {
@@ -773,9 +814,10 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   font-size: 13px;
   color: rgba(255, 255, 255, 0.72);
 }
-/* 督休专员未启用：隐藏立绘与对话框，避免「无立绘却挂着对话框」的错位观感 */
+/* 督休专员未启用：隐藏立绘、对话框与名字牌，避免「无立绘却挂着名字/对话框」的错位观感 */
 .sup-preview[data-enabled='0'] .sup-preview-fig,
-.sup-preview[data-enabled='0'] .sup-preview-content {
+.sup-preview[data-enabled='0'] .sup-preview-content,
+.sup-preview[data-enabled='0'] .dialog-name {
   display: none;
 }
 /* 台词：对话框内的大字对白，裸排（与休息窗口同款——无气泡/尾巴/左条，

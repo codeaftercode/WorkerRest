@@ -71,15 +71,15 @@ func TestScanRolesThumbPrefersPreview(t *testing.T) {
 // SaveRolePreview：写盘 + 回写 meta.json + 清掉旧扩展名的预览。
 func TestSaveRolePreviewWritesAndUpdatesMeta(t *testing.T) {
 	root := t.TempDir()
-	writeRoleDir(t, root, "角色", map[string]any{
-		"name": "角色", "enabled": true, "image": "figure.png", "preview": "preview.png",
+	writeRoleDir(t, root, "督休专员", map[string]any{
+		"name": "督休专员", "enabled": true, "image": "figure.png", "preview": "preview.png",
 	}, map[string]string{"figure.png": "fig", "preview.png": "stale-preview"})
 
 	blob := fakeWebP(0x41, 200)
-	if !saveRolePreview(root, "角色", webpDataURL(blob)) {
+	if !saveRolePreview(root, "督休专员", webpDataURL(blob)) {
 		t.Fatal("保存预览图应成功")
 	}
-	dir := filepath.Join(root, "角色")
+	dir := filepath.Join(root, "督休专员")
 	got, err := os.ReadFile(filepath.Join(dir, "preview.webp"))
 	if err != nil {
 		t.Fatalf("preview.webp 应已写入：%v", err)
@@ -90,12 +90,12 @@ func TestSaveRolePreviewWritesAndUpdatesMeta(t *testing.T) {
 	if isRegularFile(filepath.Join(dir, "preview.png")) {
 		t.Fatal("旧扩展名的预览图应被清掉")
 	}
-	cfg, ok := readRoleFile(root, "角色")
+	cfg, ok := readRoleFile(root, "督休专员")
 	if !ok || cfg.Preview != "preview.webp" {
 		t.Fatalf("meta.json 的 preview 应改为 preview.webp，实际 %q", cfg.Preview)
 	}
 	// 磁贴随之用上新预览图
-	r := findRole(t, scanRoles(root), "角色")
+	r := findRole(t, scanRoles(root), "督休专员")
 	if r.Thumb != toDataURL(filepath.Join(dir, "preview.webp")) {
 		t.Fatal("扫描结果的 thumb 应指向新的 preview.webp")
 	}
@@ -104,10 +104,10 @@ func TestSaveRolePreviewWritesAndUpdatesMeta(t *testing.T) {
 // SaveRolePreview 必须拒绝非图片数据与超大输入，且**不留下任何文件**。
 func TestSaveRolePreviewRejectsBadData(t *testing.T) {
 	root := t.TempDir()
-	writeRoleDir(t, root, "角色", map[string]any{
-		"name": "角色", "enabled": true, "image": "figure.png",
+	writeRoleDir(t, root, "督休专员", map[string]any{
+		"name": "督休专员", "enabled": true, "image": "figure.png",
 	}, map[string]string{"figure.png": "fig"})
-	dir := filepath.Join(root, "角色")
+	dir := filepath.Join(root, "督休专员")
 
 	cases := []struct {
 		name    string
@@ -120,14 +120,14 @@ func TestSaveRolePreviewRejectsBadData(t *testing.T) {
 		{"过小", webpDataURL([]byte("RIFF0000WEBP"))},
 	}
 	for _, c := range cases {
-		if saveRolePreview(root, "角色", c.dataURL) {
+		if saveRolePreview(root, "督休专员", c.dataURL) {
 			t.Fatalf("%s：应被拒绝", c.name)
 		}
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
 		t.Fatalf("被拒绝后目录里只该有 meta.json + figure.png，实际 %d 项", len(entries))
 	}
-	if saveRolePreview(root, "不存在的角色", webpDataURL(fakeWebP(2, 200))) {
+	if saveRolePreview(root, "不存在的督休专员", webpDataURL(fakeWebP(2, 200))) {
 		t.Fatal("专员不存在时应返回 false")
 	}
 }
@@ -135,15 +135,15 @@ func TestSaveRolePreviewRejectsBadData(t *testing.T) {
 // 渲染层万一送来 PNG（内核不支持 WebP 编码时会退成 PNG），也要能落盘。
 func TestSaveRolePreviewAcceptsPNG(t *testing.T) {
 	root := t.TempDir()
-	writeRoleDir(t, root, "角色", map[string]any{
-		"name": "角色", "enabled": true, "image": "figure.png",
+	writeRoleDir(t, root, "督休专员", map[string]any{
+		"name": "督休专员", "enabled": true, "image": "figure.png",
 	}, map[string]string{"figure.png": "fig"})
 	b := make([]byte, 64)
 	copy(b, []byte{0x89, 'P', 'N', 'G', '\r', '\n', 0x1a, '\n'})
-	if !saveRolePreview(root, "角色", "data:image/png;base64,"+base64.StdEncoding.EncodeToString(b)) {
+	if !saveRolePreview(root, "督休专员", "data:image/png;base64,"+base64.StdEncoding.EncodeToString(b)) {
 		t.Fatal("PNG 数据应被接受")
 	}
-	cfg, _ := readRoleFile(root, "角色")
+	cfg, _ := readRoleFile(root, "督休专员")
 	if cfg.Preview != "preview.png" {
 		t.Fatalf("PNG 应落成 preview.png，实际 %q", cfg.Preview)
 	}
@@ -152,19 +152,19 @@ func TestSaveRolePreviewAcceptsPNG(t *testing.T) {
 // 换图后旧预览必须清空：留着就会显示上一张图（这正是「preview 复制原图」时代的毛病）。
 func TestReplaceRoleImageDropsStalePreview(t *testing.T) {
 	root := t.TempDir()
-	writeRoleDir(t, root, "角色", map[string]any{
-		"name": "角色", "enabled": true, "image": "figure.png", "preview": "preview.png",
+	writeRoleDir(t, root, "督休专员", map[string]any{
+		"name": "督休专员", "enabled": true, "image": "figure.png", "preview": "preview.png",
 	}, map[string]string{"figure.png": "old-fig", "preview.png": "old-preview"})
 
 	src := writeImgSrc(t, t.TempDir(), "新图.webp", "new-bytes")
-	if !replaceRoleImage(root, "角色", src) {
+	if !replaceRoleImage(root, "督休专员", src) {
 		t.Fatal("换图应成功")
 	}
-	dir := filepath.Join(root, "角色")
+	dir := filepath.Join(root, "督休专员")
 	if isRegularFile(filepath.Join(dir, "preview.png")) {
 		t.Fatal("旧预览图应被删除（等渲染层重新生成）")
 	}
-	cfg, _ := readRoleFile(root, "角色")
+	cfg, _ := readRoleFile(root, "督休专员")
 	if cfg.Image != "figure.webp" {
 		t.Fatalf("image 应指向新立绘，实际 %q", cfg.Image)
 	}
@@ -172,7 +172,7 @@ func TestReplaceRoleImageDropsStalePreview(t *testing.T) {
 		t.Fatalf("preview 应置空，实际 %q", cfg.Preview)
 	}
 	// 没有预览图时，磁贴回退到新立绘
-	r := findRole(t, scanRoles(root), "角色")
+	r := findRole(t, scanRoles(root), "督休专员")
 	if r.Thumb != toDataURL(filepath.Join(dir, "figure.webp")) {
 		t.Fatal("换图后 thumb 应回退到新立绘")
 	}

@@ -146,7 +146,7 @@ func TestPickRoleWithImageSkipsUnreadableFigure(t *testing.T) {
 	}
 	picked, image := pickRoleWithImage(usable, &usable[0])
 	if picked == nil || picked.Name != "ok" {
-		t.Fatalf("应跳过读不出立绘的角色，选中 ok，得到 %+v", picked)
+		t.Fatalf("应跳过读不出立绘的督休专员，选中 ok，得到 %+v", picked)
 	}
 	if image == "" {
 		t.Fatal("立绘 data URL 不应为空")

@@ -183,6 +183,13 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 		log.Printf("[boot] 前端契约自检通过：%d 个绑定方法全部存在（已接通 %d + 待接通 %d）",
 			len(allCalls()), len(wiredCalls), len(pendingCalls))
 	}
+	// 音频副本改可读名：旧版导入的是 music-<长随机串>.<ext>，统一迁成 music-<序号>.<ext>，
+	// 配置里存的绝对路径同步改掉；改过才落盘。必须排在调度器之前 —— 那时还没有并发读配置。
+	if n := a.migrateMusicFileNames(); n > 0 {
+		if err := a.cfg.Save(); err != nil {
+			log.Printf("[sound] 音乐副本改名后落盘失败: %v", err)
+		}
+	}
 	a.startScheduler()
 	log.Printf("[plan] %s short=%s long=%s", a.sched.planSummary(),
 		a.cfg.Break("short").Mode, a.cfg.Break("long").Mode)
@@ -460,7 +467,7 @@ func (a *App) buildSupervisorSessionWith(cfg SupervisorConfig, force bool, force
 // pickRoleWithImage 在可用督休专员里挑一个**立绘真能读出来**的：
 // 优先 prefer，读不出来（磁盘瞬时抖动 / 文件被占用 / 正被替换成新图）就按顺序找下一个。
 //
-// 为什么要有它：曾经首选角色的 toDataURL 返回空串就直接返回 nil，提醒窗口于是变成
+// 为什么要有它：曾经首选督休专员的 toDataURL 返回空串就直接返回 nil，提醒窗口于是变成
 // 一个既没有立绘也没有对话框的空壳；用户只能反复点「预览」撞运气。
 func pickRoleWithImage(usable []Role, prefer *Role) (*Role, string) {
 	if prefer != nil {

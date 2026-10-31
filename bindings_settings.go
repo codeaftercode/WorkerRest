@@ -89,11 +89,11 @@ func (a *App) SaveSettings(next map[string]any) bool {
 }
 
 // ResetSettings 恢复默认设置：先把当前配置备份成 settings.backup.json（每次覆盖），
-// 再整体重置为出厂默认。installId 保留（永久标识）；督休专员目录与已导入的音乐不受影响。
+// 再整体重置为出厂默认。配置里那枚固定键保留（红包地址要用）；督休专员目录与已导入的音乐不受影响。
 func (a *App) ResetSettings() map[string]any {
 	a.mu.Lock()
 	cur := a.cfg.Path()
-	installID := a.cfg.Str("", "installId")
+	keepKey := a.cfg.Str("", "installId")
 	beforeAutostart := a.cfg.Autostart()
 	if cur == "" {
 		// 还没有配置文件：直接按便携/安装形态推导一个落点
@@ -106,7 +106,7 @@ func (a *App) ResetSettings() map[string]any {
 			return map[string]any{"ok": false, "message": "备份失败：" + err.Error()}
 		}
 	}
-	// 回到出厂默认后**立刻**跑一遍与启动完全相同的归一化管线（normalizeLoad）：补 installId、
+	// 回到出厂默认后**立刻**跑一遍与启动完全相同的归一化管线（normalizeLoad）：补固定键、
 	// 种入提醒内容条目与内置提示音、按预置清单补齐「指定应用」列表。
 	//
 	// 不跑这一步的话，用户点完「恢复默认」看到的是空的提醒内容面板 / 空的应用列表 / 空的
@@ -114,8 +114,8 @@ func (a *App) ResetSettings() map[string]any {
 	// （2026-10-29 用户明确要求恢复默认后立刻就是出厂那套值）。
 	fresh := defaultSettingsMap()
 	normalizeLoad(fresh)
-	if installID != "" {
-		fresh["installId"] = installID
+	if keepKey != "" {
+		fresh["installId"] = keepKey
 	}
 	s := &Settings{raw: fresh, path: cur}
 	if err := s.Save(); err != nil {

@@ -25,7 +25,7 @@ import subprocess
 import sys
 import time
 import urllib.request
-import uuid
+import secrets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
@@ -68,7 +68,7 @@ def rpc(base, name, args=()):
         "object": 0,
         "method": 0,
         "args": {
-            "call-id": uuid.uuid4().hex,
+            "call-id": secrets.token_hex(16),
             "methodName": "main.App." + name,
             "args": list(args),
         },
@@ -77,7 +77,7 @@ def rpc(base, name, args=()):
         base + "/wails/runtime", data=json.dumps(payload).encode("utf-8"), method="POST"
     )
     req.add_header("Content-Type", "application/json")
-    req.add_header("x-wails-client-id", uuid.uuid4().hex)
+    req.add_header("x-wails-client-id", secrets.token_hex(16))
     try:
         with urllib.request.urlopen(req, timeout=15) as r:
             raw = r.read().decode("utf-8", "replace")

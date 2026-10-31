@@ -143,7 +143,8 @@ body.sup-flip .mirror { transform: scaleX(-1); }
   display: block;
   transform-origin: 50% 100%;
   filter: drop-shadow(0 20px 44px rgba(0, 0, 0, 0.6));
-  transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
+  /* 凑近/脉动走 scale 属性（见下方 stage 规则），过渡要跟着换到 scale 上 */
+  transition: scale 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
 }
 
 /* ---------------- 有督休专员时的版式：游戏对话画面 ----------------
@@ -170,7 +171,8 @@ body.has-supervisor .figure {
 body.has-supervisor .gaze { justify-content: flex-start; }
 body.has-supervisor .figure img {
   max-width: 60vw;
-  transition: transform 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
+  /* 凑近/脉动走 scale 属性（见下方 stage 规则），过渡要跟着换到 scale 上 */
+  transition: scale 0.5s cubic-bezier(0.22, 0.9, 0.24, 1), filter 0.5s ease;
 }
 
 /* 对话框：底部横贯全宽，左/右/底三边与窗口重叠、左上右上直角（不设圆角），
@@ -197,11 +199,13 @@ body.has-supervisor .content {
      对话框就被撑高，倒计时环（bottom 相对对话框顶）跟着上移、整屏跳一下。
      最长内置台词 69 字（≈2 行）在 22vh 内装得下；用户自定义的超长提醒内容由
      break.js 的 fitDialogText() 逐级缩字号兜底，不会溢出到框外。 */
-  height: 22vh;
+  height: var(--dlg-h, 22vh);
   /* 上下内边距对称并让文字整体偏上：原来是 2.6em / 18px（上大下小），
      会把居中后的文字压向框底、视觉上偏低约 13px。改 vh 后随窗口等比缩放，
-     小窗也不会因为固定 41.6px 的顶部留白而挤掉文本空间。 */
-  padding: 3.4vh 40px 5vh 30px;
+     小窗也不会因为固定 41.6px 的顶部留白而挤掉文本空间。
+     左右也必须对称（曾是 30 / 40）：提醒内容是**居中**排的，左右内边距差 10px
+     会把整行字往左推 5px，看着像没对齐窗口中线。 */
+  padding: 3.4vh 40px 5vh;
   background: linear-gradient(180deg, rgba(10, 14, 26, 0.58), rgba(7, 10, 20, 0.84));
   border-top: 2px solid rgba(255, 255, 255, 0.4);
   box-shadow: 0 -18px 44px rgba(0, 0, 0, 0.38);
@@ -209,11 +213,13 @@ body.has-supervisor .content {
   border-radius: 0;
 }
 
-/* 自定义提醒（督休专员只作背景立绘、不显示台词）：框里只有 messages，长度完全由
-   用户自己写，必须保持「随内容长高」的老行为 —— 固定高度会把它裁掉。 */
-body.has-supervisor .content.no-line {
+/* 超长提醒内容的兜底：fitDialogText() 先把字号从基准缩到 --dlg-fs-min（15px），
+   仍装不下才给 .content 加 .tall 让框长高 —— 宁可框高一点，也绝不裁字、
+   不让字压在框外。自定义提醒（框里只有 messages，长度完全由用户自己写）走的
+   就是这条路：它和短休/长休用同一个固定高度，长得像同一块对话框。 */
+body.has-supervisor .content.tall {
   height: auto;
-  min-height: 22vh;
+  min-height: var(--dlg-h, 22vh);
 }
 
 /* 非全屏（data-rounded='1'）时窗口是 --app-radius 的圆角矩形，但 .content 是
@@ -223,28 +229,120 @@ body.has-supervisor .content.no-line {
   border-radius: 0 0 var(--app-radius) var(--app-radius);
 }
 
-/* 名字标签：对话框左上角凸出（经典 VN 名字牌）。2026-10-24 从 26px 往右挪到 56px：
-   原来是贴着窗口左缘、压在立绘身上，现在留出呼吸位。 */
+/* 督休专员题名：竖排金色宋体，写在「朱红墨块」上，钉在立绘头部左侧的空白区。
+   位置（left/top/width/max-height）与字号（--rt-fs）都由 break.js 的
+   layoutRoleTitle() 实测写入：先按立绘的 alpha 剖面找「头部段最左不透明列」，
+   右缘退 12px 起排，再逐 0.5px 缩字号直到覆盖区一个不透明像素都不碰（零遮挡）。
+
+   为什么要有牌子（2026-10-30 用户提议）：窗口背景是用户可改的 --accent 渐变，
+   主题设成金色时，无底金字几乎看不见（实测浅色主题只有 3.21:1、金色主题 4.47:1，
+   而渐变两端的暗青铜在亮底上直接溶掉）。给字加一层自己的衬底，就把「字 vs 未知背景」
+   变成「字 vs 固定红牌」，等于把可读性从「取决于主题」变成「常数」。
+   牌底不是 CSS 画出来的矩形，而是 seal-ink-*.svg 这组矢量「墨块」：不规则轮廓、
+   撕毛的边、浓淡不匀、内部细断裂、轮廓外几点溢出的碎墨 —— 纯 CSS 只能给出
+   圆角矩形/椭圆，一眼假。
+   它按 background-size: 100% 100% 拉伸（preserveAspectRatio=none）：牌子只有 1~3 列，
+   长宽比在 0.35~0.55 之间，拉伸看不出变形，所以不需要 9 宫格。
+   一组 6 个变体（scripts/make_seal_ink.py 生成），每次出现由 JS 随机挑一张写进
+   --rt-ink：同一枚章连盖两次也不该一模一样，轮廓胖瘦/咬口位置/撕裂走向/断裂/碎点
+   全都不同。这里只留第 1 张当兜底（JS 没跑或取不到值时仍有印泥，不是裸字）。
+   配色实测（金字取 P10、墨块取本体中位数，5 种主题同值）：
+     · 墨块 #a5261a + 金字端点 #c19434 → 4.03:1  ✅ 朱红饱满，与金色背景靠色相分开
+     · 更鲜 #b02a1c                    → 3.14:1  ❌ 15~17px 的小名牌就糊
+     · 旧暗朱 #5e1512                  → 4.50:1，对比更好，但偏褐、像木牌不像印泥
+   规律：墨块越亮、金字对比越低。#a5261a 是「够红」与「够清楚」的交点，别再往上提。
+
+   字体只用**系统自带**，不携带任何字体文件：装了思源宋体的机器自动取最好的，
+   没装就落到 SimSun（Windows 核心预装，微软官方字体表里任何语言版本都在）。
+   SimHei / KaiTi / FangSong / DengXian 属于 FOD 补充字体（英文版、精简版可能
+   根本不存在），所以刻意不进字体栈。
+   宋体只有 Regular：font-weight:600 会走合成加粗（平移重叠），笔画发胖、衬线变形；
+   改用 0.35px 描边均匀外扩补粗。 */
 .dialog-name {
   position: absolute;
+  left: 0;
   top: 0;
-  left: 56px;
-  transform: translateY(-55%);
-  padding: 5px 20px 6px;
-  background: var(--accent);
-  border: 1px solid rgba(255, 255, 255, 0.35);
-  border-radius: 9px;
-  font-size: clamp(14px, 1.9vh, 20px);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  line-height: 1.35;
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  /* 高于 .stage(z-index:8) 与 #vignette(z-index:6)：二阶段暗角不压字 */
+  z-index: 9;
+  /* 缩放原点 = 立绘盒底边中点（双脚）。二阶段的「凑近 + 脉动」用 CSS 的 scale 属性
+     同时施加在 img 和本元素上；原点必须重合，牌面才会跟着立绘一起刚性放大、与头部
+     保持固定间距（原点若留在牌心，一放大牌面就整体往人物身上跑）。
+     这两个值由 break.js / takeout.js 的 layoutRoleTitle() 按实测几何写入。 */
+  transform-origin: var(--rt-ox, 50%) var(--rt-oy, 100%);
+  /* 只给 scale 上过渡（与 .figure img 同一条曲线）：一阶段→二阶段立绘用 0.5s 长到
+     1.08，牌子若瞬间跳过去，这半秒里两者尺寸对不上、相对位置会抖十几像素。
+     绝不能把 transform 放进过渡 —— 它是注视跟随逐帧写的，过渡会拖成惯性残影。 */
+  transition: scale 0.5s cubic-bezier(0.22, 0.9, 0.24, 1);
+  writing-mode: vertical-rl;
+  margin: 0;
+  /* 上下 14px、左右 8px。为什么上下更厚：墨块要盖住字，还得留出毛边位移的地方。
+     毛边（feDisplacementMap scale 7~9 / viewBox 200）会向内吃到约 3% 盒高；盒子只比
+     字高 8px 时，竖排 10 字（盒高 227px）的字头字脚就会从墨块上下探出去 —— 实测抓到了
+     （金字压在蓝背景上）。左右 8px 够用：横向毛边只吃 2.25% 盒宽。 */
+  padding: 14px 8px;
+  border: none;
+  font-family: "Source Han Serif SC", "Noto Serif SC", "Source Han Serif CN",
+               "Songti SC", "STSong", SimSun, "宋体", serif;
+  font-size: var(--rt-fs, 20px);
+  font-weight: 400;
+  letter-spacing: 0.10em;
+  line-height: 1.26;
+  /* normal（不是 nowrap）：长名要靠 max-height 折出第二列，见 layoutRoleTitle */
+  white-space: normal;
+  color: transparent;
+  /* 红印泥牌底 + 金字 = 两层 background-image：
+     第一层给字形上金属渐变（裁进字形），第二层是一整块纯红（裁进 border-box）。
+     三个坑，都是实测踩出来的：
+     1) 不能用 background-color 当底色 —— 它只会被第一层 text 的 clip 裁掉，
+        牌面等于透明（曾经就是这样：看着像有红底，其实只是内阴影+高光圈，
+        金主题下牌子直接融进背景）;
+     2) background-clip 的「双值列表」必须两条 declare 都带 —— 只写
+        -webkit-background-clip:text 时整条列表会被丢弃，只剩单值 text;
+     3) 不能用 ::before + 负 z-index 挂底色：牌子自身 z-index:9 已是层叠上下文，
+        负 z-index 的伪元素会画在字形背景之上（实测字整个消失，只剩描边）。 */
+  background-color: transparent;
+  background-image:
+    linear-gradient(102deg,
+      #c19434 0%, #dcb96f 12%, #f7e7bc 27%, #fffcf2 43%,
+      #eed69a 58%, #d3a24c 76%, #c19434 100%),
+    var(--rt-ink, url("seal-ink-1.svg"));
+  /* 墨块按 border-box 铺满（9 宫格都不用，块本身就是不规则的，拉伸看不出） */
+  background-size: auto, 100% 100%;
+  background-repeat: no-repeat, no-repeat;
+  background-position: 0 0, 0 0;
+  background-clip: text, border-box;
+  -webkit-background-clip: text, border-box;
+  -webkit-text-stroke: 0.35px #e8c069;
+  /* 影子只能走 drop-shadow：它跟随「墨块的真实 alpha」；box-shadow 画的是盒子矩形，
+     一圈 inset 高光/内阴影挂在透明元素上会露出直角边，把墨块打回「圆角矩形」。 */
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+  pointer-events: none;
+  /* 没算好位置前不显示：left/top 的初始 0,0 在窗口左上角，若立绘尚未解码完
+     （量不到 alpha 剖面）就先挂出来，会看到名字在错位置闪一下。
+     layoutRoleTitle() 成功定位后写 data-rt，才放出来。 */
+  visibility: hidden;
 }
-/* 第二阶段（命令）：名字标签随对话框一起转红色告警 */
+.dialog-name[data-rt] { visibility: visible; }
+
+/* 牌外那圈细碎印泥。为什么单独一层：墨块的画布就是牌子盒子，毛边位移 6 个单位
+   （≈3px），盒子里 9% 的余量被它吃干净 —— 碎点画在同一张图上会和边糊成一片
+   （实测六个变体一个点都看不见）。这里用一个比盒子大一圈的伪元素专门铺碎点：
+   它不参与 background-clip:text，所以既不碰字形、也不受盒边界限制。
+   inset 用百分比而不是 -12px：.dialog-name 挂着 filter: drop-shadow，滤镜区域
+   默认只画到「盒子各外扩 10%」，固定像素在窄牌子上会超出 10% 被裁掉。 */
+.dialog-name::after {
+  content: "";
+  position: absolute;
+  inset: -9%;
+  background-image: var(--rt-specks, url("seal-specks-1.svg"));
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+/* 第二阶段（命令）不再改题名样式：牌子是常驻衬底，背景变化与它无关 —— 这正是
+   加牌子的目的。只把描边提亮一档，抵消暗角红光压下来的那点亮度。 */
 #app[data-stage='2'] .dialog-name {
-  background: #b83232;
-  border-color: rgba(255, 130, 130, 0.7);
+  -webkit-text-stroke-color: #f3d189;
 }
 
 /* 对话框第二阶段：红色告警底（顶边描边随底色一起转红） */
@@ -267,30 +365,47 @@ body.has-supervisor .bar {
 }
 
 /* 第一阶段（劝说）：轻微凑近、对比略增。
-   凑近只允许「贴底放大/拉伸」（img 的 transform-origin 已是 50% 100%）——
-   translateY 向上会让底边抬升，把 trim 补偿悬在窗口外的透明边距露进窗口 */
+   凑近只允许「贴底放大/拉伸」（原点已是 50% 100%）—— translateY 向上会让底边抬升，
+   把 trim 补偿悬在窗口外的透明边距露进窗口。
+   ⚠️ 凑近 / 脉动一律走 scale **属性**，不能走 transform：题名牌（.dialog-name）的
+   transform 被注视跟随逐帧覆盖写入（break.js 的 frame），两个元素抢同一个 property
+   会互相打掉。scale 与 transform 各自独立、又共用 transform-origin，正好分工 ——
+   scale 装「凑近/脉动」（本文件），transform 装「跟随」（脚本）。 */
 #app[data-stage='1'] .figure img {
-  transform: scale(1.03) scaleY(1.006);
   filter: drop-shadow(0 24px 52px rgba(0, 0, 0, 0.7)) contrast(1.04);
 }
 /* 第二阶段（命令）：明显凑近、红色轮廓光、持续脉动（脉动幅度 ≈ 原 14→18px 上移） */
 #app[data-stage='2'] .figure img {
   filter: drop-shadow(0 0 34px rgba(255, 70, 70, 0.4)) contrast(1.12) saturate(1.12);
+}
+/* 立绘与题名牌共用同一组缩放：牌面必须和立绘一起凑近。否则二阶段立绘放大 8%
+   （头顶抬高约 50px）而牌面原地不动，看上去「人凑过来了、牌子掉在原地」，
+   而且牌面相对头部的位置整体下沉，不再贴着头部左侧的空白区。
+   scale 的两个分量 = scale(x) scaleY(y) 的乘积（1.08 × 1.02 = 1.1016）。 */
+#app[data-stage='1'] .figure img,
+#app[data-stage='1'] .dialog-name {
+  scale: 1.03 1.03618;
+}
+#app[data-stage='2'] .figure img,
+#app[data-stage='2'] .dialog-name {
+  scale: 1.08 1.1016;
   animation: figure-pulse 1.1s ease-in-out infinite;
 }
 @keyframes figure-pulse {
-  0%, 100% { transform: scale(1.08) scaleY(1.02); }
-  50% { transform: scale(1.095) scaleY(1.025); }
+  0%, 100% { scale: 1.08 1.1016; }
+  50% { scale: 1.095 1.12238; }
 }
 
 /* 台词：对话框内的大字对白。名字已由左上角的 .dialog-name 标签承载，
    气泡时代的尾巴/边框/内嵌说话人行全部退役——游戏对话画面的台词就是
-   裸排在框里的。data-speaker 仍由脚本写入（探针/调试用），不再生成内容。 */
+   裸排在框里的。data-speaker 仍由脚本写入（探针/调试用），不再生成内容。
+   字号/字重/对齐由 body.has-supervisor .dialog-text 统一定义（见下方），
+   这里只留不受版式影响的兜底值：元素在无督休专员时整块不显示。 */
 .supervisor-line {
   position: relative;
-  /* 字号随窗口高度自适应（vh = 窗口高的 1%）：2.9vh 在 992px 高的窗口 ≈ 29px。
-     小窗口钳到 18px 下限，超大窗口钳到 31px 上限。 */
-  font-size: clamp(18px, 2.9vh, 31px);
+  /* 基准字号与提醒内容同一个变量：2.9vh 在 992px 高的窗口 ≈ 29px，
+     小窗口钳到 18px 下限、超大窗口钳到 31px 上限（--dlg-fs 在 body 上定义）。 */
+  font-size: var(--dlg-fs, clamp(18px, 2.9vh, 31px));
   font-weight: 700;
   line-height: 1.5;
   text-align: left;
@@ -298,17 +413,13 @@ body.has-supervisor .bar {
   text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
   transition: color 0.4s ease;
 }
-/* 有督休专员时（对话框内）台词就是裸文本；无督休专员时这条规则不生效（本就不显示）。
-   台词 = 提醒内容（用户设置的提醒 / 督休二阶段自己的提醒），在对话框内垂直+水平居中。 */
+/* 有督休专员时（对话框内）台词就是裸文本；对齐/宽度/字号交给 .dialog-text。 */
 body.has-supervisor .supervisor-line {
   background: none;
   border: none;
   box-shadow: none;
   padding: 0;
   border-radius: 0;
-  text-align: center;
-  width: 100%;
-  max-width: 100%;
 }
 body.has-supervisor .supervisor-line::after { display: none; }
 body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
@@ -330,25 +441,96 @@ body.has-supervisor .supervisor-line[data-speaker]::before { display: none; }
 }
 .messages p { margin: 2px 0; }
 
-/* 有督休专员时：督休专员是主视觉，提醒内容退为次要说明 */
+/* 有督休专员时：提醒内容不再「退为次要说明」——短休/长休的提醒内容就是督休专员的
+   台词（.supervisor-line），自定义提醒则只放自己的提醒内容（.messages），两者必须
+   长得一模一样，所以字号/字重/透明度全部由 .dialog-text 统一给，这里只管布局。 */
 body.has-supervisor .messages {
-  font-size: 15px;
-  font-weight: 400;
-  line-height: 1.7;
-  opacity: 0.72;
   max-width: 100%;
   padding: 0;
 }
+
+/* ---- 提醒内容（无督休专员）：四类提醒窗口共用同一套字 ----
+   不启用督休专员时没有对话框，提醒内容仍排在窗口下方（休息窗口在倒计时环下方、
+   外卖在二维码下方），四个窗口的字必须一致 —— 与有督休专员那套（见下一段）只差
+   字号：这里没有 22vh 的框要迁就，字可以大一档（3.4vh，20~34px）；字重 600 而不是
+   700，因为对话框里整块只有一句台词，这里旁边还有个倒计时环，要留层级。
+   以前外卖这条是 15px / 400 / opacity .85，比休息窗口的 24.48px / 600 / 不透明
+   小一圈又淡一档，是四个窗口里唯一的例外。
+   ⚠️ 两份 CSS（break.css / takeout.css）里的这一段必须逐字相同。 */
+body:not(.has-supervisor) .dialog-text {
+  text-align: center;
+  font-size: clamp(20px, 3.4vh, 34px);
+  font-weight: 600;
+  line-height: 1.6;
+  opacity: 1;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.45);
+  /* 自动换行：中文按字断行本就生效，这里补的是「一长串英文 / 没有空格的串」——
+     不补 overflow-wrap 时它永远不折行，会横向顶出提醒内容区。 */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* 自定义提醒的 messages 里是一串 <p>（renderMessage 生成），行距由 p 的外边距给；
+   外卖的提醒内容是纯文本，这条只对 .messages 生效，保留原值 2px。 */
+body:not(.has-supervisor) .dialog-text p { margin: 2px 0; }
+
+/* ---- 对话框内的提醒内容：四类提醒窗口共用同一套排版 ----
+   短休 / 长休 / 外卖的提醒内容落在 .supervisor-line（台词），自定义提醒落在
+   .messages（自定义提醒不挂督休专员台词，框里只放自己的提醒内容）。以前两处各写
+   各的：自定义是 15px / 400 / opacity .72 的淡小字，外卖那条虽然字号对却左对齐
+   （它的 .content 是 display:block + text-align:left）——同一个位置的字长三个样。
+   现在三者都挂 .dialog-text，样式只在这里定义一次。
+   ⚠️ 两份 CSS（break.css / takeout.css）里的这一段必须逐字相同。 */
+body.has-supervisor .dialog-text {
+  /* 铺满内容列再居中：只写 text-align 不够 —— 元素宽度若由内容决定（外卖的
+     .content 是 display:block），单行短句会贴在左边，看着就是「没居中」。 */
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: center;
+  /* 基准字号随窗口高自适应，缩放下限 --dlg-fs-min 由 JS 的 fitDialogText 读走 */
+  font-size: var(--dlg-fs, clamp(18px, 2.9vh, 31px));
+  font-weight: 700;
+  line-height: 1.5;
+  opacity: 1;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  /* 自动换行：中文按字断行本就生效，这里补的是「一长串英文 / 没有空格的串」——
+     不补 overflow-wrap 时它永远不折行，会横向顶出对话框。 */
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+/* 自定义提醒的 messages 里是一串 <p>（renderMessage 生成），p 的默认外边距会把
+   高度算虚、居中跟着偏，这里清零与纯文本对齐 */
+body.has-supervisor .dialog-text p { margin: 0; }
 
 /* 无督休专员时的版式：倒计时圆环精确居于屏幕正中央（水平 + 垂直），所有控件
    （提醒名称 / 提前结束 / 提醒内容）都以环心为基准环绕排布——名称在环正上方、
    提前结束在环正下方、提醒内容落在「提前结束 ↔ 窗口下边框」的垂直中点（下区域居中）。
    环尺寸与间距走 CSS 变量，摆位用 50% 锚点 + 半环偏移，无需 JS，天然精确居中。 */
-body:not(.has-supervisor) {
+/* 环尺寸是**唯一真源**：环盒子、环内数字字号、无专员版的摆位偏移全部由它派生。
+   有/无督休专员、横屏/竖屏只在 body 上改这一个变量，不再各自写死宽高与字号
+   （以前两套 clamp 并列，竖屏媒体查询靠「后定义胜出」才压住横屏，很容易再踩）。 */
+body {
   --ring-size: clamp(210px, 42vh, 300px);
   --ring-half: calc(var(--ring-size) / 2);
   --ctrl-gap: clamp(12px, 2.4vh, 22px);
 }
+body.has-supervisor {
+  --ring-size: clamp(180px, 32vh, 360px);
+  /* 数字的垂直上限（见 .countdown）：环内还要塞下百分比 + 两行题字，它们随视口
+     放大（竖屏最大 24px/18px），实测占环高的 0.30~0.37；tick 峰值再放大 22%。 */
+  --cd-h: 0.30;
+  /* 对话框内提醒内容的排版参数（短休/长休/外卖/自定义四类共用，takeout.css 里同值）：
+     --dlg-fs      基准字号（随窗口高自适应，18~31px）
+     --dlg-fs-min  装不下时逐级缩的下限（15px，再小就看不清了）
+     --dlg-h       对话框应有高度（也是 JS 算「文字可用高度」的基准） */
+  --dlg-fs: clamp(18px, 2.9vh, 31px);
+  --dlg-fs-min: 15px;
+  --dlg-h: 22vh;
+}
+body:not(.has-supervisor) { --cd-h: 0.38; }
 body:not(.has-supervisor) .stage {
   position: absolute;
   inset: 0;
@@ -375,7 +557,10 @@ body:not(.has-supervisor) .remind-name {
   transform: translate(-50%, calc(-1 * (var(--ring-half) + var(--ctrl-gap))));
 }
 /* 提醒内容：环下方、窗口底边之间的剩余区域里垂直居中，水平居中；稳定占据下区域
-   中央，消除上下失衡。 */
+   中央，消除上下失衡。
+   ⚠️ 字号 / 字重 / 行高 / 对齐**不在这里**写：与外卖窗口共用
+   「提醒内容（无督休专员）」那一段的 body:not(.has-supervisor) .dialog-text，
+   免得四个窗口各写一份又把字写岔。这里只管摆放。 */
 body:not(.has-supervisor) .messages {
   position: absolute;
   left: 50%;
@@ -386,10 +571,6 @@ body:not(.has-supervisor) .messages {
   display: flex;
   align-items: center;
   justify-content: center;
-  text-align: center;
-  font-size: clamp(20px, 3.4vh, 34px);
-  font-weight: 600;
-  line-height: 1.6;
   padding: 0 24px;
 }
 /* .bar 保持静态定位，让环 / 名称 / 提前结束的 absolute 解析到铺满窗口的 .content */
@@ -418,7 +599,7 @@ body:not(.has-supervisor) .supervisor-line { display: none !important; }
    框顶~窗口顶」的中点区域里太小、四周大量空白）。摆位公式用实测环尺寸反推环中心去
    对准两中点，故放大后中心仍在「立绘与窗口边缘中间」，无需改 JS。clamp 下限保证小窗
    也不至于糊成一团，上限避免撞到立绘/对话框/窗口边缘。 */
-body.has-supervisor .ring-wrap { width: clamp(180px, 32vh, 360px); height: clamp(180px, 32vh, 360px); }
+body.has-supervisor .ring-wrap { width: var(--ring-size); height: var(--ring-size); }
 .ring-wrap svg { width: 100%; height: 100%; overflow: visible; position: relative; z-index: 1; }
 
 .ring-bg {
@@ -555,20 +736,41 @@ body.has-supervisor .ins-line { font-size: clamp(12px, 2vh, 20px); }
   background: radial-gradient(circle at 50% 45%, rgba(2, 8, 20, 0.45), rgba(2, 8, 20, 0) 70%);
   z-index: -1;
 }
+/* ---- 倒计时数字字号：环内「尽量大、但不越界」 ----
+   约束是一个圆：环内可视半径 = 78/100 环半径（ring-inner-rim 与 liquidClip 都是 r=78）。
+   数字走 tabular-nums，每位宽恒为 0.5752em（实测 2/3/4 位同值，不随具体数字变），
+   行高 1 → 数字框 = 0.5752×位数 em 宽 × 1em 高。tick-pop 在 0% 把整框放大到 1.22 倍
+   （每秒翻数那一瞬最宽），故峰值半宽 = 0.3509×位数 em、峰值半高 = 0.61em。
+   要求峰值框四角落在 0.96 内径圆内：
+     font-size ≤ 0.3744·ring-size / sqrt((0.3509·d)² + 0.61²)
+     d=1 → 0.532   d=2 → 0.403   d=3 → 0.308   d=4 → 0.245   d=5 → 0.203
+   再加一道高度上限 --cd-h（环里还要竖着塞下百分比与两行题字），两者取 min。
+   缺省按 2 位算 —— 与 HTML 初始值 "20" 一致，首帧不跳。
+
+   ⚠️ 位数由 break.js 写到 .ring-wrap 的 data-cd-digits（按 durationMs 的秒数位数，
+   不是按当前数字 —— 否则 100→99 时字号会突然变大，读数一直在抖）。
+   改这里的系数必须重跑 scripts/probe_renderer.py 的「倒计时数字不溢出」断言。 */
+.ring-wrap { --cd-w: 0.403; }
+.ring-wrap[data-cd-digits='1'] { --cd-w: 0.532; }
+.ring-wrap[data-cd-digits='2'] { --cd-w: 0.403; }
+.ring-wrap[data-cd-digits='3'] { --cd-w: 0.308; }
+.ring-wrap[data-cd-digits='4'] { --cd-w: 0.245; }
+.ring-wrap[data-cd-digits='5'] { --cd-w: 0.203; }
 .countdown {
-  font-size: 54px;
+  font-size: min(calc(var(--ring-size) * var(--cd-w, 0.403)),
+                 calc(var(--ring-size) * var(--cd-h, 0.38)));
   font-weight: 700;
   line-height: 1;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 0 14px color-mix(in srgb, var(--accent) 65%, transparent);
 }
-/* 每秒翻数时的「弹跳 + 高光」：让数字有生命力 */
+/* 每秒翻数时的「弹跳 + 高光」：让数字有生命力。
+   scale 的倍率是字号公式的输入（0.61em = 1.22/2），改这里必须同步改上面的系数。 */
 .countdown.tick { animation: tick-pop 0.42s cubic-bezier(0.2, 0.7, 0.3, 1); }
 @keyframes tick-pop {
   0% { transform: scale(1.22); text-shadow: 0 0 20px var(--accent), 0 0 38px color-mix(in srgb, var(--accent) 75%, #ffffff); }
   100% { transform: scale(1); }
 }
-body.has-supervisor .countdown { font-size: clamp(46px, 11vh, 100px); }
 body.has-supervisor .progress-pct { font-size: clamp(16px, 2.6vh, 28px); }
 .count-sub { display: flex; align-items: baseline; gap: 6px; }
 .progress-pct { font-size: 13px; opacity: 0.7; font-variant-numeric: tabular-nums; }
@@ -631,15 +833,15 @@ body.has-supervisor .particles { display: none; }
   font-size: 13px;
   z-index: 10;
 }
-/* 竖屏窗口（高 > 宽）：立绘占宽比例大，环与名字标签收小一档，但同样要放大避免空白。
-   ⚠️ 必须放在所有横屏 body.has-supervisor 规则「之后」——同特异度下后定义胜出，
-   否则横屏规则会覆盖这里的竖屏覆盖（之前就因此竖屏一直用了横屏尺寸）。 */
+/* 竖屏窗口（高 > 宽）：立绘占宽比例大，环按「窗口宽度」取尺寸（高度此时富余），
+   字号与环内摆位全部由 --ring-size 派生，不再单独覆盖 .countdown。
+   ⚠️ 只改 --ring-size 这一个变量，仍必须放在横屏 body.has-supervisor 之后 ——
+   同特异度下后定义胜出（以前横屏 clmap 覆盖竖屏就踩过这条）。 */
 @media (max-aspect-ratio: 1/1) {
-  body.has-supervisor .ring-wrap { width: clamp(150px, 30vw, 280px); height: clamp(150px, 30vw, 280px); }
-  body.has-supervisor .countdown { font-size: clamp(40px, 15vw, 80px); }
+  body.has-supervisor { --ring-size: clamp(150px, 30vw, 280px); }
   body.has-supervisor .progress-pct { font-size: clamp(13px, 3.6vw, 24px); }
   body.has-supervisor .ins-line { font-size: clamp(11px, 3vw, 18px); }
-  body.has-supervisor .dialog-name { left: 46px; }
+  /* 名字标签已改为「按立绘实测定位」，不再有横屏/竖屏的固定 left 覆盖 */
   body.has-supervisor .content { padding: 2.6em 18px 14px 18px; }
 }
 

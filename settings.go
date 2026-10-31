@@ -781,11 +781,11 @@ func newIDIfEmpty(v string) string {
 	if strings.TrimSpace(v) != "" {
 		return v
 	}
-	return newUUID()
+	return newRandomID()
 }
 
-// newUUID 生成一枚 v4 UUID（与 crypto.randomUUID() 同形）
-func newUUID() string {
+// newRandomID 生成一枚 v4 形态的随机唯一串（与前端自带的同类生成器同形）
+func newRandomID() string {
 	var b [16]byte
 	if _, err := rand.Read(b[:]); err != nil {
 		return fmt.Sprintf("fallback-%d", os.Getpid())
@@ -874,7 +874,7 @@ func itemID(v any) string {
 //
 // 条目 id 只需要「本列表内唯一且稳定」——固定模式靠它选中一条，删除 / 拖动靠它定位，
 // 跨列表、跨文件都不要求唯一。所以光秃秃的序号就够：meta.json 与 settings.json 都是给
-// 人看的文件，`"id": "3"` 比 `builtin-cmd-role_doctor-3` 或 36 位 uuid 好读得多。
+// 人看的文件，`"id": "3"` 比 `builtin-cmd-role_doctor-3` 或 36 位随机串好读得多。
 // 取最大值而不是最小空位：删掉中间某条后新增不会复用刚被删掉的号，fixedId 更不容易指错。
 func nextSeqID(ids []string) string {
 	max := 0
@@ -893,7 +893,7 @@ func isSeqID(s string) bool {
 }
 
 // seqIDFor 把一个已有 id 收敛成序号：已经是正整数就原样保留（可能不连续，但稳定），
-// 其余情况（uuid / builtin-xxx-N / 手写乱码 / 与本列表里别的条目重号）一律重新编号。
+// 其余情况（随机串 / builtin-xxx-N / 手写乱码 / 与本列表里别的条目重号）一律重新编号。
 func seqIDFor(old string, ids []string, seen map[string]bool) string {
 	if isSeqID(old) && !seen[old] {
 		return old
@@ -984,7 +984,7 @@ func normalizeCustomBreaks(raw map[string]any) bool {
 			id = customBreakPrefix + id
 		}
 		if id == "" || seen[id] {
-			id = customBreakPrefix + newUUID()
+			id = customBreakPrefix + newRandomID()
 		}
 		seen[id] = true
 		name := clipRunes(strings.TrimSpace(jsStr(m["name"])), 24)
@@ -1061,7 +1061,7 @@ func normalizeSound(raw map[string]any) {
 			id = strings.TrimSpace(s)
 		}
 		if id == "" || seen[id] {
-			id = "sm-" + newUUID()
+			id = "sm-" + newRandomID()
 		}
 		seen[id] = true
 		name := clipRunes(strings.TrimSpace(jsStr(m["name"])), 60)
@@ -1243,7 +1243,7 @@ func normalizeAppPause(raw map[string]any) map[string]any {
 			id = s
 		}
 		if id == "" {
-			id = newUUID()
+			id = newRandomID()
 		}
 		// 老配置（本字段是后加的）里没有 name：内置清单命中的程序补上中文名，其余留空
 		name := ""
@@ -1529,7 +1529,7 @@ func normalizeReminderMessages(raw map[string]any) bool {
 				id = s
 			}
 			if id == "" {
-				id = newUUID()
+				id = newRandomID()
 			}
 			items = append(items, map[string]any{
 				"id": id, "text": text, "enabled": m["enabled"] != false,
@@ -1607,26 +1607,26 @@ func seedPresetEntries(raw map[string]any) bool {
 	return changed
 }
 
-// ensureInstallID 安装标识：首次运行生成一枚并持久化，之后读回原值、永不改变。
-// 返回本次是否**新生成**了它（与 上一版的 installIdCreated 同义，决定要不要落盘）。
-func ensureInstallID(raw map[string]any) bool {
+// ensureConfigKey 配置固定键：首次运行生成一枚并持久化，之后读回原值、永不改变。
+// 返回本次是否**新生成**了它（决定要不要落盘）。
+func ensureConfigKey(raw map[string]any) bool {
 	if s, ok := raw["installId"].(string); ok && strings.TrimSpace(s) != "" {
 		return false
 	}
-	raw["installId"] = newUUID()
+	raw["installId"] = newRandomID()
 	return true
 }
 
 // normalizeLoad 加载路径的归一化，**顺序逐条对应 config.ts 的 loadSettingsFrom**。
 //
-// 返回值刻意与 上一版的 LoadedSettings 对齐：只有「补生成了 installId」「种入了预置条目」
+// 返回值刻意与 上一版的 LoadedSettings 对齐：只有「补生成了配置固定键」「种入了预置条目」
 // 「提醒条目重编号」以及「摘掉了早期误种的应用暂停条目」这几件事需要立刻落盘。
 // 其余归一化结果（旧键清理 / 越界夹紧）**不主动回写** —— 每次启动都改写用户配置会把键序
 // 和格式一起动掉，而且在「验证脚本误指真实配置」时会留下副作用；这些清理结果会在用户
 // 下一次保存时一并落盘。
-func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded, idsRenumbered, appsPruned bool) {
-	// ① 安装标识（首次运行 / 老配置升级补一枚）
-	installIDCreated = ensureInstallID(raw)
+func normalizeLoad(raw map[string]any) (configKeyCreated, presetSeeded, idsRenumbered, appsPruned bool) {
+	// ① 配置固定键（首次运行 / 老配置升级补一枚）
+	configKeyCreated = ensureConfigKey(raw)
 	// ② 旧键清理与迁移（必须在归一化之前：迁移写出来的值才是最终值）
 	cleanLegacyKeys(raw)
 	// ③ 休息触发方式与固定时刻表
@@ -1653,7 +1653,7 @@ func normalizeLoad(raw map[string]any) (installIDCreated, presetSeeded, idsRenum
 	normalizeSupervisorMessages(raw)
 	// ⑪ 预置提醒内容条目（幂等）
 	presetSeeded = seedPresetEntries(raw)
-	return installIDCreated, presetSeeded, idsRenumbered, appsPruned
+	return configKeyCreated, presetSeeded, idsRenumbered, appsPruned
 }
 
 // normalizeForSave 设置页保存 / 导入外来配置后要跑的归一化。
@@ -1717,26 +1717,26 @@ func loadSettings(resourcesRoot string) *Settings {
 		if !ok || merged == nil {
 			continue
 		}
-		installIDCreated, presetSeeded, idsRenumbered, appsPruned := normalizeLoad(merged)
+		configKeyCreated, presetSeeded, idsRenumbered, appsPruned := normalizeLoad(merged)
 		s := &Settings{raw: merged, path: p}
-		// 三种情况回写：补生成 installId、种入预置条目、提醒内容条目 id 被收敛成序号
+		// 三种情况回写：补生成配置固定键、种入预置条目、提醒内容条目 id 被收敛成序号
 		// （后者是一次性的格式统一，收敛完即为定值，不会每次启动都写盘）
-		if installIDCreated || presetSeeded || idsRenumbered || appsPruned {
+		if configKeyCreated || presetSeeded || idsRenumbered || appsPruned {
 			if err := s.Save(); err != nil {
 				log.Printf("[settings] 初始化结果落盘失败: %v", err)
 			} else {
-				log.Printf("[settings] 已回写初始化结果 %s（补 installId=%v 种入预置=%v 条目重编号=%v 摘除套件预设=%v）",
-					p, installIDCreated, presetSeeded, idsRenumbered, appsPruned)
+				log.Printf("[settings] 已回写初始化结果 %s（补固定键=%v 种入预置=%v 条目重编号=%v 摘除套件预设=%v）",
+					p, configKeyCreated, presetSeeded, idsRenumbered, appsPruned)
 			}
 		}
 		return s
 	}
-	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（补 installId、
+	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（补固定键、
 	// 种入预置条目），并落盘 —— 与 上一版的 firstRun 分支一致
 	fresh := defaultSettingsMap()
-	installIDCreated, presetSeeded, idsRenumbered, appsPruned := normalizeLoad(fresh)
+	configKeyCreated, presetSeeded, idsRenumbered, appsPruned := normalizeLoad(fresh)
 	s := &Settings{raw: fresh, path: ""}
-	if installIDCreated || presetSeeded || idsRenumbered || appsPruned {
+	if configKeyCreated || presetSeeded || idsRenumbered || appsPruned {
 		if err := s.Save(); err != nil {
 			log.Printf("[settings] 首次运行落盘失败: %v", err)
 		}

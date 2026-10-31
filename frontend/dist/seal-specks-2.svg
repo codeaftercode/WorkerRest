@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 200" preserveAspectRatio="none">
+  <!-- 细碎印泥：只出现在外缘一圈，配合 .dialog-name::after 的负 inset 使用 -->
+  <circle fill="#a5261a" cx="86.4" cy="121.2" r="1.6" opacity="0.68"/>
+  <circle fill="#a5261a" cx="86.0" cy="121.8" r="0.6" opacity="0.53"/>
+  <circle fill="#a5261a" cx="7.5" cy="62.4" r="2.9" opacity="0.55"/>
+  <circle fill="#a5261a" cx="5.2" cy="58.6" r="1.2" opacity="0.48"/>
+  <circle fill="#a5261a" cx="86.6" cy="54.4" r="1.7" opacity="0.80"/>
+  <circle fill="#a5261a" cx="84.3" cy="50.5" r="0.8" opacity="0.64"/>
+  <circle fill="#a5261a" cx="87.7" cy="49.4" r="0.7" opacity="0.64"/>
+  <circle fill="#a5261a" cx="13.3" cy="141.1" r="2.0" opacity="0.80"/>
+  <circle fill="#a5261a" cx="11.2" cy="136.1" r="0.8" opacity="0.70"/>
+  <circle fill="#a5261a" cx="86.4" cy="23.5" r="1.6" opacity="0.92"/>
+  <circle fill="#a5261a" cx="86.1" cy="27.3" r="0.8" opacity="0.65"/>
+  <circle fill="#a5261a" cx="85.2" cy="28.3" r="0.8" opacity="0.75"/>
+  <ellipse fill="#a5261a" cx="54.9" cy="9.5" rx="3.8" ry="0.6" transform="rotate(75 54.9 9.5)" opacity="0.68"/>
+  <circle fill="#a5261a" cx="86.7" cy="25.9" r="3.1" opacity="0.55"/>
+  <circle fill="#a5261a" cx="10.3" cy="131.8" r="2.3" opacity="0.55"/>
+  <ellipse fill="#a5261a" cx="11.6" cy="68.4" rx="6.5" ry="0.9" transform="rotate(82 11.6 68.4)" opacity="0.58"/>
+  <circle fill="#a5261a" cx="40.5" cy="189.6" r="1.5" opacity="0.55"/>
+  <circle fill="#a5261a" cx="38.4" cy="187.4" r="0.8" opacity="0.43"/>
+  <circle fill="#a5261a" cx="41.0" cy="190.9" r="0.7" opacity="0.42"/>
+  <ellipse fill="#a5261a" cx="86.5" cy="182.3" rx="5.5" ry="0.9" transform="rotate(150 86.5 182.3)" opacity="0.58"/>
+</svg>

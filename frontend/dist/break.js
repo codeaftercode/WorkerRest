@@ -57,7 +57,7 @@
       bottom: norm((ch - 1 - bottom) / ch),
       // 未过 IGNORE 阈值的原始边距（摆位锚点专用）：IGNORE 会把 <0.8% 的边距归零，
       // 对变换无害（那点边距本就看不见），但锚点必须指向像素的真实位置——
-      // 否则立绘上缘差 0.8%*立绘高（≈5px），换不同角色（如 role_ai 上缘 0.78%）
+      // 否则立绘上缘差 0.8%*立绘高（≈5px），换不同督休专员（如 role_ai 上缘 0.78%）
       // 时倒计时锚点会系统性偏高。
       rawLeft: left / cw,
       rawRight: (cw - 1 - right) / cw,
@@ -145,10 +145,6 @@
     const line = document.getElementById("supervisor-line");
     document.body.classList.add("has-supervisor");
     figure.classList.remove("hidden");
-    // 不显示台词的场景（自定义提醒）：框里只剩 messages，长度不可控，
-    // 由 .content.no-line 退回「随内容长高」，不能被固定高度裁掉。
-    const dialogBox = document.querySelector(".content");
-    if (dialogBox) dialogBox.classList.toggle("no-line", !showLine);
     if (showLine) {
       line.classList.remove("hidden");
       if (sup.name) line.dataset.speaker = sup.name;
@@ -157,9 +153,14 @@
       line.classList.add("hidden");
       delete line.dataset.speaker;
     }
-    // 游戏对话画面：名字挂在对话框左上角的凸出标签上（.dialog-name）
+    // 督休专员题名：竖排金色宋体，钉在立绘头部左侧的空白区（.dialog-name）。
+    // 位置与字号由 layoutRoleTitle() 按 alpha 剖面实测写入；这里只填文本，并清掉
+    // 上一轮的 data-rt —— 换专员后旧位置对新立绘是错的，重新定位成功前保持不可见。
     const nameEl = document.getElementById("dialog-name");
     if (nameEl) {
+      delete nameEl.dataset.rt;
+      // 每次出场换一枚「章」：牌底轮廓/断裂与四周碎点一起换（同一下标）
+      pickSealInk(nameEl);
       if (sup.name) {
         nameEl.textContent = sup.name;
         nameEl.classList.remove("hidden");
@@ -235,15 +236,44 @@
       targetNX = e.clientX / window.innerWidth * 2 - 1;
       targetNY = e.clientY / window.innerHeight * 2 - 1;
     });
+    // 题名牌要跟着立绘一起动，但它不能搬进 .gaze 那条 DOM 链：.trim 的补偿缩放
+    // （立绘可见区越窄放得越大，1.0~2.0）会把牌面文字一起放大，而牌面位置是按
+    // 「渲染后的像素」反解出来的，进去就全错。所以把同一套变换镜像一份写过去：
+    // 同一个原点（立绘盒底边中点 = 双脚，见 layoutRoleTitle 写的 --rt-ox/--rt-oy）、
+    // 同一组函数、同一顺序 ⇒ 数学上等价于「牌面焊在立绘上」：立绘怎么偏，牌面就怎么偏，
+    // 中间那条缝一个像素都不变。
+    // 唯一要换算的是平移量 —— .gaze 的位移发生在 .trim 的缩放空间里，渲染出来是 scale
+    // 倍，所以镜像时乘上它（skew 的角度、scaleY 的比值都不受均匀缩放影响）。
+    let trimKey = "";
+    let trimScale = 1;
+    const trimScaleNow = () => {
+      const raw = img.dataset.trim || "";
+      if (raw !== trimKey) {
+        trimKey = raw;
+        try { trimScale = JSON.parse(raw).scale || 1; } catch (e) { trimScale = 1; }
+      }
+      return trimScale;
+    };
+    // 帧内只在字符串真的变了才写：插值收敛后每帧算出来是同一个值，
+    // 无脑赋值会让 Chromium 每帧重算样式 + 重绘整块牌面（它有 drop-shadow 与
+    // background-clip: text，重绘不便宜）。
+    let lastGazeTf = "";
+    let lastPlateTf = "";
     const frame = () => {
       curNX += (targetNX - curNX) * 0.075;
       curNY += (targetNY - curNY) * 0.075;
       const h = Math.max(1, gaze.offsetHeight);
-      const tx = (curNX * 14).toFixed(2);
-      const ty = (Math.max(0, curNY) * 8).toFixed(2);
-      const lean = (-curNX * 0.9).toFixed(2);
-      const sy = (1 + Math.max(0, -curNY) * 8 / h).toFixed(4);
-      gaze.style.transform = `translate3d(${tx}px, ${ty}px, 0) skewX(${lean}deg) scaleY(${sy})`;
+      const tx = curNX * 14;
+      const ty = Math.max(0, curNY) * 8;
+      const lean = -curNX * 0.9;
+      const sy = 1 + Math.max(0, -curNY) * 8 / h;
+      const gtf = `translate3d(${tx.toFixed(2)}px, ${ty.toFixed(2)}px, 0) skewX(${lean.toFixed(2)}deg) scaleY(${sy.toFixed(4)})`;
+      if (gtf !== lastGazeTf) { lastGazeTf = gtf; gaze.style.transform = gtf; }
+      if (nameEl) {
+        const k = trimScaleNow();
+        const ptf = `translate3d(${(tx * k).toFixed(2)}px, ${(ty * k).toFixed(2)}px, 0) skewX(${lean.toFixed(2)}deg) scaleY(${sy.toFixed(4)})`;
+        if (ptf !== lastPlateTf) { lastPlateTf = ptf; nameEl.style.transform = ptf; }
+      }
       requestAnimationFrame(frame);
     };
     requestAnimationFrame(frame);
@@ -301,14 +331,245 @@
       bottom: box.bottom - s * fill * box.height * (rbt - bt)
     };
   }
+  // ── 督休专员题名（竖排金色宋体）─────────────────────────────────────────
+  // 立绘的「alpha 逐列剖面」。包围盒在这里不够用：立绘底部常有刀鞘/衣袍向左探出
+  // （始皇帝包围盒左缘 44px，而头部那一段的最左不透明列在 148px），照包围盒摆名字
+  // 会一头撞在人物身上。所以单独量一份 minY[x]（每列最上面的不透明像素行号）。
+  // 「头部段」= 图片顶部这一段。不能只看头顶那 16%：题名是竖排的，长一点的会向下
+  // 伸到下颌/肩线附近，那里的内容（散落的发丝、肩甲）比头顶更靠左。按 16% 定的右缘
+  // 到下面就会贴上去（竖屏「温柔学姐」实测 hit=1）。26% 能盖住题名的实际下探深度。
+  var HEAD_BAND = 0.26;
+  var PROFILE_W = 360;    // 剖面采样宽度：只用来找列，不需要高清
+  // 题名避让用**实质遮挡**阈值：ALPHA_MIN(8) 太敏感，会把发丝边缘的抗锯齿（≈5%
+  // 不透明度，压上去肉眼无感）也算成「有人」，于是把字号一路压到下限。32/255≈12.5%。
+  var PROFILE_ALPHA = 32;
+  var profileCache = new WeakMap();
+
+  function measureHeadProfile(img) {
+    // complete 必须一起判：dataURL/webp 在「数据到齐但还没解码」时 naturalWidth 就
+    // 已经有值了，此时 drawImage 画出来是空的或残缺的，会量出一个假剖面。
+    if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return null;
+    const hit = profileCache.get(img);
+    if (hit && hit.src === img.src) return hit.profile;
+    const w = img.naturalWidth;
+    const h = img.naturalHeight;
+    const cw = Math.min(PROFILE_W, w);
+    const ch = Math.max(1, Math.round((h * cw) / w));
+    const cv = document.createElement("canvas");
+    cv.width = cw;
+    cv.height = ch;
+    const ctx = cv.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return null;
+    ctx.clearRect(0, 0, cw, ch);
+    ctx.drawImage(img, 0, 0, cw, ch);
+    let px;
+    try {
+      px = ctx.getImageData(0, 0, cw, ch).data;
+    } catch (e) {
+      return null;   // 跨域/解码失败：题名退回不显示，不影响主流程
+    }
+    // minY[x] = 该列最上面的不透明像素行号；整列全空则保持 ch
+    const minY = new Int32Array(cw).fill(ch);
+    for (let x = 0; x < cw; x++) {
+      for (let y = 0; y < ch; y++) {
+        if (px[(y * cw + x) * 4 + 3] >= PROFILE_ALPHA) {
+          minY[x] = y;
+          break;
+        }
+      }
+    }
+    // 头部段内的最左 / 最右不透明列
+    const bandEnd = Math.round(ch * HEAD_BAND);
+    let headLeft = -1;
+    let headRight = -1;
+    for (let x = 0; x < cw; x++) {
+      if (minY[x] <= bandEnd) {
+        if (headLeft < 0) headLeft = x;
+        headRight = x;
+      }
+    }
+    const profile = { w: cw, h: ch, minY, headLeft, headRight };
+    // 头部段整列为空时**绝不缓存**：正常立绘不会这样，出现它基本都是这次采样赶上了
+    // 半解码。缓存下来的话后续重试永远拿到这份空剖面，名字就彻底不显示了。
+    if (headLeft >= 0) profileCache.set(img, { src: img.src, profile });
+    return profile;
+  }
+
+  var RT_GAP = 12;      // 题名右缘距「头部段最左列」的留白
+  var RT_EDGE = 6;      // 题名离窗口左缘的最小留白
+  var RT_MIN_FS = 15;   // 字号下限：1x 屏 14px 已发虚，15 是能读的底线
+  var RT_MAX_FS = 26;
+  var RT_STEP = 0.5;
+
+  // 印泥变体：同一枚章连盖两次也不该一模一样。每次出场随机挑一组（牌子 + 周围碎点
+  // 用同一个下标，保证「牌子和溅出来的碎点属于同一枚章」），并避开上一次用过的那张。
+  // 变体由 scripts/make_seal_ink.py 生成，CSS 里的 url("seal-ink-1.svg") 只是兜底。
+  var SEAL_VARIANTS = 6;
+  var lastSeal = 0;
+  function pickSealInk(nameEl) {
+    if (!nameEl) return;
+    // SEAL_VARIANTS 是 var（有声明提升但赋值在后面）：万一首帧就调用，退回 6
+    var i = 1 + Math.floor(Math.random() * (SEAL_VARIANTS || 6));
+    if (i === lastSeal) i = (i % SEAL_VARIANTS) + 1;   // 不连着用同一张
+    lastSeal = i;
+    nameEl.style.setProperty("--rt-ink", 'url("seal-ink-' + i + '.svg")');
+    nameEl.style.setProperty("--rt-specks", 'url("seal-specks-' + i + '.svg")');
+  }
+
+  // 把题名钉到「立绘头部左侧的空白区」，并按零遮挡反解字号。
+  // 只有先钉住右缘（= headPx - RT_GAP）再一路缩字号，才能同时保证「不压人」和
+  // 「不出窗」——固定字号再找位置，长名字必然二选一失败。
+  function layoutRoleTitle(figure, nameEl, box) {
+    if (!figure || !nameEl || nameEl.classList.contains("hidden")) return null;
+    if (!nameEl.textContent) return null;
+    if (!box || box.width <= 0 || box.height <= 0) return null;
+    const img = figure.querySelector("img");
+    const pf = measureHeadProfile(img);
+    if (!pf || pf.headLeft < 0) return null;
+    let t = null;
+    try { t = JSON.parse(img.dataset.trim || "null"); } catch (e) { t = null; }
+    const s = t && typeof t.scale === "number" ? t.scale : 1;
+    const fill = t && typeof t.fill === "number" ? t.fill : 1;
+    const l = t && typeof t.left === "number" ? t.left : 0;
+    const rawTop = t && typeof t.rawTop === "number" ? t.rawTop : 0;
+    const flip = !!(t && t.flip);
+
+    // 与 figureVisibleRect() 同一套映射（见该函数上方注释），这里只是需要
+    // 「图片绘制区在页面里的绝对位置」，好把剖面坐标反算回去。
+    const drawW = s * box.width;
+    const drawH = s * fill * box.height;
+    const imgLeft = box.left - drawW * l;
+    const imgTop = box.bottom - drawH;
+    const visTop = imgTop + drawH * rawTop;
+
+    // 头部段最左列；水平翻转时头部镜像，要取原图的最右列
+    const bandX = flip ? pf.w - 1 - pf.headRight : pf.headLeft;
+    if (bandX < 0) return null;
+    const headPx = imgLeft + (bandX / pf.w) * drawW;
+    const rightPx = headPx - RT_GAP;
+
+    const appEl = document.getElementById("app") || document.body;
+    const appRect = appEl.getBoundingClientRect();
+
+    // 零遮挡求解：从 RT_MAX_FS 起每档 −0.5px，直到「一个不透明像素都不压 +
+    // 整块没被 RT_EDGE 钳住」。capH > 0 时给整块一个最大高度 —— vertical-rl
+    // 据此折出第二列（右→左，中文竖排的读序），长名就能留在头部左侧的同一片
+    // 空白里，不必一路缩到发虚。capH 生效时同时限制列数（maxCols）：实测 13 字名
+    // 在 26px 会折成 3 列 98px 宽的金字块，压过头顶、读起来像「一块招牌」；
+    // 限 2 列后整块是 40px 上下的一条窄带，与 3~4 字名的观感才连得上。
+    // 注意 order：每次都要先把 left/top 钉回 0 再量，shrink-to-fit 元素否则
+    // 量到的是上一轮的字号（74 当 35 那种）。
+    // 题名现在带红牌（padding 来自 CSS），所以要先用「不折列」量出一列的自然尺寸，
+    // 再自己算列数与宽度：Chromium 的 shrink-to-fit 在竖排 + max-height 下**只按
+    // 一列算宽**，溢出列会整列漏到红底外面（实测 13 字名有 6 个字露在牌外）。
+    const cs0 = getComputedStyle(nameEl);
+    const padX = parseFloat(cs0.paddingLeft) || 0;
+    const padY = parseFloat(cs0.paddingTop) || 0;
+    const nChars = [...(nameEl.textContent || "")].length;
+    function solve(capH, maxCols) {
+      let f = RT_MAX_FS, l = 0, hit = 0, ok = false, cw = 0;
+      for (; f >= RT_MIN_FS - 1e-6; f -= RT_STEP) {
+        nameEl.style.setProperty("--rt-fs", f + "px");
+        nameEl.style.left = "0px";
+        nameEl.style.top = "0px";
+        // ① 不折列，量一列的自然宽高（都是内容盒尺寸）
+        nameEl.style.maxHeight = "none";
+        nameEl.style.width = "auto";
+        void nameEl.offsetWidth;
+        const oneW = Math.max(1, nameEl.offsetWidth - padX * 2);
+        const oneH = Math.max(1, nameEl.offsetHeight - padY * 2);
+        // ② 需要折列就把宽度写死 = 列数 × 一列推进量
+        let wpx, hpx, fits = true;
+        cw = 0;
+        if (capH > 0) {
+          const innerH = Math.max(1, capH - padY * 2);
+          // 列数不能拿「总高 / 段高」折算：每列只排得下整数个字。必须先用
+          // 单字推进量（oneH / 字数）算出每列容量，再算需要几列 —— 否则 13 字在
+          // 21px 会算成 2 列，实际要 3 列，整整一列漏到牌外（实测 scrollWidth 89 > 68）。
+          const adv = oneH / Math.max(1, nChars);
+          const perCol = Math.max(1, Math.floor(innerH / adv + 1e-6));
+          const need = Math.max(1, Math.ceil(nChars / perCol));
+          fits = need <= maxCols;                       // 列数不够 = 这个字号装不下
+          // 宽度一律按**实际需要的列数**给，宁可宽也不漏字；全局 box-sizing:border-box，
+          // 写 width 是含 padding 的宽（少加一次 padding 就会挤窄内容盒、多折一列）
+          cw = Math.ceil(oneW * need) + padX * 2;
+          nameEl.style.maxHeight = Math.round(capH) + "px";
+          nameEl.style.width = cw + "px";
+          void nameEl.offsetWidth;
+          wpx = nameEl.offsetWidth;
+          hpx = nameEl.offsetHeight;
+        } else {
+          wpx = oneW + padX * 2;
+          hpx = oneH + padY * 2;
+        }
+        if (!wpx || !hpx) break;
+        l = Math.max(RT_EDGE, rightPx - wpx);
+        // 题名矩形 → 剖面列区间；数「该区间内比题名底更靠上的不透明像素」
+        const cx0 = Math.max(0, Math.floor(((l - imgLeft) / drawW) * pf.w));
+        const cx1 = Math.min(pf.w - 1, Math.ceil(((rightPx - imgLeft) / drawW) * pf.w));
+        const cy = ((visTop + hpx - imgTop) / drawH) * pf.h;
+        hit = 0;
+        for (let x = cx0; x <= cx1; x++) {
+          if (pf.minY[x] < cy) hit++;
+        }
+        if (fits && !hit && rightPx - wpx >= RT_EDGE) { ok = true; break; }
+      }
+      return { fs: Math.max(RT_MIN_FS, f), left: l, hits: hit, ok, cap: capH, cw };
+    }
+
+    // 先按单列解（短名的常态，绝不能给它折列）。只有单列撑不住时才允许折 2 列重解：
+    //   · 单列在下限字号都压到人（实测 12 字的「图书馆角落的温柔学姐」15px 仍 hit=7）
+    //   · 单列虽然零遮挡，但已被逼到下限附近（13 字名 → 15px，太小）
+    let sol = solve(0, 0);
+    if (!sol.ok || sol.fs <= RT_MIN_FS + 1) {
+      const bandTopFrac = Math.min(Math.max(rawTop, 0), 0.85);
+      const bandH = Math.max(drawH * (HEAD_BAND - bandTopFrac), drawH * 0.10);
+      let alt = solve(bandH, 2);
+      if (!alt.ok) {                     // 2 列装不下（13 字这种）才退到 3 列
+        const a3 = solve(bandH, 3);
+        if (a3.ok) alt = a3;
+      }
+      const muchBigger = alt.ok && (!sol.ok || alt.fs > sol.fs + 2);
+      if (muchBigger || (!sol.ok && alt.hits < sol.hits)) sol = alt;
+    }
+
+    nameEl.style.maxHeight = sol.cap > 0 ? Math.round(sol.cap) + "px" : "none";
+    nameEl.style.width = sol.cw > 0 ? sol.cw + "px" : "";
+    nameEl.style.setProperty("--rt-fs", sol.fs.toFixed(1) + "px");
+    const plateX = Math.round(sol.left - appRect.left);
+    const plateY = Math.round(visTop - appRect.top);
+    nameEl.style.left = plateX + "px";
+    nameEl.style.top = plateY + "px";
+    // 缩放原点 = 立绘**渲染后**盒子的底边中点（双脚），换算到牌子自身的坐标系
+    //（牌子的 border-box 左上角就是它的 inline left/top）。二阶段的凑近 / 脉动是
+    // CSS 的 scale 属性（img 的原点是 50% 100%），牌子必须绕同一个点放大 —— 否则
+    // 8% 的缩放会让牌面往人物身上挪十几像素，「头部左侧空白区」当场失效。
+    // ⚠️ 直接量渲染后的 rect，不要用上面那套 trim 反算：反算只要有一项输入过期
+    //（trim 还没到、换过图、盒宽与 paint 宽不等），原点就整体偏掉 —— 实测外卖窗口
+    // 曾偏 13.5px，牌面放大时肉眼可见地往人物身上靠。量 rect 的话，每次重排都自愈。
+    // 牌子自己已经被 scale 放大过，所以必须用未变换的布局位置（plateX/plateY）。
+    const ib = img.getBoundingClientRect();
+    nameEl.style.setProperty("--rt-ox", (ib.left + ib.width / 2 - (appRect.left + plateX)).toFixed(1) + "px");
+    nameEl.style.setProperty("--rt-oy", (ib.bottom - (appRect.top + plateY)).toFixed(1) + "px");
+    // 探针读这两个值做「零遮挡 / 字号达标」断言，不写死像素位置
+    nameEl.dataset.rtHit = String(sol.hits);
+    nameEl.dataset.rtFs = sol.fs.toFixed(1);
+    // 定位成功才放出来（CSS 里 .dialog-name 默认 visibility:hidden）
+    nameEl.dataset.rt = "1";
+    return { left: sol.left, top: visTop, fs: sol.fs, hit: sol.hits };
+  }
+
   function layoutSupDialog(figure, content, measure) {
     const container = figure?.parentElement ?? null;
     if (!container || !figure || !content) return;
     const cRect = container.getBoundingClientRect();
     if (cRect.width <= 0) return;
+    // 先把提醒内容的字号定下来（可能改内容高度 → 下面所有 rect 都得在它之后量）
+    fitDialogText(content);
     const figBox = figure.getBoundingClientRect();
     const figImg = figure.querySelector("img");
     const haveTrim = !!(figImg && figImg.dataset.trim);
+    const nameEl = document.getElementById("dialog-name");
     // 锚点重算条件：窗口尺寸 / 立绘盒（含 left/top 位置）/ trim 是否就绪。
     // 位置进 key 是必须的：用户可拖动「立绘尺寸/水平/垂直」滑条、更换立绘、
     // 上传新图，都表现为 figure 盒变化，锚点必须跟着重算（不能写死）。
@@ -316,9 +577,12 @@
     // cRect 与 trim 存在性 → 不触发重算 → 倒计时位置在二阶段保持不动。
     const key = Math.round(cRect.width) + "x" + Math.round(cRect.height) + "|" +
       Math.round(figBox.left) + "," + Math.round(figBox.top) + " " +
-      Math.round(figBox.width) + "x" + Math.round(figBox.height) + "|" + (haveTrim ? "T" : "t");
+      Math.round(figBox.width) + "x" + Math.round(figBox.height) + "|" + (haveTrim ? "T" : "t") +
+      // 名字也进 key：换专员时可能只换名字不换图（或同名不同图），题名必须跟着重排
+      "|" + (nameEl ? nameEl.textContent : "");
     let vis;
-    if (key !== lastLayoutKey && figBox.width > 0) {
+    const keyChanged = key !== lastLayoutKey && figBox.width > 0;
+    if (keyChanged) {
       vis = figureVisibleRect(figure, figBox.top);
       frozenFig = vis;
       lastLayoutKey = key;
@@ -326,6 +590,13 @@
       // key 未变（含二阶段缩放）时沿用冻结锚点；trim 未就绪的极早期兜底：
       // 用 figure 自身外框（会随 trim 到达、key 变化而校正）。
       vis = frozenFig || figureVisibleRect(figure, figBox.top);
+    }
+    // 题名位置依赖立绘的 alpha 剖面（循环里要反复改字号再强制布局）。若跟着 vis 一起
+    // 只在 key 变化时算，会赶上「图还没解码完」那一轮——那时量不到剖面，属于「没算出来」
+    // 而不是「算出没有」，缓存住就再也不重试，名字会一直不显示（竖屏实测踩到）。所以
+    // 定位成功（写 data-rt）之前每轮都重试；成功后只在 key 变化时重算。
+    if (nameEl && (keyChanged || !nameEl.dataset.rt)) {
+      layoutRoleTitle(figure, nameEl, figBox);
     }
     const figLeft = clamp(vis.left - cRect.left, 0, cRect.width);
     const figRight = clamp(vis.right - cRect.left, 0, cRect.width);
@@ -384,47 +655,57 @@
       midY: Math.round(midY),
       src: haveTrim ? "trim" : "figure"
     });
-    fitDialogText(content);
-    layoutMessages(content, cRect);
+    // 台词 / 提醒内容的垂直居中由 .content 的 flex（justify-content: center）负责，
+    // 不再用 translateY 二次「对中」：那条老公式把文字挪到对话框的几何中心，与 CSS
+    // 里「上边距小、下边距大」刻意的视觉偏上相互抵消，还会把文字推进下方内边距
+    // （实测自定义提醒被推下 3px，看着像溢出）。
   }
 
-  // layoutMessages 把「提醒内容」的垂直中心摆到（督休专员名称中心 ↔ 窗口下边缘）的中点。
-  // messages 留在文档流里（它和台词一起撑着对话框高度），所以只做 translateY 微调；
-  // 每次都先把上一轮的位移清掉再量，否则位移会被当成新基准、逐次累加而漂移。
-  // 名称是 absolute 凸在对话框顶边上的标签，高度随字号变，中心只能实测。
-  function layoutMessages(content, cRect) {
-    const msg = content.querySelector(".messages");
-    if (!msg) return;
-    msg.style.transform = "";
-    if (!msg.offsetHeight) return; // 内置短/长休息会把提醒内容整块隐藏，没有高度就不摆
-    const name = content.querySelector(".dialog-name");
-    const nameRect = name && !name.classList.contains("hidden") ? name.getBoundingClientRect() : null;
-    const nameCy = nameRect ? nameRect.top + nameRect.height / 2 : cRect.top;
-    const bottomEdge = cRect.top + cRect.height;
-    const m = msg.getBoundingClientRect();
-    const dy = Math.round((nameCy + bottomEdge) / 2 - (m.top + m.height / 2));
-    if (dy) msg.style.transform = `translateY(${dy}px)`;
+  // ---- 对话框内「提醒内容」的统一自适应（短休 / 长休 / 外卖 / 自定义共用）----
+  // break.js 与 takeout.js 里的这一段必须逐字相同：四个窗口的提醒内容是一套排版。
+  // JS 只负责两件 CSS 做不到的事：
+  //   1) 装不下就逐级缩字号（下限 --dlg-fs-min = 15px，再小就看不清了）；
+  //   2) 缩到下限仍装不下，让对话框长高（.content.tall），绝不裁字。
+  // 文字可用高度的算法见函数内注释；每次调用都先归零再算，结果只取决于窗口尺寸
+  // 与文本本身，反复重排不会漂移。
+  function cssLenPx(raw, base) {
+    var n = parseFloat(raw);
+    if (!(n > 0)) return 0;
+    var s = String(raw).trim();
+    if (/vh$/.test(s)) return (n * (base || window.innerHeight)) / 100;
+    if (/vw$/.test(s)) return (n * window.innerWidth) / 100;
+    return n;
   }
-
-  // 对话框高度固定（break.css 的 height: 22vh）之后，一阶段 / 二阶段来回切换不会再
-  // 把框撑高，代价是极端超长文本（用户把「提醒内容」写成一整段）可能溢出框底。
-  // 这里做纯兜底：先归位到 CSS 基准字号，仍装不下才逐级缩 1px（下限 13px），
-  // 保证整段都能读完、也不让文字跑到对话框外面去。
-  var FIT_MIN_FONT = 13;
   function fitDialogText(content) {
     if (!content) return;
-    const line = content.querySelector(".supervisor-line");
-    if (!line || line.classList.contains("hidden")) return;
-    line.style.fontSize = "";
-    const cs = getComputedStyle(content);
-    const avail = content.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
-    if (!(avail > 0)) return;
-    let fs = parseFloat(getComputedStyle(line).fontSize);
-    let guard = 0;
-    while (line.offsetHeight > avail + 1 && fs > FIT_MIN_FONT && guard++ < 30) {
-      fs -= 1;
-      line.style.fontSize = `${fs}px`;
+    // 取**可见**的那一个 .dialog-text：短休/长休/外卖用 .supervisor-line 说提醒内容，
+    // 自定义提醒用 .messages 放自己的提醒内容，两者互斥显示（隐藏的那个高度是 0）。
+    // 只取第一个匹配会拿到隐藏的 supervisor-line，直接 return —— 自定义提醒当时
+    // 就是这么漏掉的（长文本溢出对话框 20px 没人管）。
+    var els = content.querySelectorAll(".dialog-text");
+    var el = null;
+    for (var i = 0; i < els.length; i++) {
+      if (els[i].offsetHeight > 0) { el = els[i]; break; }
     }
+    if (!el) return;
+    var cst = getComputedStyle(content);
+    var padY = parseFloat(cst.paddingTop) + parseFloat(cst.paddingBottom);
+    // 文字可用高度 = 对话框应有高度 − 上下内边距。四个窗口共用这一个公式：外卖框里
+    // 还有徽标/按钮，它们照样占高，框会自己长高 —— 但那不影响「同一段文字在哪个
+    // 窗口里字号都一样」，这正是「保持相同样式」要的（扣掉按钮高度反而会让外卖
+    // 的同一句话比休息窗口小 5px，且长文本白缩一次、框照样长高）。
+    var boxH = cssLenPx(cst.getPropertyValue("--dlg-h")) || 0.22 * window.innerHeight;
+    var budget = boxH - padY;
+    el.style.fontSize = "";
+    content.classList.remove("tall");
+    var minFs = cssLenPx(cst.getPropertyValue("--dlg-fs-min")) || 15;
+    var fs = parseFloat(getComputedStyle(el).fontSize) || minFs;
+    var guard = 0;
+    while (el.offsetHeight > budget + 1 && fs > minFs + 0.01 && guard++ < 40) {
+      fs = Math.max(minFs, fs - 1);
+      el.style.fontSize = fs + "px";
+    }
+    if (el.offsetHeight > budget + 1) content.classList.add("tall");
   }
 
   function bindSupContentLayout(figure, content, measure) {
@@ -446,6 +727,27 @@
       });
     }
     window.addEventListener("resize", relayout);
+    // 题名的定位要读立绘的 alpha 剖面，立绘还没解码完时量不到 → 那一轮等于白跑。
+    // ResizeObserver/MutationObserver 未必会再响一次（figure 高度是 vh 百分比，图片
+    // 就绪并不改变它），所以除了监听 img 的 load，再补一串短定时兜底重排：只在
+    // 「题名还没定位成功」时走，定位成功即刻停，不会常态轮询。
+    const im = figure.querySelector("img");
+    if (im) {
+      if (im.complete && im.naturalWidth > 0) relayout();
+      else {
+        im.addEventListener("load", relayout, { once: true });
+        im.addEventListener("error", relayout, { once: true });
+      }
+    }
+    let tries = 0;
+    const tick = () => {
+      const n = document.getElementById("dialog-name");
+      if (n && n.dataset.rt) return;          // 已定位，收工
+      if (tries++ >= 16) return;              // 约 1.3s 还没成，放弃（极端情况名字不显示）
+      relayout();
+      window.setTimeout(tick, 80);
+    };
+    window.setTimeout(tick, 80);
     return relayout;
   }
 
@@ -863,6 +1165,14 @@
     const countdown = document.getElementById("countdown");
     const pctEl = document.getElementById("progress-pct");
     const total = data.durationMs;
+    // 环内数字字号按「本次倒计时最多能有几位」定（系数表见 break.css 的 --cd-w）。
+    // 必须用**总秒数的位数**、不是当前数字的位数：否则 100→99 会突然放大一档，
+    // 读数每秒都在变胖变瘦。JS 没写这个属性时 CSS 按 2 位兜底。
+    const ringWrap = document.querySelector(".ring-wrap");
+    if (ringWrap && total > 0) {
+      const digits = String(Math.ceil(total / 1000)).length;
+      ringWrap.dataset.cdDigits = String(Math.min(5, Math.max(1, digits)));
+    }
     // 生成「蓄能容器」几何：液态能量、气泡、外壁溢出光丝与脉冲
     buildEnergy(document.querySelector(".ring-wrap svg"));
     // 启动液态能量动画（独立于倒计时 tick，保证液面波动丝滑）

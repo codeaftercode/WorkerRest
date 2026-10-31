@@ -86,7 +86,7 @@ func TestBuildTakeoutInfo(t *testing.T) {
 
 // 「可推迟」为 0：会话快照 PostponeMin=0（渲染层据此隐藏「推迟」按钮）
 func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
-	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]},"installId":"uuid-1234"}`
+	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]},"installId":"dev-1234"}`
 	a := newTakeoutApp(t, cfg)
 	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
 	if info == nil {
@@ -124,17 +124,17 @@ func TestTakeoutPostponeMinClamp(t *testing.T) {
 
 // 外卖提醒窗口始终展示优惠券：redPacketData 必有且地址指向本机专属领取地址
 func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
-	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":[]},"installId":"uuid-1234"}`
+	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":[]},"installId":"dev-1234"}`
 	a := newTakeoutApp(t, cfg)
 	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 18, Minute: 0, Enabled: true}, false, 0, 0)
 	if info.RedPacketData == nil {
 		t.Fatal("外卖提醒窗口应始终展示外卖优惠券（redPacketData 不应为 nil）")
 	}
-	// 地址 = 固定 base + id=installId + t=毫秒时间戳（每次弹窗动态生成）
-	wantPrefix := "https://www.goodgoodlive.com/cps/index.html?id=uuid-1234&t="
+	// 地址 = 固定 base + id=配置固定键 + t=毫秒时间戳（每次弹窗动态生成）
+	wantPrefix := "https://www.goodgoodlive.com/cps/index.html?id=dev-1234&t="
 	url := info.RedPacketData.URL
 	if !strings.HasPrefix(url, wantPrefix) {
-		t.Fatalf("红包地址应含 installId 与时间戳参数，得到 %q", url)
+		t.Fatalf("红包地址应含固定键与时间戳参数，得到 %q", url)
 	}
 	tsStr := strings.TrimPrefix(url, wantPrefix)
 	ts, err := strconv.ParseInt(tsStr, 10, 64)

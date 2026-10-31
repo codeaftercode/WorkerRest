@@ -29,6 +29,10 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+DIST = os.path.join(ROOT, "frontend", "dist")
+# 印泥变体档数：与 scripts/make_seal_ink.py 的 VARIANTS、两份 JS 的 SEAL_VARIANTS 一致。
+# 这里只断言「挑中的那一档在 1~N 之间且文件存在」——不断言具体是几号（那是随机的）。
+SEAL_VARIANTS = 6
 
 
 def role_dir(root, name):
@@ -56,7 +60,7 @@ TEMP = os.environ.get("TEMP", ROOT)
 OUT = os.path.join(TEMP, "wr_go_probe")
 REPORT = os.path.join(TEMP, "wr_go_probe_report.txt")
 LOG = os.path.join(TEMP, "wr_go_probe_server.log")
-# 隔离副本：探针也绝不能碰用户的真实配置（加载路径会回写 installId / 预置条目）
+# 隔离副本：探针也绝不能碰用户的真实配置（加载路径会回写固定键 / 预置条目）
 ISO = os.path.join(TEMP, "wr_probe_iso")
 
 
@@ -251,6 +255,10 @@ def main():
     # 提前提示窗需要一个**真的处于提前提示区间**的服务：把短休息改成「10 分钟一次、
     # 提前 10 分钟提示」，`nextAt - notifyBeforeMs <= now` 立刻成立 → 启动后第一跳就进 pre。
     # 改的是隔离副本（真实配置在末尾仍有 SHA-256 断言守着）。
+    # ---- 开跑前的配置快照 ----
+    # 断言必须拿「页面启动时读到的配置」比对，不能用跑完再读的那份：探针在过程里会
+    # 改配置（兜底还原本身也有 bug 历史），拿被改过的值去比开场态只会误报。
+    seed_cfg = {}
     if os.path.exists(iso_settings):
         cfg_seed = json.load(open(iso_settings, encoding="utf-8"))
         cfg_seed.setdefault("short", {}).update({
@@ -259,8 +267,13 @@ def main():
         })
         cfg_seed["long"] = dict(cfg_seed.get("long") or {}, enabled=False)
         cfg_seed["takeout"] = dict(cfg_seed.get("takeout") or {}, enabled=False)
+        # 督休专员总开关也要播成 true：预览面板的名字牌与台词框只有启用时才渲染
+        # （Go 侧 SupervisorPreview 在 enabled=false 时直接返回 nil）；跟着用户真实
+        # 开关漂移，这几条断言会无缘无故变红。
+        cfg_seed["supervisor"] = dict(cfg_seed.get("supervisor") or {}, enabled=True)
         with open(iso_settings, "w", encoding="utf-8") as f:
             json.dump(cfg_seed, f, ensure_ascii=False, indent=2)
+        seed_cfg = cfg_seed
 
     env = dict(os.environ)
     env["WAILS_SERVER_PORT"] = str(port)
@@ -352,6 +365,49 @@ def main():
               stg.get("supGallery"))
         check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个「新建督休专员」磁贴",
               stg.get("supGalleryAdd"))
+        # 预览面板的名字牌：必须与真实提醒窗口同款「竖排金字 + 红印泥墨块 + 牌外碎点环」。
+        # 旧版是圆角胶囊小徽标（纯 --accent 底），预览与真机对不上 —— 这几条钉住四个特征：
+        # 竖排、双层 clip、牌底是墨块图、碎点挂在负 inset 的伪元素上。
+        _pn = stg.get("supPreviewName") or {}
+        check(bool(_pn.get("text")),
+              "督休专员预览：名字牌承载说话人名（不再是台词里手写）", _pn.get("text"))
+        check(str(_pn.get("writing") or "").startswith("vertical"),
+              "督休专员预览：名字牌是竖排（vertical-rl）", _pn.get("writing"))
+        check(str(_pn.get("clip") or "").replace(" ", "") == "text,border-box",
+              "督休专员预览：名字牌是双层背景（金字裁进 text + 墨块裁进 border-box）",
+              _pn.get("clip"))
+        check(_pn.get("serif") is True,
+              "督休专员预览：名字牌用宋体栈（与真机一致）", _pn.get("serif"))
+        _pink = str(_pn.get("ink") or "")
+        _pspk = str(_pn.get("specks") or "")
+        _m1 = re.search(r"seal-ink-(\d+)\.svg", _pink)
+        _m2 = re.search(r"seal-specks-(\d+)\.svg", _pspk)
+        check(bool(_m1) and 1 <= int(_m1.group(1)) <= SEAL_VARIANTS,
+              "督休专员预览：牌底用的是 1~%d 号印泥变体" % SEAL_VARIANTS, _pink)
+        check(bool(_m1) and bool(_m2) and _m1.group(1) == _m2.group(1)
+              and os.path.isfile(os.path.join(DIST, _pink))
+              and os.path.isfile(os.path.join(DIST, _pspk)),
+              "督休专员预览：碎点与牌底同下标且文件都在包里",
+              "ink=%s specks=%s" % (_pink, _pspk))
+        _pai = _pn.get("afterInset")
+        check(isinstance(_pai, (int, float)) and _pai < -1,
+              "督休专员预览：碎点层是比盒子大一圈的伪元素（负 inset）",
+              "inset=%s content=%s" % (_pai, _pn.get("afterContent")))
+        # 位置：真机里牌面钉在立绘头部左侧的空白区（贴左、中上部、永在对话条之上），
+        # 预览按面板百分比锚。这里必须用「切到督休专员页签之后」量到的那份几何 ——
+        # 首屏其余页签是 display:none，rect 全是 0（越界会误报成 dx=0/dy=0）。
+        _pg = m.get("supPreviewGeom") or {}
+        _gdx, _gdy = _pg.get("dx"), _pg.get("dy")
+        _gbw, _gbh = _pg.get("boxW"), _pg.get("boxH")
+        check(_pg.get("shown") is True and _pg.get("text"),
+              "督休专员预览：名字牌已显示且有文本", _pg.get("text"))
+        check(all(isinstance(v, (int, float)) for v in (_gdx, _gdy, _gbw, _gbh))
+              and 0 <= _gdx <= 40 and 0 <= _gdy < _gbh * 0.55,
+              "督休专员预览：名字牌在面板左上（立绘头部左侧的空白区）",
+              "dx=%s dy=%s box=%sx%s" % (_gdx, _gdy, _gbw, _gbh))
+        check(_pg.get("aboveContent") is True,
+              "督休专员预览：名字牌不压台词框（真机里它在头部左侧，不在对话条上）",
+              "aboveContent=%s plateH=%s" % (_pg.get("aboveContent"), _pg.get("plateH")))
         # 磁贴的 key 集合 == 磁盘上的专员集合（不多不少）：只比个数会漏掉「渲染出
         # 另一个专员」这类错位，比集合才抓得住。个数本身从磁盘现算 —— 用户在应用里
         # 删掉一个内置专员后目录真的没了，写死「17 个」会必然误报红。
@@ -453,8 +509,12 @@ def main():
         check(fsrt.get("restored") == bool(stg.get("fullscreenPause")),
               "全屏独占开关：探针收尾把配置还原成初值",
               "%s vs %s" % (fsrt.get("restored"), stg.get("fullscreenPause")))
-        # 共享屏幕时隐藏：默认开（Go 侧 Flag(true,…)），缺键时页面也必须呈现勾选态
-        expect_hide = (cfg.get("appearance") or {}).get("hideOnShare", True) is not False
+        # 共享屏幕时隐藏：默认开（Go 侧 Flag(true,…)），缺键时页面也必须呈现勾选态。
+        # 比对基准是**开跑前的快照** seed_cfg —— 不能用收尾时读的 cfg：探针中途做过
+        # 开关往返，收尾那份已经是「还原后」的值，而还原逻辑读错了字段（见
+        # renderer_probe.js 的 sgWas 注释），历史上恒把 false 改成 true，于是用户真的
+        # 关掉过这个开关时，这条断言会稳定误报成 False vs True。
+        expect_hide = (seed_cfg.get("appearance") or {}).get("hideOnShare", True) is not False
         check(bool(stg.get("apHideOnShare")) == expect_hide,
               "共享屏幕时隐藏勾选态 == 配置 appearance.hideOnShare（缺省为开）",
               "%s vs %s" % (stg.get("apHideOnShare"), expect_hide))
@@ -801,6 +861,35 @@ def main():
             except Exception:
                 ok_cd = False
             check(ok_cd, "%s提醒窗口：倒计时是秒数且在时长范围内" % label, cd)
+            # ---- 倒计时数字 vs 圆环：不越界（含每秒 1.22 倍弹跳峰值）+ 不能太小 ----
+            # break.css 里字号由「环尺寸 × 位数」派生，此处现量 4 组（有/无督休专员 ×
+            # 3/4 位、无专员 2/3 位）。cornerRatio = 数字框四角到环心距离 / 内径半径，
+            # >1 就是探出圆环；colRatio = 环内整列（数字+百分比+两行题字）峰值高 / 内径直径。
+            # 有专员版式环更小、环内其它元素字号更大，正是原先 3 位就溢出的场景。
+            cds = b.get("countdownFit") or []
+            check(len(cds) == 4, "%s提醒窗口：倒计时适配取到 4 组（有/无专员 × 位数）" % label, len(cds))
+            try:
+                want_digits = str(len(str(max(1, round((want_dur or 300000) / 1000)))))
+            except Exception:
+                want_digits = "3"
+            check(b.get("countdownDigits") == want_digits,
+                  "%s提醒窗口：位数按总时长写入（不是按当前数字，否则每秒字号都在变）" % label,
+                  "%s vs %s" % (b.get("countdownDigits"), want_digits))
+            for g in cds:
+                tag = "%s提醒窗口：倒计时 %s 位%s" % (
+                    label, g.get("digits"), "（有督休专员）" if g.get("hasSup") else "（无督休专员）")
+                check((g.get("cornerRatio") or 9) <= 0.98,
+                      tag + "——数字框在环内径圆内（含弹跳峰值）", g.get("cornerRatio"))
+                check((g.get("colRatio") or 9) <= 1.0,
+                      tag + "——环内整列不溢出（数字+百分比+两行题字）", g.get("colRatio"))
+                ring = g.get("ring") or 0
+                font = g.get("font") or 0
+                ratio = (font / ring) if ring else 0
+                floor = 0.28 if g.get("digits") == 3 else 0.20
+                check(ratio >= floor,
+                      tag + "——字号不小于环尺寸的 %d%%（不能为了不溢出缩成小字）" % int(floor * 100),
+                      round(ratio, 3))
+                check(font >= 40, tag + "——字号不低于 40px（可读下限）", font)
             if want_color:
                 check(str(b.get("accent", "")).lower() == want_color.lower(),
                       "%s提醒窗口：--accent == 配置外观色" % label, "%s vs %s" % (b.get("accent"), want_color))
@@ -850,13 +939,127 @@ def main():
                 check(b.get("dialogName") == ref_role and b.get("dialogNameShown") is True,
                       "%s提醒窗口：名字标签亮在对话框左上角" % label,
                       "%r / %s（基准 %r）" % (b.get("dialogName"), b.get("dialogNameShown"), ref_role))
-            # 名字标签距窗口左缘：横屏 56px、竖屏 46px（2026-10-24 从 26/16 右移，
-            # 与外卖提醒窗口同口径；锁住数值，防止样式被改回去）
-            bw, bh = b.get("viewportW") or 0, b.get("viewportH") or 0
-            want_left = 46 if (bw and bh and bw < bh) else 56
-            check(b.get("dialogNameLeft") == want_left,
-                  "%s提醒窗口：督休专员名称距左缘 %dpx" % (label, want_left),
-                  "%s" % b.get("dialogNameLeft"))
+            # 督休专员题名（2026-10-30 改版）：竖排金色宋体，钉在立绘头部左侧的
+            # 空白区，位置与字号都由渲染层按立绘 alpha 剖面实测，不再有固定 left，
+            # 所以不能锁像素值。改锁三条语义约束：
+            #   ① 已定位 + 竖排   ② 零遮挡（不压立绘）   ③ 字号不低于可读下限
+            # 「零遮挡」是这一版的核心承诺：渲染层把覆盖区内的不透明像素列数写进
+            # data-rt-hit，探针只断言它为 0，不管题名具体落在哪个像素上。
+            check(b.get("dialogNamePositioned") is True,
+                  "%s提醒窗口：题名已完成按立绘的实测定位" % label,
+                  "positioned=%s hit=%s" % (b.get("dialogNamePositioned"), b.get("dialogNameHit")))
+            check(b.get("dialogNameVertical") is True,
+                  "%s提醒窗口：题名是竖排（writing-mode: vertical-rl）" % label,
+                  "%s" % b.get("dialogNameVertical"))
+            check(b.get("dialogNameHit") == 0,
+                  "%s提醒窗口：题名零遮挡（一个不透明像素都不压立绘）" % label,
+                  "hit=%s fs=%s" % (b.get("dialogNameHit"), b.get("dialogNameFs")))
+            _dfs = b.get("dialogNameFs")
+            check(isinstance(_dfs, (int, float)) and _dfs >= 15,
+                  "%s提醒窗口：题名字号 >= 15px（再小宋体在 1x 屏就发虚）" % label,
+                  "%s" % _dfs)
+            check(b.get("dialogNameOverflow") is False,
+                  "%s提醒窗口：题名文字没有溢出牌面（红底完整包住名字）" % label,
+                  "overflow=%s" % b.get("dialogNameOverflow"))
+            # 红印泥牌底必须真的画出来（2026-10-30 实测踩坑）：底色若是
+            # background-color，会被第一层 text 裁切吞掉，牌面实际透明 ——
+            # 只有内阴影+内圈高光看着「像红底」，金主题下直接融进背景。
+            # 只能断言计算值：双层 image + 双值 clip，两者缺一即红。
+            _clip = (b.get("dialogNameClip") or "").replace(" ", "")
+            check(_clip == "text,border-box",
+                  "%s提醒窗口：题名牌的 background-clip 是双值列表（text + border-box）" % label,
+                  "%r" % b.get("dialogNameClip"))
+            check((b.get("dialogNameLayers") or 0) >= 2,
+                  "%s提醒窗口：题名牌是双层背景（金字渐变 + 墨块底）" % label,
+                  "layers=%s" % b.get("dialogNameLayers"))
+            # 牌底必须是墨块图（url），不能退回纯色/渐变矩形：不规则轮廓是这一版的设计要求
+            check(b.get("dialogNameInk") is True,
+                  "%s提醒窗口：牌底是墨块图（印泥不规则轮廓）" % label,
+                  "ink=%s" % b.get("dialogNameInk"))
+            # 每次出场随机换一枚「章」：两个变量必须指向同一档，且该档文件真的在包里。
+            # 只认「写死的 url」的旧实现永远报第 1 档，这条会红。
+            _seal = b.get("dialogNameSeal") or {}
+            _ink, _spk = str(_seal.get("ink") or ""), str(_seal.get("specks") or "")
+            _mi = re.search(r"seal-ink-(\d+)\.svg", _ink)
+            _ms = re.search(r"seal-specks-(\d+)\.svg", _spk)
+            check(bool(_mi) and 1 <= int(_mi.group(1)) <= SEAL_VARIANTS,
+                  "%s提醒窗口：牌底挑的是 1~%d 号印泥变体" % (label, SEAL_VARIANTS),
+                  "ink=%s" % _ink)
+            check(bool(_ms) and bool(_mi) and _ms.group(1) == _mi.group(1),
+                  "%s提醒窗口：碎点与牌底是同一枚章（同一下标）" % label,
+                  "ink=%s specks=%s" % (_ink, _spk))
+            check(all(os.path.isfile(os.path.join(DIST, f)) for f in (_ink, _spk) if f),
+                  "%s提醒窗口：选中的印泥/碎点文件在包里" % label,
+                  "ink=%s specks=%s" % (_ink, _spk))
+            # 碎点必须在 1x 下看得见 —— 这条只能量源文件的半径，因为「看不见」在截图里
+            # 是 1px 的浅色点，任何像素断言都会抖。换算：牌子最窄 35px（2 字名），
+            # ::after 画布 = 1.18 倍盒子 → 1 单位 = 0.413px，r=2.6 才够 2.1px 直径。
+            # 上一版 r≤2.1（直径 1.7px）实测要放大 8 倍才看得出，等于没有。
+            _spk_max = 0.0
+            _spk_path = os.path.join(DIST, _spk) if _spk else ""
+            if _spk_path and os.path.isfile(_spk_path):
+                with open(_spk_path, encoding="utf-8") as _sf:
+                    _svg = _sf.read()
+                for _mm in re.finditer(r'<circle[^>]*\sr="([\d.]+)"', _svg):
+                    _spk_max = max(_spk_max, float(_mm.group(1)))
+                for _mm in re.finditer(r'<ellipse[^>]*\srx="([\d.]+)"', _svg):
+                    _spk_max = max(_spk_max, float(_mm.group(1)))
+            check(_spk_max >= 2.6,
+                  "%s提醒窗口：碎点粒度够大（最窄 35px 牌子上 ≥2.1px 直径）" % label,
+                  "max_r=%.2f in %s" % (_spk_max, _spk))
+            _ai = _seal.get("afterInset")
+            check(isinstance(_ai, (int, float)) and _ai < -1,
+                  "%s提醒窗口：碎点层是比盒子大一圈的伪元素（负 inset）" % label,
+                  "inset=%s content=%s" % (_ai, _seal.get("afterContent")))
+            # 字外侧必须还有红：padding 要大于墨块的边界余量（横向 9% 盒宽、纵向 3.5% 盒高）。
+            # 竖排 10 字（盒高 227）曾经是负的 —— 字头字脚压在背景上，肉眼看不出但像素能抓到。
+            _rp = b.get("dialogNameRedPad") or {}
+            _rx, _ry = _rp.get("x"), _rp.get("y")
+            check(isinstance(_rx, (int, float)) and _rx >= 0.5,
+                  "%s提醒窗口：文字左右两侧仍有余量（墨块横向盖得住）" % label,
+                  "x=%s" % _rx)
+            check(isinstance(_ry, (int, float)) and _ry >= 2.0,
+                  "%s提醒窗口：文字上下仍有余量（墨块纵向盖得住）" % label,
+                  "y=%s" % _ry)
+            # 二阶段的「凑近 + 脉动」是 CSS scale，立绘绕「盒底边中点（双脚）」放大。
+            # 题名牌必须绕同一个点放大：原点若留在牌心，8% 的缩放会把牌面往人物身上
+            # 挪十几像素（实测 49px 的头部位移里，牌面只跟上 0，看上去牌子掉在原地）。
+            _dz = b.get("dialogNameZoom") or {}
+            _dx, _dy = _dz.get("dx"), _dz.get("dy")
+            check(isinstance(_dx, (int, float)) and isinstance(_dy, (int, float))
+                  and abs(_dx) <= 1.5 and abs(_dy) <= 1.5,
+                  "%s提醒窗口：题名牌与立绘共用同一个缩放原点（一起凑近，不各放大各的）" % label,
+                  "dx=%s dy=%s scale=%s" % (_dx, _dy, _dz.get("scale")))
+            # scale 可能算成 "none"（没挂上缩放规则），不能直接 float() —— 那会抛异常
+            # 把整份报告打挂，而不是记一条失败。
+            _sc = str(_dz.get("scale") or "none").replace(",", " ").split()
+            try:
+                _sx = float(_sc[0])
+            except (ValueError, IndexError):
+                _sx = 0.0
+            check(_sx > 1.0,
+                  "%s提醒窗口：题名牌确实跟着立绘缩放（scale > 1）" % label,
+                  "scale=%s" % _dz.get("scale"))
+            # 用布局框（offset*，不含变换）判定：rect 里含 1.03 / 1.08 的「凑近」缩放，
+            # 绕立绘双脚放大时牌子边缘本来就会外扩（立绘自己也一样），那不是布局错。
+            # 这里要钉的是「求解出来就没出窗」——正是这条此前抓过极左立绘下牌子被钳边的问题。
+            _lay = b.get("dialogNameLayout") or {}
+            _dl, _dt = _lay.get("left"), _lay.get("top")
+            _dr = (_dl + _lay.get("w")) if _dl is not None and _lay.get("w") is not None else None
+            _db = (_dt + _lay.get("h")) if _dt is not None and _lay.get("h") is not None else None
+            _vpw = b.get("viewportW") or 0
+            _vph = b.get("viewportH") or 0
+            check(None not in (_dl, _dt, _dr, _db) and _dl >= 0 and _dt >= 0
+                  and _dr <= _vpw and _db <= _vph,
+                  "%s提醒窗口：题名布局框完整落在窗口内（不含凑近缩放）" % label,
+                  "rect=(%s,%s)-(%s,%s) 窗口 %sx%s" % (_dl, _dt, _dr, _db, _vpw, _vph))
+            # 题名已搬出对话条：底边必须在对话框顶边以上（不能压到台词与倒计时）
+            _ci = b.get("contentInline") or {}
+            if _ci.get("rectBottom") is not None and _ci.get("rectH") is not None and _db is not None:
+                _ci_top = _ci["rectBottom"] - _ci["rectH"]
+                check(_db <= _ci_top + 1,
+                      "%s提醒窗口：题名不侵入对话条（底边在对话框顶边以上）" % label,
+                      "%s vs 对话框顶 %s" % (_db, _ci_top))
             ci = b.get("contentInline") or {}
             check((ci.get("rectW") or 0) > 0 and (ci.get("rectH") or 0) > 0,
                   "%s提醒窗口：对话框有实际占位" % label, "%sx%s" % (ci.get("rectW"), ci.get("rectH")))
@@ -883,6 +1086,34 @@ def main():
                       "%s提醒窗口：对话框底部两角圆角 == 窗口圆角" % label,
                       "content=%s/%s app=%s/%s" % (ci.get("blRadius"), ci.get("brRadius"),
                                                    b.get("appBlRadius"), b.get("appBrRadius")))
+            # ---- 对话框内的「提醒内容」：四类提醒窗口必须同一套排版 ----
+            # 用户报障（2026-10-30）：外卖窗口的提醒内容不居中、自定义提醒的字样式与
+            # 短休/长休两个样。根因是两处各写各的（自定义 15px/400/opacity .72，外卖
+            # 的 .content 是 display:block + text-align:left）。现在三者同挂 .dialog-text。
+            _dt = b.get("dialogText") or {}
+            check("dialog-text" in str(_dt.get("cls") or ""),
+                  "%s提醒窗口：提醒内容挂在 .dialog-text（四类窗口共用一套排版）" % label,
+                  _dt.get("cls"))
+            check(_dt.get("align") == "center"
+                  and isinstance(_dt.get("offCenter"), (int, float))
+                  and abs(_dt["offCenter"]) <= 0.5,
+                  "%s提醒窗口：提醒内容水平居中" % label,
+                  "align=%s offCenter=%s" % (_dt.get("align"), _dt.get("offCenter")))
+            check(_dt.get("weight") in ("700", "bold"),
+                  "%s提醒窗口：提醒内容字重 700（与其它提醒窗口一致）" % label, _dt.get("weight"))
+            _op = _dt.get("opacity")
+            check(isinstance(_op, (int, float)) and _op >= 0.999,
+                  "%s提醒窗口：提醒内容不透明（旧版自定义提醒是 0.72 的淡小字）" % label, _op)
+            check(isinstance(_dt.get("fs"), (int, float)) and _dt["fs"] >= 15 - 0.01,
+                  "%s提醒窗口：提醒内容字号不低于 15px 下限（不缩到看不清）" % label, _dt.get("fs"))
+            _ovy = _dt.get("overflowY")
+            check(isinstance(_ovy, (int, float)) and _ovy <= 1.0,
+                  "%s提醒窗口：提醒内容不溢出对话框底边" % label,
+                  "overflowY=%s boxH=%s tall=%s" % (_ovy, _dt.get("boxH"), _dt.get("tall")))
+            # 溢出兜底：缩到 15px 仍装不下时必须让框长高（.tall），而不是把字裁掉
+            check(_ovy is None or _ovy <= 1.0 or _dt.get("tall") is True,
+                  "%s提醒窗口：装不下时走 .tall 长高（绝不裁字）" % label,
+                  "overflowY=%s tall=%s" % (_ovy, _dt.get("tall")))
             bi = b.get("barInline") or {}
             check(bool(bi.get("left")) and bool(bi.get("bottom")),
                   "%s提醒窗口：倒计时环被 inline 摆位（left/bottom 已写入）" % label,
@@ -1063,6 +1294,33 @@ def main():
                           "%s vs %s（alpha=%s figBox=%s）" % (tksm.get(_sk), tkfv.get(_fk), tkfv.get("alpha"), tkfv.get("figBox")))
             check(tk.get("stage") == "1",
                   "外卖窗口：督休专员没有二阶段（data-stage 恒为 1）", tk.get("stage"))
+            # 提醒内容：曾经因为 .content 是 display:block + text-align:left，整句贴
+            # 在对话框左边；字号虽对但不会缩，长文本把框撑成两倍高。
+            _tdt = tk.get("dialogText") or {}
+            check("dialog-text" in str(_tdt.get("cls") or ""),
+                  "外卖窗口：提醒内容挂在 .dialog-text（与休息窗口同一套）", _tdt.get("cls"))
+            check(_tdt.get("align") == "center"
+                  and isinstance(_tdt.get("offCenter"), (int, float))
+                  and abs(_tdt["offCenter"]) <= 0.5,
+                  "外卖窗口：提醒内容水平居中",
+                  "align=%s offCenter=%s" % (_tdt.get("align"), _tdt.get("offCenter")))
+            check(_tdt.get("contentAlign") == "center",
+                  "外卖窗口：.content 的 text-align 也是 center",
+                  _tdt.get("contentAlign"))
+            check(tk.get("badgesJustify") == "center",
+                  "外卖窗口：状态徽标行也居中（block 父级管不到 flex 子项）",
+                  tk.get("badgesJustify"))
+            check(_tdt.get("weight") in ("700", "bold"),
+                  "外卖窗口：提醒内容字重 700（与休息窗口一致）", _tdt.get("weight"))
+            _top = _tdt.get("opacity")
+            check(isinstance(_top, (int, float)) and _top >= 0.999,
+                  "外卖窗口：提醒内容不透明", _top)
+            _tovy = _tdt.get("overflowY")
+            check(isinstance(_tovy, (int, float)) and _tovy <= 1.0,
+                  "外卖窗口：提醒内容不溢出对话框底边",
+                  "overflowY=%s boxH=%s tall=%s" % (_tovy, _tdt.get("boxH"), _tdt.get("tall")))
+            check(isinstance(_tdt.get("fs"), (int, float)) and _tdt["fs"] >= 15 - 0.01,
+                  "外卖窗口：提醒内容字号不低于 15px 下限", _tdt.get("fs"))
             if info.get("message"):
                 check(tk.get("lineText") == info.get("message") and tk.get("lineShown") is True,
                       "外卖窗口：台词 == 外卖提醒文字（不显示督休专员自己的台词）",
@@ -1070,8 +1328,57 @@ def main():
             tk_role = want_role or tk.get("speaker")
             if tk_role:
                 check(tk.get("dialogName") == tk_role and tk.get("dialogNameShown") is True,
-                      "外卖窗口：名字标签亮在对话框左上角",
+                      "外卖窗口：题名已显示（钉在立绘头部左侧，不再挂在对话框沿上）",
                       "%r / %s（基准 %r）" % (tk.get("dialogName"), tk.get("dialogNameShown"), tk_role))
+                # 与休息窗口同一套约束：竖排 + 已定位 + 零遮挡 + 字号达标
+                check(tk.get("dialogNameVertical") is True,
+                      "外卖窗口：题名是竖排（writing-mode: vertical-rl）",
+                      tk.get("dialogNameVertical"))
+                check(tk.get("dialogNamePositioned") is True,
+                      "外卖窗口：题名已完成按立绘的实测定位",
+                      "positioned=%s hit=%s" % (tk.get("dialogNamePositioned"), tk.get("dialogNameHit")))
+                check(tk.get("dialogNameHit") == 0,
+                      "外卖窗口：题名零遮挡（一个不透明像素都不压立绘）",
+                      "hit=%s fs=%s" % (tk.get("dialogNameHit"), tk.get("dialogNameFs")))
+                _tkfs = tk.get("dialogNameFs")
+                check(isinstance(_tkfs, (int, float)) and _tkfs >= 15,
+                      "外卖窗口：题名字号 >= 15px（再小宋体在 1x 屏就发虚）", "%s" % _tkfs)
+                check(tk.get("dialogNameOverflow") is False,
+                      "外卖窗口：题名文字没有溢出牌面（红底完整包住名字）",
+                      "overflow=%s" % tk.get("dialogNameOverflow"))
+                # 与休息窗口同一条：牌底必须是第二层 background-image + 双值 clip
+                _tkclip = (tk.get("dialogNameClip") or "").replace(" ", "")
+                check(_tkclip == "text,border-box",
+                      "外卖窗口：题名牌的 background-clip 是双值列表（text + border-box）",
+                      "%r" % tk.get("dialogNameClip"))
+                check((tk.get("dialogNameLayers") or 0) >= 2,
+                      "外卖窗口：题名牌是双层背景（金字渐变 + 墨块底）",
+                      "layers=%s" % tk.get("dialogNameLayers"))
+                check(tk.get("dialogNameInk") is True,
+                      "外卖窗口：牌底是墨块图（印泥不规则轮廓）",
+                      "ink=%s" % tk.get("dialogNameInk"))
+                _tseal = tk.get("dialogNameSeal") or {}
+                _tink, _tspk = str(_tseal.get("ink") or ""), str(_tseal.get("specks") or "")
+                _ti = re.search(r"seal-ink-(\d+)\.svg", _tink)
+                _ts = re.search(r"seal-specks-(\d+)\.svg", _tspk)
+                check(bool(_ti) and 1 <= int(_ti.group(1)) <= SEAL_VARIANTS
+                      and bool(_ts) and _ts.group(1) == _ti.group(1),
+                      "外卖窗口：牌底与碎点是同一枚随机印章",
+                      "ink=%s specks=%s" % (_tink, _tspk))
+                check(all(os.path.isfile(os.path.join(DIST, f)) for f in (_tink, _tspk) if f),
+                      "外卖窗口：选中的印泥/碎点文件在包里",
+                      "ink=%s specks=%s" % (_tink, _tspk))
+                _trp = tk.get("dialogNameRedPad") or {}
+                check(isinstance(_trp.get("x"), (int, float)) and _trp.get("x") >= 0.5
+                      and isinstance(_trp.get("y"), (int, float)) and _trp.get("y") >= 2.0,
+                      "外卖窗口：文字四周仍有余量（墨块盖得住）",
+                      "x=%s y=%s" % (_trp.get("x"), _trp.get("y")))
+                _tz = tk.get("dialogNameZoom") or {}
+                _tdx, _tdy = _tz.get("dx"), _tz.get("dy")
+                check(isinstance(_tdx, (int, float)) and isinstance(_tdy, (int, float))
+                      and abs(_tdx) <= 1.5 and abs(_tdy) <= 1.5,
+                      "外卖窗口：题名牌与立绘共用同一个缩放原点（同一套几何）",
+                      "dx=%s dy=%s scale=%s" % (_tdx, _tdy, _tz.get("scale")))
             rp = tk.get("redpacketInline") or {}
             if tk.get("contentRect"):
                 # 对话框是 fixed、不受 #app 的 overflow 裁剪：贴边后底部两角必须
@@ -1170,6 +1477,14 @@ def main():
               "提醒窗口：全局键鼠活动广播（sup:active）真的到达页面", "%s -> %s" % (n0, n1))
         check(ga.get("stage") == "2",
               "提醒窗口：全局键鼠活动把督休专员推进二阶段", ga.get("stage"))
+        # 二阶段立绘放大 8%（头顶抬高约 50px）。题名牌的相对位置必须不变 ——
+        # 归一化到立绘盒高后比较，窗口尺寸与缩放都自动消掉。容差 0.004 ≈ 2.6px
+        # （留给 1.1s 脉动相位差与 scale/transform 的合成顺序，那点误差 < 1px）。
+        _pv0, _pv1 = ga.get("plateVBefore"), ga.get("plateVAfter")
+        check(isinstance(_pv0, (int, float)) and isinstance(_pv1, (int, float))
+              and abs(_pv1 - _pv0) <= 0.004,
+              "提醒窗口：进入二阶段后题名牌与立绘同步凑近（相对位置不漂移）",
+              "%s -> %s" % (_pv0, _pv1))
         # 二阶段的命令台词比一阶段的提醒内容长，但对话框高度必须恒定：以前是
         # min-height，台词换行就把框撑高、倒计时环跟着位移（用户报障 2026-10-25）。
         check(abs((ga.get("boxHAfter") or 0) - (ga.get("boxHBefore") or 0)) <= 0.5,
@@ -1205,6 +1520,127 @@ def main():
             check(d.get("multiTouchBlocked") is True,
                   "%s：双指触摸（捏合的原始输入）被拦下" % label, d.get("multiTouchBlocked"))
 
+        # ---- 静态不变式：四类提醒窗口共用同一套提醒内容排版 ----
+        # 运行时断言只覆盖探针真正打开的那两种窗口（休息 / 外卖）。自定义提醒与
+        # 短休/长休共用同一套 CSS，所以这里再从源码层面钉一遍「共用」本身：
+        #   · 两份 CSS 的 body.has-supervisor .dialog-text 声明块逐字相同；
+        #   · 两份 CSS 的 --dlg-fs / --dlg-fs-min / --dlg-h 三个值相同；
+        #   · 两份 JS 的 fitDialogText() 逐字相同（缩字号 + .tall 长高的唯一实现）；
+        #   · 三个元素都真的挂上了 .dialog-text（漏一个就退回各写各的）。
+        def _read(rel):
+            with open(os.path.join(DIST, rel), encoding="utf-8") as f:
+                return f.read().replace("\r\n", "\n")
+
+        def _block(src, head, close="\n}"):
+            """从 head 起截到「行首 close」为止。CSS 声明块收在行首的 }，
+            JS 函数收在两格缩进的 }（close="\n  }"）—— 用错会把后面整份文件都算进去。"""
+            i = src.find(head)
+            if i < 0:
+                return None
+            j = src.find(close, i)
+            return None if j < 0 else src[i:j + len(close)].strip()
+
+        try:
+            _bc, _tc = _read("break.css"), _read("takeout.css")
+            _bj, _tj = _read("break.js"), _read("takeout.js")
+            _bh, _th = _read("break.html"), _read("takeout.html")
+        except Exception as _e:      # 文件缺失时给一条失败而不是把报告打挂
+            _bc = _tc = _bj = _tj = _bh = _th = ""
+            check(False, "提醒内容排版：两份 CSS / 两份 JS / 两份 HTML 都能读到", _e)
+
+        _d1 = _block(_bc, "body.has-supervisor .dialog-text {")
+        _d2 = _block(_tc, "body.has-supervisor .dialog-text {")
+        check(bool(_d1) and _d1 == _d2,
+              "提醒内容排版：两份 CSS 的 .dialog-text 声明块逐字相同",
+              "break=%s takeout=%s" % (bool(_d1), bool(_d2)))
+        for _k in ("--dlg-fs:", "--dlg-fs-min:", "--dlg-h:"):
+            _v1 = re.search(re.escape(_k) + r"\s*([^;]+);", _bc)
+            _v2 = re.search(re.escape(_k) + r"\s*([^;]+);", _tc)
+            check(bool(_v1) and bool(_v2) and _v1.group(1).strip() == _v2.group(1).strip(),
+                  "提醒内容排版：两份 CSS 的 %s 同值" % _k.rstrip(":"),
+                  "%s vs %s" % (_v1 and _v1.group(1).strip(), _v2 and _v2.group(1).strip()))
+        _f1 = _block(_bj, "  function fitDialogText(content) {", "\n  }")
+        _f2 = _block(_tj, "  function fitDialogText(content) {", "\n  }")
+        check(bool(_f1) and _f1 == _f2,
+              "提醒内容排版：两份 JS 的 fitDialogText() 逐字相同",
+              "break=%s takeout=%s" % (len(_f1 or ""), len(_f2 or "")))
+        check("--dlg-fs-min" in (_f1 or "") and "classList.add(\"tall\")" in (_f1 or ""),
+              "提醒内容排版：自适应逻辑同时有「15px 下限」与「.tall 长高」两条出口",
+              "min=%s tall=%s" % ("--dlg-fs-min" in (_f1 or ""),
+                                  'classList.add("tall")' in (_f1 or "")))
+        check('class="supervisor-line dialog-text' in _bh,
+              "提醒内容排版：break.html 的台词挂 .dialog-text")
+        check('class="messages dialog-text' in _bh,
+              "提醒内容排版：break.html 的自定义提醒内容挂 .dialog-text")
+        check('class="supervisor-line dialog-text' in _th,
+              "提醒内容排版：takeout.html 的台词挂 .dialog-text")
+
+        # ---- 不启用督休专员：四类窗口的提醒内容排版 ----
+        # 这一组走替身 shim（supervisor:null），走的是同一份 HTML/CSS/JS。
+        # 运行时断言：四类的字号/字重/透明度/对齐完全一致，居中、不越界；
+        # 外卖另外钉块序（红包 → 徽标 → 内容 → 按钮）与「外卖提醒」标题不压内容。
+        _ns = m.get("noSup") or {}
+        check(set(_ns.keys()) == {"break_short", "break_custom", "takeout_qr", "takeout_noqr"},
+              "无督休专员：四类窗口都量到了", sorted(_ns.keys()))
+        _base = _ns.get("break_short") or {}
+        for _k, _v in sorted(_ns.items()):
+            check(_v.get("error") is None, "无督休专员/%s：量到可见的提醒内容" % _k, _v.get("error"))
+            check(_v.get("hasSup") is False, "无督休专员/%s：确实没有 has-supervisor" % _k, _v.get("hasSup"))
+            check(_v.get("weight") == "600" and _v.get("opacity") == 1,
+                  "无督休专员/%s：字重 600、不透明" % _k,
+                  "%s / %s" % (_v.get("weight"), _v.get("opacity")))
+            check(_v.get("align") == "center", "无督休专员/%s：水平居中（text-align）" % _k, _v.get("align"))
+            # offCenter 是个「0 就是合格」的值，不能写成 `or 99` —— 0 是 falsy，
+            # 会取到兜底的 99 把「刚好居中」判成失败（已踩过一次）。
+            _oc = _v.get("offCenter")
+            check(isinstance(_oc, (int, float)) and abs(_oc) <= 0.5,
+                  "无督休专员/%s：文字中心与窗口中线重合" % _k, _oc)
+            check(_v.get("overX") == 0 and _v.get("overY") == 0,
+                  "无督休专员/%s：文字不越出窗口" % _k,
+                  "x=%s y=%s" % (_v.get("overX"), _v.get("overY")))
+            check(_v.get("wrap") == "anywhere",
+                  "无督休专员/%s：长串可折行（overflow-wrap）" % _k, _v.get("wrap"))
+            if _base and _base.get("fs"):
+                check(abs((_v.get("fs") or 0) - _base["fs"]) < 0.01,
+                      "无督休专员/%s：字号与休息窗口一致" % _k,
+                      "%s vs %s" % (_v.get("fs"), _base.get("fs")))
+            _ce = _v.get("consoleErrors") or []
+            check(not _ce, "无督休专员/%s：无 console 错误" % _k, _ce[:2])
+        # 外卖块序：红包 → 徽标 → 提醒内容 → 按钮，且「外卖提醒」标题不压内容
+        for _k in ("takeout_qr", "takeout_noqr"):
+            _v = _ns.get(_k) or {}
+            check(_v.get("orderAsc") is True,
+                  "无督休专员/%s：块序为 红包→徽标→内容→按钮" % _k, _v.get("order"))
+            check(all((_g or 0) > 0 for _g in (_v.get("gaps") or [0])),
+                  "无督休专员/%s：相邻块依次向下排列，无重叠" % _k, _v.get("gaps"))
+        _qr = _ns.get("takeout_qr") or {}
+        check(_qr.get("titleOverlap") == 0,
+              "无督休专员/外卖：「外卖提醒」标题未压到提醒内容", _qr.get("titleOverlap"))
+        check((_qr.get("titleGap") or -99) > 0,
+              "无督休专员/外卖：标题与提醒内容之间留有空隙", _qr.get("titleGap"))
+        _noqr = _ns.get("takeout_noqr") or {}
+        check(_qr.get("fs") and _qr.get("fs") == _noqr.get("fs"),
+              "无督休专员/外卖：红包开不开不影响字号",
+              "%s vs %s" % (_qr.get("fs"), _noqr.get("fs")))
+
+        # 源码级：无督休专员那一段也是「只定义一次」
+        _n1 = _block(_bc, "body:not(.has-supervisor) .dialog-text {")
+        _n2 = _block(_tc, "body:not(.has-supervisor) .dialog-text {")
+        check(bool(_n1) and _n1 == _n2,
+              "无督休专员：两份 CSS 的 .dialog-text 声明块逐字相同",
+              "break=%s takeout=%s" % (len(_n1 or ""), len(_n2 or "")))
+        check(_n1 and "font-size" in _n1 and "overflow-wrap" in _n1,
+              "无督休专员：共享块里同时给了字号与折行", bool(_n1))
+        # 三处元素不再各写一份字号（写过就又会岔开）
+        _msgrule = _block(_bc, "body:not(.has-supervisor) .messages {")
+        check(bool(_msgrule) and "font-size" not in _msgrule and "font-weight" not in _msgrule,
+              "无督休专员：break.css 的 .messages 不再自己写字号字重", _msgrule is not None)
+        _tkmsg = _block(_tc, ".tk-msg {")
+        check(bool(_tkmsg) and "font-size" not in _tkmsg and "opacity" not in _tkmsg,
+              "无督休专员：takeout.css 的 .tk-msg 不再自己写字号透明度", _tkmsg is not None)
+        check('class="tk-msg dialog-text' in _th,
+              "无督休专员：takeout.html 的提醒内容挂 .dialog-text")
+
         # ---- 截图 ----
         # 提前提示窗是 400x240 / 400x172 的小窗，字节数天然比整页截图少，阈值单独给
         for name, min_sz in (
@@ -1213,6 +1649,8 @@ def main():
             ("index.png", 20000), ("break_wide.png", 20000), ("break_tall.png", 20000),
             ("prebreak.png", 4000), ("prebreak_custom.png", 4000), ("takeout.png", 4000),
             ("prebreak_no_postpone.png", 4000), ("takeout_no_postpone.png", 4000),
+            # 不启用督休专员的两张：整页深色渐变，与 takeout 同量级
+            ("nosup_break_short.png", 20000), ("nosup_takeout_qr.png", 20000),
         ):
             p = os.path.join(OUT, name)
             sz = os.path.getsize(p) if os.path.isfile(p) else 0

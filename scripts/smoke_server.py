@@ -32,7 +32,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import uuid
+import secrets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
@@ -187,12 +187,12 @@ def call(base, name, args, window=""):
         "object": 0,
         "method": 0,
         "args": {
-            "call-id": uuid.uuid4().hex,
+            "call-id": secrets.token_hex(16),
             "methodName": BINDING_PREFIX + name,
             "args": args,
         },
     }
-    headers = {"Content-Type": "application/json", "x-wails-client-id": uuid.uuid4().hex}
+    headers = {"Content-Type": "application/json", "x-wails-client-id": secrets.token_hex(16)}
     if window:
         headers["x-wails-window-name"] = window
     status, raw = http("POST", base + "/wails/runtime", json.dumps(payload).encode("utf-8"), headers)

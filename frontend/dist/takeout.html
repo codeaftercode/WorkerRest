@@ -26,17 +26,24 @@
          名字标签在左上角凸出，台词大字、状态徽标/时间/按钮排进框内；
          支付红包区脱离文档流浮到立绘可见右缘的右侧（位置由脚本写入）。
          无督休专员时维持原版式：内容列居中。 -->
+    <!-- 督休专员题名：竖排金色宋体，钉在立绘头部左侧的空白区（不再进对话条）。
+         位置与字号由 takeout.js 的 layoutRoleTitle() 按「零遮挡」实测后写进 inline style，
+         必须和 #figure 处在同一定位上下文（#app），不能留在 .content 里。 -->
+    <div class="dialog-name hidden" id="dialog-name"></div>
     <div class="content">
-      <div class="dialog-name hidden" id="dialog-name"></div>
       <!-- 状态徽标：提前通知（还差几分钟）与"这是第几次推迟" -->
       <div class="tk-badges" id="tk-badges">
         <span class="tk-badge hidden" id="tk-lead">提前提醒</span>
         <span class="tk-badge warn hidden" id="tk-postponed">已推迟 1 次</span>
       </div>
-      <!-- 提醒内容：外卖提醒自己的那一套配置，每次弹窗随机/顺序取 1 条；未配置则整块隐藏 -->
-      <div class="tk-msg hidden" id="tk-msg"></div>
-      <!-- 督休专员的台词气泡：有督休专员时提醒内容改由督休专员"说"出（第一段），这里随之显示 -->
-      <div class="supervisor-line hidden" id="supervisor-line"></div>
+      <!-- 提醒内容：外卖提醒自己的那一套配置，每次弹窗随机/顺序取 1 条；未配置则整块隐藏。
+           挂 .dialog-text：与休息窗口的台词、自定义提醒的提醒内容共用同一套排版
+           （字号/字重/居中/自动换行/超长自动缩字号，见 takeout.css） -->
+      <div class="tk-msg dialog-text hidden" id="tk-msg"></div>
+      <!-- 督休专员的台词气泡：有督休专员时提醒内容改由督休专员"说"出（第一段），这里随之显示。
+           挂 .dialog-text：与休息窗口的台词、自定义提醒的提醒内容共用同一套排版
+           （字号/字重/居中/自动换行/超长自动缩字号，见 takeout.css） -->
+      <div class="supervisor-line dialog-text hidden" id="supervisor-line"></div>
       <!-- 支付红包：开关打开即显示该区域；二维码指向本机专属领取地址，手机扫码打开。
            红包虚线框上方的「外卖提醒」胶囊标签浮在框外（absolute，不占框内布局） -->
       <div class="tk-redpacket hidden" id="redpacket">

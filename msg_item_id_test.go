@@ -35,7 +35,7 @@ func TestNextSeqID(t *testing.T) {
 		{"乱序取最大", []string{"3", "1", "2"}, "4"},
 		{"中间的号被删了也不复用", []string{"1", "3"}, "4"},
 		{"非数字 id 直接跳过", []string{"a3", "b2"}, "1"},
-		{"uuid 混入也不炸", []string{newUUID(), "7"}, "8"},
+		{"随机串混入也不炸", []string{newRandomID(), "7"}, "8"},
 	}
 	for _, c := range cases {
 		if got := nextSeqID(c.ids); got != c.want {
@@ -44,7 +44,7 @@ func TestNextSeqID(t *testing.T) {
 	}
 }
 
-// 归一化必须把**任何**非序号 id 收敛成序号：缺的补、uuid / builtin-xxx-N 重编、
+// 归一化必须把**任何**非序号 id 收敛成序号：缺的补、随机串 / builtin-xxx-N 重编、
 // 手写成数字的认下、重号的后来那条重发一枚。
 func TestNormalizeMsgItemsConverges(t *testing.T) {
 	raw := []any{
@@ -52,7 +52,7 @@ func TestNormalizeMsgItemsConverges(t *testing.T) {
 		msgItem("1", "已经是 1"),
 		msgItem("1", "重号的 1"),
 		msgItem("builtin-short-7", "老格式内置 id"),
-		msgItem("f47ac10b-58cc-4372-a567-0e02b2c3d479", "老格式 uuid"),
+		msgItem("f47ac10b-58cc-4372-a567-0e02b2c3d479", "老格式随机串"),
 		msgItem(float64(9), "手写成数字 9"),
 	}
 	out, remap := normalizeMsgItems(raw)

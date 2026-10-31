@@ -67,11 +67,30 @@ func main() {
 		}
 	}
 
-	// 诊断用日志落盘：设了 WR_LOG_FILE 就把应用自身的 log 输出（[boot]/[sound]/[plan]…）
-	// 追加到该文件。GUI 版 stderr 不可见，排查「提示音不响」这类问题靠它抓现场。
-	if lf := os.Getenv("WR_LOG_FILE"); lf != "" {
-		if f, err := os.OpenFile(lf, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
-			log.SetOutput(f)
+	// 日志落盘：默认写 <exe 所在目录>/logs/app.log（单份 2 MiB，另留 .1/.2），
+	// WR_LOG_FILE 可改指别处（探针用它单独捞被测进程的日志）。
+	// GUI 版 stderr 不可见，排查「提示音不响」「缺 WebView2 直接退出」靠它抓现场。
+	// 注意顺序：--dump-default-settings / --self-update 在上面已经 return，所以打包
+	// 脚本用 exe 吐默认配置时不会在包里留下 logs/。
+	log.SetOutput(appLogWriter())
+
+	// WebView2 运行时预检：必须在 application.New / app.Run() **之前**。
+	// 缺运行时时 Wails 建不出 webview，handleError 写完日志就整个进程退出；发布版是
+	// GUI 子系统，用户只看到「双击没反应」。这里先探一次，确认缺失才提示 + 打开下载页，
+	// 然后直接退出 —— 不留下半初始化的单例互斥与后台 goroutine。
+	// 只拦「确认缺失」：探测读不到（权限、非标准部署）一律放行，见 webview2_check.go。
+	if !serverMode {
+		switch p := probeWebView2(); {
+		case p.Found:
+			log.Printf("[boot] WebView2 运行时 %s", p.Version)
+		case p.Certain:
+			log.Printf("[boot] 未检测到 WebView2 运行时，提示用户安装后退出")
+			promptWebView2Missing()
+			return
+		default:
+			// 探不出结论（权限、非标准部署）：放行。宁可回到「交给 Wails 报错」，
+			// 也不能让探测本身的误判把能用的机器挡在门外。
+			log.Printf("[boot] WebView2 运行时探测无结论，按已安装处理")
 		}
 	}
 
