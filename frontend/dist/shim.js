@@ -236,6 +236,14 @@
     openManual: function () {
       return call("OpenManual");
     },
+    // 开源鸣谢清单：整份纯文本内嵌在 exe 里（见 notices.go）。
+    // 查看与另存为分开两个绑定 —— 前者只读，后者会弹另存为对话框写盘。
+    getThirdPartyNotices: function () {
+      return call("GetThirdPartyNotices");
+    },
+    exportThirdPartyNotices: function () {
+      return call("ExportThirdPartyNotices");
+    },
     openExternal: function (url) {
       return call("OpenExternal", [str(url)]);
     },

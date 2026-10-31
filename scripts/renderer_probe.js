@@ -460,7 +460,7 @@ const PROBE_SETTINGS = `(function () {
     title: document.title,
     tbTitle: txt('tb-title'),
     appName: val('appName'),
-    // 关于页「软件信息」卡：当前版本 / 发布时间两行（运行环境行已移除）
+    // 关于页「软件信息」卡：一行「版本」（版本号 | 发布时间）+ 一行「开源鸣谢」（运行环境行已移除）
     dVersion: txt('d-version-val'),
     dBuildTime: txt('d-build-time'),
     // 运行环境行已从关于页移除：此字段用于断言它确实不再存在（应为 null）

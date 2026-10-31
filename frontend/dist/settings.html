@@ -534,8 +534,16 @@
           </div>
 
           <div class="rows">
-            <div class="row"><span class="k">当前版本</span><span class="v mono strong" id="d-version-val">v—</span></div>
-            <div class="row"><span class="k">发布时间</span><span class="v mono" id="d-build-time">本地构建</span></div>
+            <!-- 版本与发布时间同一行：两者都是「这份二进制是谁」，分成两行只是各占一行空间。
+                 版本号是主值（14px/650），发布时间退一档做注脚（12.5px/520 且压暗），
+                 中间的竖线只作分隔、不参与信息层级。 -->
+            <div class="row">
+              <span class="k">软件版本</span>
+              <span class="v mono ver-cell"><span class="ver-num" id="d-version-val">v—</span><span class="ver-sep">|</span><span class="ver-build" id="d-build-time">本地构建</span></span>
+            </div>
+            <!-- 开源鸣谢：全文内嵌在 exe 里（见 notices.go），点开可读、可另存为。
+                 不放启动弹窗 —— 义务只要求「可获取」，打扰用户不是合规的一部分。 -->
+            <div class="row"><span class="k">开源鸣谢</span><button type="button" class="link-btn" id="d-notices" aria-haspopup="dialog">查看</button></div>
           </div>
         </section>
 
@@ -773,6 +781,24 @@
       <div class="up-changes" id="ss-body"></div>
       <div class="modal-actions">
         <button class="btn" id="ss-close">暂不处理</button>
+      </div>
+    </div>
+  </div>
+  <!-- 开源鸣谢：整份清单内嵌在 exe 里（notices.go），这里只做只读呈现 + 另存为。
+       宽度比确认框宽、正文等宽可滚 —— 许可全文是给人「能读到」的，不是装饰。
+       没有副标题：正文第一段就是致谢，再加一句「本程序用到的开源组件…」只是重复。 -->
+  <div id="notices-modal" class="modal hidden">
+    <div class="modal-box nt-box" role="dialog" aria-modal="true" aria-labelledby="nt-title">
+      <div class="cf-head">
+        <span class="cf-icon accent" aria-hidden="true">&sect;</span>
+        <div class="cf-titles">
+          <h3 id="nt-title">开源鸣谢</h3>
+        </div>
+      </div>
+      <pre id="nt-body" class="nt-body" tabindex="0">正在读取…</pre>
+      <div class="modal-actions">
+        <button class="btn ghost" id="nt-export">另存为…</button>
+        <button class="btn primary" id="nt-close">关闭</button>
       </div>
     </div>
   </div>

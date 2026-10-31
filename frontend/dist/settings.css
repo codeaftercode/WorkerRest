@@ -245,7 +245,25 @@ body {
 #tab-about .rows .k { color: var(--text-2); }
 #tab-about .rows .v { color: var(--text); font-weight: 520; }
 #tab-about .rows .v.strong { font-size: 14px; font-weight: 650; }
+/* 「版本 | 发布时间」：一行两个值。版本号是主值，沿用原 .v.strong 的 14px/650；
+   发布时间退一档（12.5px/520）并压到 --text-2 —— 它是版本号的注脚，与主值同级会抢重心。
+   baseline 对齐而非 center：两者字号不同，居中会让「|」偏离文字基线。
+   分隔符取 --border 色（比正文淡得多），只做分隔、不参与信息层级。 */
+#tab-about .rows .ver-cell { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
+#tab-about .rows .ver-cell .ver-num { font-size: 14px; font-weight: 650; }
+#tab-about .rows .ver-cell .ver-sep { color: var(--border); font-weight: 400; }
+#tab-about .rows .ver-cell .ver-build { font-size: 12.5px; font-weight: 520; color: var(--text-2); white-space: nowrap; }
 #tab-about .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: -.2px; }
+/* 「第三方许可」入口：行内文字按钮。字号/字重跟随同列 .v，padding 归零 ——
+   它是一行里的值，不是卡片里的按钮，任何内边距都会把 36px 的行高撑开。 */
+#tab-about .rows .link-btn {
+  display: inline-flex; align-items: center; gap: 3px;
+  margin: 0; padding: 0; border: 0; background: none; cursor: pointer;
+  color: var(--accent); font: inherit; font-size: 12.5px; font-weight: 650;
+}
+#tab-about .rows .link-btn::after { content: "\203A"; font-size: 14px; line-height: 1; }
+#tab-about .rows .link-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
+#tab-about .rows .link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
 
 /* 底部操作区：与上方键值行同一套虚线分隔 + 同一行高，整张卡片各行间距一致 */
 #tab-about .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 0; padding-top: 0; min-height: 36px; border-bottom: 1px dashed var(--border); }
@@ -1259,6 +1277,22 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   word-break: break-all; max-height: 132px; overflow-y: auto;
 }
 .cf-detail:empty { display: none; }
+
+/* 开源鸣谢弹窗：只读长文本。比确认框宽（许可全文按 78 列排版，宽一点才不频繁折行），
+   正文等宽 + pre-wrap（保留上游换行、长段落自动折行）+ 可选可复制。 */
+.nt-box { width: min(780px, calc(100vw - 60px)); }
+.nt-body {
+  margin: 12px 0 0; padding: 12px 14px;
+  max-height: 58vh; overflow: auto;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text); font-size: 12px; line-height: 1.7;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  user-select: text; -webkit-user-select: text;
+}
+/* 焦点落在正文容器上（打开弹窗时脚本聚焦它，见 settings.js）：用内描边 + 弱色，
+   不用外描边——外描边会顶到卡片边框，看起来像两块边框叠在一起。 */
+.nt-body:focus-visible { outline: 2px solid var(--accent-weak); outline-offset: -2px; border-radius: 10px; }
 
 /* 更新弹窗：版本更新内容列表 */
 .up-changes {

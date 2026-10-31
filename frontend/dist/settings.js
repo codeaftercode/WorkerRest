@@ -6186,6 +6186,44 @@
         void renderStats();
       })();
     });
+    // 开源鸣谢：全文内嵌在 exe 里（notices.go），首次点开才取 —— 18 KB 的纯文本
+    // 不必占用首帧；之后复用同一份字符串（同一版本内不会变）。
+    let noticesLoaded = false;
+    const openNotices = async () => {
+      $("notices-modal").classList.remove("hidden");
+      // 焦点移进弹窗（可访问性），但落在正文容器上而不是「关闭」按钮：
+      // 脚本聚焦会触发 :focus-visible，落在蓝色主按钮上会给它描一圈显眼的环，
+      // 看起来像「关闭」是必须点的默认动作。正文容器只需键盘可滚，视觉上最安静。
+      $("nt-body").focus();
+      if (noticesLoaded) return;
+      const text = await window.api.getThirdPartyNotices();
+      // textContent 而不是 innerHTML：清单是纯文本，且里面本来就有 <adrg@epistack.com>
+      // 这种尖括号，走 innerHTML 会被当成标签吞掉。
+      $("nt-body").textContent = text || "许可清单读取失败。";
+      $("nt-body").scrollTop = 0;
+      noticesLoaded = !!text;
+    };
+    const closeNotices = () => $("notices-modal").classList.add("hidden");
+    $("d-notices").addEventListener("click", () => void openNotices());
+    $("nt-close").addEventListener("click", closeNotices);
+    $("notices-modal").addEventListener("click", (e) => {
+      if (e.target === $("notices-modal")) closeNotices();
+    });
+    document.addEventListener("keydown", (e) => {
+      if ($("notices-modal").classList.contains("hidden")) return;
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeNotices();
+      }
+    });
+    $("nt-export").addEventListener("click", () => {
+      void (async () => {
+        const r = await window.api.exportThirdPartyNotices();
+        if (!r || r.canceled) return;
+        if (r.error) return toast(r.error);
+        toast("已导出到 " + r.path);
+      })();
+    });
     $("d-quit").addEventListener("click", () => void window.api.quit());
     // 版本号规范化：确保恰好一个 v 前缀（version.json 已是 v1.2.3，不要再拼一个 v）
     // 版本号规范成「恰好一个 v 前缀」；非数字开头的（源码占位的 dev）原样显示，

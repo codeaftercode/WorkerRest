@@ -60,6 +60,9 @@ var wiredCalls = []string{
 	"OpenManual",
 	"OpenExternal",
 	"ExportReport",
+	// 开源鸣谢：关于页入口读清单、另存为导出一份（见 notices.go）
+	"GetThirdPartyNotices",
+	"ExportThirdPartyNotices",
 
 	// ---- 窗口 / 自更新重启恢复 ----
 	"ShowSettingsWindow",

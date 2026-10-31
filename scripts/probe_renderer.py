@@ -456,13 +456,13 @@ def main():
                   "%s vs %s" % (panel_role, fixed_role_name))
         else:
             check(panel_role in role_names, "台词面板标题是磁盘上某个督休专员名", panel_role)
-        # 关于页「软件信息」卡 2026-10 改版：当前版本 / 发布时间两行（运行环境行已移除）。
-        # 版本值由 -ldflags 注入（源码里是 dev 占位），所以只断言「形如 v1.2.3 或 dev」，
-        # 不钉具体版本号 —— 否则每次发版都要改探针。
+        # 关于页「软件信息」卡 2026-10 改版：一行「版本」（版本号 | 发布时间）+ 一行「开源鸣谢」
+        # （运行环境行已移除）。版本值由 -ldflags 注入（源码里是 dev 占位），所以只断言
+        # 「形如 v1.2.3 或 dev」，不钉具体版本号 —— 否则每次发版都要改探针。
         ver = str(stg.get("dVersion") or "").strip()
         check(bool(re.match(r"^(v\d+\.\d+\.\d+|dev)$", ver)),
-              "关于页显示当前版本（v<主>.<次>.<修订> 或 dev）", ver)
-        check(bool(str(stg.get("dBuildTime") or "").strip()), "关于页显示发布时间",
+              "关于页显示版本号（v<主>.<次>.<修订> 或 dev）", ver)
+        check(bool(str(stg.get("dBuildTime") or "").strip()), "关于页显示发布时间（与版本同一行）",
               stg.get("dBuildTime"))
         check(stg.get("dRuntime") is None, "关于页已移除「运行环境」行",
               stg.get("dRuntime"))

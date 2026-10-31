@@ -1036,6 +1036,22 @@ def main():
         st, us = call(base, "UpdateStatus", [], window="settings")
         check(st == 200 and isinstance(us, dict) and "status" in us and "current" in us,
               "UpdateStatus 返回 {status,current}", us)
+        # 开源鸣谢：清单整份 //go:embed 在 exe 里，无头下照样能读——
+        # 设置页「关于 → 软件信息 → 开源鸣谢」走的就是这条绑定。
+        # 断言里同时核对三块结构：开头致谢句、组件清单里的版本号、许可正文关键句。
+        st, nt = call(base, "GetThirdPartyNotices", [], window="settings")
+        nt_text = nt if isinstance(nt, str) else ""
+        nt_ok = (len(nt_text) > 8000
+                 and nt_text.startswith("本程序使用了下列开源项目与第三方库。")
+                 and "组件清单" in nt_text
+                 and "Permission is hereby granted, free of charge" in nt_text)
+        check(st == 200 and nt_ok,
+              "GetThirdPartyNotices 返回内嵌的鸣谢清单全文（致谢 + 清单 + 许可正文）",
+              "%d 字符" % len(nt_text))
+        # 导出要弹原生另存为对话框：无头下必须干净地拒绝（不是 panic、也不是假装成功）
+        st, ex = call(base, "ExportThirdPartyNotices", [], window="settings")
+        check(st == 200 and isinstance(ex, dict) and ex.get("canceled") is False and ex.get("error"),
+              "ExportThirdPartyNotices 无头返回 {canceled:false, error}", ex)
 
         # ---- 收尾：关窗清会话 ----
         st, _ = call(base, "CloseWindow", ["break"], window="break")
