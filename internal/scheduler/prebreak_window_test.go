@@ -1,4 +1,4 @@
-package main
+package scheduler
 
 import (
 	"testing"
@@ -19,14 +19,14 @@ type recHost struct {
 	closes   int
 }
 
-func (h *recHost) onPreNotify(kind string, nb int64) {
-	h.fakeHost.onPreNotify(kind, nb)
+func (h *recHost) OnPreNotify(kind string, nb int64) {
+	h.fakeHost.OnPreNotify(kind, nb)
 	if h.sched != nil {
-		h.remainAt = append(h.remainAt, h.sched.remainingMs())
+		h.remainAt = append(h.remainAt, h.sched.RemainingMs())
 	}
 }
 
-func (h *recHost) closePreBreak() { h.closes++ }
+func (h *recHost) ClosePreBreak() { h.closes++ }
 
 // newRecSched 造一个带记录宿主的调度器（long 倒计时 20 分钟 / 5 分钟 / 提前 10 秒）
 func newRecSched(t *testing.T) (*Scheduler, *recHost) {
@@ -36,7 +36,7 @@ func newRecSched(t *testing.T) (*Scheduler, *recHost) {
 		`"long":{"enabled":true,"mode":"countdown","intervalMs":1200000,` +
 		`"durationMs":300000,"notifyBeforeMs":10000,"postponeMs":120000,"slots":[]}}`
 	base := &fakeHost{cfg: testSettings(t, cfg)}
-	s := newSchedulerWithHost(base)
+	s := New(base)
 	r := &recHost{fakeHost: base, sched: s}
 	s.host = r
 	s.replan()
@@ -55,10 +55,10 @@ func TestPreWindowClosedWhenCountdownReanchored(t *testing.T) {
 	for i := range s.state.Lines {
 		s.state.Lines[i].At = s.state.NextAt
 	}
-	s.state.PauseReasons = []string{pauseReasonIdle}
+	s.state.PauseReasons = []string{PauseReasonIdle}
 	s.mu.Unlock()
 
-	s.resume(pauseReasonIdle)
+	s.Resume(PauseReasonIdle)
 	if len(r.remainAt) == 0 {
 		t.Fatal("前置：剩余 5 秒在提前区间内，resume 应弹提前提示窗")
 	}
@@ -66,9 +66,9 @@ func TestPreWindowClosedWhenCountdownReanchored(t *testing.T) {
 		t.Fatalf("前置：resume 弹窗时剩余 %d ms，应 ≤ 提前量 10000 ms", ms)
 	}
 	closesBefore := r.closes
-	s.reanchorCountdown()
+	s.ReanchorCountdown()
 
-	remain := s.stateCopy().NextAt - nowMs()
+	remain := s.StateCopy().NextAt - nowMs()
 	if remain < 1_100_000 {
 		t.Fatalf("前置：重锚应把计划推回整轮间隔（20 分钟），实际剩余 %d ms", remain)
 	}
@@ -85,8 +85,8 @@ func TestPreWindowClosedWhenPostponedFromTray(t *testing.T) {
 	s.mu.Unlock()
 	closesBefore := r.closes
 
-	s.postpone()
-	if got := s.stateCopy().Phase; got != "idle" {
+	s.Postpone()
+	if got := s.StateCopy().Phase; got != "idle" {
 		t.Fatalf("前置：推迟后应回到 idle，得到 %q", got)
 	}
 	if r.closes == closesBefore {
@@ -102,14 +102,14 @@ func TestPreBreakWantedRequiresNotifyHorizon(t *testing.T) {
 	s.state.Phase = "pre"
 	s.state.NextAt = nowMs() + 1_200_000 // 整轮 20 分钟
 	s.mu.Unlock()
-	if s.preBreakWanted() {
+	if s.PreBreakWanted() {
 		t.Fatal("剩余 1200 秒远超提前量 10 秒，窗口不该在场")
 	}
 
 	s.mu.Lock()
 	s.state.NextAt = nowMs() + 5_000
 	s.mu.Unlock()
-	if !s.preBreakWanted() {
+	if !s.PreBreakWanted() {
 		t.Fatal("剩余 5 秒在提前区间内，窗口该在场")
 	}
 
@@ -117,7 +117,7 @@ func TestPreBreakWantedRequiresNotifyHorizon(t *testing.T) {
 	s.mu.Lock()
 	s.state.NextAt = nowMs() - 1_000
 	s.mu.Unlock()
-	if s.preBreakWanted() {
+	if s.PreBreakWanted() {
 		t.Fatal("已过点应由休息窗口接管，提前提示窗不该在场")
 	}
 
@@ -126,7 +126,7 @@ func TestPreBreakWantedRequiresNotifyHorizon(t *testing.T) {
 	s.state.NextAt = nowMs() + 5_000
 	s.state.Paused = true
 	s.mu.Unlock()
-	if s.preBreakWanted() {
+	if s.PreBreakWanted() {
 		t.Fatal("暂停期间提前提示窗不该在场")
 	}
 }
@@ -144,17 +144,17 @@ func TestNoPreWindowWhenAwayThroughDueTime(t *testing.T) {
 	for i := range s.state.Lines {
 		s.state.Lines[i].At = s.state.NextAt
 	}
-	s.state.PauseReasons = []string{pauseReasonIdle}
+	s.state.PauseReasons = []string{PauseReasonIdle}
 	s.mu.Unlock()
 
-	s.resume(pauseReasonIdle)
-	s.reanchorCountdown()
+	s.Resume(PauseReasonIdle)
+	s.ReanchorCountdown()
 
 	if len(r.remainAt) != 0 {
 		t.Fatalf("离开期间已到点，恢复时不该弹提前提示窗（实际弹了 %d 次，剩余 %v ms）",
 			len(r.remainAt), r.remainAt)
 	}
-	if s.preBreakWanted() {
+	if s.PreBreakWanted() {
 		t.Fatal("重锚后计划在整轮间隔之后，提前提示窗不该在场")
 	}
 }
@@ -166,7 +166,7 @@ func TestPreNotifyFiresOnlyInsideNotifyWindow(t *testing.T) {
 		`"long":{"enabled":true,"mode":"countdown","intervalMs":3000,` +
 		`"durationMs":1000,"notifyBeforeMs":800,"postponeMs":120000,"slots":[]}}`
 	base := &fakeHost{cfg: testSettings(t, cfg)}
-	s := newSchedulerWithHost(base)
+	s := New(base)
 	r := &recHost{fakeHost: base, sched: s}
 	s.host = r
 	s.replan()

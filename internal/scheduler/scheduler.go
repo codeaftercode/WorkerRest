@@ -1,4 +1,4 @@
-package main
+package scheduler
 
 import (
 	"log"
@@ -11,23 +11,25 @@ import (
 	"workerrest/internal/settings"
 )
 
-type schedHost interface {
-	cfgSnapshot() *settings.Settings
-	onSchedulerState()
-	onPreNotify(kind string, notifyBeforeMs int64)
-	onPaused()
-	closePreBreak()
-	showBreakSession(kind string, preview bool, forceKey string) string
-	closeBreakWindows()
-	takeoutPostponedSnapshot() *model.TakeoutPostponed
-	takeoutFiredSnapshot() map[string]bool
+// Host 调度器对宿主的依赖（生产是 *App，单测传假实现）。方法必须大写（导出）：
+// 跨包实现接口时，未导出的方法名只在本包可见，main 包的 *App 无法满足小写方法。
+type Host interface {
+	CfgSnapshot() *settings.Settings
+	OnSchedulerState()
+	OnPreNotify(kind string, notifyBeforeMs int64)
+	OnPaused()
+	ClosePreBreak()
+	ShowBreakSession(kind string, preview bool, forceKey string) string
+	CloseBreakWindows()
+	TakeoutPostponedSnapshot() *model.TakeoutPostponed
+	TakeoutFiredSnapshot() map[string]bool
 	// 推迟 / 跳过休息时各记一笔统计（对应 上一版的 scheduler.on('postpone' / 'skip')）
-	onBreakPostponed(kind string, postponeMs int64)
-	onBreakSkipped(kind string, skippedMs int64)
+	OnBreakPostponed(kind string, postponeMs int64)
+	OnBreakSkipped(kind string, skippedMs int64)
 }
 
 type Scheduler struct {
-	host schedHost
+	host Host
 
 	mu    sync.Mutex
 	state model.SchedulerState
@@ -73,6 +75,11 @@ type postponedBreak struct {
 // nowMs 当前时刻（毫秒时间戳，与 JS 的 Date.now() 同基准）
 func nowMs() int64 { return time.Now().UnixMilli() }
 
+// PauseReasonIdle 空闲暂停的原因键。它唯一不参与「用户仍在用电脑」的 busy 判定
+// （见 pausedForBusyReason）：手动 / 勿扰 / 指定应用占用都会让空闲判定失效，
+// 只有 idle 自己能解开离开态。触发方（main 包的系统监视）用这个常量传 pause/resume。
+const PauseReasonIdle = "idle"
+
 func max0(v int64) int64 {
 	if v < 0 {
 		return 0
@@ -83,12 +90,8 @@ func max0(v int64) int64 {
 // isCustomBreakID 是否是自定义提醒的身份（内置短 / 长休息不算）
 func isCustomBreakID(id string) bool { return strings.HasPrefix(id, settings.CustomBreakPrefix) }
 
-func newScheduler(a *App) *Scheduler {
-	return newSchedulerWithHost(a)
-}
-
-// newSchedulerWithHost 建一个调度器（单测传假宿主，生产传 *App）
-func newSchedulerWithHost(host schedHost) *Scheduler {
+// New 建一个调度器（生产传 *App，单测传假宿主）
+func New(host Host) *Scheduler {
 	s := &Scheduler{
 		host:         host,
 		consumed:     map[string]bool{},
@@ -110,22 +113,21 @@ func newSchedulerWithHost(host schedHost) *Scheduler {
 	return s
 }
 
-// startScheduler 启动调度器（App 启动时调一次）
-func (a *App) startScheduler() {
-	s := newScheduler(a)
-	a.sched = s
-	s.resetCycle()
-	go s.loop()
-}
-
 // Stop 停止调度循环（退出 / 测试收尾）
 func (s *Scheduler) Stop() {
 	s.stopOnce.Do(func() { close(s.stopCh) })
 }
 
-// loop 半秒一跳。上一版 里是两个各 500ms 的定时器（主 tick + 休息窗口到点收窗），
+// Start 启动调度循环：重置周期后跑后台循环（生产启动时调一次）。循环体在 Loop 内，
+// 每一跳都由 logx.GuardRun 兜底，这里只负责「重置 + 起 goroutine」。
+func (s *Scheduler) Start() {
+	s.ResetCycle()
+	go s.Loop()
+}
+
+// Loop 半秒一跳。上一版 里是两个各 500ms 的定时器（主 tick + 休息窗口到点收窗），
 // 这里合成一跳：休息进行中只看向「该收窗了没」，其余情况走主 tick。
-func (s *Scheduler) loop() {
+func (s *Scheduler) Loop() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -217,7 +219,7 @@ func (s *Scheduler) onTick() {
 	now := nowMs()
 	// 提前把当前 NextType 的配置取出来：既用于「提前提示」阶段判定，也用于下面的
 	// 禁用项竞态兜底（这条休息可能刚被用户在设置页关闭，replan 还没跑）。
-	cfg, cfgOK := s.host.cfgSnapshot().BreakByID(nextType)
+	cfg, cfgOK := s.host.CfgSnapshot().BreakByID(nextType)
 	preNotifyMs := int64(0)
 	if s.state.Phase == "idle" {
 		// 该提醒已被用户在设置页关闭（禁用项正常路径上由 replan 从挂起线剔除，
@@ -233,7 +235,7 @@ func (s *Scheduler) onTick() {
 
 	if preNotifyMs > 0 {
 		// 系统通知在 Windows 上无法带按钮，改用自绘提示弹窗（含倒计时与动作按钮）
-		s.host.onPreNotify(nextType, preNotifyMs)
+		s.host.OnPreNotify(nextType, preNotifyMs)
 	}
 	if due {
 		if cfgOK && !cfg.Enabled {
@@ -263,7 +265,7 @@ func (s *Scheduler) onTick() {
 //
 // 去重键是 occurrenceKey：暂停态每半秒一跳都会重算一次，没有去重会重复记账。
 func (s *Scheduler) pausedSkip() {
-	cfg := s.host.cfgSnapshot()
+	cfg := s.host.CfgSnapshot()
 	now := nowMs()
 	type hit struct {
 		id     string
@@ -278,10 +280,10 @@ func (s *Scheduler) pausedSkip() {
 		}
 		if c.Config.Mode == "fixed" {
 			for _, slot := range c.Config.Slots {
-				if !isTimeSlotDue(slot, now, 0) {
+				if !plan.IsTimeSlotDue(slot, now, 0) {
 					continue
 				}
-				key := occurrenceKey(c.ID, slotAlertAt(slot, 0, now))
+				key := plan.OccurrenceKey(c.ID, plan.SlotAlertAt(slot, 0, now))
 				if s.pauseSkipped[key] {
 					continue
 				}
@@ -294,7 +296,7 @@ func (s *Scheduler) pausedSkip() {
 			if l.Type != c.ID || l.Source != "countdown" || l.At > now {
 				continue
 			}
-			key := occurrenceKey(l.Type, l.At)
+			key := plan.OccurrenceKey(l.Type, l.At)
 			if s.pauseSkipped[key] {
 				continue
 			}
@@ -305,7 +307,7 @@ func (s *Scheduler) pausedSkip() {
 	s.mu.Unlock()
 	for _, h := range hits {
 		log.Printf("[scheduler] 暂停休息期间 %s 到点，按跳过处理（%d ms）", h.name, h.skipMs)
-		s.host.onBreakSkipped(h.id, h.skipMs)
+		s.host.OnBreakSkipped(h.id, h.skipMs)
 	}
 }
 
@@ -320,7 +322,7 @@ const pauseFirePreSuffix = "|pre"
 // 其余的等这个窗口收掉后的下一跳再弹。去重表 pauseFired 与 pauseSkipped 同生命周期
 // （完全恢复时一起清空），所以一段暂停里同一个 occurrence 只会弹一次。
 func (s *Scheduler) pausedFire() {
-	cfg := s.host.cfgSnapshot()
+	cfg := s.host.CfgSnapshot()
 	now := nowMs()
 	type cand struct {
 		id  string
@@ -341,21 +343,21 @@ func (s *Scheduler) pausedFire() {
 				if !slot.Enabled {
 					continue
 				}
-				at := slotAlertAt(slot, 0, now)
+				at := plan.SlotAlertAt(slot, 0, now)
 				if at <= 0 {
 					continue
 				}
-				if isTimeSlotDue(slot, now, 0) {
-					if key := occurrenceKey(c.ID, at); !s.pauseFired[key] {
+				if plan.IsTimeSlotDue(slot, now, 0) {
+					if key := plan.OccurrenceKey(c.ID, at); !s.pauseFired[key] {
 						cands = append(cands, cand{id: c.ID, at: at, key: key})
 					}
 					continue
 				}
 				// 提前提示线：occurrence 按 now+提前量 折算（提前量跨午夜时归次日那一格），
 				// 与真窗用同一把键，才能正确区分「同一天的两个不同 occurrence」。
-				if nb := cc.NotifyBeforeMs; nb > 0 && isTimeSlotDue(slot, now, nb) {
-					preAt := slotOccurrenceAt(slot, nb, now)
-					key := occurrenceKey(c.ID, preAt) + pauseFirePreSuffix
+				if nb := cc.NotifyBeforeMs; nb > 0 && plan.IsTimeSlotDue(slot, now, nb) {
+					preAt := plan.SlotOccurrenceAt(slot, nb, now)
+					key := plan.OccurrenceKey(c.ID, preAt) + pauseFirePreSuffix
 					if !s.pauseFired[key] {
 						cands = append(cands, cand{id: c.ID, at: preAt, key: key, pre: true, nb: nb})
 					}
@@ -369,7 +371,7 @@ func (s *Scheduler) pausedFire() {
 			if l.Type != c.ID || l.Source != "countdown" || l.At > now {
 				continue
 			}
-			key := occurrenceKey(l.Type, l.At)
+			key := plan.OccurrenceKey(l.Type, l.At)
 			if s.pauseFired[key] {
 				continue
 			}
@@ -391,7 +393,7 @@ func (s *Scheduler) pausedFire() {
 	s.mu.Unlock()
 	if pick.pre {
 		log.Printf("[scheduler] 暂停休息期间 %s 进入提前提示区间，照常提醒", pick.id)
-		s.host.onPreNotify(pick.id, pick.nb)
+		s.host.OnPreNotify(pick.id, pick.nb)
 		return
 	}
 	log.Printf("[scheduler] 暂停休息期间 %s 到点，照常提醒", pick.id)
@@ -421,7 +423,7 @@ func pauseDisposition(c model.BreakConfig) string {
 //
 // 「可推迟」填 0 的配置已经被 pauseDisposition 降级成跳过，这里不会看到。
 func (s *Scheduler) pausedPostpone() {
-	cfg := s.host.cfgSnapshot()
+	cfg := s.host.CfgSnapshot()
 	now := nowMs()
 	type note struct {
 		name  string
@@ -436,7 +438,7 @@ func (s *Scheduler) pausedPostpone() {
 			continue
 		}
 		push := func(at int64) {
-			key := occurrenceKey(c.ID, at)
+			key := plan.OccurrenceKey(c.ID, at)
 			if p, ok := s.postponed[key]; ok {
 				// 推后的时刻又到了：还在暂停，就再往后推一段
 				if now >= p.dueAt {
@@ -451,10 +453,10 @@ func (s *Scheduler) pausedPostpone() {
 		}
 		if cc.Mode == "fixed" {
 			for _, slot := range cc.Slots {
-				if !isTimeSlotDue(slot, now, 0) {
+				if !plan.IsTimeSlotDue(slot, now, 0) {
 					continue
 				}
-				push(slotAlertAt(slot, 0, now))
+				push(plan.SlotAlertAt(slot, 0, now))
 			}
 			continue
 		}
@@ -500,7 +502,7 @@ func (s *Scheduler) flushPostponed() bool {
 	s.mu.Unlock()
 
 	// 这条提醒可能已经被删 / 关闭：没有窗口可弹，丢掉这一次
-	if c, ok := s.host.cfgSnapshot().BreakByID(pick.kind); !ok || !c.Enabled {
+	if c, ok := s.host.CfgSnapshot().BreakByID(pick.kind); !ok || !c.Enabled {
 		log.Printf("[scheduler] 推迟的 %s 已被关闭或删除，丢弃", pick.kind)
 		return false
 	}

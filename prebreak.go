@@ -73,11 +73,11 @@ func (a *App) preBreakInfoOfType(kind string) PreBreakInfo {
 	// 推迟分钟数从该提醒自己的配置取；取整到分钟只用于「>0 判定」（按钮显隐），
 	// 实际推迟时长以毫秒为准
 	pm := 0
-	if cfg, ok := a.cfgSnapshot().BreakByID(kind); ok {
+	if cfg, ok := a.CfgSnapshot().BreakByID(kind); ok {
 		pm = int(cfg.PostponeMs / 60_000)
 	}
 	// 背景色与休息窗口同源（通用配置 → 提醒窗口 → 背景颜色），弹窗打开时算一次
-	bg := a.cfgSnapshot().AppearanceCfg().Color
+	bg := a.CfgSnapshot().AppearanceCfg().Color
 	if kind == "short" || kind == "long" {
 		title := builtinPreBreakTitleShort
 		if kind == "long" {
@@ -85,7 +85,7 @@ func (a *App) preBreakInfoOfType(kind string) PreBreakInfo {
 		}
 		return PreBreakInfo{Custom: false, Title: title, CountdownTail: builtinPreBreakTail, PostponeMin: pm, BgColor: bg}
 	}
-	name := a.cfgSnapshot().BreakNameByID(kind)
+	name := a.CfgSnapshot().BreakNameByID(kind)
 	return PreBreakInfo{Custom: true, Title: preBreakTitle(name), CountdownTail: preBreakCountdownTail(name), PostponeMin: pm, BgColor: bg}
 }
 
@@ -93,7 +93,7 @@ func (a *App) preBreakInfoOfType(kind string) PreBreakInfo {
 func (a *App) preBreakInfoOf() PreBreakInfo {
 	kind := "short"
 	if a.sched != nil {
-		kind = a.sched.stateCopy().NextType
+		kind = a.sched.StateCopy().NextType
 	}
 	return a.preBreakInfoOfType(kind)
 }
@@ -192,7 +192,7 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 		x, y, w, h = preBreakBounds(sc.WorkArea, info.Custom)
 	}
 	// 共享屏幕时隐藏：提前提示小窗里也有提醒文案，和休息窗口同一个开关
-	hideGuard := a.cfgSnapshot().AppearanceCfg().HideOnShare
+	hideGuard := a.CfgSnapshot().AppearanceCfg().HideOnShare
 	win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:          preBreakWindowName,
 		Title:         "即将休息",
@@ -273,7 +273,7 @@ func (a *App) PreBreakState() map[string]any {
 	// 优先用弹窗内容里记住的那份（与标题同口径），空则现取（旧窗口 / 单测构造的 info）。
 	bgColor := info.BgColor
 	if bgColor == "" {
-		bgColor = a.cfgSnapshot().AppearanceCfg().Color
+		bgColor = a.CfgSnapshot().AppearanceCfg().Color
 	}
 	// 外卖预通知：倒计时指向「原定时刻」（不读调度器剩余），且永不暂停计时
 	if info.Owner == "takeout" {
@@ -289,7 +289,7 @@ func (a *App) PreBreakState() map[string]any {
 		// 三种失效：外卖总开关被关、推迟计划被改到别的时刻（这个 target 已作废）、
 		// 过了到点 + 宽限仍未收（真窗本该弹出并关掉它）。不兜的话窗口会一直挂着，
 		// 倒计时停在 0 秒，用户以为提醒坏了。
-		cfg := a.cfgSnapshot()
+		cfg := a.CfgSnapshot()
 		stale := !cfg.TakeoutEnabled() ||
 			(pp != nil && ppDue > 0 && ppDue != target) ||
 			(nowMs() > target+takeoutPreNotifyGraceMs)
@@ -313,9 +313,9 @@ func (a *App) PreBreakState() map[string]any {
 	}
 	phase, paused, remain := "idle", false, int64(0)
 	if a.sched != nil {
-		st := a.sched.stateCopy()
+		st := a.sched.StateCopy()
 		phase, paused = st.Phase, st.Paused
-		remain = a.sched.remainingMs()
+		remain = a.sched.RemainingMs()
 		// 自愈：窗口每 500ms 就自己来问一次状态 —— 顺手校验「我还该不该在场」。
 		// 这层兜底与调度器各状态变更处的 syncPreBreakWindow 互补：任何漏收窗的路径
 		//（含未来新加的）都会在 500ms 内被窗口自己发现并退场，绝不会带着一整轮
@@ -323,7 +323,7 @@ func (a *App) PreBreakState() map[string]any {
 		//
 		// 暂停期间不判：暂停态下 phase 不是 pre，但「暂停休息期间自定义提醒照常提醒」
 		//（scheduler.pausedFire）正是要在暂停中弹这个窗，靠判据会把它自己误收掉。
-		if !paused && !a.sched.preBreakWanted() {
+		if !paused && !a.sched.PreBreakWanted() {
 			a.closePreBreakWindow()
 		}
 	}
@@ -378,7 +378,7 @@ func (a *App) preBreakAct(action string) error {
 			return nil
 		case "postpone":
 			// 先取配置（cfgSnapshot 要加 a.mu，不能在持锁时调用）；再一次性持锁写簿记
-			mins := a.cfgSnapshot().TakeoutPostponeMin()
+			mins := a.CfgSnapshot().TakeoutPostponeMin()
 			a.mu.Lock()
 			prevCount := 0
 			if a.takeoutPostponed != nil {

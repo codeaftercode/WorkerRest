@@ -69,7 +69,7 @@ func (a *App) scanSoundDir() SoundScanNotice {
 		registered[strings.ToLower(f)] = true
 	}
 	var cfg model.SoundCfg
-	if s := a.cfgSnapshot(); s != nil {
+	if s := a.CfgSnapshot(); s != nil {
 		cfg = s.SoundCfg()
 	}
 	for _, m := range cfg.Music {

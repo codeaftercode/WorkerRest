@@ -78,7 +78,7 @@ func (a *App) destroySoundHost() {
 // playConfiguredSound 播放当前生效的提示音（休息开始 / 结束各一次）。
 // 静音是「配置的选择」而不是错误，所以静音路径只记日志、不报错。
 func (a *App) playConfiguredSound() {
-	cfg := a.cfgSnapshot().SoundCfg()
+	cfg := a.CfgSnapshot().SoundCfg()
 	file := a.soundPickNext(cfg, rand.Intn)
 	if file == "" {
 		log.Printf("[sound] 静音（enabled=%v volume=%.2f mode=%s）", cfg.Enabled, cfg.Volume, cfg.Mode)

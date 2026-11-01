@@ -89,7 +89,7 @@ func (a *App) autoUpdateLoop() {
 // schedPaused 当前是否处于「暂停休息」状态（手动暂停 / 勿扰 / 指定应用占用 / 空闲
 // 自动暂停都算）。此时不去检查更新，等 30 分钟内的随机时刻再试。
 func (a *App) schedPaused() bool {
-	return a.sched != nil && a.sched.isPaused()
+	return a.sched != nil && a.sched.IsPaused()
 }
 
 // runAutoUpdateCheck 真正联网检查一次，并把「今天查过」落库。

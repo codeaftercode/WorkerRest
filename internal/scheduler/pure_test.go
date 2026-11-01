@@ -1,4 +1,4 @@
-package main
+package scheduler
 
 import (
 	"testing"
@@ -13,7 +13,7 @@ func TestNextSlotAtIsStrictlyAfter(t *testing.T) {
 	slot := model.TimeSlot{ID: "s", Hour: 12, Minute: 0, Repeat: "daily", Enabled: true}
 	noon := time.Date(2026, 10, 8, 12, 0, 0, 0, time.Local).UnixMilli()
 	// 恰好等于该时刻：不算（严格晚于）
-	hit, ok := nextSlotAt([]model.TimeSlot{slot}, noon)
+	hit, ok := plan.NextSlotAt([]model.TimeSlot{slot}, noon)
 	if !ok {
 		t.Fatal("应该找得到下一条")
 	}
@@ -24,7 +24,7 @@ func TestNextSlotAtIsStrictlyAfter(t *testing.T) {
 		t.Fatalf("应落到第二天，得到 %d", hit.At)
 	}
 	// 早一秒：就是今天这条
-	hit, _ = nextSlotAt([]model.TimeSlot{slot}, noon-1000)
+	hit, _ = plan.NextSlotAt([]model.TimeSlot{slot}, noon-1000)
 	if hit.At != noon {
 		t.Fatalf("早一秒应命中今天 12:00，得到 %d", hit.At)
 	}
@@ -61,7 +61,7 @@ func TestFindDueTimeSlotsDedupAndPrune(t *testing.T) {
 func TestSlotAlertAtCrossesDayWithLead(t *testing.T) {
 	slot := model.TimeSlot{ID: "s", Hour: 0, Minute: 10, Repeat: "daily", Enabled: true}
 	day := time.Date(2026, 10, 8, 12, 0, 0, 0, time.Local).UnixMilli()
-	got := slotAlertAt(slot, 30*60_000, day)
+	got := plan.SlotAlertAt(slot, 30*60_000, day)
 	want := time.Date(2026, 10, 7, 23, 40, 0, 0, time.Local).UnixMilli()
 	if got != want {
 		t.Fatalf("提前 30 分钟应落到前一天 23:40，want=%d got=%d", want, got)
@@ -97,11 +97,11 @@ func TestFixedNextMapSkipsConsumedToNextDay(t *testing.T) {
 	now := time.Date(2026, 10, 8, 11, 0, 0, 0, time.Local).UnixMilli()
 	noon := time.Date(2026, 10, 8, 12, 0, 0, 0, time.Local).UnixMilli()
 
-	m := fixedNextMap(s, now, nil)
+	m := plan.FixedNextMap(s, now, nil)
 	if m["short"] != noon {
 		t.Fatalf("未消费时应给今天 12:00，得到 %v", m)
 	}
-	m2 := fixedNextMap(s, now, map[string]bool{occurrenceKey("short", noon): true})
+	m2 := plan.FixedNextMap(s, now, map[string]bool{plan.OccurrenceKey("short", noon): true})
 	if m2["short"] == noon {
 		t.Fatal("已消费的今天这条不该再返回")
 	}
@@ -115,7 +115,7 @@ func TestTodayTimelineExcludesOtherDays(t *testing.T) {
 		{"id":"s-a","hour":23,"minute":0,"repeat":"daily","days":[],"enabled":true}]},
 		"long":{"enabled":false},"takeout":{"enabled":false}}`)
 	now := time.Date(2026, 10, 8, 22, 0, 0, 0, time.Local).UnixMilli()
-	items := todayTimeline(s, now, plan.TimelineOptions{})
+	items := plan.TodayTimeline(s, now, plan.TimelineOptions{})
 	if len(items) != 1 {
 		t.Fatalf("今天只剩 23:00 一条，得到 %d 条", len(items))
 	}
@@ -125,12 +125,12 @@ func TestTodayTimelineExcludesOtherDays(t *testing.T) {
 }
 
 func TestOccurrenceKeyRoundTrip(t *testing.T) {
-	k := occurrenceKey("cb-1", 1_791_432_000_000)
-	if got := occurrenceKeyAt(k); got != 1_791_432_000_000 {
+	k := plan.OccurrenceKey("cb-1", 1_791_432_000_000)
+	if got := plan.OccurrenceKeyAt(k); got != 1_791_432_000_000 {
 		t.Fatalf("解析回不去：%q -> %d", k, got)
 	}
 	// JS 的 Number('') === 0，所以「没有 #」或后缀为空一律当 0，与 replan 的过期清理口径一致
-	if got := occurrenceKeyAt("short"); got != 0 {
+	if got := plan.OccurrenceKeyAt("short"); got != 0 {
 		t.Fatalf("没有 # 时应为 0，得到 %d", got)
 	}
 }
@@ -144,7 +144,7 @@ func TestTodayTimelineFixedPostpone(t *testing.T) {
 	now := time.Date(2026, 10, 8, 11, 0, 0, 0, time.Local).UnixMilli()
 	original := time.Date(2026, 10, 8, 12, 0, 0, 0, time.Local).UnixMilli()
 	shift := time.Date(2026, 10, 8, 12, 30, 0, 0, time.Local).UnixMilli()
-	items := todayTimeline(s, now, plan.TimelineOptions{Shifts: map[string]int64{"short": shift}})
+	items := plan.TodayTimeline(s, now, plan.TimelineOptions{Shifts: map[string]int64{"short": shift}})
 	if len(items) != 1 {
 		t.Fatalf("推迟后时间线应只剩推迟时刻那一条，得到 %d 条", len(items))
 	}
@@ -173,7 +173,7 @@ func TestDisabledCustomBreakExcluded(t *testing.T) {
 	if len(s.state.Lines) != 0 {
 		t.Fatalf("禁用自定义提醒不应出现在挂起线，得到 %+v", s.state.Lines)
 	}
-	st := s.stateForRenderer()
+	st := s.StateForRenderer()
 	if st.Other != nil {
 		t.Fatalf("禁用自定义提醒不应出现在状态卡合并组，得到 %+v", st.Other)
 	}
@@ -208,7 +208,7 @@ func TestStateForRendererTakeoutPostpone(t *testing.T) {
 		DueAt: due,
 		Count: 0,
 	}
-	st := s.stateForRenderer()
+	st := s.StateForRenderer()
 	if st.Other == nil || st.Other.Name != plan.TAKEOUT_NAME {
 		t.Fatalf("合并组下次应是外卖，得到 %+v", st.Other)
 	}
@@ -248,11 +248,11 @@ func TestRemindersByIDForCustomBreak(t *testing.T) {
 
 func TestDescribePlanText(t *testing.T) {
 	at := time.Date(2026, 10, 8, 12, 0, 0, 0, time.Local).UnixMilli()
-	got := describePlan(&model.PlannedBreak{Type: "long", Name: "长休息", At: at, Source: "fixed"})
+	got := plan.DescribePlan(&model.PlannedBreak{Type: "long", Name: "长休息", At: at, Source: "fixed"})
 	if got != "长休息（固定时刻）12:00" {
 		t.Fatalf("摘要文案不对：%q", got)
 	}
-	if got := describePlan(nil); got != "未安排休息" {
+	if got := plan.DescribePlan(nil); got != "未安排休息" {
 		t.Fatalf("无计划时的文案不对：%q", got)
 	}
 }

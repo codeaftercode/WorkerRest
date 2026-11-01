@@ -116,7 +116,7 @@ func TestImportScannedSoundsRegistersRelativeFile(t *testing.T) {
 	}
 
 	// 内存里的配置换了新对象（与 SaveSettings 同口径）
-	music := a.cfgSnapshot().SoundCfg().Music
+	music := a.CfgSnapshot().SoundCfg().Music
 	var found *model.SoundMusicItem
 	for i := range music {
 		if music[i].File == "my-alarm.mp3" {
@@ -124,7 +124,7 @@ func TestImportScannedSoundsRegistersRelativeFile(t *testing.T) {
 		}
 	}
 	if found == nil {
-		t.Fatalf("音乐列表里应出现 my-alarm.mp3，实际 %+v", musicFiles(a.cfgSnapshot()))
+		t.Fatalf("音乐列表里应出现 my-alarm.mp3，实际 %+v", musicFiles(a.CfgSnapshot()))
 	}
 	if found.Name != "my-alarm" || !found.Enabled || found.ID == "" {
 		t.Fatalf("新条目字段不对: %+v", *found)
@@ -144,7 +144,7 @@ func TestImportScannedSoundsRegistersRelativeFile(t *testing.T) {
 		t.Fatalf("重复导入应为 0，得到 %+v", r2)
 	}
 	n := 0
-	for _, m := range a.cfgSnapshot().SoundCfg().Music {
+	for _, m := range a.CfgSnapshot().SoundCfg().Music {
 		if m.File == "my-alarm.mp3" {
 			n++
 		}
@@ -166,7 +166,7 @@ func TestImportScannedSoundsRejectsUnknownNames(t *testing.T) {
 			t.Fatalf("应拒绝 %q，得到 %+v", bad, r)
 		}
 	}
-	for _, f := range musicFiles(a.cfgSnapshot()) {
+	for _, f := range musicFiles(a.CfgSnapshot()) {
 		if f == "../../evil.mp3" || f == "other.wav" || f == "x.wav" {
 			t.Fatalf("不该写进配置: %q", f)
 		}
@@ -184,7 +184,7 @@ func TestDropMissingSoundsRemovesListedOnly(t *testing.T) {
 	if r["removed"] != 1 {
 		t.Fatalf("只该删 1 条，得到 %+v", r)
 	}
-	got := musicFiles(a.cfgSnapshot())
+	got := musicFiles(a.CfgSnapshot())
 	if _, ok := got["sm-a"]; ok {
 		t.Fatalf("sm-a 应已删除: %+v", got)
 	}
@@ -192,7 +192,7 @@ func TestDropMissingSoundsRemovesListedOnly(t *testing.T) {
 		t.Fatalf("sm-b 不该被删: %+v", got)
 	}
 	// singleId 指向被删的 sm-a：normalizeSound 应把它挪到第一首启用项，不能留一个死 id
-	if id := a.cfgSnapshot().SoundCfg().SingleID; id == "sm-a" || id == "" {
+	if id := a.CfgSnapshot().SoundCfg().SingleID; id == "sm-a" || id == "" {
 		t.Fatalf("singleId 应改指现存条目，得到 %q", id)
 	}
 	if raw, err := os.ReadFile(filepath.Join(cfgDir, "settings.json")); err != nil ||

@@ -59,7 +59,7 @@ func AutostartTarget() (path string, args []string, ok bool) {
 // 恢复默认、导入配置且该项确实变了）。启动路径上完全不碰注册表 —— 每次启动都去读一遍
 // 既是无谓的系统访问，也让「我根本没动它，它怎么变了」变得不可预期。
 func (a *App) ApplyAutostart() {
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	want := cfg.Autostart()
 	target, args, ok := AutostartTarget()
 	if !ok {

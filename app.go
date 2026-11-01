@@ -13,6 +13,7 @@ import (
 	"workerrest/internal/idle"
 	"workerrest/internal/model"
 	"workerrest/internal/role"
+	"workerrest/internal/scheduler"
 	"workerrest/internal/settings"
 	"workerrest/internal/sound"
 	"workerrest/internal/stats"
@@ -58,7 +59,7 @@ type App struct {
 
 	cfg       *settings.Settings // 整份配置（见 settings.go 的说明；保存时会整体替换指针）
 	rolesRoot string             // 督休专员目录落点（随包 supervisors/，见 resourcesRoot）
-	sched     *Scheduler
+	sched     *scheduler.Scheduler
 
 	// 台词选取：random 用 rng（测试可固定种子），sequence 的游标按 key 记忆
 	rng      *rand.Rand
@@ -193,7 +194,7 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 		}
 	}
 	a.startScheduler()
-	log.Printf("[plan] %s short=%s long=%s", a.sched.planSummary(),
+	log.Printf("[plan] %s short=%s long=%s", a.sched.PlanSummary(),
 		a.cfg.Break("short").Mode, a.cfg.Break("long").Mode)
 	// 系统能力：空闲 / 勿扰 / 应用占用（无头模式只做探测，不启动会改状态的监视）
 	a.startSystemWatchers()
@@ -287,10 +288,26 @@ func orNone(s string) string {
 
 // cfgSnapshot 取当前配置指针。保存配置时会**整体替换** a.cfg（新对象），所以读取一律
 // 先拿一次快照再用——不要在别处直接摸 a.cfg，那会和 settings:save 抢同一块内存。
-func (a *App) cfgSnapshot() *settings.Settings {
+func (a *App) CfgSnapshot() *settings.Settings {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.cfg
+}
+
+// startScheduler 启动调度器（App 启动时调一次）
+func (a *App) startScheduler() {
+	a.sched = scheduler.New(a)
+	a.sched.Start()
+}
+
+// nowMs 当前时刻（毫秒时间戳，与 JS 的 Date.now() 同基准）
+func nowMs() int64 { return time.Now().UnixMilli() }
+
+func max0(v int64) int64 {
+	if v < 0 {
+		return 0
+	}
+	return v
 }
 
 // ---------- 路径 ----------

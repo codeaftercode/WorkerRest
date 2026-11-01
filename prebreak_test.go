@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"workerrest/internal/model"
+	"workerrest/internal/scheduler"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -29,10 +30,10 @@ const customWaterCfg = `{"short":{"enabled":true,"mode":"countdown","intervalMs"
 	`"notifyBeforeMs":60000,"postponeMs":120000,"slots":[]}}]}`
 
 // newPreBreakApp 造一个「配置 + 调度器」的最小 App（不碰窗口 / 托盘 / Wails）
-func newPreBreakApp(t *testing.T, cfgJSON string) (*App, *Scheduler) {
+func newPreBreakApp(t *testing.T, cfgJSON string) (*App, *scheduler.Scheduler) {
 	t.Helper()
 	s, host := newTestSched(t, cfgJSON)
-	s.replan()
+	s.ResetCycle()
 	return &App{cfg: host.cfg, sched: s}, s
 }
 
@@ -339,12 +340,12 @@ func TestPreBreakBgColorFollowsAppearance(t *testing.T) {
 
 func TestPreBreakActionPostponeAndSkip(t *testing.T) {
 	a, s := newPreBreakApp(t, shortCountdown)
-	before := s.stateCopy().NextAt
+	before := s.StateCopy().NextAt
 
 	if err := a.PreBreakAction("postpone"); err != nil {
 		t.Fatalf("postpone 不该报错：%v", err)
 	}
-	after := s.stateCopy()
+	after := s.StateCopy()
 	if after.Phase != "idle" {
 		t.Fatalf("推迟后应回到 idle，得到 %q", after.Phase)
 	}
@@ -361,7 +362,7 @@ func TestPreBreakActionPostponeAndSkip(t *testing.T) {
 	if err := a.PreBreakAction("skip"); err != nil {
 		t.Fatalf("skip 不该报错：%v", err)
 	}
-	skipped := s.stateCopy()
+	skipped := s.StateCopy()
 	if skipped.Phase != "idle" {
 		t.Fatalf("跳过后应回到 idle，得到 %q", skipped.Phase)
 	}
@@ -375,7 +376,7 @@ func TestPreBreakActionBreakNow(t *testing.T) {
 	if err := a.PreBreakAction("breakNow"); err != nil {
 		t.Fatalf("breakNow 不该报错：%v", err)
 	}
-	if got := s.stateCopy().Phase; got != "break" {
+	if got := s.StateCopy().Phase; got != "break" {
 		t.Fatalf("立即休息后 phase 应是 break，得到 %q", got)
 	}
 }
@@ -385,14 +386,14 @@ func TestPreBreakActionPauseToggles(t *testing.T) {
 	if err := a.PreBreakAction("pause"); err != nil {
 		t.Fatalf("pause 不该报错：%v", err)
 	}
-	st := s.stateCopy()
+	st := s.StateCopy()
 	if !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != "manual" {
 		t.Fatalf("pause 应等价于托盘暂停，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
 	}
 	if err := a.PreBreakAction("pause"); err != nil {
 		t.Fatalf("再次 pause（恢复）不该报错：%v", err)
 	}
-	if s.stateCopy().Paused {
+	if s.StateCopy().Paused {
 		t.Fatal("再次 pause 应恢复（与托盘暂停同一入口）")
 	}
 }
@@ -400,12 +401,12 @@ func TestPreBreakActionPauseToggles(t *testing.T) {
 // 未知动作必须报错：静默无事是这类「按名调用」链路最容易漏的坑
 func TestPreBreakActionUnknownErrors(t *testing.T) {
 	a, s := newPreBreakApp(t, shortCountdown)
-	before := s.stateCopy()
+	before := s.StateCopy()
 	err := a.PreBreakAction("fly")
 	if err == nil {
 		t.Fatal("未知动作应报错，而不是静默无事")
 	}
-	after := s.stateCopy()
+	after := s.StateCopy()
 	if after.Phase != before.Phase || after.Paused != before.Paused || after.NextAt != before.NextAt {
 		t.Fatalf("未知动作不该改动调度器状态：%+v -> %+v", before, after)
 	}

@@ -53,7 +53,7 @@ func TestBreakSessionStartsGlobalActivityWatch(t *testing.T) {
 		t.Fatalf("初始不该有轮询，得到 %+v", info)
 	}
 
-	id := a.showBreakSession("short", true, "")
+	id := a.ShowBreakSession("short", true, "")
 	if id == "" {
 		t.Fatal("短休息会话应当建得起来")
 	}
@@ -89,7 +89,7 @@ func TestEnsureSupActivityWatchIdempotent(t *testing.T) {
 // 场景：外卖窗口先关（会顺带调 release），但休息还没结束。
 func TestReleaseSupActivityWatchKeepsRunningWhileSessionAlive(t *testing.T) {
 	a := newSupWatchApp(t)
-	a.showBreakSession("short", true, "")
+	a.ShowBreakSession("short", true, "")
 
 	a.releaseSupActivityWatch()
 	if !a.supActivityWatchInfo().Running {

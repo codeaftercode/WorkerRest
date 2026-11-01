@@ -8,6 +8,7 @@ import (
 
 	"workerrest/internal/autostart"
 	"workerrest/internal/idle"
+	"workerrest/internal/scheduler"
 	"workerrest/internal/windnd"
 	"workerrest/internal/winproc"
 )
@@ -29,8 +30,8 @@ const (
 
 // 暂停原因键。idle 用英文键（上一版侧就是 'idle'，types.ts 的 pauseReasonText 认它）；
 // 勿扰与应用占用在 上一版侧本来就是中文键，中文键在原样返回的映射里天然可读，保持一致。
+// idle 键的真源在 scheduler.PauseReasonIdle（调度器用它判定「是否 busy」），这里直接引用。
 const (
-	pauseReasonIdle     = "idle"
 	pauseReasonDnd      = "勿扰"
 	pauseReasonFullScr  = "全屏独占"
 	pauseReasonAppPause = "应用占用"
@@ -105,13 +106,13 @@ func (a *App) idleWatchTick(away bool) bool {
 	if a.sched == nil || a.idle == nil {
 		return away
 	}
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	threshold := int64(cfg.IdlePauseMin()) * 60_000
 	idleMs := a.idle.IdleSinceMs()
-	switch idle.DecideIdleStep(a.sched.currentPhase(), away, idleMs, threshold,
-		a.sched.pausedForBusyReason(), a.idle.IsActive()) {
+	switch idle.DecideIdleStep(a.sched.CurrentPhase(), away, idleMs, threshold,
+		a.sched.PausedForBusyReason(), a.idle.IsActive()) {
 	case idle.IdleStepAway:
-		a.sched.pause(pauseReasonIdle)
+		a.sched.Pause(scheduler.PauseReasonIdle)
 		// 统计：把「从最后一次输入到现在」这段从工作时长**搬进**离开时长
 		//（三重封顶在 BeginAway 里：不越过工作段起点、按当天 workMs 封顶、不跨天）
 		moved := a.statsStore().BeginAway(a.idle.LastInputAtMs())
@@ -119,9 +120,9 @@ func (a *App) idleWatchTick(away bool) bool {
 			idleMs/1000, threshold/1000, moved)
 		return true
 	case idle.IdleStepBack:
-		a.sched.resume(pauseReasonIdle)
+		a.sched.Resume(scheduler.PauseReasonIdle)
 		// 离开结束后内置倒计时重新开始计时（自定义提醒与固定时刻线不动，见 reanchorCountdown）
-		a.sched.reanchorCountdown()
+		a.sched.ReanchorCountdown()
 		// 统计：这段离开到此为止，工作段从此刻重新起算
 		a.statsStore().EndAway()
 		log.Printf("[idle] 检测到键鼠活动：恢复提醒，内置倒计时重新开始")
@@ -142,7 +143,7 @@ func (a *App) dndWatchTick() {
 	if a.sched == nil {
 		return
 	}
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	dnd, fs := windnd.Query()
 
 	a.applyAutoPause(cfg.DndPause() && dnd.Active, pauseReasonDnd, &a.dndActiveLogged,
@@ -159,7 +160,7 @@ func (a *App) dndWatchTick() {
 // logged 指向 App 上该支路自己的标记字段，两条支路互不影响。
 func (a *App) applyAutoPause(active bool, reason string, logged *bool, enterMsg, exitMsg string) {
 	if active {
-		a.sched.pause(reason)
+		a.sched.Pause(reason)
 		if !*logged {
 			*logged = true
 			log.Print(enterMsg)
@@ -170,7 +171,7 @@ func (a *App) applyAutoPause(active bool, reason string, logged *bool, enterMsg,
 		*logged = false
 		log.Print(exitMsg)
 	}
-	a.sched.resume(reason)
+	a.sched.Resume(reason)
 }
 
 // appPauseWatchTick 推进一次「指定应用占用」判定。
@@ -182,7 +183,7 @@ func (a *App) appPauseWatchTick() {
 	if a.sched == nil {
 		return
 	}
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	r := winproc.ListProcessNames()
 	hit, matched := false, []string(nil)
 	if r.Supported {
@@ -193,7 +194,7 @@ func (a *App) appPauseWatchTick() {
 		return
 	}
 	if hit {
-		a.sched.pause(pauseReasonAppPause)
+		a.sched.Pause(pauseReasonAppPause)
 		if !a.appPauseHitLogged {
 			a.appPauseHitLogged = true
 			log.Printf("[appPause] 命中 %s，暂停提醒", strings.Join(matched, "、"))
@@ -209,7 +210,7 @@ func (a *App) appPauseWatchTick() {
 		a.appPauseHitLogged = false
 		log.Printf("[appPause] 目标应用已退出，恢复提醒")
 	}
-	a.sched.resume(pauseReasonAppPause)
+	a.sched.Resume(pauseReasonAppPause)
 }
 
 // SysProbe 系统能力自检：空闲 / 勿扰 / 进程 / 自启动注册表。
@@ -236,7 +237,7 @@ func (a *App) SysProbe() map[string]any {
 		autostartInfo["disabled"] = *dis
 	}
 	if a.cfg != nil {
-		autostartInfo["wanted"] = a.cfgSnapshot().Autostart()
+		autostartInfo["wanted"] = a.CfgSnapshot().Autostart()
 	}
 	return map[string]any{
 		"idle":       idleInfo,

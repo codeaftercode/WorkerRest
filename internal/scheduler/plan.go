@@ -1,4 +1,4 @@
-package main
+package scheduler
 
 import (
 	"log"
@@ -11,7 +11,7 @@ import (
 
 // cfgByID 取某条休息的配置（先拿配置快照，避免持锁期间碰 App.mu）
 func (s *Scheduler) cfgByID(id string) (model.BreakConfig, bool) {
-	return s.host.cfgSnapshot().BreakByID(id)
+	return s.host.CfgSnapshot().BreakByID(id)
 }
 
 // advanceCounter 短休息 → 计数 +1；长休息 → 清零；自定义提醒不参与长短交替。
@@ -72,7 +72,7 @@ func (s *Scheduler) syncAnchorIvLocked(cfg *settings.Settings) {
 // 未到期且间隔未变的倒计时锚点原样保留：设置保存、导入等触发的重算只增删身份，
 // 不把已流逝的倒计时进度清零重计；间隔改了的立刻按新间隔重新起算。
 func (s *Scheduler) replan() {
-	cfg := s.host.cfgSnapshot()
+	cfg := s.host.CfgSnapshot()
 	now := nowMs()
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -80,14 +80,14 @@ func (s *Scheduler) replan() {
 	// 过期键清掉：nextSlotAt 只返回严格晚于 now 的时刻，已过时刻的 occurrence
 	// 不可能再被选中，留着只会把集合撑大
 	for k := range s.consumed {
-		if occurrenceKeyAt(k) <= now {
+		if plan.OccurrenceKeyAt(k) <= now {
 			delete(s.consumed, k)
 		}
 	}
 	// 上一轮仍未到期的倒计时锚点先收好（必须在覆盖 st.Lines 之前）
 	prev := s.prevCountdownAnchorsLocked(now)
 	// 整份挂起线留给今日时间线用（state.lines）；planNextBreak 的口径就是它的首条
-	pool := schedulerLines(cfg, now, st.ShortsSinceLong, s.consumed, prev)
+	pool := plan.SchedulerLines(cfg, now, st.ShortsSinceLong, s.consumed, prev)
 	st.Lines = pool
 	s.syncAnchorIvLocked(cfg)
 	// 分组视图只给设置页状态卡用：短/长一组，外卖 + 自定义一组，互不混用。
@@ -112,10 +112,10 @@ func (s *Scheduler) replan() {
 // startBreak 消费后是旧线（刚消费那条已到期不会混入，其余身份的进度同样不被清掉）。
 func (s *Scheduler) refreshDerivedLocked(cfg *settings.Settings, now int64) {
 	prev := s.prevCountdownAnchorsLocked(now)
-	split := planNextBreakSplit(cfg, now, s.state.ShortsSinceLong, s.consumed, prev)
+	split := plan.PlanNextBreakSplit(cfg, now, s.state.ShortsSinceLong, s.consumed, prev)
 	s.state.Rest = planRefOf(split.Builtin)
 	s.state.Other = planRefOf(split.Other)
-	s.state.FixedNext = fixedNextMap(cfg, now, s.consumed)
+	s.state.FixedNext = plan.FixedNextMap(cfg, now, s.consumed)
 }
 
 func planRefOf(p *model.PlannedBreak) *model.PlanRef {
@@ -139,7 +139,7 @@ func (s *Scheduler) scheduleNext() {
 	// 新计划被推远 / 被禁用 / 换成了另一条提醒时判据不成立（或窗口内容会对不上），
 	// 仍按原逻辑收窗，由下一个 tick 用新内容重弹。
 	if wasPre {
-		cfg := s.host.cfgSnapshot()
+		cfg := s.host.CfgSnapshot()
 		s.mu.Lock()
 		if s.state.NextType == preType {
 			if c, ok := cfg.BreakByID(preType); ok &&
@@ -170,7 +170,7 @@ func (s *Scheduler) startBreak() string {
 // startBreakAt 按指定身份与 occurrence 弹一次休息。at 是这次安排的时刻（去重键用），
 // 传 0 表示沿用当前计划的 NextAt；暂停期间到点的自定义提醒也走这里（见 pausedFire）。
 func (s *Scheduler) startBreakAt(kind string, at int64) string {
-	cfg := s.host.cfgSnapshot()
+	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
 	bcfg, ok := cfg.BreakByID(kind)
@@ -192,7 +192,7 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	st.BreakWhilePaused = st.Paused
 	// 这次安排已消费：无论到点触发还是「立即休息」，replan 都不再排它
 	if at > 0 {
-		s.consumed[occurrenceKey(kind, at)] = true
+		s.consumed[plan.OccurrenceKey(kind, at)] = true
 	}
 	// 派生视图立即跟上：刚消费掉的那条不再出现在分组倒计时与卡片摘要的「下次」里
 	s.refreshDerivedLocked(cfg, now)
@@ -200,7 +200,7 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 
 	log.Printf("[scheduler] 开始休息 %s（%d ms，%s）", kind, bcfg.DurationMs, bcfg.Mode)
 	// 休息窗口与设置页立即反映「休息中」
-	id := s.host.showBreakSession(kind, false, "")
+	id := s.host.ShowBreakSession(kind, false, "")
 	// phase 已翻到 break：提前提示窗在此刻起不该在场（App 侧建会话时已收，这里兜一道，
 	// 保证「窗口只在 phase=pre 存在」这条不变量对所有宿主成立）
 	s.syncPreBreakWindow()
@@ -218,19 +218,19 @@ func (s *Scheduler) finishBreak() {
 
 	// break-end 的副作用：关休息窗口、空闲基准清零（空闲计时属下一步的「系统能力」）
 	log.Printf("[scheduler] 结束休息 %s", kind)
-	s.host.closeBreakWindows()
+	s.host.CloseBreakWindows()
 	s.scheduleNext()
 }
 
 // emitState 把状态推给设置页与托盘（对应 上一版的 emit('state')）
 func (s *Scheduler) emitState() {
-	s.host.onSchedulerState()
+	s.host.OnSchedulerState()
 }
 
 // ---------- 对外快照 ----------
 
 // stateCopy 深拷贝一份状态（切片与 map 都要拷：调用方会在锁外读它）
-func (s *Scheduler) stateCopy() model.SchedulerState {
+func (s *Scheduler) StateCopy() model.SchedulerState {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	out := s.state
@@ -272,10 +272,10 @@ func (s *Scheduler) consumedCopy() map[string]bool {
 // 调度器（自己记账），不覆盖的话卡片摘要还显示推迟前的旧时刻。
 // 今日提醒时间线**每次快照现算**——固定线展开当天剩余（剔除已消费、顺延被推迟那一跳）、
 // 倒计时线从挂起那一跳展开成今天剩余的每一次、外卖剔除已触发并附上推迟线。
-func (s *Scheduler) stateForRenderer() model.SchedulerState {
-	cfg := s.host.cfgSnapshot()
-	st := s.stateCopy()
-	pp := s.host.takeoutPostponedSnapshot()
+func (s *Scheduler) StateForRenderer() model.SchedulerState {
+	cfg := s.host.CfgSnapshot()
+	st := s.StateCopy()
+	pp := s.host.TakeoutPostponedSnapshot()
 	if pp != nil {
 		if st.FixedNext == nil {
 			st.FixedNext = map[string]int64{}
@@ -287,12 +287,12 @@ func (s *Scheduler) stateForRenderer() model.SchedulerState {
 			st.Other = &model.PlanRef{Name: plan.TAKEOUT_NAME, At: pp.DueAt}
 		}
 	}
-	st.Timeline = todayTimeline(cfg, nowMs(), plan.TimelineOptions{
+	st.Timeline = plan.TodayTimeline(cfg, nowMs(), plan.TimelineOptions{
 		Skip:             s.consumedCopy(),
 		Shifts:           st.FixedNext,
 		CountdownLines:   st.Lines,
 		Paused:           st.Paused,
-		TakeoutFired:     s.host.takeoutFiredSnapshot(),
+		TakeoutFired:     s.host.TakeoutFiredSnapshot(),
 		TakeoutPostponed: pp,
 		ShortsSinceLong:  st.ShortsSinceLong,
 	})
@@ -300,29 +300,29 @@ func (s *Scheduler) stateForRenderer() model.SchedulerState {
 }
 
 // planSummary 日志用的计划摘要
-func (s *Scheduler) planSummary() string {
-	cfg := s.host.cfgSnapshot()
+func (s *Scheduler) PlanSummary() string {
+	cfg := s.host.CfgSnapshot()
 	now := nowMs()
 	s.mu.Lock()
 	ssL := s.state.ShortsSinceLong
 	prev := s.prevCountdownAnchorsLocked(now)
 	s.mu.Unlock()
-	p, ok := planNextBreak(cfg, now, ssL, s.consumedCopy(), prev)
+	p, ok := plan.PlanNextBreak(cfg, now, ssL, s.consumedCopy(), prev)
 	if !ok {
-		return describePlan(nil)
+		return plan.DescribePlan(nil)
 	}
-	return describePlan(&p)
+	return plan.DescribePlan(&p)
 }
 
 // currentPhase 当前阶段（诊断 / 托盘用）
-func (s *Scheduler) currentPhase() string {
+func (s *Scheduler) CurrentPhase() string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Phase
 }
 
 // isPaused 是否处于暂停态（外卖 watcher 用它跳过「暂停期间不弹」）
-func (s *Scheduler) isPaused() bool {
+func (s *Scheduler) IsPaused() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Paused
@@ -330,7 +330,7 @@ func (s *Scheduler) isPaused() bool {
 
 // hasPauseReason 当前是否挂着某条暂停原因（手动恢复要区分「自动暂停」与「手动暂停」：
 // 自动暂停的恢复走临时忽略，手动暂停的恢复走常规 toggle）
-func (s *Scheduler) hasPauseReason(reason string) bool {
+func (s *Scheduler) HasPauseReason(reason string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return containsStr(s.state.PauseReasons, reason)
@@ -340,11 +340,11 @@ func (s *Scheduler) hasPauseReason(reason string) bool {
 //
 // 这几种状态下不做空闲离开判定：开会、看视频、跑全屏应用时用户当然不动键鼠，
 // 那段时间照算在工作。只有 idle 自己这一条会参与空闲判定（否则离开态永远解不开）。
-func (s *Scheduler) pausedForBusyReason() bool {
+func (s *Scheduler) PausedForBusyReason() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.state.PauseReasons {
-		if r != pauseReasonIdle {
+		if r != PauseReasonIdle {
 			return true
 		}
 	}

@@ -242,7 +242,7 @@ func TestSoundPickNext(t *testing.T) {
 
 	// 顺序：游标跨播放持续递增，连播四次按列表顺序轮一遍
 	a, _ := newSoundApp(t, soundCfgJSON("sequence", "", items...))
-	cfg := a.cfgSnapshot().SoundCfg()
+	cfg := a.CfgSnapshot().SoundCfg()
 	for i, want := range []string{f1, f2, f3, f1} {
 		if got := a.soundPickNext(cfg, func(int) int { return 0 }); got != want {
 			t.Fatalf("第 %d 次顺序播放应为 %s，得到 %s", i+1, want, got)
@@ -251,7 +251,7 @@ func TestSoundPickNext(t *testing.T) {
 
 	// 随机：交给注入的随机源决定下标（游标不动）
 	a2, _ := newSoundApp(t, soundCfgJSON("random", "", items...))
-	cfg2 := a2.cfgSnapshot().SoundCfg()
+	cfg2 := a2.CfgSnapshot().SoundCfg()
 	if got := a2.soundPickNext(cfg2, func(n int) int { return n - 1 }); got != f3 {
 		t.Fatalf("随机分支应听注入的随机源（取最后一条），得到 %s", got)
 	}
@@ -271,7 +271,7 @@ func TestSoundPickNext(t *testing.T) {
 	}
 	for _, c := range silent {
 		sa, _ := newSoundApp(t, c.js)
-		if got := sa.soundPickNext(sa.cfgSnapshot().SoundCfg(), func(int) int { return 0 }); got != "" {
+		if got := sa.soundPickNext(sa.CfgSnapshot().SoundCfg(), func(int) int { return 0 }); got != "" {
 			t.Errorf("%s：应静音，得到 %q", c.name, got)
 		}
 	}
@@ -315,7 +315,7 @@ func TestAllowedSoundPath(t *testing.T) {
 	inside := writeSoundFile(t, filepath.Join(dir, "sounds", "a.mp3"), 16)
 	sub := writeSoundFile(t, filepath.Join(dir, "sounds", "sub", "b.mp3"), 16)
 	outside := writeSoundFile(t, filepath.Join(dir, "elsewhere.mp3"), 16)
-	cfgFile := a.cfgSnapshot().Path()
+	cfgFile := a.CfgSnapshot().Path()
 
 	cases := []struct {
 		name string

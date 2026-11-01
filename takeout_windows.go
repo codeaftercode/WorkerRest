@@ -14,7 +14,7 @@ import (
 // targetDisplays 按「在所有屏幕显示」开关选出要显示的显示器（休息窗口与外卖
 // 窗口共用同一策略）。取消勾选 ⇒ 只在主屏幕显示（Wails v3 无获取光标所在屏的 API，以主屏兜底）。
 func (a *App) targetDisplays() []*application.Screen {
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	all := a.app.Screen.GetAll()
 	if len(all) == 0 {
 		return nil
@@ -64,7 +64,7 @@ func (a *App) showTakeoutWindowsAt(slot model.TimeSlot, preview bool, postponedC
 		log.Printf("[takeout] 关掉被顶替的旧窗口 %d 个（否则引用丢失 → 关不掉的野窗）", len(stale))
 	}
 
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	ap := cfg.AppearanceCfg()
 	displays := a.targetDisplays()
 	var wins []*application.WebviewWindow

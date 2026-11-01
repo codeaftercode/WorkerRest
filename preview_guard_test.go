@@ -20,7 +20,7 @@ func TestPreviewBreakRejectedWhileRealBreakRunning(t *testing.T) {
 	t.Setenv("WR_STATS_PATH", filepath.Join(t.TempDir(), "stats.json"))
 	a, _ := newPreBreakApp(t, customWaterCfg)
 
-	realID := a.showBreakSession("short", false, "")
+	realID := a.ShowBreakSession("short", false, "")
 	if realID == "" {
 		t.Fatal("真实休息会话没建起来")
 	}
@@ -43,7 +43,7 @@ func TestPreviewBreakRejectedWhileRealBreakRunning(t *testing.T) {
 	}
 
 	// 真实休息收掉之后必须恢复可预览 —— 拦的是「进行中」，不是永久禁用
-	a.closeBreakWindows()
+	a.CloseBreakWindows()
 	if a.realBreakActive() {
 		t.Fatal("休息结束后 realBreakActive 应为 false")
 	}

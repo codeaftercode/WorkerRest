@@ -26,7 +26,7 @@ func (a *App) appStatsFile() string {
 		return filepath.Join(filepath.Dir(sp), "stats.json")
 	}
 	cfgPath := ""
-	if s := a.cfgSnapshot(); s != nil {
+	if s := a.CfgSnapshot(); s != nil {
 		cfgPath = s.Path()
 	}
 	if cfgPath == "" {
@@ -159,7 +159,7 @@ func (a *App) statsIsBreak() bool {
 	if a.sched == nil {
 		return false
 	}
-	return a.sched.currentPhase() == "break"
+	return a.sched.CurrentPhase() == "break"
 }
 
 // statsIsIdle 工作累加器的「这一跳归离开」判定：连续无输入已达阈值
@@ -168,24 +168,24 @@ func (a *App) statsIsIdle() bool {
 	if a.sched == nil || a.idle == nil {
 		return false
 	}
-	return a.idle.IdleSinceMs() >= int64(a.cfgSnapshot().IdlePauseMin())*60_000
+	return a.idle.IdleSinceMs() >= int64(a.CfgSnapshot().IdlePauseMin())*60_000
 }
 
-// onBreakPostponed / onBreakSkipped 调度器宿主接口的实现（见 scheduler.go 的 schedHost）：
+// OnBreakPostponed / OnBreakSkipped 调度器宿主接口的实现（见 internal/scheduler 的 Host）：
 // 推迟 / 跳过各记一笔统计。对应上一版的 scheduler.on('postpone' / 'skip')。
 //
 // **只认短休息 / 长休息**：调度器的 NextType 也可能是自定义提醒（id 形如 cb-…），
 // 手动推迟、手动跳过、暂停休息期间按「跳过」处理的自定义提醒都会走到这两个回调，
 // 但「今天卡 - 休息」这一组四项（完成 / 推迟 / 跳过 / 提前结束）只统计内置短、长休息。
 // 外卖走的是独立的 RecordTakeoutAction，不经过这里。
-func (a *App) onBreakPostponed(kind string, postponeMs int64) {
+func (a *App) OnBreakPostponed(kind string, postponeMs int64) {
 	if kind != "short" && kind != "long" {
 		return
 	}
 	a.statsStore().RecordBreakPostponed(kind, postponeMs)
 }
 
-func (a *App) onBreakSkipped(kind string, skippedMs int64) {
+func (a *App) OnBreakSkipped(kind string, skippedMs int64) {
 	if kind != "short" && kind != "long" {
 		return
 	}

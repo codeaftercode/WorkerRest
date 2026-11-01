@@ -20,7 +20,7 @@ func (a *App) fireTakeout(slot model.TimeSlot, postponedCount int) {
 // 提前通知跨午夜（23:50 提次日 00:10）时「立即提醒」要落在次日那一格，不能显示今天。
 func (a *App) fireTakeoutAt(slot model.TimeSlot, postponedCount int, atMs int64) {
 	log.Printf("[takeout] 触发提醒 %02d:%02d lead=%d秒 postponed=%d次",
-		slot.Hour, slot.Minute, a.cfgSnapshot().TakeoutLeadSec(), postponedCount)
+		slot.Hour, slot.Minute, a.CfgSnapshot().TakeoutLeadSec(), postponedCount)
 	a.showTakeoutWindowsAt(slot, false, postponedCount, atMs)
 	a.playConfiguredSound()
 }
@@ -38,7 +38,7 @@ func (a *App) fireTakeoutAt(slot model.TimeSlot, postponedCount int, atMs int64)
 //
 // 去重键按 occurrence（原定时刻）计，不含提前量——所以预通知与真窗不会互相串。
 func (a *App) checkTakeoutReminders() {
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	if !cfg.TakeoutEnabled() {
 		a.mu.Lock()
 		a.takeoutPostponed = nil
@@ -80,7 +80,7 @@ func (a *App) checkTakeoutReminders() {
 	// 推迟提醒就把弹出时间往后推（推完仍暂停就再推）；跳过提醒则不弹提前提示小窗、
 	// 也不弹提醒窗口，直接按「跳过」记账（外卖报表的取消次数）。
 	// 暂停只管短 / 长休息，外卖自己按这份配置决定弹不弹。
-	if a.sched != nil && a.sched.isPaused() {
+	if a.sched != nil && a.sched.IsPaused() {
 		switch cfg.TakeoutPauseAction() {
 		case settings.PauseActionRemind:
 			// 照常提醒：继续往下走下面的四条触发线
@@ -296,7 +296,7 @@ func (a *App) skipTakeoutWhilePaused(cfg *settings.Settings) {
 // 三按钮 立即提醒/推迟提醒/跳过提醒）。targetAt=0 时按原定时刻（slotAlertAt）推算。
 // 提前量=0 时不该被调用（checkTakeoutReminders 已把这条支滤掉）。
 func (a *App) showTakeoutPreNotify(slot model.TimeSlot, targetAt int64) {
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	if targetAt == 0 {
 		targetAt = slotAlertAt(slot, 0, nowMs()) // 原定时刻（当天）
 	}

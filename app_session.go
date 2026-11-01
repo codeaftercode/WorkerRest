@@ -226,7 +226,7 @@ func (a *App) pickMessage(kind, fallbackName string) []string {
 //
 // 会话构建与「弹窗」必须分开：渲染层随后会自己再拉一次 breakCurrent，
 // 所以这里先把会话写完再放窗（跨多次调用期间保持一致）。
-func (a *App) showBreakSession(kind string, preview bool, forceKey string) string {
+func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) string {
 	a.mu.Lock()
 	cfg := a.cfg
 	bcfg, ok := cfg.BreakByID(kind)

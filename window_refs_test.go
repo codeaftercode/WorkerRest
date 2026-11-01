@@ -62,7 +62,7 @@ func TestWindowsLiveHeadlessIsFalse(t *testing.T) {
 // 预览关窗走统一收尾：会话清空、窗口集合清空、不 panic（静默，不播音）。
 func TestCloseWindowBreakPathUnified(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
-	id := a.showBreakSession("short", true, "")
+	id := a.ShowBreakSession("short", true, "")
 	if id == "" {
 		t.Fatal("预览会话没建起来")
 	}
@@ -173,7 +173,7 @@ func TestRectVisibleOnAny(t *testing.T) {
 // 无头下建不了窗口，至少钉住它不会崩、也不会顺手把外卖会话吃掉。
 func TestSchedEndBreakOutsideBreakDoesNotTouchTakeout(t *testing.T) {
 	a, sched := newPreBreakApp(t, customWaterCfg)
-	if sched.stateCopy().Phase == "break" {
+	if sched.StateCopy().Phase == "break" {
 		t.Skip("构造出来的调度器正好在休息阶段，换个用例")
 	}
 	a.mu.Lock()

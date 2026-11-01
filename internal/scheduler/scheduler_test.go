@@ -1,4 +1,4 @@
-package main
+package scheduler
 
 import (
 	"encoding/json"
@@ -45,17 +45,17 @@ type fakeHost struct {
 	pp        *model.TakeoutPostponed
 }
 
-func (h *fakeHost) cfgSnapshot() *settings.Settings                   { return h.cfg }
-func (h *fakeHost) onSchedulerState()                                 { h.states++ }
-func (h *fakeHost) onPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
-func (h *fakeHost) onPaused()                                         { h.pauses++ }
-func (h *fakeHost) closePreBreak()                                    {}
-func (h *fakeHost) closeBreakWindows()                                { h.closed++ }
-func (h *fakeHost) takeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }
-func (h *fakeHost) takeoutFiredSnapshot() map[string]bool             { return nil }
-func (h *fakeHost) onBreakPostponed(kind string, _ int64)             { h.postpones = append(h.postpones, kind) }
-func (h *fakeHost) onBreakSkipped(kind string, _ int64)               { h.skips = append(h.skips, kind) }
-func (h *fakeHost) showBreakSession(kind string, _ bool, _ string) string {
+func (h *fakeHost) CfgSnapshot() *settings.Settings                   { return h.cfg }
+func (h *fakeHost) OnSchedulerState()                                 { h.states++ }
+func (h *fakeHost) OnPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
+func (h *fakeHost) OnPaused()                                         { h.pauses++ }
+func (h *fakeHost) ClosePreBreak()                                    {}
+func (h *fakeHost) CloseBreakWindows()                                { h.closed++ }
+func (h *fakeHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }
+func (h *fakeHost) TakeoutFiredSnapshot() map[string]bool             { return nil }
+func (h *fakeHost) OnBreakPostponed(kind string, _ int64)             { h.postpones = append(h.postpones, kind) }
+func (h *fakeHost) OnBreakSkipped(kind string, _ int64)               { h.skips = append(h.skips, kind) }
+func (h *fakeHost) ShowBreakSession(kind string, _ bool, _ string) string {
 	h.breaks = append(h.breaks, kind)
 	return "id-" + kind
 }
@@ -63,7 +63,7 @@ func (h *fakeHost) showBreakSession(kind string, _ bool, _ string) string {
 func newTestSched(t *testing.T, cfgJSON string) (*Scheduler, *fakeHost) {
 	t.Helper()
 	host := &fakeHost{cfg: testSettings(t, cfgJSON)}
-	return newSchedulerWithHost(host), host
+	return New(host), host
 }
 
 // shortCountdown 常用的短休息倒计时配置（10 分钟一次 20 秒）
@@ -75,7 +75,7 @@ func TestSchedulerReplanCountdown(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	before := nowMs()
 	s.replan()
-	got := s.stateCopy()
+	got := s.StateCopy()
 	if got.NextType != "short" || got.NextName != "短休息" {
 		t.Fatalf("下一次应是短休息，得到 %q/%q", got.NextType, got.NextName)
 	}
@@ -99,7 +99,7 @@ func TestSchedulerReplanKeepsCountdownProgress(t *testing.T) {
 	// 重置回满间隔（用户已流逝的进度要保留），跳过/到期后才重新起算。
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
-	first := s.stateCopy().NextAt
+	first := s.StateCopy().NextAt
 
 	// 模拟时间流逝：用户已等了 4 分钟（像暂停恢复那样整体平移）
 	s.mu.Lock()
@@ -110,7 +110,7 @@ func TestSchedulerReplanKeepsCountdownProgress(t *testing.T) {
 	s.mu.Unlock()
 
 	s.replan()
-	got := s.stateCopy()
+	got := s.StateCopy()
 	want := first - 4*60_000
 	if got.NextAt != want {
 		t.Fatalf("replan 不该重置未到期的倒计时（应保留已流逝的 4 分钟），want=%d got=%d", want, got.NextAt)
@@ -120,8 +120,8 @@ func TestSchedulerReplanKeepsCountdownProgress(t *testing.T) {
 	}
 
 	// 跳过：该 occurrence 已消费，倒计时必须从头计时（不能沿用旧锚点）
-	s.skip()
-	got2 := s.stateCopy()
+	s.Skip()
+	got2 := s.StateCopy()
 	want2 := nowMs() + 600_000
 	if diff := got2.NextAt - want2; diff < -2000 || diff > 2000 {
 		t.Fatalf("跳过后倒计时应重新起算，want≈%d got=%d（差 %d）", want2, got2.NextAt, diff)
@@ -141,7 +141,7 @@ func TestSchedulerReplanReanchorsOnIntervalChange(t *testing.T) {
 	host.cfg = testSettings(t, `{"short":{"enabled":true,"mode":"countdown","intervalMs":2700000,"durationMs":20000,"notifyBeforeMs":10000,"postponeMs":120000,"slots":[]}}`)
 	s.mu.Unlock()
 	s.replan()
-	got := s.stateCopy()
+	got := s.StateCopy()
 	want := nowMs() + 2_700_000
 	if diff := got.NextAt - want; diff < -2000 || diff > 2000 {
 		t.Fatalf("改间隔后应立刻按新间隔重算，want≈%d got=%d（差 %d）", want, got.NextAt, diff)
@@ -150,7 +150,7 @@ func TestSchedulerReplanReanchorsOnIntervalChange(t *testing.T) {
 	// 对照组：间隔没变的无关保存不得动倒计时
 	s2, _ := newTestSched(t, shortCountdown)
 	s2.replan()
-	keep := s2.stateCopy().NextAt
+	keep := s2.StateCopy().NextAt
 	s2.mu.Lock()
 	s2.state.NextAt -= 4 * 60_000
 	for i := range s2.state.Lines {
@@ -158,7 +158,7 @@ func TestSchedulerReplanReanchorsOnIntervalChange(t *testing.T) {
 	}
 	s2.mu.Unlock()
 	s2.replan()
-	if got2 := s2.stateCopy().NextAt; got2 != keep-4*60_000 {
+	if got2 := s2.StateCopy().NextAt; got2 != keep-4*60_000 {
 		t.Fatalf("间隔未变时 replan 不该重置倒计时，want=%d got=%d", keep-4*60_000, got2)
 	}
 }
@@ -168,13 +168,13 @@ func TestSchedulerModeSwitchToFixedWithoutSlotsDropsReminder(t *testing.T) {
 	// 挂起线 / 下次休息 / 分组视图 / 今日时间线都不再出现按倒计时算出来的旧时刻
 	s, host := newTestSched(t, shortCountdown)
 	s.replan()
-	if s.stateCopy().NextAt == 0 {
+	if s.StateCopy().NextAt == 0 {
 		t.Fatal("前置：应已安排短休息")
 	}
 	host.cfg = testSettings(t, `{"short":{"enabled":true,"mode":"fixed","durationMs":20000,"slots":[]},"long":{"enabled":false}}`)
-	s.refreshPlan()
+	s.RefreshPlan()
 
-	st := s.stateCopy()
+	st := s.StateCopy()
 	if st.NextAt != 0 || st.NextSource != nil {
 		t.Fatalf("切到无时刻的固定模式后不该再有安排，nextAt=%d source=%v", st.NextAt, st.NextSource)
 	}
@@ -184,7 +184,7 @@ func TestSchedulerModeSwitchToFixedWithoutSlotsDropsReminder(t *testing.T) {
 	if st.Rest != nil {
 		t.Fatalf("分组视图 rest 应为 nil，得到 %+v", st.Rest)
 	}
-	sr := s.stateForRenderer()
+	sr := s.StateForRenderer()
 	if len(sr.Timeline) != 0 {
 		t.Fatalf("今日时间线应为空，得到 %+v", sr.Timeline)
 	}
@@ -193,17 +193,17 @@ func TestSchedulerModeSwitchToFixedWithoutSlotsDropsReminder(t *testing.T) {
 	s3, host3 := newTestSched(t, `{"short":{"enabled":false},"long":{"enabled":false},
 		"customBreaks":[{"id":"cb-1","name":"喝水提醒","config":{"enabled":true,"mode":"countdown","intervalMs":600000,"durationMs":15000}}]}`)
 	s3.replan()
-	if s3.stateCopy().NextAt == 0 {
+	if s3.StateCopy().NextAt == 0 {
 		t.Fatal("前置：自定义提醒应已安排")
 	}
 	host3.cfg = testSettings(t, `{"short":{"enabled":false},"long":{"enabled":false},
 		"customBreaks":[{"id":"cb-1","name":"喝水提醒","config":{"enabled":true,"mode":"fixed","durationMs":15000,"slots":[]}}]}`)
-	s3.refreshPlan()
-	st3 := s3.stateCopy()
+	s3.RefreshPlan()
+	st3 := s3.StateCopy()
 	if st3.NextAt != 0 || len(st3.Lines) != 0 || st3.Other != nil {
 		t.Fatalf("自定义提醒切固定无时刻后应全部消失，nextAt=%d lines=%+v other=%+v", st3.NextAt, st3.Lines, st3.Other)
 	}
-	if sr3 := s3.stateForRenderer(); len(sr3.Timeline) != 0 {
+	if sr3 := s3.StateForRenderer(); len(sr3.Timeline) != 0 {
 		t.Fatalf("今日时间线应为空，得到 %+v", sr3.Timeline)
 	}
 }
@@ -211,7 +211,7 @@ func TestSchedulerModeSwitchToFixedWithoutSlotsDropsReminder(t *testing.T) {
 func TestSchedulerAllDisabledNoPlan(t *testing.T) {
 	s, _ := newTestSched(t, `{"short":{"enabled":false},"long":{"enabled":false}}`)
 	s.replan()
-	got := s.stateCopy()
+	got := s.StateCopy()
 	if got.NextAt != 0 || got.NextSource != nil {
 		t.Fatalf("全部关闭时不该有安排，得到 nextAt=%d source=%v", got.NextAt, got.NextSource)
 	}
@@ -243,7 +243,7 @@ func TestSchedulerNoPreNotifyWhenZero(t *testing.T) {
 	if len(host.pre) != 0 {
 		t.Fatalf("notifyBeforeMs=0 不该触发提前通知，得到 %v", host.pre)
 	}
-	if got := s.stateCopy().Phase; got != "break" {
+	if got := s.StateCopy().Phase; got != "break" {
 		t.Fatalf("到点应直接进入休息，得到 %q", got)
 	}
 	if len(host.breaks) != 1 || host.breaks[0] != "short" {
@@ -254,10 +254,10 @@ func TestSchedulerNoPreNotifyWhenZero(t *testing.T) {
 func TestSchedulerPostponeShiftsPlan(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
-	origAt := s.stateCopy().NextAt
+	origAt := s.StateCopy().NextAt
 
-	s.postpone()
-	got := s.stateCopy()
+	s.Postpone()
+	got := s.StateCopy()
 	// 推迟是「在原定时刻基础上往后推」：原定 10 分钟后 + 可推迟 2 分钟。
 	// （旧实现写 now+ms，会把还剩 10 分钟的提醒直接拉到 2 分钟后 —— P2-1）
 	want := origAt + 120_000
@@ -289,8 +289,8 @@ func TestSchedulerPostponeFromOverdue(t *testing.T) {
 	s.state.NextAt = nowMs() - 60_000 // 已经过期 1 分钟
 	s.mu.Unlock()
 
-	s.postpone()
-	got := s.stateCopy()
+	s.Postpone()
+	got := s.StateCopy()
 	want := nowMs() + 120_000
 	if diff := got.NextAt - want; diff < -2000 || diff > 2000 {
 		t.Fatalf("过期后推迟应是现在+2 分钟，want=%d got=%d", want, got.NextAt)
@@ -308,16 +308,16 @@ func TestSchedulerSkipConsumesOccurrence(t *testing.T) {
 	aligned := time.Date(at.Year(), at.Month(), at.Day(), at.Hour(), at.Minute(), 0, 0, time.Local).UnixMilli()
 	s, _ := newTestSched(t, cfg)
 	s.replan()
-	planned := s.stateCopy().NextAt
+	planned := s.StateCopy().NextAt
 	if planned != aligned {
 		t.Fatalf("规划时刻应为 %d，得到 %d", aligned, planned)
 	}
 
-	s.skip()
-	if !s.consumed[occurrenceKey("short", aligned)] {
+	s.Skip()
+	if !s.consumed[plan.OccurrenceKey("short", aligned)] {
 		t.Fatal("跳过必须消费掉本次 occurrence（否则固定线会原样排回来）")
 	}
-	after := s.stateCopy().NextAt
+	after := s.StateCopy().NextAt
 	if after == aligned {
 		t.Fatal("跳过之后不该还排在同一个时刻")
 	}
@@ -331,11 +331,11 @@ func TestSchedulerBreakLifecycleAndCounter(t *testing.T) {
 		"long":{"enabled":true,"mode":"countdown","intervalMs":1800000,"durationMs":60000},"longEveryNShort":2}`)
 	s.replan()
 
-	id := s.breakNowOf("")
+	id := s.BreakNowOf("")
 	if id == "" || len(host.breaks) != 1 || host.breaks[0] != "short" {
 		t.Fatalf("应立即弹一次短休息，id=%q breaks=%v", id, host.breaks)
 	}
-	st := s.stateCopy()
+	st := s.StateCopy()
 	if st.Phase != "break" {
 		t.Fatalf("phase 应为 break，得到 %q", st.Phase)
 	}
@@ -346,8 +346,8 @@ func TestSchedulerBreakLifecycleAndCounter(t *testing.T) {
 		t.Fatal("休息中不该提前计数")
 	}
 
-	s.endBreak()
-	st = s.stateCopy()
+	s.EndBreak()
+	st = s.StateCopy()
 	if st.Phase != "idle" {
 		t.Fatalf("结束后应回到 idle，得到 %q", st.Phase)
 	}
@@ -372,13 +372,13 @@ func TestSchedulerLongBreakResetsCounter(t *testing.T) {
 	s.state.ShortsSinceLong = 1
 	s.mu.Unlock()
 	s.replan()
-	if got := s.stateCopy().NextType; got != "long" {
+	if got := s.StateCopy().NextType; got != "long" {
 		t.Fatalf("满 N 次应轮到长休息，得到 %q", got)
 	}
 
-	s.breakNowOf("")
-	s.endBreak()
-	if got := s.stateCopy().ShortsSinceLong; got != 0 {
+	s.BreakNowOf("")
+	s.EndBreak()
+	if got := s.StateCopy().ShortsSinceLong; got != 0 {
 		t.Fatalf("长休息结束应把计数清零，得到 %d", got)
 	}
 }
@@ -388,15 +388,15 @@ func TestSchedulerLongBreakResetsCounter(t *testing.T) {
 func TestSchedulerSkipWhileBreakingEndsBreak(t *testing.T) {
 	s, host := newTestSched(t, shortCountdown)
 	s.replan()
-	if id := s.breakNowOf(""); id == "" {
+	if id := s.BreakNowOf(""); id == "" {
 		t.Fatal("应能开始一次休息")
 	}
-	if got := s.stateCopy().Phase; got != "break" {
+	if got := s.StateCopy().Phase; got != "break" {
 		t.Fatalf("phase 应为 break，得到 %q", got)
 	}
 
-	s.skip()
-	st := s.stateCopy()
+	s.Skip()
+	st := s.StateCopy()
 	if st.Phase == "break" {
 		t.Fatal("休息中点跳过应结束本次休息")
 	}
@@ -414,30 +414,30 @@ func TestSchedulerSkipWhileBreakingEndsBreak(t *testing.T) {
 
 func TestSchedulerPauseReasonsGate(t *testing.T) {
 	s, host := newTestSched(t, shortCountdown)
-	s.pause("idle")
-	if !s.stateCopy().Paused {
+	s.Pause("idle")
+	if !s.StateCopy().Paused {
 		t.Fatal("pause 后应为暂停态")
 	}
 	if host.pauses != 1 {
 		t.Fatalf("暂停应通知宿主关提前提示窗，得到 %d", host.pauses)
 	}
-	s.pause("idle") // 重复原因不该重复入列
-	if n := len(s.stateCopy().PauseReasons); n != 1 {
+	s.Pause("idle") // 重复原因不该重复入列
+	if n := len(s.StateCopy().PauseReasons); n != 1 {
 		t.Fatalf("重复原因应被忽略，得到 %d 条", n)
 	}
-	s.pause("manual")
-	if n := len(s.stateCopy().PauseReasons); n != 2 {
+	s.Pause("manual")
+	if n := len(s.StateCopy().PauseReasons); n != 2 {
 		t.Fatalf("应有 2 条暂停原因，得到 %d", n)
 	}
 	// 只清一条：仍然暂停
-	s.resume("idle")
-	st := s.stateCopy()
+	s.Resume("idle")
+	st := s.StateCopy()
 	if !st.Paused || len(st.PauseReasons) != 1 {
 		t.Fatalf("还剩一条原因时应保持暂停，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
 	}
 	// 最后一条清掉：恢复
-	s.resume("manual")
-	if s.stateCopy().Paused {
+	s.Resume("manual")
+	if s.StateCopy().Paused {
 		t.Fatal("全部原因清掉后应恢复")
 	}
 }
@@ -445,16 +445,16 @@ func TestSchedulerPauseReasonsGate(t *testing.T) {
 func TestSchedulerResumeShiftsCountdown(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
-	origAt := s.stateCopy().NextAt
+	origAt := s.StateCopy().NextAt
 
-	s.pause("manual")
+	s.Pause("manual")
 	// 假装已经暂停了 50 秒（不真的等）
 	s.mu.Lock()
 	s.state.PausedAt = nowMs() - 50_000
 	s.mu.Unlock()
-	s.resume("manual")
+	s.Resume("manual")
 
-	got := s.stateCopy().NextAt
+	got := s.StateCopy().NextAt
 	want := origAt + 50_000
 	if diff := got - want; diff < -1500 || diff > 1500 {
 		t.Fatalf("倒计时线应整体平移 50s，want=%d got=%d（差 %d）", want, got, diff)
@@ -479,8 +479,8 @@ func TestSchedulerResumeBreakCappedToDuration(t *testing.T) {
 	s.state.PauseReasons = []string{"manual"}
 	s.mu.Unlock()
 
-	s.resume("manual")
-	st := s.stateCopy()
+	s.Resume("manual")
+	st := s.StateCopy()
 	if st.Phase != "idle" {
 		t.Fatalf("超出总时长上限应直接收尾，得到 phase=%q", st.Phase)
 	}
@@ -501,8 +501,8 @@ func TestSchedulerReanchorCountdownOnlyBuiltin(t *testing.T) {
 	s.state.Lines[0].At = s.state.NextAt
 	s.mu.Unlock()
 
-	s.reanchorCountdown()
-	got := s.stateCopy()
+	s.ReanchorCountdown()
+	got := s.StateCopy()
 	want := nowMs() + 600_000
 	if diff := got.NextAt - want; diff < -2000 || diff > 2000 {
 		t.Fatalf("离开结束后内置倒计时应重头计时，want≈%d got=%d", want, got.NextAt)
@@ -520,8 +520,8 @@ func TestSchedulerReanchorCountdownOnlyBuiltin(t *testing.T) {
 	s2.mu.Lock()
 	s2.state.NextAt = sentinel
 	s2.mu.Unlock()
-	s2.reanchorCountdown()
-	if got := s2.stateCopy().NextAt; got != sentinel {
+	s2.ReanchorCountdown()
+	if got := s2.StateCopy().NextAt; got != sentinel {
 		t.Fatalf("自定义提醒的倒计时不该被一次离开推走（%d → %d）", sentinel, got)
 	}
 }
@@ -529,8 +529,8 @@ func TestSchedulerReanchorCountdownOnlyBuiltin(t *testing.T) {
 func TestSchedulerBreakNowIgnoredWhileBreaking(t *testing.T) {
 	s, host := newTestSched(t, shortCountdown)
 	s.replan()
-	s.breakNowOf("")
-	s.breakNowOf("")
+	s.BreakNowOf("")
+	s.BreakNowOf("")
 	if len(host.breaks) != 1 {
 		t.Fatalf("休息进行中不该再弹一次，得到 %d 次", len(host.breaks))
 	}
@@ -543,11 +543,11 @@ func TestSchedulerStartBreakSkipsDeletedCustom(t *testing.T) {
 	s.mu.Lock()
 	s.state.NextType = "cb-gone"
 	s.mu.Unlock()
-	s.breakNowOf("") // nextType 已指向不存在的身份
+	s.BreakNowOf("") // nextType 已指向不存在的身份
 	if len(host.breaks) != 0 {
 		t.Fatalf("已删除的休息不该弹窗，得到 %v", host.breaks)
 	}
-	if s.stateCopy().Phase != "idle" {
+	if s.StateCopy().Phase != "idle" {
 		t.Fatal("应回到等待态并重排")
 	}
 }
@@ -555,7 +555,7 @@ func TestSchedulerStartBreakSkipsDeletedCustom(t *testing.T) {
 func TestSchedulerStateForRendererIncludesTimeline(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
-	st := s.stateForRenderer()
+	st := s.StateForRenderer()
 	if len(st.Timeline) == 0 {
 		t.Fatal("状态快照必须带上今日时间线（设置页时间规划页要渲染它）")
 	}

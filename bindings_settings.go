@@ -74,7 +74,7 @@ func (a *App) SaveSettings(next map[string]any) bool {
 	// 「共享屏幕时隐藏」：窗口按需新建，正常无需事后补；但提醒窗正在显示时用户
 	// 改了这个开关，当前那扇窗得跟着变 —— 否则复选框看着勾上了，屏幕上那扇却
 	// 还是能被共享出去。只在值真变了时动，避免每次 autoSave 都去碰窗口。
-	if a.cfgSnapshot().AppearanceCfg().HideOnShare != beforeHideOnShare {
+	if a.CfgSnapshot().AppearanceCfg().HideOnShare != beforeHideOnShare {
 		a.syncCaptureGuardToLive()
 	}
 	// 开机自启动只在用户真的改了它时才广播（与 上一版「用户没碰就别动系统」同口径），
@@ -84,7 +84,7 @@ func (a *App) SaveSettings(next map[string]any) bool {
 		a.ApplyAutostart()
 	}
 	if a.sched != nil {
-		a.sched.refreshPlan()
+		a.sched.RefreshPlan()
 	}
 	// 状态推送放在重算之后：否则前端 onState 收到的是旧调度计划，
 	// 会覆盖新增 / 删除提醒时间后 refreshStatusNow 主动拉取的新状态。
@@ -142,7 +142,7 @@ func (a *App) ResetSettings() map[string]any {
 		a.ApplyAutostart()
 	}
 	if a.sched != nil {
-		a.sched.refreshPlan()
+		a.sched.RefreshPlan()
 	}
 	// 状态推送放在重算之后：否则前端 onState 收到的是旧调度计划，
 	// 会覆盖新增 / 删除提醒时间后 refreshStatusNow 主动拉取的新状态。

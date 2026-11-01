@@ -14,7 +14,7 @@ const endEarlyToleranceMs = 1500
 // closeBreakWindows 关掉休息窗口并清掉会话（调度器收尾路径用，不经过渲染层）。
 // 目前唯一的调用点是调度器的 finishBreak，所以这里顺带承担「休息结束」的副作用：
 // 播一次提示音（对应 上一版的 break-end → playConfiguredSound）。
-func (a *App) closeBreakWindows() {
+func (a *App) CloseBreakWindows() {
 	a.closeBreakWindowsOpt(false)
 }
 
@@ -50,7 +50,7 @@ func (a *App) closeBreakWindowsOpt(silent bool) {
 	// 自定义提醒把名字快照一起记下来，提醒删了 / 改名了报表也还能对上号。
 	if info != nil && !info.Preview {
 		name := ""
-		if cfg := a.cfgSnapshot(); cfg != nil {
+		if cfg := a.CfgSnapshot(); cfg != nil {
 			name = cfg.BreakNameByID(info.Type)
 		}
 		// 提前结束：结束时刻明显早于计划结束。留 1.5 秒容差 —— 自然到点由定时器驱动，
@@ -71,7 +71,7 @@ func (a *App) closeBreakWindowsOpt(silent bool) {
 // ---------- 调度器事件（上一版 scheduler.on(...) 的对应物） ----------
 
 // onSchedulerState 状态一变：推给设置页 + 刷新托盘
-func (a *App) onSchedulerState() {
+func (a *App) OnSchedulerState() {
 	a.pushState()
 	a.refreshTray()
 }
@@ -81,13 +81,13 @@ func (a *App) onSchedulerState() {
 //
 // 内容在这里**算一次**并记进 a.preInfo：窗口内轮询 PreBreakState 拿到的是同一份，
 // 中途计划漂移（比如固定时刻线重排）不会让标题 / 后缀跟着变。
-func (a *App) onPreNotify(kind string, notifyBeforeMs int64) {
+func (a *App) OnPreNotify(kind string, notifyBeforeMs int64) {
 	info := a.rememberPreBreakInfo(kind)
 	// 剩余时间一起打出来：这张日志是排查「弹早了 / 弹晚了」的唯一现场
 	//（窗口上显示的数字与它同源，见 PreBreakState）
 	remain := int64(-1)
 	if a.sched != nil {
-		remain = a.sched.remainingMs()
+		remain = a.sched.RemainingMs()
 	}
 	log.Printf("[prebreak] 即将休息：%s（提前 %d ms，剩余 %d ms）custom=%v title=%q",
 		kind, notifyBeforeMs, remain, info.Custom, info.Title)
@@ -100,17 +100,17 @@ func (a *App) onPreNotify(kind string, notifyBeforeMs int64) {
 // 只收调度器自己那扇窗（closePreBreak）：外卖预通知共用同一窗口但归外卖模块管 ——
 // 「暂停休息」不等于「暂停外卖」，外卖按自己的 pauseAction 决定照常/推迟/跳过，
 // 无条件关窗会让「照常提醒」那条配置在暂停时静默失效。
-func (a *App) onPaused() {
-	a.closePreBreak()
+func (a *App) OnPaused() {
+	a.ClosePreBreak()
 }
 
-// closePreBreak 调度器重排时关掉残留的提前提示窗（对应 schedHost.closePreBreak）。
+// ClosePreBreak 调度器重排时关掉残留的提前提示窗（对应 scheduler.Host.ClosePreBreak）。
 // 与 onPaused 的区别：这里只关窗、不改 pause 状态，专供「被禁用 / 重排的提醒」清场。
 //
 // 只收**自己那扇窗**：外卖预通知（owner=takeout）复用同一个窗口，归外卖模块自己管
 // （closeTakeoutPreNotifyIfOpen）—— 调度器任何一次状态变更都顺手把它抹掉的话，
 // 外卖的提前通知会被「保存设置」这类无关动作带走。
-func (a *App) closePreBreak() {
+func (a *App) ClosePreBreak() {
 	a.mu.Lock()
 	takeoutOwned := a.preInfo.Owner == "takeout"
 	a.mu.Unlock()
@@ -122,7 +122,7 @@ func (a *App) closePreBreak() {
 
 // ---------- 外卖状态的快照（供状态快照读取） ----------
 
-func (a *App) takeoutPostponedSnapshot() *model.TakeoutPostponed {
+func (a *App) TakeoutPostponedSnapshot() *model.TakeoutPostponed {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if a.takeoutPostponed == nil {
@@ -132,7 +132,7 @@ func (a *App) takeoutPostponedSnapshot() *model.TakeoutPostponed {
 	return &cp
 }
 
-func (a *App) takeoutFiredSnapshot() map[string]bool {
+func (a *App) TakeoutFiredSnapshot() map[string]bool {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	if len(a.takeoutFired) == 0 {
@@ -226,11 +226,11 @@ func (a *App) ShowBreakWindow(kind string) {
 	// 避免先显示无立绘窗口、立绘加载完再切换的闪烁（frontend 据此决定整窗先
 	// 透明、等立绘就绪再淡入；无立绘时立即显示正确态）。
 	supFlag := "0"
-	if a.cfgSnapshot().SupervisorCfg().Enabled {
+	if a.CfgSnapshot().SupervisorCfg().Enabled {
 		supFlag = "1"
 	}
 
-	ap := a.cfgSnapshot().AppearanceCfg()
+	ap := a.CfgSnapshot().AppearanceCfg()
 	var wins []*application.WebviewWindow
 	for _, display := range a.targetDisplays() {
 		x, y, w, h := breakBoundsFor(display.WorkArea, ap)

@@ -1,20 +1,21 @@
-package main
+package scheduler
 
 import (
 	"log"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
 )
 
 // ---------- 对外的动作（托盘 / 设置页 / 快捷键 / 提前提示窗都汇聚到这里） ----------
 
 // resetCycle 重置周期：休息进行中先正常收尾（关窗口、落账），再重置——
 // 否则状态归零了窗口还挂着，直到下一次休息开始才被顺带关掉。
-func (s *Scheduler) resetCycle() {
+func (s *Scheduler) ResetCycle() {
 	s.mu.Lock()
 	inBreak := s.state.Phase == "break"
 	s.mu.Unlock()
 	if inBreak {
-		s.endBreak()
+		s.EndBreak()
 	}
 	s.mu.Lock()
 	s.state.ShortsSinceLong = 0
@@ -28,15 +29,15 @@ func (s *Scheduler) resetCycle() {
 }
 
 // breakNow 立即开始一次休息（跳过等待）
-func (s *Scheduler) breakNow() {
-	s.breakNowOf("")
+func (s *Scheduler) BreakNow() {
+	s.BreakNowOf("")
 }
 
 // breakNowOf 立即开始一次休息，kind 留空 = 用当前计划的那一条。
 // 指定 kind 时先把 nextType 顶上去（诊断 / 托盘「来一次长休息」用），
 // 这样 phase、已消费记账与派生视图都按同一条身份走。
 // 返回值是会话 id（正在休息或该身份不存在时为空串）。
-func (s *Scheduler) breakNowOf(kind string) string {
+func (s *Scheduler) BreakNowOf(kind string) string {
 	s.mu.Lock()
 	if s.state.Phase == "break" {
 		s.mu.Unlock()
@@ -50,8 +51,8 @@ func (s *Scheduler) breakNowOf(kind string) string {
 }
 
 // postpone 推迟当前休息（仅在未进入休息窗口时有效）
-func (s *Scheduler) postpone() {
-	cfg := s.host.cfgSnapshot()
+func (s *Scheduler) Postpone() {
+	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
 	if st.Phase == "break" || st.Paused || st.NextAt == 0 {
@@ -79,14 +80,14 @@ func (s *Scheduler) postpone() {
 	st.Phase = "idle"
 	// 统计：记一次推迟 + 推后时长。nextType 也可能是自定义提醒（cb-…），
 	// 但统计页「休息」四项只认短 / 长休息 —— 过滤在 App.onBreakPostponed 里一处做掉。
-	s.host.onBreakPostponed(nextType, ms)
+	s.host.OnBreakPostponed(nextType, ms)
 	// 被推迟的那条线在挂起线表里同步平移（今日时间线读的是这份表）
 	for i := range st.Lines {
 		if st.Lines[i].Type == nextType && st.Lines[i].At == oldAt {
 			st.Lines[i].At = st.NextAt
 		}
 	}
-	sortPlans(st.Lines)
+	plan.SortPlans(st.Lines)
 	// 被推迟的这条必是其分组里最早的一条（它是全局最早）：状态卡上的分组倒计时跟着走
 	if nextType == "short" || nextType == "long" {
 		if st.Rest != nil {
@@ -114,8 +115,8 @@ func (s *Scheduler) postpone() {
 // 休息进行中点「跳过 / 提前结束」（设置页侧栏、托盘、快捷键都汇聚到这里）：
 // 语义上就是立刻结束这次休息，落 endBreak 路径——早先直接 return，
 // 界面上点了没反应，用户只能去休息窗口里另找入口。
-func (s *Scheduler) skip() {
-	cfg := s.host.cfgSnapshot()
+func (s *Scheduler) Skip() {
+	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
 	if st.Phase == "break" {
@@ -138,16 +139,16 @@ func (s *Scheduler) skip() {
 	skippedMs := bcfg.DurationMs
 	s.advanceCounter(nextType)
 	// 固定时刻线：不消费的话 replan 会把同一时刻原样排回来，「跳过」等于没跳
-	s.consumed[occurrenceKey(nextType, st.NextAt)] = true
+	s.consumed[plan.OccurrenceKey(nextType, st.NextAt)] = true
 	s.mu.Unlock()
 	// 统计：记一次跳过 + 被跳过那次的时长。同样只认短 / 长休息，过滤在 App 侧。
-	s.host.onBreakSkipped(nextType, skippedMs)
+	s.host.OnBreakSkipped(nextType, skippedMs)
 	log.Printf("[scheduler] 跳过 %s（时长 %d ms）", nextType, skippedMs)
 	s.scheduleNext()
 }
 
 // endBreak 提前结束进行中的休息
-func (s *Scheduler) endBreak() {
+func (s *Scheduler) EndBreak() {
 	s.mu.Lock()
 	inBreak := s.state.Phase == "break"
 	s.mu.Unlock()
@@ -158,19 +159,19 @@ func (s *Scheduler) endBreak() {
 }
 
 // pauseToggle 手动暂停 / 恢复切换
-func (s *Scheduler) pauseToggle() {
+func (s *Scheduler) PauseToggle() {
 	s.mu.Lock()
 	paused := s.state.Paused
 	s.mu.Unlock()
 	if paused {
-		s.resume("manual")
+		s.Resume("manual")
 	} else {
-		s.pause("manual")
+		s.Pause("manual")
 	}
 }
 
 // pause 加一条暂停原因。多条原因并存，全部清掉才真的恢复。
-func (s *Scheduler) pause(reason string) {
+func (s *Scheduler) Pause(reason string) {
 	s.mu.Lock()
 	if containsStr(s.state.PauseReasons, reason) {
 		s.mu.Unlock()
@@ -187,12 +188,12 @@ func (s *Scheduler) pause(reason string) {
 	log.Printf("[scheduler] 暂停（%s）", reason)
 	s.emitState()
 	// 暂停提醒时关闭休息前提示弹窗（托盘暂停与弹窗内暂停共用此路径）
-	s.host.onPaused()
+	s.host.OnPaused()
 }
 
 // resume 去掉一条暂停原因；全部清掉时恢复，并把各线的时间计划整体平移/重算
-func (s *Scheduler) resume(reason string) {
-	cfg := s.host.cfgSnapshot()
+func (s *Scheduler) Resume(reason string) {
+	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	idx := indexOfStr(s.state.PauseReasons, reason)
 	if idx < 0 {
@@ -260,11 +261,11 @@ func (s *Scheduler) resume(reason string) {
 				if p.kind == nextType && p.at == oldAt {
 					delete(s.postponed, k)
 					p.at = newAt
-					s.postponed[occurrenceKey(p.kind, p.at)] = p
+					s.postponed[plan.OccurrenceKey(p.kind, p.at)] = p
 				}
 			}
 		}
-		sortPlans(st.Lines)
+		plan.SortPlans(st.Lines)
 		// 分组倒计时同步平移（组内若混着固定时刻线，近似误差由下一次 replan 纠正——仅显示用）
 		if st.Rest != nil {
 			st.Rest.At += delta
@@ -312,7 +313,7 @@ func (s *Scheduler) resume(reason string) {
 		if c, ok := cfg.BreakByID(preType); ok {
 			nb = c.NotifyBeforeMs
 		}
-		s.host.onPreNotify(preType, nb)
+		s.host.OnPreNotify(preType, nb)
 	}
 	s.syncPreBreakWindow()
 	// 离开结束后内置倒计时重新从头计时由调用方接着调 reanchorCountdown()

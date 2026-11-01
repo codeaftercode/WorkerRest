@@ -92,7 +92,7 @@ func (r *raiseState) anyBreakActive() bool {
 // buildTakeoutInfo 组装一次外卖会话（对应 takeoutWindow.ts 的 showTakeoutWindows 里
 // 那个 TakeoutSessionInfo）。会话与「弹窗」分开：渲染层随后会自己再拉一次 TakeoutCurrent。
 func (a *App) buildTakeoutInfo(slot model.TimeSlot, preview bool, postponedCount int, atOverride int64) *model.TakeoutInfo {
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	now := time.Now()
 	// atOverride = 这次提醒真正归属的 occurrence（提前通知跨午夜时是次日那一格、
 	// 推迟线是推迟后的到点时刻）；不传则按「当天该时刻」—— 与历史口径一致。

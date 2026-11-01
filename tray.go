@@ -45,7 +45,7 @@ func (a *App) startTray() {
 	status.SetEnabled(false)
 	menu.AddSeparator()
 	action := menu.Add("立即休息").OnClick(func(_ *application.Context) {
-		if a.sched != nil && a.sched.currentPhase() == "break" {
+		if a.sched != nil && a.sched.CurrentPhase() == "break" {
 			a.schedEndBreak()
 		} else {
 			a.schedBreakNow()
@@ -63,7 +63,7 @@ func (a *App) startTray() {
 	})
 	// 与设置页的「开机自启动」共用同一份 settings.autostart：勾哪儿都改配置 + 改注册表，
 	// 并把结果广播回设置页（上一版 toggleAutostartNow 的三件事）。
-	auto := menu.AddCheckbox("开机自启动", a.cfgSnapshot().Autostart())
+	auto := menu.AddCheckbox("开机自启动", a.CfgSnapshot().Autostart())
 	auto.OnClick(func(_ *application.Context) {
 		a.toggleAutostart()
 	})
@@ -175,7 +175,7 @@ func (a *App) refreshTray() {
 	if tray == nil || a.sched == nil {
 		return
 	}
-	st := a.sched.stateForRenderer()
+	st := a.sched.StateForRenderer()
 	tip, statusText, actionText, pauseText := trayTexts(st)
 	// 开机自启动的勾以**配置**为准（不是以「刚才点了什么」为准）：设置页里改、导入配置改、
 	// 恢复默认改，都会走到这里把托盘那一项对齐。
@@ -184,7 +184,7 @@ func (a *App) refreshTray() {
 		status:    statusText,
 		action:    actionText,
 		pause:     pauseText,
-		autostart: auto != nil && a.cfgSnapshot().Autostart(),
+		autostart: auto != nil && a.CfgSnapshot().Autostart(),
 		valid:     true,
 	}
 	a.applyTrayLabels(tray, status, action, pause, auto, next)

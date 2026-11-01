@@ -519,7 +519,7 @@ func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
 			slot.ID, slot.Hour, slot.Minute)
 	a := newTakeoutApp(t, cfg)
 	a.sched = nil
-	s := a.cfgSnapshot()
+	s := a.CfgSnapshot()
 	wantAt := slotAlertAt(slot, 0, nowMs())
 	if wantAt <= nowMs() {
 		// 23:59 之后构造不出「今天、且在未来」的槽位（TimeSlot 只有时分），今日时间线

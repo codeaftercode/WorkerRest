@@ -14,7 +14,7 @@ import "github.com/wailsapp/wails/v3/pkg/application"
 //
 // 调用方：SaveSettings 里确认值真的变了之后（解锁之后再调，见那里的注释）。
 func (a *App) syncCaptureGuardToLive() {
-	hide := a.cfgSnapshot().AppearanceCfg().HideOnShare
+	hide := a.CfgSnapshot().AppearanceCfg().HideOnShare
 	a.mu.Lock()
 	wins := make([]*application.WebviewWindow, 0, len(a.breakWins)+len(a.takeoutWins)+1)
 	wins = append(wins, a.breakWins...)

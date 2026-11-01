@@ -172,7 +172,7 @@ func (a *App) PreviewTakeout(win string) string {
 		log.Printf("[takeout] 真实外卖提醒窗口在场，忽略预览请求")
 		return previewBusyReply
 	}
-	cfg := a.cfgSnapshot()
+	cfg := a.CfgSnapshot()
 	slot := model.TimeSlot{ID: "preview", Hour: time.Now().Hour(), Minute: time.Now().Minute(), Enabled: true}
 	if hit, ok := nextSlotAt(cfg.TakeoutSlots(), nowMs()); ok {
 		slot = hit.Slot

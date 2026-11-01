@@ -94,7 +94,7 @@ func (a *App) soundPickNext(cfg model.SoundCfg, rnd func(n int) int) string {
 // 这处差异的可见影响只有「便携老用户的旧副本删不掉」（播放不受影响 —— 配置里存的是
 // 绝对路径），已记进 README 的已知差异。
 func (a *App) customSoundDir() string {
-	s := a.cfgSnapshot()
+	s := a.CfgSnapshot()
 	if s != nil {
 		if p := s.Path(); p != "" {
 			return filepath.Join(filepath.Dir(p), "sounds")

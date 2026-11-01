@@ -1,9 +1,10 @@
-package main
+package scheduler
 
 import (
 	"testing"
 	"time"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
 )
 
 // 时间轴审计（全量组合）的回归用例。
@@ -40,19 +41,19 @@ func TestPausedReplanKeepsFrozenRemain(t *testing.T) {
 	}
 	s.mu.Unlock()
 
-	if got := s.remainingMs(); got != remainAtPause {
+	if got := s.RemainingMs(); got != remainAtPause {
 		t.Fatalf("暂停中剩余应冻结在 %d ms，实际 %d ms", remainAtPause, got)
 	}
 
 	// 暂停期间改设置 → replan（不再经过 scheduleNext 也能覆盖同一条路径）
 	s.replan()
-	if got := s.remainingMs(); got != remainAtPause {
+	if got := s.RemainingMs(); got != remainAtPause {
 		t.Fatalf("暂停期间 replan 不得改写冻结的剩余：want %d ms，got %d ms", remainAtPause, got)
 	}
 
 	// 恢复：只平移一次，剩余仍是 5 分钟
-	s.resume("manual")
-	got := s.remainingMs()
+	s.Resume("manual")
+	got := s.RemainingMs()
 	if got < remainAtPause-2000 || got > remainAtPause+2000 {
 		t.Fatalf("恢复后剩余应≈%d ms（只平移一次），实际 %d ms", remainAtPause, got)
 	}
@@ -67,7 +68,7 @@ func TestPausedScheduleNextKeepsFrozenRemain(t *testing.T) {
 	const pausedFor = 40 * 60_000
 	s.mu.Lock()
 	s.state.Paused = true
-	s.state.PauseReasons = []string{pauseReasonIdle} // 用真实键，确保 resume 走得到
+	s.state.PauseReasons = []string{PauseReasonIdle} // 用真实键，确保 resume 走得到
 	s.state.PausedAt = nowMs() - pausedFor
 	s.state.NextAt = s.state.PausedAt + 3*60_000
 	s.state.Phase = "pre"
@@ -78,15 +79,15 @@ func TestPausedScheduleNextKeepsFrozenRemain(t *testing.T) {
 
 	s.scheduleNext()
 
-	if st := s.stateCopy(); st.Phase != "idle" {
+	if st := s.StateCopy(); st.Phase != "idle" {
 		t.Fatalf("重排后应回到等待态，实际 phase=%q", st.Phase)
 	}
-	if got := s.remainingMs(); got != 3*60_000 {
+	if got := s.RemainingMs(); got != 3*60_000 {
 		t.Fatalf("重排后冻结剩余应保持 3 分钟，实际 %d ms", got)
 	}
 
-	s.resume(pauseReasonIdle)
-	got := s.remainingMs()
+	s.Resume(PauseReasonIdle)
+	got := s.RemainingMs()
 	if got < 3*60_000-2000 || got > 3*60_000+2000 {
 		t.Fatalf("恢复后剩余应≈3 分钟，实际 %d ms", got)
 	}
@@ -103,7 +104,7 @@ func TestSlotOccurrenceAcrossMidnight(t *testing.T) {
 
 	now := time.Date(2026, 10, 27, 23, 50, 0, 0, time.Local).UnixMilli()
 	want := time.Date(2026, 10, 28, 0, 10, 0, 0, time.Local).UnixMilli()
-	if got := slotOccurrenceAt(slot, lead, now); got != want {
+	if got := plan.SlotOccurrenceAt(slot, lead, now); got != want {
 		t.Fatalf("跨午夜 occurrence 应归属次日 %d，实际 %d（差 %d ms）", want, got, got-want)
 	}
 
@@ -111,13 +112,13 @@ func TestSlotOccurrenceAcrossMidnight(t *testing.T) {
 	now2 := time.Date(2026, 10, 27, 11, 50, 0, 0, time.Local).UnixMilli()
 	slot2 := model.TimeSlot{ID: "s2", Hour: 12, Minute: 10, Enabled: true}
 	want2 := time.Date(2026, 10, 27, 12, 10, 0, 0, time.Local).UnixMilli()
-	if got := slotOccurrenceAt(slot2, lead, now2); got != want2 {
+	if got := plan.SlotOccurrenceAt(slot2, lead, now2); got != want2 {
 		t.Fatalf("同日 occurrence 应为 %d，实际 %d", want2, got)
 	}
 
 	// 提前通知与真窗必须落在同一个 occurrence 键上（否则去重表各记一份、互相吞或重复）
-	if occurrenceKey("takeout", slotOccurrenceAt(slot, lead, now)) !=
-		occurrenceKey("takeout", slotAlertAt(slot, 0, want)) {
+	if plan.OccurrenceKey("takeout", plan.SlotOccurrenceAt(slot, lead, now)) !=
+		plan.OccurrenceKey("takeout", plan.SlotAlertAt(slot, 0, want)) {
 		t.Fatalf("提前线与会话线应指向同一 occurrence")
 	}
 }
@@ -127,7 +128,7 @@ func TestSlotOccurrenceAcrossMidnight(t *testing.T) {
 func TestSlotOccurrenceSameDayNoShift(t *testing.T) {
 	now := time.Date(2026, 10, 27, 9, 0, 0, 0, time.Local).UnixMilli()
 	slot := model.TimeSlot{ID: "s3", Hour: 9, Minute: 30, Enabled: true}
-	got := slotOccurrenceAt(slot, 10*60_000, now)
+	got := plan.SlotOccurrenceAt(slot, 10*60_000, now)
 	want := time.Date(2026, 10, 27, 9, 30, 0, 0, time.Local).UnixMilli()
 	if got != want {
 		t.Fatalf("普通情形 occurrence 应为 %d，实际 %d", want, got)
@@ -139,7 +140,7 @@ func TestSlotOccurrenceSameDayNoShift(t *testing.T) {
 func TestTakeoutPreNotifyTargetNotInPast(t *testing.T) {
 	slot := model.TimeSlot{ID: "s4", Hour: 0, Minute: 5, Enabled: true}
 	now := time.Date(2026, 10, 27, 23, 58, 0, 0, time.Local).UnixMilli()
-	target := slotOccurrenceAt(slot, 7*60_000, now)
+	target := plan.SlotOccurrenceAt(slot, 7*60_000, now)
 	if target <= now {
 		t.Fatalf("预通知目标必须晚于现在：now=%d target=%d", now, target)
 	}
@@ -159,11 +160,11 @@ func TestTakeoutPreNotifyTargetNotInPast(t *testing.T) {
 func TestBreakStartedWhilePausedStillCloses(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
-	s.pause("manual")
-	if id := s.breakNowOf("short"); id == "" {
+	s.Pause("manual")
+	if id := s.BreakNowOf("short"); id == "" {
 		t.Fatal("暂停中「立即休息」应当能开始一次休息")
 	}
-	if got := s.stateCopy().Phase; got != "break" {
+	if got := s.StateCopy().Phase; got != "break" {
 		t.Fatalf("应进入休息态，实际 %q", got)
 	}
 	// 把这次休息的结束时刻挪到 2 秒前（越过 1 秒停留）
@@ -171,7 +172,7 @@ func TestBreakStartedWhilePausedStillCloses(t *testing.T) {
 	s.state.BreakEndsAt = nowMs() - 2000
 	s.mu.Unlock()
 	s.onTick()
-	if got := s.stateCopy().Phase; got == "break" {
+	if got := s.StateCopy().Phase; got == "break" {
 		t.Fatalf("暂停中主动开始的休息到点必须自动收窗，实际仍在 %q", got)
 	}
 }
@@ -181,15 +182,15 @@ func TestBreakStartedWhilePausedStillCloses(t *testing.T) {
 func TestBreakBeforePauseStaysFrozen(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
-	if id := s.breakNowOf("short"); id == "" {
+	if id := s.BreakNowOf("short"); id == "" {
 		t.Fatal("应能开始一次休息")
 	}
-	s.pause("manual")
+	s.Pause("manual")
 	s.mu.Lock()
 	s.state.BreakEndsAt = nowMs() - 2000
 	s.mu.Unlock()
 	s.onTick()
-	if got := s.stateCopy().Phase; got != "break" {
+	if got := s.StateCopy().Phase; got != "break" {
 		t.Fatalf("暂停前开始的休息应保持冻结（不收窗），实际 %q", got)
 	}
 }
@@ -209,11 +210,11 @@ func TestRefreshPlanKeepsPrePhase(t *testing.T) {
 	s.state.Phase = "pre"
 	s.mu.Unlock()
 
-	s.refreshPlan()
-	if got := s.stateCopy().Phase; got != "pre" {
+	s.RefreshPlan()
+	if got := s.StateCopy().Phase; got != "pre" {
 		t.Fatalf("同一提醒仍在提前区间，phase 应保持 pre，实际 %q", got)
 	}
-	if !s.preBreakWanted() {
+	if !s.PreBreakWanted() {
 		t.Fatal("窗口应仍在场（判据成立）")
 	}
 }
@@ -238,8 +239,8 @@ func TestRefreshPlanClosesWhenReminderSwitched(t *testing.T) {
 	s.state.ShortsSinceLong = 1
 	s.mu.Unlock()
 
-	s.refreshPlan()
-	st := s.stateCopy()
+	s.RefreshPlan()
+	st := s.StateCopy()
 	if st.Phase == "pre" && st.NextType != "short" {
 		t.Fatalf("换成了另一条提醒后不应保留旧 pre（窗口内容会错配），实际 next=%q phase=%q", st.NextType, st.Phase)
 	}
@@ -263,7 +264,7 @@ func TestTickJumpResetsInsteadOfFiring(t *testing.T) {
 	s.mu.Unlock()
 
 	s.onTick()
-	st := s.stateCopy()
+	st := s.StateCopy()
 	if st.Phase == "break" {
 		t.Fatal("时间大跳后不应立刻弹休息窗口")
 	}
@@ -284,7 +285,7 @@ func TestTickNormalGapStillFires(t *testing.T) {
 	}
 	s.mu.Unlock()
 	s.onTick()
-	if got := s.stateCopy().Phase; got != "break" {
+	if got := s.StateCopy().Phase; got != "break" {
 		t.Fatalf("正常间隔下的到点应开始休息，实际 %q", got)
 	}
 }

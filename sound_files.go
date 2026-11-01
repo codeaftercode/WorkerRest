@@ -206,7 +206,7 @@ func (a *App) allowedSoundPath(p string) (string, bool) {
 		}
 	}
 	// 老配置里的音乐条目可能指向用户原始位置：只认配置点名的那几个
-	if cfgHasMusicFile(a.cfgSnapshot(), abs) {
+	if cfgHasMusicFile(a.CfgSnapshot(), abs) {
 		return abs, true
 	}
 	return "", false

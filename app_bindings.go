@@ -163,17 +163,17 @@ func (a *App) Action(win, name string) error {
 // 调度器动作的转发（a.sched 在启动后一定非 nil，这里仍判空以防启动期的调用）
 func (a *App) schedBreakNow() {
 	if a.sched != nil {
-		a.sched.breakNow()
+		a.sched.BreakNow()
 	}
 }
 func (a *App) schedPostpone() {
 	if a.sched != nil {
-		a.sched.postpone()
+		a.sched.Postpone()
 	}
 }
 func (a *App) schedSkip() {
 	if a.sched != nil {
-		a.sched.skip()
+		a.sched.Skip()
 	}
 }
 
@@ -187,19 +187,19 @@ func (a *App) schedPauseToggle() {
 	if a.sched == nil {
 		return
 	}
-	if a.sched.hasPauseReason(pauseReasonAppPause) {
+	if a.sched.HasPauseReason(pauseReasonAppPause) {
 		a.setAppPauseIgnored(true)
-		a.sched.resume(pauseReasonAppPause)
+		a.sched.Resume(pauseReasonAppPause)
 		// 若还叠着手动暂停，一并摘掉：用户点的是「恢复休息」，就该恢复到底
-		a.sched.resume("manual")
+		a.sched.Resume("manual")
 		log.Printf("[appPause] 用户手动恢复：临时忽略目标应用，直到退出或手动暂停")
 		return
 	}
-	if !a.sched.isPaused() {
+	if !a.sched.IsPaused() {
 		// 手动暂停：作废可能残留的忽略会话，回到常规自动暂停判定
 		a.setAppPauseIgnored(false)
 	}
-	a.sched.pauseToggle()
+	a.sched.PauseToggle()
 }
 
 // setAppPauseIgnored / isAppPauseIgnored 忽略会话标志（监视 goroutine 与 UI 线程共用）
@@ -216,18 +216,18 @@ func (a *App) isAppPauseIgnored() bool {
 }
 func (a *App) schedResetCycle() {
 	if a.sched != nil {
-		a.sched.resetCycle()
+		a.sched.ResetCycle()
 	}
 }
 func (a *App) schedEndBreak() {
 	if a.sched == nil {
 		return
 	}
-	a.sched.endBreak()
+	a.sched.EndBreak()
 	// 兜底：调度器已经不在休息阶段时 endBreak 直接返回（自然到点 / 状态已翻篇），
 	// 屏幕上的窗口就成了「点了没反应」的窗 —— 用户只能 Alt+F4。这里直接收掉，
 	// 绝不把无主窗口留给用户。正常路径上 finishBreak 已经关过窗，这步是空操作。
-	if a.sched.stateCopy().Phase != "break" && a.hasBreakWindows() {
+	if a.sched.StateCopy().Phase != "break" && a.hasBreakWindows() {
 		log.Printf("[action] endBreak 无效（调度器不在休息阶段），直接收掉残留的休息窗口")
 		a.closeBreakWindowsOpt(true)
 	}
@@ -258,7 +258,7 @@ func (a *App) PreviewBreak(kind, forceKey string) string {
 		log.Printf("[break] 真实休息窗口在场，忽略预览请求（kind=%s）", kind)
 		return previewBusyReply
 	}
-	return a.showBreakSession(kind, true, forceKey)
+	return a.ShowBreakSession(kind, true, forceKey)
 }
 
 // previewBusyReply 预览被拒时给渲染层的返回值：真实提醒窗口正在显示。
@@ -280,9 +280,9 @@ func (a *App) realBreakActive() bool {
 // 否则到点前又会被 replan 排回来弹第二次。
 func (a *App) StartBreak(kind string) string {
 	if a.sched == nil {
-		return a.showBreakSession(kind, false, "")
+		return a.ShowBreakSession(kind, false, "")
 	}
-	return a.sched.breakNowOf(kind)
+	return a.sched.BreakNowOf(kind)
 }
 
 // GetState 给设置页的状态快照。
@@ -297,13 +297,13 @@ func (a *App) GetState() map[string]any {
 		FixedNext: map[string]int64{}, PauseReasons: []string{},
 	}
 	if a.sched != nil {
-		st = a.sched.stateForRenderer()
+		st = a.sched.StateForRenderer()
 	}
 	out := structToMap(st)
 	// Go 侧扩展字段（上一版没有；诊断与控制台用）
 	out["engine"] = "go+wails3"
 	out["rolesRoot"] = a.rolesRoot
-	out["settings"] = orNone(a.cfgSnapshot().Path())
+	out["settings"] = orNone(a.CfgSnapshot().Path())
 	out["serverMode"] = serverMode
 	return out
 }
@@ -329,7 +329,7 @@ func structToMap(v any) map[string]any {
 func (a *App) AppInfo() map[string]any {
 	goVer := strings.TrimPrefix(runtime.Version(), "go")
 	return map[string]any{
-		"name":         a.cfgSnapshot().AppName(),
+		"name":         a.CfgSnapshot().AppName(),
 		"version":      appVersion,
 		"electron":     "Wails v3 (Go)",
 		"node":         "-",
@@ -367,7 +367,7 @@ func wailsVersion() string {
 // 共用这一份顺序，用户拖一次两边同时生效。
 func (a *App) ListRoles() []role.Role {
 	roles := role.ScanRoles(a.rolesRoot)
-	if cfg := a.cfgSnapshot(); cfg != nil {
+	if cfg := a.CfgSnapshot(); cfg != nil {
 		roles = role.ApplyRoleOrder(roles, cfg.SupervisorCfg().Order)
 	}
 	return roles

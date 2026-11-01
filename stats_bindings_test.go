@@ -21,8 +21,8 @@ func TestBreakStatsIgnoreCustomReminders(t *testing.T) {
 
 	a := &App{stats: st}
 	// 自定义提醒：推迟 / 跳过都调了宿主回调，但一条都不该记
-	a.onBreakPostponed("cb-water", 5*60_000)
-	a.onBreakSkipped("cb-water", 5*60_000)
+	a.OnBreakPostponed("cb-water", 5*60_000)
+	a.OnBreakSkipped("cb-water", 5*60_000)
 
 	today := time.Now().Format("2006-01-02")
 	days := st.DaysInRange(today, today)
@@ -35,8 +35,8 @@ func TestBreakStatsIgnoreCustomReminders(t *testing.T) {
 	}
 
 	// 内置短 / 长休息：照常记
-	a.onBreakPostponed("short", 5*60_000)
-	a.onBreakSkipped("long", 2*60_000)
+	a.OnBreakPostponed("short", 5*60_000)
+	a.OnBreakSkipped("long", 2*60_000)
 	days = st.DaysInRange(today, today)
 	if len(days) == 0 {
 		t.Fatal("内置短/长休息应记入今天的统计")

@@ -1,8 +1,9 @@
-package main
+package scheduler
 
 import (
 	"log"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
 )
 
 // ---------- 提前提示窗的在场判据 ----------
@@ -16,7 +17,7 @@ import (
 //
 // phase == "pre" 之外还要卡「剩余 ≤ 提前量」：phase 卡在 pre 而计划已被推远时，
 // 光看 phase 会误判成该在场。
-func (s *Scheduler) preBreakWanted() bool {
+func (s *Scheduler) PreBreakWanted() bool {
 	s.mu.Lock()
 	phase, paused, nextAt, nextType := s.state.Phase, s.state.Paused, s.state.NextAt, s.state.NextType
 	s.mu.Unlock()
@@ -24,7 +25,7 @@ func (s *Scheduler) preBreakWanted() bool {
 		return false
 	}
 	// cfgSnapshot 要加 App.mu：必须在放开 Scheduler.mu 之后再取（锁序铁律）
-	c, ok := s.host.cfgSnapshot().BreakByID(nextType)
+	c, ok := s.host.CfgSnapshot().BreakByID(nextType)
 	if !ok || !c.Enabled || c.NotifyBeforeMs <= 0 {
 		return false
 	}
@@ -35,8 +36,8 @@ func (s *Scheduler) preBreakWanted() bool {
 // syncPreBreakWindow 把提前提示窗收成状态的影子：判据说不该在场就关掉。
 // 幂等：窗口本来就不在时是空操作，可以在任意状态变更后无脑调。
 func (s *Scheduler) syncPreBreakWindow() {
-	if !s.preBreakWanted() {
-		s.host.closePreBreak()
+	if !s.PreBreakWanted() {
+		s.host.ClosePreBreak()
 	}
 }
 
@@ -60,7 +61,7 @@ func (s *Scheduler) pauseFreezesClockLocked() bool {
 
 // remainingMs 距下一次事件（休息开始 / 结束）的剩余毫秒；没有安排休息时为 0。
 // 暂停期间剩余时间冻结（锚定到 pausedAt），不再随时间往下掉。
-func (s *Scheduler) remainingMs() int64 {
+func (s *Scheduler) RemainingMs() int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := nowMs()
@@ -79,7 +80,7 @@ func (s *Scheduler) remainingMs() int64 {
 }
 
 // refreshPlan 设置变更后重算下一次休息（休息进行中不动，等它自然结束再说）
-func (s *Scheduler) refreshPlan() {
+func (s *Scheduler) RefreshPlan() {
 	s.mu.Lock()
 	inBreak := s.state.Phase == "break"
 	s.mu.Unlock()
@@ -100,8 +101,8 @@ func (s *Scheduler) refreshPlan() {
 //   - 长短交替计数（shortsSinceLong）：离开不是软件安排的休息，不该消费一次短休息名额。
 //
 // 只推后不提前：若重锚后的时刻反而更早（理论上不该发生），保持原值。
-func (s *Scheduler) reanchorCountdown() {
-	cfg := s.host.cfgSnapshot()
+func (s *Scheduler) ReanchorCountdown() {
+	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
 	if st.Phase == "break" || st.NextAt == 0 {
@@ -139,7 +140,7 @@ func (s *Scheduler) reanchorCountdown() {
 			l.At = at
 		}
 	}
-	sortPlans(st.Lines)
+	plan.SortPlans(st.Lines)
 	if st.Rest != nil && st.Rest.At == oldAt {
 		st.Rest = &model.PlanRef{Name: st.Rest.Name, At: at}
 	}
@@ -147,7 +148,7 @@ func (s *Scheduler) reanchorCountdown() {
 		st.Other = &model.PlanRef{Name: st.Other.Name, At: at}
 	}
 	s.mu.Unlock()
-	log.Printf("[scheduler] 内置倒计时重新计时：%s → %s", fmtClock(oldAt), fmtClock(at))
+	log.Printf("[scheduler] 内置倒计时重新计时：%s → %s", plan.FmtClock(oldAt), plan.FmtClock(at))
 	s.emitState()
 	// 重锚把计划推到「现在 + 间隔」＝彻底离开提前区间：刚从 resume 弹出的提示窗
 	// 必须跟着收掉，否则它会带着一整轮倒计时挂在屏幕上（用户报的「还有 1200 秒就弹」
