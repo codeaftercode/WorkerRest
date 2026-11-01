@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"workerrest/internal/idle"
+	"workerrest/internal/settings"
 	"workerrest/internal/windnd"
 )
 
@@ -333,14 +334,14 @@ func TestAutostartTargetSkipsDevBuild(t *testing.T) {
 // 全屏独占原本默认关（新增能力不替用户决定），2026-10-29 用户要求「以当前配置为出厂默认」
 // 后改为开 —— 出厂默认与代码兜底必须同值，否则老配置（缺键走兜底）与新装表现不一致。
 func TestAutoPauseFlagDefaults(t *testing.T) {
-	s := &Settings{raw: map[string]any{}}
+	s := settings.New(map[string]any{}, "")
 	if !s.DndPause() {
 		t.Fatal("dndPause 缺省应为 true")
 	}
 	if !s.FullScreenPause() {
 		t.Fatal("fullscreenPause 缺省应为 true（与 default_settings.json 同值）")
 	}
-	s = &Settings{raw: map[string]any{"dndPause": false, "fullscreenPause": false}}
+	s = settings.New(map[string]any{"dndPause": false, "fullscreenPause": false}, "")
 	if s.DndPause() || s.FullScreenPause() {
 		t.Fatalf("配置值未生效：dnd=%v fullscreen=%v", s.DndPause(), s.FullScreenPause())
 	}

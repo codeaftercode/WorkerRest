@@ -10,6 +10,8 @@ import (
 	"time"
 	"workerrest/internal/idle"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
+	"workerrest/internal/settings"
 	"workerrest/internal/stats"
 )
 
@@ -99,9 +101,9 @@ func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
 		t.Fatalf("postponeMin=0 时应透传 0，得到 %d", info.PostponeMin)
 	}
 	// 归一化侧同样不许把 0 夹成 1（保存路径）
-	norm := normalizeTakeout(map[string]any{"takeout": map[string]any{"postponeMin": float64(0)}})
+	norm := settings.NormalizeTakeout(map[string]any{"takeout": map[string]any{"postponeMin": float64(0)}})
 	if norm["postponeMin"] != float64(0) {
-		t.Fatalf("normalizeTakeout 应保留 postponeMin=0，得到 %v", norm["postponeMin"])
+		t.Fatalf("settings.NormalizeTakeout 应保留 postponeMin=0，得到 %v", norm["postponeMin"])
 	}
 }
 
@@ -427,8 +429,8 @@ func TestTakeoutPreNotifyState(t *testing.T) {
 	slot := futureSlot()
 	a.showTakeoutPreNotify(slot, 0)
 	st := a.PreBreakState()
-	if st["title"] != TAKEOUT_NAME {
-		t.Fatalf("预通知标题应为 %q，得到 %v", TAKEOUT_NAME, st["title"])
+	if st["title"] != plan.TAKEOUT_NAME {
+		t.Fatalf("预通知标题应为 %q，得到 %v", plan.TAKEOUT_NAME, st["title"])
 	}
 	if st["custom"] != true {
 		t.Fatalf("外卖预通知应走 custom 版式（无说明/无暂停），得到 %v", st["custom"])
@@ -524,7 +526,7 @@ func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
 		// 本来就不展开已过去的条目 —— 这是产品语义，不是缺陷，跳过而不是误报。
 		t.Skip("当前时刻已到 23:59，无法构造今天的未来外卖槽位")
 	}
-	tl := todayTimeline(s, nowMs(), TimelineOptions{TakeoutFired: map[string]bool{}})
+	tl := todayTimeline(s, nowMs(), plan.TimelineOptions{TakeoutFired: map[string]bool{}})
 	found := false
 	for _, it := range tl {
 		if it.Type == "takeout" {
@@ -538,7 +540,7 @@ func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
 		t.Fatal("时间线应包含外卖条目")
 	}
 	// 该 occurrence 被消费后，时间线应隐藏它
-	tl2 := todayTimeline(s, nowMs(), TimelineOptions{
+	tl2 := todayTimeline(s, nowMs(), plan.TimelineOptions{
 		TakeoutFired: map[string]bool{occurrenceKey("takeout", wantAt): true},
 	})
 	for _, it := range tl2 {

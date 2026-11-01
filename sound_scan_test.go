@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"workerrest/internal/model"
+	"workerrest/internal/settings"
 )
 
 // 随包提示音目录体检（sound_scan.go）的回归。
@@ -24,7 +26,7 @@ func withBuiltinSoundDir(t *testing.T, dir string) {
 }
 
 // musicFiles 配置音乐列表里的 id → file 快照，方便断言
-func musicFiles(s *Settings) map[string]string {
+func musicFiles(s *settings.Settings) map[string]string {
 	out := map[string]string{}
 	for _, m := range s.SoundCfg().Music {
 		out[m.ID] = m.File
@@ -35,7 +37,7 @@ func musicFiles(s *Settings) map[string]string {
 func TestScanSoundDirReportsNewAndMissing(t *testing.T) {
 	dir := t.TempDir()
 	withBuiltinSoundDir(t, dir)
-	// 随包的 4 个内置音（名字与 builtinMusic 一致）
+	// 随包的 4 个内置音（名字与 settings.BuiltinSounds() 一致）
 	for _, n := range []string{"short_start.wav", "short_end.wav", "long_start.wav", "long_end.wav"} {
 		writeSoundFile(t, filepath.Join(dir, n), 32)
 	}
@@ -67,8 +69,8 @@ func TestScanSoundDirReportsNewAndMissing(t *testing.T) {
 func TestScanSoundDirDoesNotTreatBuiltinAsNew(t *testing.T) {
 	dir := t.TempDir()
 	withBuiltinSoundDir(t, dir)
-	for _, b := range builtinMusic {
-		writeSoundFile(t, filepath.Join(dir, b.file), 32)
+	for _, b := range settings.BuiltinSounds() {
+		writeSoundFile(t, filepath.Join(dir, b.File), 32)
 	}
 	// 配置里一条都没登记：4 个内置音仍不算「新发现」，也不该报任何待办
 	a, _ := newSoundApp(t, soundCfgJSON("single", ""))
@@ -114,7 +116,7 @@ func TestImportScannedSoundsRegistersRelativeFile(t *testing.T) {
 
 	// 内存里的配置换了新对象（与 SaveSettings 同口径）
 	music := a.cfgSnapshot().SoundCfg().Music
-	var found *SoundMusicItem
+	var found *model.SoundMusicItem
 	for i := range music {
 		if music[i].File == "my-alarm.mp3" {
 			found = &music[i]

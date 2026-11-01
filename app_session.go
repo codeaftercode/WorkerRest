@@ -8,6 +8,7 @@ import (
 	"workerrest/internal/jsonx"
 	"workerrest/internal/model"
 	"workerrest/internal/role"
+	"workerrest/internal/settings"
 )
 
 func (a *App) buildSupervisorSession(force bool, forceKey string) *model.SupStageInfo {
@@ -160,7 +161,7 @@ func (a *App) SupervisorPreview(sup map[string]any, name string) *model.SupStage
 		// 没带就沿用磁盘上的那份（前端没这个键时的兼容路径）。
 		order := cfg.Order
 		if _, ok := sup["order"]; ok {
-			order = normalizeRoleOrder(sup["order"])
+			order = settings.NormalizeRoleOrder(sup["order"])
 		}
 		cfg = model.SupervisorConfig{
 			Enabled:   sup["enabled"] != false,

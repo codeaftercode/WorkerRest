@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"workerrest/internal/settings"
 	"workerrest/internal/stats"
 )
 
@@ -29,7 +30,7 @@ func (a *App) appStatsFile() string {
 		cfgPath = s.Path()
 	}
 	if cfgPath == "" {
-		cands := settingsCandidates(a.resourcesRoot())
+		cands := settings.Candidates(a.resourcesRoot())
 		if len(cands) > 0 {
 			cfgPath = cands[len(cands)-1]
 		}

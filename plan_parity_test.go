@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
+	"workerrest/internal/settings"
 )
 
 // 计划层对拍：把 scenes 矩阵喂给 Go 侧的计划函数，导出成与
@@ -89,11 +91,11 @@ func TestDumpPlanForParity(t *testing.T) {
 	}
 	res := make([]scenarioOut, 0, len(doc.Scenarios))
 	for _, sc := range doc.Scenarios {
-		s := &Settings{raw: sc.Settings}
+		s := settings.New(sc.Settings, "")
 		skip := setOfStrings(sc.Skip)
 
 		lines := schedulerLines(s, sc.Now, sc.SS, skip, nil)
-		plan, ok := planNextBreak(s, sc.Now, sc.SS, skip, nil)
+		next, ok := planNextBreak(s, sc.Now, sc.SS, skip, nil)
 		split := planNextBreakSplit(s, sc.Now, sc.SS, skip, nil)
 		fx := fixedNextMap(s, sc.Now, skip)
 		// 与 main.ts 的 stateForRenderer 同口径：shifts 用 fixedNext（参考侧覆盖过就用它的）、
@@ -106,7 +108,7 @@ func TestDumpPlanForParity(t *testing.T) {
 		if len(sc.Opts.ExtraLines) > 0 {
 			cdLines = append(append([]model.PlannedBreak{}, lines...), sc.Opts.ExtraLines...)
 		}
-		tl := todayTimeline(s, sc.Now, TimelineOptions{
+		tl := todayTimeline(s, sc.Now, plan.TimelineOptions{
 			Skip:             skip,
 			Shifts:           shifts,
 			CountdownLines:   cdLines,
@@ -119,11 +121,11 @@ func TestDumpPlanForParity(t *testing.T) {
 		res = append(res, scenarioOut{
 			Name: sc.Name,
 			Expect: map[string]any{
-				"plan":         planAsAny(plan, ok),
+				"plan":         planAsAny(next, ok),
 				"lines":        lines,
 				"split":        split,
 				"fixedNext":    fx,
-				"describePlan": describePlanAny(plan, ok),
+				"describePlan": describePlanAny(next, ok),
 				"timeline":     tl,
 			},
 		})

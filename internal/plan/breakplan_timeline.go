@@ -1,4 +1,4 @@
-package main
+package plan
 
 import (
 	"sort"
@@ -6,6 +6,7 @@ import (
 	"time"
 	"workerrest/internal/jsonx"
 	"workerrest/internal/model"
+	"workerrest/internal/settings"
 )
 
 // ---------- 今日时间线 ----------
@@ -21,7 +22,7 @@ const cdExpandMax = 64
 //     replan 时刻 ≈ 开始 + 时长；用落点起算会与真实节奏漂移）；
 //   - 落点 = 锚点 + 下一跳的 intervalMs；
 //   - 交替 = 双倒计时且 ssL >= longEveryNShort 时选长（与 builtinCountdownLine 同口径）。
-func expandBuiltinCountdown(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, first *model.PlannedBreak) []model.PlannedBreak {
+func expandBuiltinCountdown(s *settings.Settings, now int64, shortsSinceLong int, skip map[string]bool, first *model.PlannedBreak) []model.PlannedBreak {
 	if first == nil {
 		return []model.PlannedBreak{}
 	}
@@ -111,7 +112,7 @@ type TimelineOptions struct {
 
 // todayTimeline 今日提醒时间线（时间规划页顶部的折叠列表）：综合当前全部提醒设置，
 // 推算**当天**尚未触发的提醒时刻，按时间排序。
-func todayTimeline(s *Settings, now int64, opts TimelineOptions) []model.TimelineItem {
+func todayTimeline(s *settings.Settings, now int64, opts TimelineOptions) []model.TimelineItem {
 	out := []model.TimelineItem{}
 	// ① 固定时刻线：展开当天全部剩余 occurrence（不只下一跳）
 	for _, e := range s.BreakEntries() {
@@ -221,7 +222,7 @@ func todayTimeline(s *Settings, now int64, opts TimelineOptions) []model.Timelin
 		c := s.CustomBreakByID(l.Type)
 		cfg := model.BreakConfig{}
 		if c != nil {
-			cfg = breakConfigOf(jsonx.AsMap(c["config"]))
+			cfg = settings.BreakConfigOf(jsonx.AsMap(c["config"]))
 		}
 		if c == nil || cfg.Mode != "countdown" {
 			pushCd(l)

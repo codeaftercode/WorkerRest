@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	"encoding/json"
@@ -531,7 +531,7 @@ func TestAppearanceHideOnShareDefault(t *testing.T) {
 // 一旦分叉，用户首装看到的值与点「恢复默认」后的值就不一样，而且界面上完全看不出来。
 // go:embed 取的是编译那一刻的快照，这条用例把快照钉在工作区文件上。
 func TestEmbeddedDefaultMatchesFile(t *testing.T) {
-	disk, err := os.ReadFile("default_settings.json")
+	disk, err := os.ReadFile("../../default_settings.json")
 	if err != nil {
 		t.Fatalf("读 default_settings.json 失败: %v", err)
 	}
@@ -559,7 +559,7 @@ func TestEmbeddedDefaultMatchesFile(t *testing.T) {
 // 清单」并跳过磁盘比对，避免误报红。真正不能破的是「出厂必须给出一个确定的固定人选」——
 // 留空就等于把选择权交给目录排序，不同机器上可能出场不同的人。
 func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
-	raw, err := os.ReadFile("default_settings.json")
+	raw, err := os.ReadFile("../../default_settings.json")
 	if err != nil {
 		t.Fatalf("读 default_settings.json 失败: %v", err)
 	}
@@ -587,7 +587,7 @@ func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
 	if !builtin {
 		t.Fatalf("出厂固定专员 %q 不在 defaultRoleOrder 里：写错了名字，或者它不是内置专员", fixed)
 	}
-	if _, ok := role.ResolveRoleDir("supervisors", fixed); !ok {
+	if _, ok := role.ResolveRoleDir("../../supervisors", fixed); !ok {
 		t.Logf("磁盘上没有专员 %q（内置专员可被用户删除），本轮跳过 meta.json 名字比对", fixed)
 	}
 }

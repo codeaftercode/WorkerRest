@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 	"workerrest/internal/idle"
+	"workerrest/internal/settings"
 )
 
 // ---------- 自动检查更新的调度（autoUpdateTick）----------
@@ -161,7 +162,7 @@ func TestRunAutoUpdateCheckRecordsDay(t *testing.T) {
 
 	newApp := func(t *testing.T, site string) *App {
 		t.Setenv("WR_SETTINGS_PATH", filepath.Join(t.TempDir(), "settings.json"))
-		cfg := &Settings{raw: defaultSettingsMap()}
+		cfg := settings.New(settings.DefaultSettingsMap(), "")
 		cfg.SetSites([]string{site})
 		return &App{cfg: cfg, mu: sync.Mutex{}}
 	}
@@ -200,7 +201,7 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 	defer srv.Close()
 
 	t.Setenv("WR_SETTINGS_PATH", filepath.Join(t.TempDir(), "settings.json"))
-	cfg := &Settings{raw: defaultSettingsMap()}
+	cfg := settings.New(settings.DefaultSettingsMap(), "")
 	cfg.SetSites([]string{srv.URL + "/version.json"})
 	if !cfg.Flag(true, "checkUpdateOnStart") {
 		t.Fatalf("出厂默认应当勾选「自动检查更新」")
@@ -400,7 +401,7 @@ func TestCheckForUpdateFallsBackToDefaultSite(t *testing.T) {
 
 	// 完全空白的配置：连 sites 键都没有
 	t.Setenv("WR_SETTINGS_PATH", filepath.Join(t.TempDir(), "settings.json"))
-	a := &App{cfg: &Settings{raw: map[string]any{}}, mu: sync.Mutex{}}
+	a := &App{cfg: settings.New(map[string]any{}, ""), mu: sync.Mutex{}}
 	st := a.checkForUpdate()
 	if st.Status != "update-available" {
 		t.Fatalf("应靠兜底源查到新版本，实得 %+v", st)

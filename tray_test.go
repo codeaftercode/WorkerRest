@@ -1,7 +1,11 @@
 package main
 
-import "testing"
-import "workerrest/internal/model"
+import (
+	"testing"
+
+	"workerrest/internal/model"
+	"workerrest/internal/plan"
+)
 
 func TestFmtTrayAboutMin(t *testing.T) {
 	cases := []struct {
@@ -31,7 +35,7 @@ func TestTrayTexts(t *testing.T) {
 
 	t.Run("倒计时中：约数到分钟", func(t *testing.T) {
 		tip, status, action, pause := trayTexts(model.SchedulerState{
-			Phase: "idle", NextType: "short", NextName: shortBreakName,
+			Phase: "idle", NextType: "short", NextName: plan.ShortBreakName,
 			NextAt: now + 10*60_000,
 		})
 		if want := "约 10 分钟后短休息"; tip != want {
@@ -57,7 +61,7 @@ func TestTrayTexts(t *testing.T) {
 
 	t.Run("休息中：秒级剩余", func(t *testing.T) {
 		tip, status, action, pause := trayTexts(model.SchedulerState{
-			Phase: "break", NextName: shortBreakName, BreakEndsAt: now + 30_000,
+			Phase: "break", NextName: plan.ShortBreakName, BreakEndsAt: now + 30_000,
 		})
 		if want := "休息中，剩余 30 秒"; tip != want {
 			t.Errorf("tooltip = %q，期望 %q", tip, want)
@@ -69,7 +73,7 @@ func TestTrayTexts(t *testing.T) {
 
 	t.Run("已暂停：立即休息项不留空白", func(t *testing.T) {
 		tip, status, action, pause := trayTexts(model.SchedulerState{
-			Paused: true, Phase: "idle", NextName: shortBreakName,
+			Paused: true, Phase: "idle", NextName: plan.ShortBreakName,
 			NextAt: now + 60_000, PauseReasons: []string{"manual"},
 		})
 		if want := "已暂停：手动暂停"; tip != want {

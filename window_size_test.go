@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"workerrest/internal/settings"
 )
 
 // 设置窗口尺寸策略的回归。
@@ -32,11 +33,11 @@ func TestDefaultWindowSizeIsMeasured(t *testing.T) {
 	if !ok {
 		t.Fatalf("出厂默认缺少 window 块（设置窗口尺寸没写进默认配置）")
 	}
-	if got := win["width"]; got != float64(settingsWindowDefaultWidth) {
-		t.Fatalf("window.width = %v，期望实测默认宽度 %d", got, settingsWindowDefaultWidth)
+	if got := win["width"]; got != float64(settings.SettingsWindowDefaultWidth) {
+		t.Fatalf("window.width = %v，期望实测默认宽度 %d", got, settings.SettingsWindowDefaultWidth)
 	}
-	if got := win["height"]; got != float64(settingsWindowDefaultHeight) {
-		t.Fatalf("window.height = %v，期望实测默认高度 %d", got, settingsWindowDefaultHeight)
+	if got := win["height"]; got != float64(settings.SettingsWindowDefaultHeight) {
+		t.Fatalf("window.height = %v，期望实测默认高度 %d", got, settings.SettingsWindowDefaultHeight)
 	}
 	// 出厂默认「自动记录」= 开：首次启动用默认尺寸，之后沿用上次的
 	if got, ok := win["rememberSize"].(bool); !ok || !got {
@@ -47,10 +48,10 @@ func TestDefaultWindowSizeIsMeasured(t *testing.T) {
 		t.Fatalf("出厂默认的 lastWidth/lastHeight 应为 0，实际 %v/%v", win["lastWidth"], win["lastHeight"])
 	}
 	// 默认尺寸不得小于最小尺寸（否则首启就是残窗）
-	if settingsWindowDefaultWidth < settingsWindowMinWidth || settingsWindowDefaultHeight < settingsWindowMinHeight {
+	if settings.SettingsWindowDefaultWidth < settings.SettingsWindowMinWidth || settings.SettingsWindowDefaultHeight < settings.SettingsWindowMinHeight {
 		t.Fatalf("默认尺寸 %dx%d 小于最小尺寸 %dx%d",
-			settingsWindowDefaultWidth, settingsWindowDefaultHeight,
-			settingsWindowMinWidth, settingsWindowMinHeight)
+			settings.SettingsWindowDefaultWidth, settings.SettingsWindowDefaultHeight,
+			settings.SettingsWindowMinWidth, settings.SettingsWindowMinHeight)
 	}
 }
 
@@ -58,25 +59,25 @@ func TestDefaultWindowSizeIsMeasured(t *testing.T) {
 func TestWindowSizePolicy(t *testing.T) {
 	cases := []struct {
 		name     string
-		cfg      WindowSizeConfig
+		cfg      settings.WindowSizeConfig
 		wantW    int
 		wantH    int
 		scenario string
 	}{
-		{"未勾选-有上次", WindowSizeConfig{Width: 874, Height: 857, Remember: false, LastWidth: 1024, LastHeight: 800},
+		{"未勾选-有上次", settings.WindowSizeConfig{Width: 874, Height: 857, Remember: false, LastWidth: 1024, LastHeight: 800},
 			874, 857, "不自动记录：永远用默认尺寸，上次记录的值不参与"},
-		{"未勾选-无上次", WindowSizeConfig{Width: 874, Height: 857, Remember: false},
+		{"未勾选-无上次", settings.WindowSizeConfig{Width: 874, Height: 857, Remember: false},
 			874, 857, "首次启动：默认尺寸"},
-		{"已勾选-有上次", WindowSizeConfig{Width: 874, Height: 857, Remember: true, LastWidth: 1024, LastHeight: 800},
+		{"已勾选-有上次", settings.WindowSizeConfig{Width: 874, Height: 857, Remember: true, LastWidth: 1024, LastHeight: 800},
 			1024, 800, "自动记录：沿用上次尺寸"},
-		{"已勾选-无上次", WindowSizeConfig{Width: 874, Height: 857, Remember: true},
+		{"已勾选-无上次", settings.WindowSizeConfig{Width: 874, Height: 857, Remember: true},
 			874, 857, "刚勾上还没拖过窗口：回落默认尺寸"},
-		{"已勾选-上次不完整", WindowSizeConfig{Width: 874, Height: 857, Remember: true, LastWidth: 1024},
+		{"已勾选-上次不完整", settings.WindowSizeConfig{Width: 874, Height: 857, Remember: true, LastWidth: 1024},
 			874, 857, "只有宽度合法（手改坏 / 旧残留）：整对作废，不要高度 0 的窗"},
-		{"已勾选-上次过小", WindowSizeConfig{Width: 874, Height: 857, Remember: true, LastWidth: 300, LastHeight: 200},
+		{"已勾选-上次过小", settings.WindowSizeConfig{Width: 874, Height: 857, Remember: true, LastWidth: 300, LastHeight: 200},
 			874, 857, "小于最小尺寸的记录值不采信"},
-		{"默认值过小", WindowSizeConfig{Width: 300, Height: 200, Remember: false},
-			settingsWindowMinWidth, settingsWindowMinHeight, "配置被改成荒唐值：夹进最小尺寸"},
+		{"默认值过小", settings.WindowSizeConfig{Width: 300, Height: 200, Remember: false},
+			settings.SettingsWindowMinWidth, settings.SettingsWindowMinHeight, "配置被改成荒唐值：夹进最小尺寸"},
 	}
 	for _, c := range cases {
 		w, h := c.cfg.Size()
@@ -91,17 +92,17 @@ func TestWindowSizePolicy(t *testing.T) {
 func TestWindowSizeCfgReadsConfig(t *testing.T) {
 	// 完全没有 window 块
 	cfg := testSettings(t, `{}`).WindowSizeCfg()
-	if cfg.Width != settingsWindowDefaultWidth || cfg.Height != settingsWindowDefaultHeight || !cfg.Remember {
+	if cfg.Width != settings.SettingsWindowDefaultWidth || cfg.Height != settings.SettingsWindowDefaultHeight || !cfg.Remember {
 		t.Fatalf("缺 window 块时 = %+v，期望默认值且 Remember=true", cfg)
 	}
 
 	// 手改坏：字符串宽度、负数尺寸、rememberSize 是字符串
 	cfg = testSettings(t, `{"window":{"width":"宽","height":-5,"rememberSize":"yes","lastWidth":0,"lastHeight":0}}`).WindowSizeCfg()
-	if cfg.Width != settingsWindowDefaultWidth {
+	if cfg.Width != settings.SettingsWindowDefaultWidth {
 		t.Errorf("width 非数字时应回落默认值，实际 %d", cfg.Width)
 	}
-	if cfg.Height != settingsWindowMinHeight {
-		t.Errorf("height 为负应夹到最小值 %d，实际 %d", settingsWindowMinHeight, cfg.Height)
+	if cfg.Height != settings.SettingsWindowMinHeight {
+		t.Errorf("height 为负应夹到最小值 %d，实际 %d", settings.SettingsWindowMinHeight, cfg.Height)
 	}
 	if !cfg.Remember {
 		t.Errorf("rememberSize 不是布尔时应回落 true")
@@ -111,9 +112,9 @@ func TestWindowSizeCfgReadsConfig(t *testing.T) {
 // TestNormalizeWindowClampsAndClears 归一化：写盘前的兜底（normalizeLoad / normalizeForSave 共用）。
 func TestNormalizeWindowClampsAndClears(t *testing.T) {
 	raw := map[string]any{}
-	normalizeWindow(raw)
+	settings.NormalizeWindow(raw)
 	win := raw["window"].(map[string]any)
-	if win["width"] != float64(settingsWindowDefaultWidth) || win["height"] != float64(settingsWindowDefaultHeight) {
+	if win["width"] != float64(settings.SettingsWindowDefaultWidth) || win["height"] != float64(settings.SettingsWindowDefaultHeight) {
 		t.Fatalf("空配置补出来的 window = %v", win)
 	}
 
@@ -121,13 +122,13 @@ func TestNormalizeWindowClampsAndClears(t *testing.T) {
 		"width": float64(100), "height": float64(999999),
 		"lastWidth": float64(800), "lastHeight": float64(0),
 	}}
-	normalizeWindow(raw)
+	settings.NormalizeWindow(raw)
 	win = raw["window"].(map[string]any)
-	if win["width"] != float64(settingsWindowMinWidth) {
-		t.Errorf("width=100 应夹到 %d，实际 %v", settingsWindowMinWidth, win["width"])
+	if win["width"] != float64(settings.SettingsWindowMinWidth) {
+		t.Errorf("width=100 应夹到 %d，实际 %v", settings.SettingsWindowMinWidth, win["width"])
 	}
-	if win["height"] != float64(settingsWindowMaxHeight) {
-		t.Errorf("height 超上界应夹到 %d，实际 %v", settingsWindowMaxHeight, win["height"])
+	if win["height"] != float64(settings.SettingsWindowMaxHeight) {
+		t.Errorf("height 超上界应夹到 %d，实际 %v", settings.SettingsWindowMaxHeight, win["height"])
 	}
 	if win["lastWidth"] != float64(0) || win["lastHeight"] != float64(0) {
 		t.Errorf("只有一边合法的 last 应整对归零，实际 %v/%v", win["lastWidth"], win["lastHeight"])
@@ -135,7 +136,7 @@ func TestNormalizeWindowClampsAndClears(t *testing.T) {
 
 	// 合法的一对要原样保留（别把用户的记录清掉）
 	raw = map[string]any{"window": map[string]any{"lastWidth": float64(900), "lastHeight": float64(700)}}
-	normalizeWindow(raw)
+	settings.NormalizeWindow(raw)
 	win = raw["window"].(map[string]any)
 	if win["lastWidth"] != float64(900) || win["lastHeight"] != float64(700) {
 		t.Errorf("合法的 last 被清掉了：%v/%v", win["lastWidth"], win["lastHeight"])
@@ -169,7 +170,7 @@ func TestSaveWindowLastSizePersists(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "settings.json")
 	s := testSettings(t, `{"window":{"width":874,"height":858,"rememberSize":true,"lastWidth":0,"lastHeight":0}}`)
-	s.path = path
+	s.SetPath(path)
 	a := &App{cfg: s}
 
 	a.saveWindowLastSize(1024, 800)

@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"workerrest/internal/urltls"
 )
 
 // checkForUpdate 按「配置里的 sites + 出厂兜底源」依次容错拉取 version.json 并比对版本。
@@ -124,7 +126,7 @@ func fetchVersionJSON(sites []string) (versionInfo, error) {
 func fetchOneVersionJSON(client *http.Client, url string) (versionInfo, error) {
 	// 协议白名单在这一层也走一遍：配置里的 sites 已经过滤过，但 reachable
 	// 的第二道（重定向）在 client 里，这里管「原始地址」。
-	if err := checkUpdateURL(url); err != nil {
+	if err := urltls.CheckUpdateURL(url); err != nil {
 		return versionInfo{}, err
 	}
 	req, err := http.NewRequest(http.MethodGet, url, nil)

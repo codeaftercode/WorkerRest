@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"workerrest/internal/settings"
 )
 
 // ---------- 音乐副本的文件名 ----------
@@ -275,7 +277,7 @@ func (a *App) allowedSoundPath(p string) (string, bool) {
 }
 
 // cfgHasMusicFile 配置的音乐列表里是否点名叫了这个绝对路径
-func cfgHasMusicFile(s *Settings, abs string) bool {
+func cfgHasMusicFile(s *settings.Settings, abs string) bool {
 	if s == nil {
 		return false
 	}

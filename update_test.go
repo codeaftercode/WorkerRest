@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"workerrest/internal/settings"
 )
 
 // 版本比较纯函数回归：isNewerVersion / parseVersion 逐条对应 main.ts 的
@@ -172,7 +173,7 @@ func TestCheckForUpdateURLArray(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	cfg := &Settings{raw: defaultSettingsMap()}
+	cfg := settings.New(settings.DefaultSettingsMap(), "")
 	cfg.SetSites([]string{srv.URL + "/version.json"})
 	a := &App{cfg: cfg, mu: sync.Mutex{}}
 
@@ -241,7 +242,7 @@ func TestCheckForUpdateRejectsUntrustedManifest(t *testing.T) {
 			}))
 			defer srv.Close()
 
-			cfg := &Settings{raw: defaultSettingsMap()}
+			cfg := settings.New(settings.DefaultSettingsMap(), "")
 			cfg.SetSites([]string{srv.URL + "/version.json"})
 			a := &App{cfg: cfg, mu: sync.Mutex{}}
 
@@ -299,7 +300,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "settings.json")
 	t.Setenv("WR_SETTINGS_PATH", tmp)
 
-	cfg := &Settings{raw: defaultSettingsMap()}
+	cfg := settings.New(settings.DefaultSettingsMap(), "")
 	a := &App{cfg: cfg, mu: sync.Mutex{}}
 
 	// 1) 发布/持久化一次「有更新」结果
@@ -331,7 +332,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 	if err := json.Unmarshal(data, &reloaded); err != nil {
 		t.Fatal(err)
 	}
-	cfg2 := &Settings{raw: reloaded}
+	cfg2 := settings.New(reloaded, "")
 	a2 := &App{cfg: cfg2, mu: sync.Mutex{}}
 	a2.restoreUpdateStatus()
 	if a2.updateStatus == nil || a2.updateStatus["status"] != "update-available" {
@@ -348,7 +349,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 	}
 
 	// 5) 失效版本（不比当前新）在恢复时应被清理，避免长期残留「有更新」
-	cfg3 := &Settings{raw: defaultSettingsMap()}
+	cfg3 := settings.New(settings.DefaultSettingsMap(), "")
 	a3 := &App{cfg: cfg3, mu: sync.Mutex{}}
 	a3.persistUpdateResult(map[string]any{"status": "update-available", "current": appVersion, "latest": appVersion})
 	a3.restoreUpdateStatus()
@@ -381,7 +382,7 @@ func TestPendingUpdateReturnsSettingsState(t *testing.T) {
 	defer func() { pendingUpdatePath = old }()
 	pendingUpdatePath = pendingPath
 
-	cfg := &Settings{raw: map[string]any{}, path: filepath.Join(dir, "settings.json")}
+	cfg := settings.New(map[string]any{}, filepath.Join(dir, "settings.json"))
 	a := &App{cfg: cfg, mu: sync.Mutex{}}
 
 	info := a.PendingUpdate()

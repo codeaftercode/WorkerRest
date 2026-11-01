@@ -7,10 +7,12 @@ import (
 	"time"
 	"workerrest/internal/logx"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
+	"workerrest/internal/settings"
 )
 
 type schedHost interface {
-	cfgSnapshot() *Settings
+	cfgSnapshot() *settings.Settings
 	onSchedulerState()
 	onPreNotify(kind string, notifyBeforeMs int64)
 	onPaused()
@@ -79,7 +81,7 @@ func max0(v int64) int64 {
 }
 
 // isCustomBreakID 是否是自定义提醒的身份（内置短 / 长休息不算）
-func isCustomBreakID(id string) bool { return strings.HasPrefix(id, customBreakPrefix) }
+func isCustomBreakID(id string) bool { return strings.HasPrefix(id, settings.CustomBreakPrefix) }
 
 func newScheduler(a *App) *Scheduler {
 	return newSchedulerWithHost(a)
@@ -99,7 +101,7 @@ func newSchedulerWithHost(host schedHost) *Scheduler {
 	s.state = model.SchedulerState{
 		Phase:        "idle",
 		NextType:     "short",
-		NextName:     shortBreakName,
+		NextName:     plan.ShortBreakName,
 		Lines:        []model.PlannedBreak{},
 		Timeline:     []model.TimelineItem{},
 		FixedNext:    map[string]int64{},
@@ -271,7 +273,7 @@ func (s *Scheduler) pausedSkip() {
 	var hits []hit
 	s.mu.Lock()
 	for _, c := range cfg.CustomBreakList() {
-		if !c.Config.Enabled || pauseDisposition(c.Config) != PauseActionSkip {
+		if !c.Config.Enabled || pauseDisposition(c.Config) != settings.PauseActionSkip {
 			continue
 		}
 		if c.Config.Mode == "fixed" {
@@ -331,7 +333,7 @@ func (s *Scheduler) pausedFire() {
 	s.mu.Lock()
 	for _, c := range cfg.CustomBreakList() {
 		cc := c.Config
-		if !cc.Enabled || pauseDisposition(cc) != PauseActionRemind {
+		if !cc.Enabled || pauseDisposition(cc) != settings.PauseActionRemind {
 			continue
 		}
 		if cc.Mode == "fixed" {
@@ -400,17 +402,17 @@ func (s *Scheduler) pausedFire() {
 // 降级成跳过：没有时长可推，硬推会每跳原地打转、永远不弹。未知取值按默认的推迟。
 func pauseDisposition(c model.BreakConfig) string {
 	switch c.PauseAction {
-	case PauseActionRemind:
-		return PauseActionRemind
-	case PauseActionPostpone:
+	case settings.PauseActionRemind:
+		return settings.PauseActionRemind
+	case settings.PauseActionPostpone:
 		if c.PostponeMs <= 0 {
-			return PauseActionSkip
+			return settings.PauseActionSkip
 		}
-		return PauseActionPostpone
-	case PauseActionSkip:
-		return PauseActionSkip
+		return settings.PauseActionPostpone
+	case settings.PauseActionSkip:
+		return settings.PauseActionSkip
 	}
-	return PauseActionPostpone
+	return settings.PauseActionPostpone
 }
 
 // pausedPostpone 暂停期间的「推迟提醒」：到点不弹窗，按该提醒的「可推迟（分钟）」
@@ -430,7 +432,7 @@ func (s *Scheduler) pausedPostpone() {
 	s.mu.Lock()
 	for _, c := range cfg.CustomBreakList() {
 		cc := c.Config
-		if !cc.Enabled || pauseDisposition(cc) != PauseActionPostpone {
+		if !cc.Enabled || pauseDisposition(cc) != settings.PauseActionPostpone {
 			continue
 		}
 		push := func(at int64) {

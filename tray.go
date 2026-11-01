@@ -7,6 +7,7 @@ import (
 	"time"
 	"workerrest/internal/logx"
 	"workerrest/internal/model"
+	"workerrest/internal/settings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -147,8 +148,8 @@ type trayLabels struct {
 func (a *App) toggleAutostart() {
 	a.mu.Lock()
 	next := !a.cfg.Autostart()
-	if merged, ok := deepMerge(a.cfg.Raw(), map[string]any{"autostart": next}).(map[string]any); ok {
-		s := &Settings{raw: merged, path: a.cfg.Path()}
+	if merged, ok := settings.DeepMerge(a.cfg.Raw(), map[string]any{"autostart": next}).(map[string]any); ok {
+		s := settings.New(merged, a.cfg.Path())
 		if err := s.Save(); err == nil {
 			a.cfg = s
 		}

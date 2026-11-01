@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
+	"workerrest/internal/settings"
 )
 
 // 调度器与计划层的纯函数回归。
@@ -19,19 +21,19 @@ import (
 // ---------- 脚手架 ----------
 
 // testSettings 用一段 JSON 造一份配置（只填本次用到的字段，其余按 breakConfigOf 的默认）
-func testSettings(t *testing.T, js string) *Settings {
+func testSettings(t *testing.T, js string) *settings.Settings {
 	t.Helper()
 	var m map[string]any
 	if err := json.Unmarshal([]byte(js), &m); err != nil {
 		t.Fatalf("测试配置解析失败: %v", err)
 	}
-	return &Settings{raw: m}
+	return settings.New(m, "")
 }
 
 // fakeHost 调度器宿主：只实现调度器真正会调的那几个口子，不碰窗口 / 托盘 / Wails，
 // 这样状态机可以脱离 application.App 跑单测。
 type fakeHost struct {
-	cfg       *Settings
+	cfg       *settings.Settings
 	states    int
 	pre       []string
 	pauses    int
@@ -43,7 +45,7 @@ type fakeHost struct {
 	pp        *model.TakeoutPostponed
 }
 
-func (h *fakeHost) cfgSnapshot() *Settings                            { return h.cfg }
+func (h *fakeHost) cfgSnapshot() *settings.Settings                   { return h.cfg }
 func (h *fakeHost) onSchedulerState()                                 { h.states++ }
 func (h *fakeHost) onPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
 func (h *fakeHost) onPaused()                                         { h.pauses++ }
@@ -319,7 +321,7 @@ func TestSchedulerSkipConsumesOccurrence(t *testing.T) {
 	if after == aligned {
 		t.Fatal("跳过之后不该还排在同一个时刻")
 	}
-	if sameLocalDay(after, aligned) {
+	if plan.SameLocalDay(after, aligned) {
 		t.Fatalf("今天这条已跳过的线不该再出现，得到 %d", after)
 	}
 }
@@ -457,7 +459,7 @@ func TestSchedulerResumeShiftsCountdown(t *testing.T) {
 	if diff := got - want; diff < -1500 || diff > 1500 {
 		t.Fatalf("倒计时线应整体平移 50s，want=%d got=%d（差 %d）", want, got, diff)
 	}
-	if !sameLocalDay(got, origAt) {
+	if !plan.SameLocalDay(got, origAt) {
 		t.Fatal("短暂暂停不该把倒计时推到别的日子")
 	}
 }

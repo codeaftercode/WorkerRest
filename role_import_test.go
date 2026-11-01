@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 	"workerrest/internal/role"
+	"workerrest/internal/settings"
 )
 
 // 导入 / 删除自设立绘的回归（2026-10-26 起；2026-10-28 改成「名字即身份」后重写）。
@@ -181,13 +182,13 @@ func TestRemoveRoleClearsFixedRoleAndOrder(t *testing.T) {
 	}, map[string]string{"figure.webp": "w"})
 
 	a := &App{
-		cfg: &Settings{raw: map[string]any{
+		cfg: settings.New(map[string]any{
 			"supervisor": map[string]any{
 				"enabled":   true,
 				"fixedRole": "乙",
 				"order":     []any{"乙", "甲"},
 			},
-		}},
+		}, ""),
 		rolesRoot: rolesRoot,
 	}
 

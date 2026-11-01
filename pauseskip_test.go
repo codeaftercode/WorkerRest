@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 	"workerrest/internal/model"
+	"workerrest/internal/settings"
 )
 
 // 「暂停休息时」三种处置（正常提醒 / 推迟提醒 / 跳过提醒，默认推迟）的回归：
@@ -21,17 +22,17 @@ import (
 func TestPauseActionDefaultsToPostpone(t *testing.T) {
 	// 旧配置没有这个键：外卖与自定义提醒都应视为「推迟提醒」
 	s := testSettings(t, `{"customBreaks":[{"id":"cb-a","name":"喝水","config":{"enabled":true}}]}`)
-	if got := s.TakeoutPauseAction(); got != PauseActionPostpone {
+	if got := s.TakeoutPauseAction(); got != settings.PauseActionPostpone {
 		t.Errorf("取不到 pauseAction 时应默认推迟（外卖），得到 %q", got)
 	}
-	if got := s.Break("short").PauseAction; got != PauseActionPostpone {
+	if got := s.Break("short").PauseAction; got != settings.PauseActionPostpone {
 		t.Errorf("取不到 pauseAction 时应默认推迟（配置层），得到 %q", got)
 	}
-	if got := s.CustomBreakList(); len(got) != 1 || got[0].Config.PauseAction != PauseActionPostpone {
+	if got := s.CustomBreakList(); len(got) != 1 || got[0].Config.PauseAction != settings.PauseActionPostpone {
 		t.Errorf("自定义提醒缺省应为推迟，得到 %+v", got)
 	}
 	// 新建自定义提醒的出厂配置也必须是推迟
-	if got := defaultCustomBreakConfig()["pauseAction"]; got != PauseActionPostpone {
+	if got := settings.DefaultCustomBreakConfig()["pauseAction"]; got != settings.PauseActionPostpone {
 		t.Errorf("新建自定义提醒的默认处置应为推迟，得到 %#v", got)
 	}
 }
@@ -39,30 +40,30 @@ func TestPauseActionDefaultsToPostpone(t *testing.T) {
 func TestPauseActionExplicitValues(t *testing.T) {
 	s := testSettings(t, `{"takeout":{"pauseAction":"postpone"},`+
 		`"customBreaks":[{"id":"cb-a","name":"喝水","config":{"pauseAction":"remind"}}]}`)
-	if got := s.TakeoutPauseAction(); got != PauseActionPostpone {
+	if got := s.TakeoutPauseAction(); got != settings.PauseActionPostpone {
 		t.Errorf("外卖应读成推迟，得到 %q", got)
 	}
-	if got := s.CustomBreakList()[0].Config.PauseAction; got != PauseActionRemind {
+	if got := s.CustomBreakList()[0].Config.PauseAction; got != settings.PauseActionRemind {
 		t.Errorf("自定义提醒应读成正常提醒，得到 %q", got)
 	}
 	// 非法值一律落回默认的推迟（手改配置 / 旧版本写入的脏值）
 	bad := testSettings(t, `{"takeout":{"pauseAction":"whatever"},"customBreaks":[]}`)
-	if got := bad.TakeoutPauseAction(); got != PauseActionPostpone {
+	if got := bad.TakeoutPauseAction(); got != settings.PauseActionPostpone {
 		t.Errorf("非法值应落回推迟，得到 %q", got)
 	}
 }
 
-// 保存路径：normalizeTakeout 重建 takeout 对象时必须带上这个键（否则存一次就丢）
+// 保存路径：settings.NormalizeTakeout 重建 takeout 对象时必须带上这个键（否则存一次就丢）
 func TestNormalizeTakeoutKeepsPauseAction(t *testing.T) {
-	out := normalizeTakeout(map[string]any{
+	out := settings.NormalizeTakeout(map[string]any{
 		"takeout": map[string]any{"enabled": true, "pauseAction": "remind", "slots": []any{}},
 	})
-	if got, _ := out["pauseAction"].(string); got != PauseActionRemind {
-		t.Fatalf("normalizeTakeout 应保留 pauseAction=remind，得到 %#v", out["pauseAction"])
+	if got, _ := out["pauseAction"].(string); got != settings.PauseActionRemind {
+		t.Fatalf("settings.NormalizeTakeout 应保留 pauseAction=remind，得到 %#v", out["pauseAction"])
 	}
 	// 缺省（旧配置）应补成 postpone：前端下拉默认就是「推迟提醒」
-	out = normalizeTakeout(map[string]any{"takeout": map[string]any{"enabled": true}})
-	if got, _ := out["pauseAction"].(string); got != PauseActionPostpone {
+	out = settings.NormalizeTakeout(map[string]any{"takeout": map[string]any{"enabled": true}})
+	if got, _ := out["pauseAction"].(string); got != settings.PauseActionPostpone {
 		t.Fatalf("旧配置归一化后应补成 postpone，得到 %#v", out["pauseAction"])
 	}
 }
@@ -70,10 +71,10 @@ func TestNormalizeTakeoutKeepsPauseAction(t *testing.T) {
 // 自定义提醒的配置归一化：已有键要校验，旧键 skipWhenPaused 要清掉，
 // 原本没有这个键就不补写（短 / 长休息不写它）
 func TestNormalizeBreakConfigPauseAction(t *testing.T) {
-	if got := normalizeBreakConfigOf(map[string]any{"pauseAction": "bogus"})["pauseAction"]; got != PauseActionPostpone {
+	if got := settings.NormalizeBreakConfigOf(map[string]any{"pauseAction": "bogus"})["pauseAction"]; got != settings.PauseActionPostpone {
 		t.Fatalf("非法值应落回 postpone，得到 %#v", got)
 	}
-	out := normalizeBreakConfigOf(map[string]any{"mode": "countdown", "skipWhenPaused": true})
+	out := settings.NormalizeBreakConfigOf(map[string]any{"mode": "countdown", "skipWhenPaused": true})
 	if _, has := out["skipWhenPaused"]; has {
 		t.Fatal("旧键 skipWhenPaused 应在归一化时被清掉")
 	}

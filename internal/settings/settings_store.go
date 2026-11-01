@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	"encoding/json"
@@ -31,6 +31,10 @@ func normalizeRoleOrder(v any) []string {
 	return out
 }
 
+// NormalizeRoleOrder 归一化候选专员顺序（跨包导出，供 main 的会话构建复用：
+// 表单传来的 order 也走同一套「只保留非空字符串项并去重」的口径）。
+func NormalizeRoleOrder(v any) []string { return normalizeRoleOrder(v) }
+
 // normalizeSupervisorMessages 督休专员配置归一化（与 config.ts 同义）：
 // selection 只认固定 / 顺序 / 随机；开关类字段只认布尔；视线跟随恒为 true。
 func normalizeSupervisorMessages(raw map[string]any) {
@@ -62,6 +66,9 @@ func normalizeSupervisorMessages(raw map[string]any) {
 		}
 	}
 }
+
+// NormalizeSupervisorMessages 督休专员配置归一化（跨包导出，供测试复用）。
+func NormalizeSupervisorMessages(raw map[string]any) { normalizeSupervisorMessages(raw) }
 
 // normalizeReminderMessages 提醒内容迁移 + 归一化（对应 config.ts 的同名函数）：
 // 旧版是全局一套 messages，现在短 / 长 / 外卖各自独立一套。旧条目统一归短休息，
@@ -211,6 +218,12 @@ func normalizeLoad(raw map[string]any) (configKeyCreated, presetSeeded, idsRenum
 	return configKeyCreated, presetSeeded, idsRenumbered, appsPruned
 }
 
+// NormalizeLoad 加载路径的归一化（跨包导出，供 main 的恢复默认复用：
+// 恢复默认后要立刻补固定键、种入预置条目，与启动管线一致）。
+func NormalizeLoad(raw map[string]any) {
+	normalizeLoad(raw)
+}
+
 // normalizeForSave 设置页保存 / 导入外来配置后要跑的归一化。
 // 与加载路径的差别：**不做**旧键清理与首次种子（那些是一次性迁移，加载时已经做过），
 // 顺序对应 main.ts 的 settings:save / settings:import。
@@ -226,6 +239,9 @@ func normalizeForSave(raw map[string]any) {
 	normalizeToggles(raw)
 	normalizeWindow(raw)
 }
+
+// NormalizeForSave 保存 / 导入后要跑的归一化（跨包导出，供 main 的提示音导入复用）。
+func NormalizeForSave(raw map[string]any) { normalizeForSave(raw) }
 
 // mapOf 取子对象；缺失 / 类型不符时给一个空 map（对应 JS 里对 undefined 做 {...x}）
 func mapOf(v any) map[string]any {
@@ -250,6 +266,9 @@ func settingsCandidates(resourcesRoot string) []string {
 	}
 	return []string{filepath.Join(resourcesRoot, "config", "settings.json")}
 }
+
+// Candidates 候选配置文件路径（跨包导出，供 main 的提示音目录推导等使用）。
+func Candidates(resourcesRoot string) []string { return settingsCandidates(resourcesRoot) }
 
 // loadSettings 读配置：找到第一份可解析的 settings.json 就用它，在出厂默认之上深合并
 // （缺失字段不会整体退回默认，数组整体替换），再过一遍归一化与迁移。
@@ -299,6 +318,9 @@ func loadSettings(resourcesRoot string) *Settings {
 	return s
 }
 
+// Load 读配置（跨包导出，供 main 启动时调用）。
+func Load(resourcesRoot string) *Settings { return loadSettings(resourcesRoot) }
+
 // Save 落盘：写到配置实际来源的文件；来源为空时按便携/安装形态推导一个目标路径。
 // 用「先写临时文件再改名」保证不会写出半截 JSON（写一半被杀 = 配置全丢）。
 func (s *Settings) Save() error {
@@ -337,6 +359,9 @@ func (s *Settings) Save() error {
 // resourcesRootHint 落盘目标在「还没有配置文件」时的推导依据。
 // 由 App 在启动时注入（避免 Settings 反向依赖 App）。
 var resourcesRootHintFn func() string
+
+// SetResourcesRootHint 注入资源根目录推导函数（跨包导出，供 main 启动时注入）。
+func SetResourcesRootHint(fn func() string) { resourcesRootHintFn = fn }
 
 func (s *Settings) resourcesRootHint() string {
 	if resourcesRootHintFn != nil {

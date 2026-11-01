@@ -3,6 +3,8 @@ package main
 import (
 	"log"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
+	"workerrest/internal/settings"
 )
 
 // ---------- 内部：计划与状态机 ----------
@@ -32,20 +34,20 @@ func (s *Scheduler) advanceCounter(id string) {
 // replan（保存设置 / 暂停期间结束一次自定义提醒）都会把冻结锚点当成过期、按
 // now+interval 重新起算；恢复时 resume 又整体平移 delta，等于把整段暂停算了两遍
 // （用户看到「还剩 50 分钟」，而配置是 20 分钟）。
-func (s *Scheduler) prevCountdownAnchorsLocked(now int64) map[string]cdAnchor {
+func (s *Scheduler) prevCountdownAnchorsLocked(now int64) map[string]plan.CdAnchor {
 	ref := now
 	frozen := false
 	if s.state.Paused && s.state.PausedAt > 0 && s.state.PausedAt < ref {
 		ref = s.state.PausedAt
 		frozen = true
 	}
-	prev := map[string]cdAnchor{}
+	prev := map[string]plan.CdAnchor{}
 	for _, l := range s.state.Lines {
 		if l.Source != "countdown" || l.At <= ref {
 			continue
 		}
 		if old, ok := prev[l.Type]; !ok || l.At < old.At {
-			prev[l.Type] = cdAnchor{At: l.At, Iv: s.anchorIv[l.Type], Frozen: frozen}
+			prev[l.Type] = plan.CdAnchor{At: l.At, Iv: s.anchorIv[l.Type], Frozen: frozen}
 		}
 	}
 	return prev
@@ -54,7 +56,7 @@ func (s *Scheduler) prevCountdownAnchorsLocked(now int64) map[string]cdAnchor {
 // syncAnchorIvLocked 按重算后的挂起线同步锚点间隔表：池里每条倒计时线的锚点，
 // 其产生间隔就是当前配置间隔（沿用者只在间隔未变时才会沿用，重新起算者天然是新间隔）。
 // 调用方必须已持有 s.mu。
-func (s *Scheduler) syncAnchorIvLocked(cfg *Settings) {
+func (s *Scheduler) syncAnchorIvLocked(cfg *settings.Settings) {
 	s.anchorIv = map[string]int64{}
 	for _, l := range s.state.Lines {
 		if l.Source != "countdown" {
@@ -108,7 +110,7 @@ func (s *Scheduler) replan() {
 // refreshDerivedLocked 刷新状态卡用的派生视图（分组最近一条 + 各固定线「下次」时刻表）。
 // 调用方必须已持有 s.mu。倒计时锚点从当前挂起线收集：replan 里是新池（锚点已保留），
 // startBreak 消费后是旧线（刚消费那条已到期不会混入，其余身份的进度同样不被清掉）。
-func (s *Scheduler) refreshDerivedLocked(cfg *Settings, now int64) {
+func (s *Scheduler) refreshDerivedLocked(cfg *settings.Settings, now int64) {
 	prev := s.prevCountdownAnchorsLocked(now)
 	split := planNextBreakSplit(cfg, now, s.state.ShortsSinceLong, s.consumed, prev)
 	s.state.Rest = planRefOf(split.Builtin)
@@ -281,11 +283,11 @@ func (s *Scheduler) stateForRenderer() model.SchedulerState {
 		st.FixedNext["takeout"] = pp.DueAt
 		// 合并组「下次外卖 / 自定义提醒」若当前就是外卖那条，推迟后的时刻也要跟着走
 		// （与 FixedNext 同一口径；外卖的推迟 / 跳过不经调度器，不覆盖的话状态卡还显示旧时刻）
-		if st.Other != nil && st.Other.Name == TAKEOUT_NAME {
-			st.Other = &model.PlanRef{Name: TAKEOUT_NAME, At: pp.DueAt}
+		if st.Other != nil && st.Other.Name == plan.TAKEOUT_NAME {
+			st.Other = &model.PlanRef{Name: plan.TAKEOUT_NAME, At: pp.DueAt}
 		}
 	}
-	st.Timeline = todayTimeline(cfg, nowMs(), TimelineOptions{
+	st.Timeline = todayTimeline(cfg, nowMs(), plan.TimelineOptions{
 		Skip:             s.consumedCopy(),
 		Shifts:           st.FixedNext,
 		CountdownLines:   st.Lines,

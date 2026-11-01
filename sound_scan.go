@@ -8,6 +8,8 @@ import (
 	"sort"
 	"strings"
 	"workerrest/internal/jsonx"
+	"workerrest/internal/model"
+	"workerrest/internal/settings"
 )
 
 // 随包提示音目录（sounds/）的启动体检。
@@ -61,11 +63,11 @@ func (n *SoundScanNotice) empty() bool {
 func (a *App) scanSoundDir() SoundScanNotice {
 	out := SoundScanNotice{Dir: builtinSoundDir()}
 
-	registered := make(map[string]bool, len(builtinMusic)+4)
-	for _, b := range builtinMusic {
-		registered[strings.ToLower(b.file)] = true
+	registered := make(map[string]bool, len(settings.BuiltinSoundFiles())+4)
+	for _, f := range settings.BuiltinSoundFiles() {
+		registered[strings.ToLower(f)] = true
 	}
-	var cfg SoundCfg
+	var cfg model.SoundCfg
 	if s := a.cfgSnapshot(); s != nil {
 		cfg = s.SoundCfg()
 	}
@@ -377,8 +379,8 @@ func (a *App) mutateSoundMusic(fn func(music []any) ([]any, bool)) bool {
 		return false
 	}
 	snd["music"] = next
-	normalizeForSave(raw)
-	s := &Settings{raw: raw, path: cur.Path()}
+	settings.NormalizeForSave(raw)
+	s := settings.New(raw, cur.Path())
 	if err := s.Save(); err != nil {
 		a.mu.Unlock()
 		log.Printf("[sound] 保存音乐列表失败: %v", err)

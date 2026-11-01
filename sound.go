@@ -5,7 +5,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"workerrest/internal/jsonx"
+	"workerrest/internal/model"
+	"workerrest/internal/settings"
 )
 
 // 提示音：历史源码/sound.ts 的对应物。
@@ -71,7 +72,7 @@ var soundMimeByExt = map[string]string{
 
 // builtinSoundDirFn 内置提示音随包目录的注入点：App 启动时注入
 // <resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）；单测可指到临时目录。
-// 与 settings.go 的 resourcesRootHintFn 同一套路 —— 避免包级函数反向依赖 App。
+// 与 settings 包的 resourcesRootHintFn 同一套路 —— 避免包级函数反向依赖 App。
 var builtinSoundDirFn func() string
 
 // builtinSoundDir 内置提示音目录；未注入时兜底相对路径（单测的 cwd 就是模块根）
@@ -80,73 +81,6 @@ func builtinSoundDir() string {
 		return builtinSoundDirFn()
 	}
 	return builtinSoundRelDir
-}
-
-// ---------- 配置视图 ----------
-
-// SoundMusicItem 音乐列表的一条（内置提示音与用户导入的曲子同构：内置的 file 是
-// 相对文件名，导入的是绝对路径）
-type SoundMusicItem struct {
-	ID      string
-	File    string
-	Name    string
-	Enabled bool
-}
-
-// SoundCfg 声音配置的类型化视图（字段名与 types.ts 的 SoundConfig 对齐）
-type SoundCfg struct {
-	Enabled  bool
-	Volume   float64
-	Mode     string // single | random | sequence
-	SingleID string
-	Music    []SoundMusicItem
-}
-
-// SoundCfg 取出声音配置。缺字段按「与默认配置同口径」兜底：启用、音量 0.6、单曲循环。
-func (s *Settings) SoundCfg() SoundCfg {
-	return soundCfgOf(s.Map("sound"))
-}
-
-func soundCfgOf(m map[string]any) SoundCfg {
-	cfg := SoundCfg{Enabled: true, Volume: 0.6, Mode: "single", Music: []SoundMusicItem{}}
-	if m == nil {
-		return cfg
-	}
-	cfg.Enabled = mapFlag(m, "enabled", true)
-	if v, ok := jsonx.ToNumber(m["volume"]); ok {
-		cfg.Volume = clamp01(v)
-	}
-	if mode := mapStr(m, "mode", "single"); mode == "random" || mode == "sequence" {
-		cfg.Mode = mode
-	}
-	cfg.SingleID = mapStr(m, "singleId", "")
-	for _, it := range jsonx.AnySlice(m["music"]) {
-		mi, ok := it.(map[string]any)
-		if !ok {
-			continue
-		}
-		file := mapStr(mi, "file", "")
-		if strings.TrimSpace(file) == "" {
-			continue
-		}
-		cfg.Music = append(cfg.Music, SoundMusicItem{
-			ID:      mapStr(mi, "id", ""),
-			File:    file,
-			Name:    mapStr(mi, "name", ""),
-			Enabled: mi["enabled"] != false,
-		})
-	}
-	return cfg
-}
-
-func clamp01(v float64) float64 {
-	if v < 0 {
-		return 0
-	}
-	if v > 1 {
-		return 1
-	}
-	return v
 }
 
 // ---------- 选曲（纯逻辑） ----------
@@ -194,7 +128,7 @@ func soundFileUsable(file string) bool {
 // 文件不可用都返回空串 = 静音（与 sound.ts 的 resolveSoundFile 同口径）。
 // 注意「条目是否被停用」与这里无关 —— 停用只影响 random / sequence 的选池。
 // singleId 为空 = 用户没选过单曲，按契约静音（默认值由 normalizeSound 在首次种入时补上）。
-func resolveSoundFile(cfg SoundCfg) string {
+func resolveSoundFile(cfg model.SoundCfg) string {
 	for _, m := range cfg.Music {
 		if m.ID != cfg.SingleID || cfg.SingleID == "" {
 			continue
@@ -212,7 +146,7 @@ func resolveSoundFile(cfg SoundCfg) string {
 
 // enabledMusicFiles 音乐列表里「启用 + 文件仍可用」的路径，按列表顺序。
 // random / sequence 只从这里挑；顺序游标也按这个顺序走。
-func enabledMusicFiles(cfg SoundCfg) []string {
+func enabledMusicFiles(cfg model.SoundCfg) []string {
 	out := make([]string, 0, len(cfg.Music))
 	for _, m := range cfg.Music {
 		if !m.Enabled || strings.TrimSpace(m.File) == "" {
@@ -231,7 +165,7 @@ func enabledMusicFiles(cfg SoundCfg) []string {
 //
 // rnd 是随机源注入点：生产用 math/rand 全局函数（自带锁、并发安全），单测传一个定值
 // 函数就能把 random 分支变成可断言的。
-func (a *App) soundPickNext(cfg SoundCfg, rnd func(n int) int) string {
+func (a *App) soundPickNext(cfg model.SoundCfg, rnd func(n int) int) string {
 	if !cfg.Enabled || cfg.Volume <= 0 {
 		return ""
 	}
@@ -270,7 +204,7 @@ func (a *App) customSoundDir() string {
 		}
 	}
 	// 还没有配置文件：按候选路径（= 唯一的 <运行目录>/config/settings.json）推导
-	cands := settingsCandidates(a.resourcesRoot())
+	cands := settings.Candidates(a.resourcesRoot())
 	if len(cands) == 0 {
 		return ""
 	}

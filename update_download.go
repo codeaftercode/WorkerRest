@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 	"workerrest/internal/platform"
+	"workerrest/internal/urltls"
 )
 
 // updatePending 自更新阶段落盘的元数据（供 --updated 启动后展示摘要 / 清理）
@@ -145,7 +146,7 @@ func downloadFile(url, dest string) error {
 // downloadFileLimited 是 downloadFile 的可注入上限版本（单测用小上限验证截断逻辑，
 // 不必真造 64 MiB 的响应）。
 func downloadFileLimited(url, dest string, limit int64) error {
-	if err := checkUpdateURL(url); err != nil {
+	if err := urltls.CheckUpdateURL(url); err != nil {
 		return err
 	}
 	client := newUpdateClient(10 * time.Minute)
@@ -236,7 +237,7 @@ func downloadPackage(urls []string, dest string, wantSHA string) error {
 		if u == "" {
 			continue
 		}
-		if err := checkUpdateURL(u); err != nil {
+		if err := urltls.CheckUpdateURL(u); err != nil {
 			log.Printf("[update] 跳过不合规下载地址 %s: %v", u, err)
 			lastErr = err
 			continue

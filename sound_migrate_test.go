@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"workerrest/internal/settings"
 )
 
 // 旧命名识别：只认 music- 前缀 + 8-4-4-4-12 的十六进制，别把用户自己的文件误伤。
@@ -84,7 +85,7 @@ func TestMigrateMusicFileNames(t *testing.T) {
 			"singleId": "sm-1",
 		},
 	}
-	a := &App{cfg: &Settings{raw: cfg, path: filepath.Join(root, "settings.json")}}
+	a := &App{cfg: settings.New(cfg, filepath.Join(root, "settings.json"))}
 
 	if n := a.migrateMusicFileNames(); n != 1 {
 		t.Fatalf("应迁移 1 条，得到 %d", n)

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
+	"workerrest/internal/settings"
 )
 
 // TestReminderWindowsEnableCaptureGuard 「共享屏幕时隐藏提醒窗口」必须覆盖**每一个**
@@ -64,7 +65,7 @@ func TestReminderWindowsEnableCaptureGuard(t *testing.T) {
 // SaveSettings 每次改到这个键都会走一遍，而窗口集合在启动 / server 模式下是空的。
 func TestSyncCaptureGuardToLiveWithoutWindows(t *testing.T) {
 	a := &App{
-		cfg:  &Settings{raw: defaultSettingsMap()},
+		cfg:  settings.New(settings.DefaultSettingsMap(), ""),
 		wins: map[string]*application.WebviewWindow{},
 	}
 	a.syncCaptureGuardToLive() // 不 panic 即通过

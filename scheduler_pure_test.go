@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
 )
 
 // ---------- 纯函数 ----------
@@ -19,7 +20,7 @@ func TestNextSlotAtIsStrictlyAfter(t *testing.T) {
 	if hit.At == noon {
 		t.Fatal("等于 from 的时刻不该被选中")
 	}
-	if !sameLocalDay(hit.At, noon+86_400_000) {
+	if !plan.SameLocalDay(hit.At, noon+86_400_000) {
 		t.Fatalf("应落到第二天，得到 %d", hit.At)
 	}
 	// 早一秒：就是今天这条
@@ -38,12 +39,12 @@ func TestFindDueTimeSlotsDedupAndPrune(t *testing.T) {
 		{ID: "d", Hour: 12, Minute: 0, Repeat: "daily", Enabled: false},
 	}
 	fired := map[string]bool{}
-	got := findDueTimeSlots(slots, now, fired, 0)
+	got := plan.FindDueTimeSlots(slots, now, fired, 0)
 	if len(got) != 2 {
 		t.Fatalf("应命中 a/b 两条（c 未到点、d 已停用），得到 %d", len(got))
 	}
 	// 同一分钟再跑一次：不重复返回
-	if again := findDueTimeSlots(slots, now+5_000, fired, 0); len(again) != 0 {
+	if again := plan.FindDueTimeSlots(slots, now+5_000, fired, 0); len(again) != 0 {
 		t.Fatalf("同一分钟不该重复触发，得到 %d", len(again))
 	}
 	if len(fired) != 2 {
@@ -51,7 +52,7 @@ func TestFindDueTimeSlotsDedupAndPrune(t *testing.T) {
 	}
 	// 跨天：旧键该被清掉
 	nextDay := now + 86_400_000
-	findDueTimeSlots(nil, nextDay, fired, 0)
+	plan.FindDueTimeSlots(nil, nextDay, fired, 0)
 	if len(fired) != 0 {
 		t.Fatalf("跨天后旧键应清空，得到 %v", fired)
 	}
@@ -72,9 +73,9 @@ func TestExpandBuiltinCountdownStopsAtMidnight(t *testing.T) {
 		"long":{"enabled":false},"longEveryNShort":2}`)
 	now := time.Date(2026, 10, 8, 23, 30, 0, 0, time.Local).UnixMilli()
 	first := model.PlannedBreak{Type: "short", Name: "短休息", At: now + 600_000, Source: "countdown"}
-	chain := expandBuiltinCountdown(s, now, 0, nil, &first)
+	chain := plan.ExpandBuiltinCountdown(s, now, 0, nil, &first)
 	for _, p := range chain {
-		if !sameLocalDay(p.At, now) {
+		if !plan.SameLocalDay(p.At, now) {
 			t.Fatalf("倒计时链不该跨天，得到 %d", p.At)
 		}
 	}
@@ -104,7 +105,7 @@ func TestFixedNextMapSkipsConsumedToNextDay(t *testing.T) {
 	if m2["short"] == noon {
 		t.Fatal("已消费的今天这条不该再返回")
 	}
-	if !sameLocalDay(m2["short"], noon+86_400_000) {
+	if !plan.SameLocalDay(m2["short"], noon+86_400_000) {
 		t.Fatalf("应顺延到明天 12:00，得到 %d", m2["short"])
 	}
 }
@@ -114,11 +115,11 @@ func TestTodayTimelineExcludesOtherDays(t *testing.T) {
 		{"id":"s-a","hour":23,"minute":0,"repeat":"daily","days":[],"enabled":true}]},
 		"long":{"enabled":false},"takeout":{"enabled":false}}`)
 	now := time.Date(2026, 10, 8, 22, 0, 0, 0, time.Local).UnixMilli()
-	items := todayTimeline(s, now, TimelineOptions{})
+	items := todayTimeline(s, now, plan.TimelineOptions{})
 	if len(items) != 1 {
 		t.Fatalf("今天只剩 23:00 一条，得到 %d 条", len(items))
 	}
-	if !sameLocalDay(items[0].At, now) {
+	if !plan.SameLocalDay(items[0].At, now) {
 		t.Fatal("时间线只报当天")
 	}
 }
@@ -143,7 +144,7 @@ func TestTodayTimelineFixedPostpone(t *testing.T) {
 	now := time.Date(2026, 10, 8, 11, 0, 0, 0, time.Local).UnixMilli()
 	original := time.Date(2026, 10, 8, 12, 0, 0, 0, time.Local).UnixMilli()
 	shift := time.Date(2026, 10, 8, 12, 30, 0, 0, time.Local).UnixMilli()
-	items := todayTimeline(s, now, TimelineOptions{Shifts: map[string]int64{"short": shift}})
+	items := todayTimeline(s, now, plan.TimelineOptions{Shifts: map[string]int64{"short": shift}})
 	if len(items) != 1 {
 		t.Fatalf("推迟后时间线应只剩推迟时刻那一条，得到 %d 条", len(items))
 	}
@@ -208,7 +209,7 @@ func TestStateForRendererTakeoutPostpone(t *testing.T) {
 		Count: 0,
 	}
 	st := s.stateForRenderer()
-	if st.Other == nil || st.Other.Name != TAKEOUT_NAME {
+	if st.Other == nil || st.Other.Name != plan.TAKEOUT_NAME {
 		t.Fatalf("合并组下次应是外卖，得到 %+v", st.Other)
 	}
 	if st.Other.At != due {

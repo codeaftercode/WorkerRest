@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	_ "embed"
@@ -8,6 +8,7 @@ import (
 	"strings"
 	"workerrest/internal/jsonx"
 	"workerrest/internal/model"
+	"workerrest/internal/urltls"
 )
 
 // 配置层：整份配置以 map 持有，而不是在 Go 里逐个字段声明结构体。
@@ -30,6 +31,9 @@ import (
 
 //go:embed default_settings.json
 var defaultSettingsJSON []byte
+
+// DefaultSettingsJSON 内嵌出厂默认（跨包导出，供 main 的 --export-default-settings 落盘）。
+func DefaultSettingsJSON() []byte { return defaultSettingsJSON }
 
 // ---------- 从配置里读出来的类型化结构（字段名与磁盘 JSON 逐字一致） ----------
 
@@ -62,6 +66,16 @@ type Settings struct {
 	path string
 }
 
+// New 构造一份配置（raw 是完整配置对象，path 是它实际来自的文件，空 = 全用出厂默认）。
+// 供跨包调用方（main 的绑定层）在已有 raw/path 时直接装配，避免暴露私有字段。
+func New(raw map[string]any, path string) *Settings {
+	return &Settings{raw: raw, path: path}
+}
+
+// SetPath 覆盖配置来源路径（供测试与装配场景：把一份内存配置指到指定落点后再 Save）。
+// 生产路径走 New / Load 即可，一般无需调用。
+func (s *Settings) SetPath(p string) { s.path = p }
+
 // defaultSettingsMap 出厂默认（解析内嵌的生成产物；解析不了说明生成物坏了，直接崩）
 func defaultSettingsMap() map[string]any {
 	var m map[string]any
@@ -70,6 +84,9 @@ func defaultSettingsMap() map[string]any {
 	}
 	return m
 }
+
+// DefaultSettingsMap 出厂默认（跨包导出，供 main 的恢复默认等复用）。
+func DefaultSettingsMap() map[string]any { return defaultSettingsMap() }
 
 // isPlainObject 与 config.ts 的 isPlainObject 同义：数组与 nil 都不算「普通对象」
 func isPlainObject(v any) bool {
@@ -105,6 +122,9 @@ func deepMerge(base, over any) any {
 	}
 	return out
 }
+
+// DeepMerge 深合并（跨包导出，供 main 的托盘开关 / 窗口尺寸落盘复用）。
+func DeepMerge(base, over any) any { return deepMerge(base, over) }
 
 // deepCopyValue 深拷贝一个 JSON 值（内嵌默认配置是共享的，改写前必须先拷一份）
 func deepCopyValue(v any) any {
@@ -301,6 +321,9 @@ func breakConfigOf(m map[string]any) model.BreakConfig {
 	return cfg
 }
 
+// BreakConfigOf 从一份休息配置对象读出类型化配置（跨包导出，供 main 的时间线计算复用）。
+func BreakConfigOf(m map[string]any) model.BreakConfig { return breakConfigOf(m) }
+
 // normBreakMode 触发方式只认两个合法值，其余一律按倒计时（旧配置 mode 非法时如此）
 func normBreakMode(v string) string {
 	if v == "fixed" {
@@ -472,7 +495,7 @@ func (s *Settings) UpdateSites() []string {
 			continue
 		}
 		// 用与下载/清单同一套判定，避免「配置层放行、下载层拒绝」的两套口径。
-		if err := checkUpdateURL(str); err != nil {
+		if err := urltls.CheckUpdateURL(str); err != nil {
 			continue
 		}
 		out = append(out, str)
@@ -487,7 +510,7 @@ func (s *Settings) SetSites(sites []string) {
 	raw := make([]any, 0, len(sites))
 	for _, it := range sites {
 		it = strings.TrimSpace(it)
-		if it == "" || checkUpdateURL(it) != nil {
+		if it == "" || urltls.CheckUpdateURL(it) != nil {
 			continue
 		}
 		raw = append(raw, it)

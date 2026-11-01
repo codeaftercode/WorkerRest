@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"strings"
 	"time"
+
+	"workerrest/internal/urltls"
 )
 
 // 更新链的信任边界。
@@ -50,47 +50,8 @@ const (
 	sha256HexLen = 64
 )
 
-// isLoopbackHost 判断主机名是否是本机回环（localhost / 127.0.0.0/8 / ::1）。
-func isLoopbackHost(host string) bool {
-	h := strings.TrimSpace(host)
-	if h == "" {
-		return false
-	}
-	if strings.EqualFold(h, "localhost") {
-		return true
-	}
-	if ip := net.ParseIP(h); ip != nil {
-		return ip.IsLoopback()
-	}
-	return false
-}
-
-// checkUpdateURL 校验一个更新相关地址是否可用：只允许 https；http 仅限回环地址。
-// 返回的 error 直接展示给用户（文字要能说清「为什么不给装」）。
-func checkUpdateURL(raw string) error {
-	s := strings.TrimSpace(raw)
-	if s == "" {
-		return errors.New("地址为空")
-	}
-	u, err := url.Parse(s)
-	if err != nil {
-		return errors.New("地址无法解析")
-	}
-	switch strings.ToLower(u.Scheme) {
-	case "https":
-		if u.Hostname() == "" {
-			return errors.New("地址缺少主机名")
-		}
-		return nil
-	case "http":
-		if isLoopbackHost(u.Hostname()) {
-			return nil
-		}
-		return errors.New("http 明文源已禁用（更新只走 https）")
-	default:
-		return fmt.Errorf("不支持的协议 %q（更新只走 https）", u.Scheme)
-	}
-}
+// 更新源地址校验（CheckUpdateURL / IsLoopbackHost）已下沉到 internal/urltls，
+// 供 settings 与 update 两域共用（避免 settings → update 的跨包依赖）。
 
 // sanitizeUpdateURLs 过滤出合规地址（保持原顺序）；被丢弃的记一行日志便于排查。
 func sanitizeUpdateURLs(in []string) []string {
@@ -100,7 +61,7 @@ func sanitizeUpdateURLs(in []string) []string {
 		if s == "" {
 			continue
 		}
-		if err := checkUpdateURL(s); err != nil {
+		if err := urltls.CheckUpdateURL(s); err != nil {
 			log.Printf("[update] 丢弃不合规地址 %q: %v", s, err)
 			continue
 		}
@@ -118,7 +79,7 @@ func newUpdateClient(timeout time.Duration) *http.Client {
 			if len(via) >= maxUpdateRedirects {
 				return fmt.Errorf("重定向次数超过 %d 次", maxUpdateRedirects)
 			}
-			return checkUpdateURL(req.URL.String())
+			return urltls.CheckUpdateURL(req.URL.String())
 		},
 	}
 }

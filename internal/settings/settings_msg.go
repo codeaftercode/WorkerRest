@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	"strings"
@@ -32,6 +32,10 @@ func normalizeBreakConfigOf(cfg map[string]any) map[string]any {
 	return out
 }
 
+// NormalizeBreakConfigOf 复刻 types.ts 的 normalizeBreakConfig（跨包导出，供测试与
+// main 包复用）。
+func NormalizeBreakConfigOf(cfg map[string]any) map[string]any { return normalizeBreakConfigOf(cfg) }
+
 // defaultCustomBreakConfig 自定义提醒的出厂配置（与 types.ts 的 defaultCustomBreakConfig 逐字一致）
 func defaultCustomBreakConfig() map[string]any {
 	return map[string]any{
@@ -46,8 +50,14 @@ func defaultCustomBreakConfig() map[string]any {
 	}
 }
 
+// DefaultCustomBreakConfig 自定义提醒的出厂配置（跨包导出）。
+func DefaultCustomBreakConfig() map[string]any { return defaultCustomBreakConfig() }
+
 // customBreakPrefix 自定义提醒 id 的前缀（与 types.ts 的 CUSTOM_BREAK_PREFIX 一致）
 const customBreakPrefix = "cb-"
+
+// CustomBreakPrefix 自定义提醒 id 前缀（跨包导出，供 main 的调度器判断身份用）。
+const CustomBreakPrefix = customBreakPrefix
 
 // normalizeOrder 提醒内容显示方式：只认 fixed / random / sequence，其余回 fixed
 func normalizeOrder(v any) string {

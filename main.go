@@ -10,6 +10,7 @@ import (
 	"workerrest/internal/logx"
 	"workerrest/internal/notifier"
 	"workerrest/internal/platform"
+	"workerrest/internal/settings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -83,7 +84,7 @@ func main() {
 			// 同源 —— 让 exe 自己吐出来核对，比「假设刚编译过」可靠（--no-build 拿旧 exe
 			// 时，包里是新值、恢复默认还是旧值，用户测不出来）。
 			if i+1 < len(os.Args) {
-				if err := os.WriteFile(os.Args[i+1], defaultSettingsJSON, 0o644); err != nil {
+				if err := os.WriteFile(os.Args[i+1], settings.DefaultSettingsJSON(), 0o644); err != nil {
 					log.Printf("[defaults] 导出内嵌默认失败: %v", err)
 					os.Exit(1)
 				}
@@ -189,15 +190,15 @@ func main() {
 	// 最小尺寸是布局下限（常量），不是用户偏好，故不进配置。
 	winW, winH := backend.settingsWindowSize()
 	log.Printf("[boot] 设置窗口初始尺寸 %dx%d（min %dx%d）",
-		winW, winH, settingsWindowMinWidth, settingsWindowMinHeight)
+		winW, winH, settings.SettingsWindowMinWidth, settings.SettingsWindowMinHeight)
 	// 路由 / 另有一个 Go 版诊断页（index.html），用来手点一次提醒、看环境信息。
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "settings",
 		Title:            "吃饼人也敢休息？",
 		Width:            winW,
 		Height:           winH,
-		MinWidth:         settingsWindowMinWidth,
-		MinHeight:        settingsWindowMinHeight,
+		MinWidth:         settings.SettingsWindowMinWidth,
+		MinHeight:        settings.SettingsWindowMinHeight,
 		Frameless:        true,
 		URL:              "/settings.html?win=settings",
 		BackgroundColour: application.NewRGBA(0xf5, 0xf6, 0xfa, 0xff),

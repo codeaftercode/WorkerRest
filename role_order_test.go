@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 	"workerrest/internal/role"
+	"workerrest/internal/settings"
 )
 
 // 候选专员顺序的回归（2026-10-26）。
@@ -80,12 +81,12 @@ func TestSupervisorCfgReadsOrder(t *testing.T) {
 // 归一化：order 类型不对 → 整键丢掉；数组里的杂质剔除
 func TestNormalizeSupervisorMessagesOrder(t *testing.T) {
 	raw := map[string]any{"supervisor": map[string]any{"order": "nope"}}
-	normalizeSupervisorMessages(raw)
+	settings.NormalizeSupervisorMessages(raw)
 	if _, ok := raw["supervisor"].(map[string]any)["order"]; ok {
 		t.Fatal("类型不对的 order 应被丢掉")
 	}
 	raw2 := map[string]any{"supervisor": map[string]any{"order": []any{"b", 1, "", "a", "b"}}}
-	normalizeSupervisorMessages(raw2)
+	settings.NormalizeSupervisorMessages(raw2)
 	got, _ := raw2["supervisor"].(map[string]any)["order"].([]any)
 	if len(got) != 2 || got[0] != "b" || got[1] != "a" {
 		t.Fatalf("order 归一不对: %v", got)
@@ -148,11 +149,11 @@ func TestSupervisorOrderPersistsToDisk(t *testing.T) {
 	dir := t.TempDir()
 	iso := filepath.Join(dir, "settings.json")
 	t.Setenv("WR_SETTINGS_PATH", iso)
-	s := &Settings{raw: map[string]any{"supervisor": map[string]any{"order": []any{"b", "a"}}}}
+	s := settings.New(map[string]any{"supervisor": map[string]any{"order": []any{"b", "a"}}}, "")
 	if err := s.Save(); err != nil {
 		t.Fatal(err)
 	}
-	got := loadSettings(dir).SupervisorCfg().Order
+	got := settings.Load(dir).SupervisorCfg().Order
 	if !eqKeys(got, []string{"b", "a"}) {
 		t.Fatalf("落盘后顺序丢失: got %v want [b a]", got)
 	}
@@ -160,10 +161,10 @@ func TestSupervisorOrderPersistsToDisk(t *testing.T) {
 
 // 出厂默认里的 order: [] 不能把用户存下的顺序冲掉（数组整体替换，不是合并）
 func TestDefaultOrderDoesNotOverrideUserOrder(t *testing.T) {
-	base := defaultSettingsMap()
+	base := settings.DefaultSettingsMap()
 	disk := map[string]any{"supervisor": map[string]any{"order": []any{"b", "a"}}}
-	merged, _ := deepMerge(base, disk).(map[string]any)
-	got := (&Settings{raw: merged}).SupervisorCfg().Order
+	merged, _ := settings.DeepMerge(base, disk).(map[string]any)
+	got := settings.New(merged, "").SupervisorCfg().Order
 	if !eqKeys(got, []string{"b", "a"}) {
 		t.Fatalf("出厂默认覆盖了用户顺序: got %v want [b a]", got)
 	}

@@ -1,0 +1,110 @@
+{
+  "appName": "吃饼人也敢休息？",
+  "short": {
+    "enabled": true,
+    "mode": "countdown",
+    "intervalMs": 600000,
+    "durationMs": 20000,
+    "notifyBeforeMs": 10000,
+    "postponeMs": 120000,
+    "slots": []
+  },
+  "long": {
+    "enabled": true,
+    "mode": "countdown",
+    "intervalMs": 1200000,
+    "durationMs": 300000,
+    "notifyBeforeMs": 10000,
+    "postponeMs": 300000,
+    "slots": []
+  },
+  "customBreaks": [],
+  "longEveryNShort": 2,
+  "idlePauseMin": 5,
+  "dndPause": true,
+  "fullscreenPause": true,
+  "appPause": {
+    "enabled": true,
+    "seeded": false,
+    "items": []
+  },
+  "theme": "light",
+  "appearance": {
+    "color": "#4f7cff",
+    "transparency": 0.05,
+    "blur": true,
+    "fullscreen": false,
+    "alwaysOnTop": true,
+    "widthPct": 95,
+    "heightPct": 95,
+    "hideOnShare": true
+  },
+  "allScreens": true,
+  "window": {
+    "width": 874,
+    "height": 857,
+    "rememberSize": true,
+    "lastWidth": 0,
+    "lastHeight": 0
+  },
+  "sound": {
+    "enabled": true,
+    "volume": 0.6,
+    "sound": "short_start.wav",
+    "custom": "",
+    "mode": "single",
+    "singleId": "sm-builtin-short_start",
+    "music": []
+  },
+  "shortcuts": {
+    "postpone": "Ctrl+Alt+P",
+    "endEarly": "Ctrl+Alt+X",
+    "pause": "Ctrl+Alt+S",
+    "nextBreak": "Ctrl+Alt+B"
+  },
+  "reminderMessages": {
+    "short": {
+      "order": "random",
+      "fixedId": "",
+      "items": []
+    },
+    "long": {
+      "order": "random",
+      "fixedId": "",
+      "items": []
+    },
+    "takeout": {
+      "order": "random",
+      "fixedId": "",
+      "items": []
+    }
+  },
+  "supervisor": {
+    "enabled": true,
+    "gaze": true,
+    "selection": "random",
+    "fixedRole": "秦始皇",
+    "order": []
+  },
+  "takeout": {
+    "enabled": true,
+    "leadSec": 10,
+    "postponeMin": 2,
+    "pauseAction": "postpone",
+    "slots": [
+      {
+        "id": "tko-lunch",
+        "hour": 11,
+        "minute": 30,
+        "repeat": "daily",
+        "days": [],
+        "enabled": true
+      }
+    ]
+  },
+  "autostart": false,
+  "startMinimized": false,
+  "installId": "",
+  "checkUpdateOnStart": true,
+  "sites": ["https://www.goodgoodlive.com/worker-rest/version.json"]
+}

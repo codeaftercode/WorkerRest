@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"workerrest/internal/urltls"
 )
 
 // 更新链信任边界的回归（审计 BLOCKER-2）。
@@ -39,7 +41,7 @@ func TestCheckUpdateURL(t *testing.T) {
 		{"https://", false, "缺主机名"},
 	}
 	for _, c := range cases {
-		err := checkUpdateURL(c.url)
+		err := urltls.CheckUpdateURL(c.url)
 		if c.ok && err != nil {
 			t.Errorf("%s：%q 应放行，却报错 %v", c.note, c.url, err)
 		}

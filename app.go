@@ -13,6 +13,7 @@ import (
 	"workerrest/internal/idle"
 	"workerrest/internal/model"
 	"workerrest/internal/role"
+	"workerrest/internal/settings"
 	"workerrest/internal/stats"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -54,8 +55,8 @@ type App struct {
 	sess       *model.BreakInfo
 	start      time.Time
 
-	cfg       *Settings // 整份配置（见 settings.go 的说明；保存时会整体替换指针）
-	rolesRoot string    // 督休专员目录落点（随包 supervisors/，见 resourcesRoot）
+	cfg       *settings.Settings // 整份配置（见 settings.go 的说明；保存时会整体替换指针）
+	rolesRoot string             // 督休专员目录落点（随包 supervisors/，见 resourcesRoot）
 	sched     *Scheduler
 
 	// 台词选取：random 用 rng（测试可固定种子），sequence 的游标按 key 记忆
@@ -161,10 +162,10 @@ func NewApp(app *application.App) *App {
 	}
 	a.rolesRoot = filepath.Join(a.resourcesRoot(), "supervisors")
 	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
-	resourcesRootHintFn = a.resourcesRoot
+	settings.SetResourcesRootHint(a.resourcesRoot)
 	// 内置提示音随包目录：<resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）
 	builtinSoundDirFn = func() string { return filepath.Join(a.resourcesRoot(), "sounds") }
-	a.cfg = loadSettings(a.resourcesRoot())
+	a.cfg = settings.Load(a.resourcesRoot())
 	return a
 }
 
@@ -285,7 +286,7 @@ func orNone(s string) string {
 
 // cfgSnapshot 取当前配置指针。保存配置时会**整体替换** a.cfg（新对象），所以读取一律
 // 先拿一次快照再用——不要在别处直接摸 a.cfg，那会和 settings:save 抢同一块内存。
-func (a *App) cfgSnapshot() *Settings {
+func (a *App) cfgSnapshot() *settings.Settings {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	return a.cfg

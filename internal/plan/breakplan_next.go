@@ -1,4 +1,4 @@
-package main
+package plan
 
 import (
 	"sort"
@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 	"workerrest/internal/model"
+	"workerrest/internal/settings"
 )
 
 // ---------- 下一次休息（breakPlan.ts） ----------
@@ -67,7 +68,7 @@ func nextSlotAt(slots []model.TimeSlot, from int64) (SlotHit, bool) {
 
 // builtinCountdownLine 内置短/长的倒计时线：没有启用中的倒计时类型时返回 false。
 // 自定义提醒不参与这条线（各自独立成线），所以这里只看 short / long。
-func builtinCountdownLine(s *Settings, now int64, shortsSinceLong int) (model.PlannedBreak, bool) {
+func builtinCountdownLine(s *settings.Settings, now int64, shortsSinceLong int) (model.PlannedBreak, bool) {
 	var cds []string
 	short, long := s.Break("short"), s.Break("long")
 	if short.Enabled && short.Mode == "countdown" {
@@ -98,7 +99,7 @@ func builtinCountdownLine(s *Settings, now int64, shortsSinceLong int) (model.Pl
 }
 
 // fixedLines 固定时刻线：每种启用且为固定时间模式的休息各查一次时刻表
-func fixedLines(s *Settings, now int64) []model.PlannedBreak {
+func fixedLines(s *settings.Settings, now int64) []model.PlannedBreak {
 	out := []model.PlannedBreak{}
 	for _, e := range s.BreakEntries() {
 		if !e.Config.Enabled || e.Config.Mode != "fixed" {
@@ -158,7 +159,7 @@ type cdAnchor struct {
 // prevCountdownAnchorsLocked）：未到期、未被消费且间隔未变的锚点原样沿用——
 // 设置页任意保存都会触发 replan，不能把用户已流逝的倒计时进度清零；
 // 间隔改了的立刻按新间隔重新起算。
-func schedulerLines(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) []model.PlannedBreak {
+func schedulerLines(s *settings.Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) []model.PlannedBreak {
 	lines := fixedLines(s, now)
 	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
 		cur, _ := s.BreakByID(cd.Type)
@@ -196,7 +197,7 @@ func countdownAnchor(prev map[string]cdAnchor, typ string, now int64, skip map[s
 }
 
 // planNextBreak 算出下一次该休息的时刻；全部关闭 / 固定模式下没有启用条目时返回 false
-func planNextBreak(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) (model.PlannedBreak, bool) {
+func planNextBreak(s *settings.Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) (model.PlannedBreak, bool) {
 	pool := schedulerLines(s, now, shortsSinceLong, skip, prev)
 	if len(pool) == 0 {
 		return model.PlannedBreak{}, false
@@ -219,7 +220,7 @@ func describePlan(p *model.PlannedBreak) string {
 // takeoutLine 外卖提醒的「原定时刻」（下一次条目的时刻，不含提前通知——提前通知只是
 // 先弹个小窗，真实提醒窗口仍在原定时刻弹出）。外卖不进休息调度（窗口独立、永不自动收窗），
 // 这里只为设置页状态卡提供倒计时。固定时刻每天循环，查今天与明天两天足够覆盖「下一个还没到的时刻」。
-func takeoutLine(s *Settings, now int64) (model.PlannedBreak, bool) {
+func takeoutLine(s *settings.Settings, now int64) (model.PlannedBreak, bool) {
 	if !s.TakeoutEnabled() {
 		return model.PlannedBreak{}, false
 	}
@@ -251,7 +252,7 @@ func takeoutLine(s *Settings, now int64) (model.PlannedBreak, bool) {
 // 外卖 + 自定义提醒一组（「下次XX提醒」），两边互不混用。
 // 全局 next（planNextBreak）不含外卖 —— 外卖窗口独立于休息调度；分组视图把它算进
 // other 只是为了让状态卡能显示「下次外卖提醒还有多久」。
-func planNextBreakSplit(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) model.PlanSplit {
+func planNextBreakSplit(s *settings.Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) model.PlanSplit {
 	lines := fixedLines(s, now)
 	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
 		cur, _ := s.BreakByID(cd.Type)
@@ -294,7 +295,7 @@ func planNextBreakSplit(s *Settings, now int64, shortsSinceLong int, skip map[st
 // 与 planNextBreak 同一口径：已消费的 occurrence 不返回，并顺着时刻表找**再下一次**
 // （今天 12:00 被跳过后，摘要应显示明天 12:00，而不是把这条身份整个抹掉）。
 // 倒计时模式的身份不出现在表里（摘要里倒计时本就不展示具体时刻）。
-func fixedNextMap(s *Settings, now int64, skip map[string]bool) map[string]int64 {
+func fixedNextMap(s *settings.Settings, now int64, skip map[string]bool) map[string]int64 {
 	out := map[string]int64{}
 	for _, e := range s.BreakEntries() {
 		c := e.Config

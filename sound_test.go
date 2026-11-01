@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"workerrest/internal/model"
+	"workerrest/internal/settings"
 )
 
 // 提示音这一层的回归。
@@ -28,13 +30,13 @@ func newSoundApp(t *testing.T, cfgJSON string) (*App, string) {
 	t.Helper()
 	dir := t.TempDir()
 	s := testSettings(t, cfgJSON)
-	s.path = filepath.Join(dir, "settings.json")
+	s.SetPath(filepath.Join(dir, "settings.json"))
 	return &App{cfg: s}, dir
 }
 
 // soundCfgFromJSON 从「含外层 sound 键」的整份配置里取出声音配置视图
-// （soundCfgOf 收的是 sound 对象本身，别直接喂整份配置）
-func soundCfgFromJSON(t *testing.T, js string) SoundCfg {
+// （settings.SoundCfgOf 收的是 sound 对象本身，别直接喂整份配置）
+func soundCfgFromJSON(t *testing.T, js string) model.SoundCfg {
 	t.Helper()
 	s := testSettings(t, js)
 	if s.Map("sound") == nil {
@@ -119,21 +121,21 @@ func injectBuiltinSoundDir(t *testing.T, dir string) {
 // 判定逻辑在临时目录上验（不依赖仓库布局）；真实源文件在不在仓库里由
 // TestBuiltinSoundSourceFilesOnDisk 单独验。
 func TestBuiltinSoundsPresent(t *testing.T) {
-	if len(builtinMusic) != 4 {
-		t.Fatalf("内置提示音应有 4 条，得到 %d", len(builtinMusic))
+	if len(settings.BuiltinSounds()) != 4 {
+		t.Fatalf("内置提示音应有 4 条，得到 %d", len(settings.BuiltinSounds()))
 	}
 	dir := t.TempDir()
 	injectBuiltinSoundDir(t, dir)
-	for _, b := range builtinMusic {
-		writeSoundFile(t, filepath.Join(dir, b.file), 64)
+	for _, b := range settings.BuiltinSounds() {
+		writeSoundFile(t, filepath.Join(dir, b.File), 64)
 	}
-	for _, b := range builtinMusic {
-		if !builtinSoundExists(b.file) {
-			t.Errorf("内置提示音 %s 不在随包目录里（%s/%s）", b.file, dir, b.file)
+	for _, b := range settings.BuiltinSounds() {
+		if !builtinSoundExists(b.File) {
+			t.Errorf("内置提示音 %s 不在随包目录里（%s/%s）", b.File, dir, b.File)
 		}
-		url := builtinSoundURL(b.file)
-		if url != builtinSoundURLDir+b.file {
-			t.Errorf("%s 的播放 URL 应是 %s，得到 %s", b.file, builtinSoundURLDir+b.file, url)
+		url := builtinSoundURL(b.File)
+		if url != builtinSoundURLDir+b.File {
+			t.Errorf("%s 的播放 URL 应是 %s，得到 %s", b.File, builtinSoundURLDir+b.File, url)
 		}
 	}
 	if builtinSoundExists("nope.wav") {
@@ -156,10 +158,10 @@ func TestBuiltinSoundsPresent(t *testing.T) {
 // 仓库里的内置音源文件四个都在 —— 打包预置的源头（make_portable.py 从这里拷），
 // 缺一个打出来的便携包就没声音。默认兜底目录就是相对 cwd 的 sounds/（单测 cwd = 模块根）。
 func TestBuiltinSoundSourceFilesOnDisk(t *testing.T) {
-	for _, b := range builtinMusic {
-		st, err := os.Stat(filepath.Join(builtinSoundRelDir, filepath.Base(b.file)))
+	for _, b := range settings.BuiltinSounds() {
+		st, err := os.Stat(filepath.Join(builtinSoundRelDir, filepath.Base(b.File)))
 		if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
-			t.Errorf("源文件缺失或为空：%s/%s", builtinSoundRelDir, b.file)
+			t.Errorf("源文件缺失或为空：%s/%s", builtinSoundRelDir, b.File)
 		}
 	}
 }
@@ -168,7 +170,7 @@ func TestBuiltinSoundSourceFilesOnDisk(t *testing.T) {
 
 func TestSoundCfgOf(t *testing.T) {
 	// 缺字段：按默认（启用 / 0.6 / single）
-	empty := soundCfgOf(nil)
+	empty := settings.SoundCfgOf(nil)
 	if !empty.Enabled || empty.Volume != 0.6 || empty.Mode != "single" {
 		t.Fatalf("空配置应回默认，得到 %+v", empty)
 	}
@@ -181,7 +183,7 @@ func TestSoundCfgOf(t *testing.T) {
 			"不是对象",
 		},
 	}
-	cfg := soundCfgOf(raw)
+	cfg := settings.SoundCfgOf(raw)
 	if cfg.Enabled || cfg.Volume != 1 || cfg.Mode != "single" {
 		t.Fatalf("异常值应被夹紧 / 兜底，得到 %+v", cfg)
 	}

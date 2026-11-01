@@ -5,6 +5,8 @@ import (
 	"time"
 	"workerrest/internal/logx"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
+	"workerrest/internal/settings"
 )
 
 // ---------- 触发与推迟（对应 main.ts 的 checkTakeoutReminders） ----------
@@ -80,9 +82,9 @@ func (a *App) checkTakeoutReminders() {
 	// 暂停只管短 / 长休息，外卖自己按这份配置决定弹不弹。
 	if a.sched != nil && a.sched.isPaused() {
 		switch cfg.TakeoutPauseAction() {
-		case PauseActionRemind:
+		case settings.PauseActionRemind:
 			// 照常提醒：继续往下走下面的四条触发线
-		case PauseActionPostpone:
+		case settings.PauseActionPostpone:
 			if a.postponeTakeoutWhilePaused(cfg, hasPP) {
 				return
 			}
@@ -180,7 +182,7 @@ func (a *App) checkTakeoutReminders() {
 // 返回 false 表示这次没法推迟（「可推迟」填了 0，没有时长可推），由调用方退化成跳过。
 // 已有一次推迟在路上时，本分钟到点的其它条目并进那一次（外卖提醒窗口只有一扇，
 // 标题也不区分时刻），记进 takeoutFired 免得恢复后再补弹。
-func (a *App) postponeTakeoutWhilePaused(cfg *Settings, hasPP bool) bool {
+func (a *App) postponeTakeoutWhilePaused(cfg *settings.Settings, hasPP bool) bool {
 	ms := int64(cfg.TakeoutPostponeMin()) * 60_000
 	if ms <= 0 {
 		return false
@@ -248,7 +250,7 @@ func (a *App) postponeTakeoutWhilePaused(cfg *Settings, hasPP bool) bool {
 //   - 推迟线：到点（DueAt）即记一次跳过并清掉推迟计划（暂停期间不补弹）；
 //   - 固定时刻线：按分钟匹配（与真窗同口径），每个到点的条目各记一次；
 //   - 提前通知线：暂停期间根本不弹小窗，因此不单独记账（到点那一跳已记）。
-func (a *App) skipTakeoutWhilePaused(cfg *Settings) {
+func (a *App) skipTakeoutWhilePaused(cfg *settings.Settings) {
 	now := nowMs()
 	ppFired := false
 	var hits []model.TimeSlot
@@ -301,7 +303,7 @@ func (a *App) showTakeoutPreNotify(slot model.TimeSlot, targetAt int64) {
 	info := PreBreakInfo{
 		Owner:         "takeout",
 		Custom:        true,
-		Title:         TAKEOUT_NAME,
+		Title:         plan.TAKEOUT_NAME,
 		CountdownTail: " 秒",
 		PostponeMin:   cfg.TakeoutPostponeMin(),
 		// 背景色与休息预通知同源（通用配置 → 提醒窗口 → 背景颜色）

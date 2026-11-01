@@ -15,6 +15,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"workerrest/internal/role"
+	"workerrest/internal/settings"
 	"workerrest/internal/winproc"
 )
 
@@ -43,19 +44,19 @@ func (a *App) SaveSettings(next map[string]any) bool {
 	a.mu.Lock()
 	beforeAutostart := a.cfg.Autostart()
 	beforeHideOnShare := a.cfg.AppearanceCfg().HideOnShare
-	merged, _ := deepMerge(a.cfg.Raw(), next).(map[string]any)
+	merged, _ := settings.DeepMerge(a.cfg.Raw(), next).(map[string]any)
 	if merged == nil {
 		a.mu.Unlock()
 		log.Printf("[settings] 保存被忽略：入参不是对象")
 		return false
 	}
-	s := &Settings{raw: merged, path: a.cfg.Path()}
+	s := settings.New(merged, a.cfg.Path())
 	// window.lastWidth / lastHeight 是 **Go 独占写**的运行时状态（窗口 resize 时记的），
 	// 而设置页拿到的整份 S 是打开页面那一刻的快照：用户拖大窗口后再改别的设置，
 	// 前端会把旧值原样送回来，深合并后就把刚记下的尺寸顶掉了。所以合并后一律
 	// 以当前配置里的值为准 —— 前端只允许改 rememberSize（勾选框），无权写尺寸。
 	keepWindowLastSize(a.cfg.Raw(), merged)
-	normalizeForSave(merged)
+	settings.NormalizeForSave(merged)
 	if err := s.Save(); err != nil {
 		a.mu.Unlock()
 		log.Printf("[settings] 保存失败: %v", err)
@@ -116,12 +117,12 @@ func (a *App) ResetSettings() map[string]any {
 	// 不跑这一步的话，用户点完「恢复默认」看到的是空的提醒内容面板 / 空的应用列表 / 空的
 	// 音乐列表，得重启一次才补齐 —— 那与「恢复默认 = 恢复成出厂那套值」不符
 	// （2026-10-29 用户明确要求恢复默认后立刻就是出厂那套值）。
-	fresh := defaultSettingsMap()
-	normalizeLoad(fresh)
+	fresh := settings.DefaultSettingsMap()
+	settings.NormalizeLoad(fresh)
 	if keepKey != "" {
 		fresh["installId"] = keepKey
 	}
-	s := &Settings{raw: fresh, path: cur}
+	s := settings.New(fresh, cur)
 	if err := s.Save(); err != nil {
 		a.mu.Unlock()
 		return map[string]any{"ok": false, "message": "写入失败：" + err.Error()}
@@ -275,8 +276,8 @@ func (a *App) clearRoleFromSettings(name string) {
 	if !changed {
 		return
 	}
-	s := &Settings{raw: raw, path: a.cfg.Path()}
-	normalizeForSave(raw)
+	s := settings.New(raw, a.cfg.Path())
+	settings.NormalizeForSave(raw)
 	if err := s.Save(); err != nil {
 		log.Printf("[settings] 清理已删除督休专员的配置失败：%v", err)
 		return

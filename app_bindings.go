@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
 	"workerrest/internal/role"
 )
 
@@ -291,7 +292,7 @@ func (a *App) StartBreak(kind string) string {
 // （见 历史源码/types.ts 的 SchedulerState 与 main.ts 的 stateForRenderer）。
 func (a *App) GetState() map[string]any {
 	st := model.SchedulerState{
-		Phase: "idle", NextType: "short", NextName: shortBreakName,
+		Phase: "idle", NextType: "short", NextName: plan.ShortBreakName,
 		Lines: []model.PlannedBreak{}, Timeline: []model.TimelineItem{},
 		FixedNext: map[string]int64{}, PauseReasons: []string{},
 	}

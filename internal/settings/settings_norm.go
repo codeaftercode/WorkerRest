@@ -1,4 +1,4 @@
-package main
+package settings
 
 import (
 	"math"
@@ -15,6 +15,32 @@ var builtinMusic = []soundMusic{
 	{"sm-builtin-short_end", "short_end.wav", "双音下行"},
 	{"sm-builtin-long_start", "long_start.wav", "三音上行"},
 	{"sm-builtin-long_end", "long_end.wav", "三音下行"},
+}
+
+// BuiltinSound 内置提示音的一条（id/file/name 与内置清单逐字一致）。
+type BuiltinSound struct {
+	ID   string
+	File string
+	Name string
+}
+
+// BuiltinSounds 内置提示音的完整清单（跨包导出，供 main 的随包目录扫描与测试复用）。
+func BuiltinSounds() []BuiltinSound {
+	out := make([]BuiltinSound, 0, len(builtinMusic))
+	for _, b := range builtinMusic {
+		out = append(out, BuiltinSound{ID: b.id, File: b.file, Name: b.name})
+	}
+	return out
+}
+
+// BuiltinSoundFiles 内置提示音的文件名（相对名，跨包导出，供 main 的随包目录扫描
+// 判断「哪些文件名已登记」用）。
+func BuiltinSoundFiles() []string {
+	out := make([]string, 0, len(builtinMusic))
+	for _, b := range builtinMusic {
+		out = append(out, b.file)
+	}
+	return out
 }
 
 var reWavExt = regexp.MustCompile(`(?i)\.wav$`)
@@ -161,6 +187,9 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 		"slots":       slotsToAny(normalizeTimeSlots(o["slots"])),
 	}
 }
+
+// NormalizeTakeout 归一化整份外卖配置（跨包导出，供测试与 main 包复用）。
+func NormalizeTakeout(raw map[string]any) map[string]any { return normalizeTakeout(raw) }
 
 // appPausePreset 内置的常用视频会议软件（与 frontend/dist/settings.js 的 APP_PAUSE_PRESETS 逐字一致）。
 //
@@ -367,8 +396,8 @@ func normalizeWindow(raw map[string]any) {
 		cfg = map[string]any{}
 		raw["window"] = cfg
 	}
-	cfg["width"] = float64(clampInt(mapInt(cfg, "width", settingsWindowDefaultWidth), settingsWindowMinWidth, settingsWindowMaxWidth))
-	cfg["height"] = float64(clampInt(mapInt(cfg, "height", settingsWindowDefaultHeight), settingsWindowMinHeight, settingsWindowMaxHeight))
+	cfg["width"] = float64(clampInt(mapInt(cfg, "width", SettingsWindowDefaultWidth), SettingsWindowMinWidth, SettingsWindowMaxWidth))
+	cfg["height"] = float64(clampInt(mapInt(cfg, "height", SettingsWindowDefaultHeight), SettingsWindowMinHeight, SettingsWindowMaxHeight))
 	lw, lh := int(mapInt(cfg, "lastWidth", 0)), int(mapInt(cfg, "lastHeight", 0))
 	if validWindowSize(lw, lh) {
 		cfg["lastWidth"] = float64(lw)
@@ -381,6 +410,9 @@ func normalizeWindow(raw map[string]any) {
 		cfg["rememberSize"] = true
 	}
 }
+
+// NormalizeWindow 归一化「设置窗口尺寸」块（跨包导出，供测试复用）。
+func NormalizeWindow(raw map[string]any) { normalizeWindow(raw) }
 
 // cleanLegacyKeys 清理已删除功能残留在配置里的旧键。
 //
