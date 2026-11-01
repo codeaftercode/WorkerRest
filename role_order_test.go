@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"testing"
+	"workerrest/internal/role"
 )
 
 // 候选专员顺序的回归（2026-10-26）。
@@ -12,7 +13,7 @@ import (
 // 画廊显示顺序与「顺序轮换」的出场次序**共用**这一份 —— 拖一次两边同时生效，
 // 不会出现「画廊一个样、轮换另一个样」的劈叉。
 
-func roleNames(roles []Role) []string {
+func roleNames(roles []role.Role) []string {
 	out := make([]string, 0, len(roles))
 	for _, r := range roles {
 		out = append(out, r.Name)
@@ -32,9 +33,9 @@ func eqKeys(a, b []string) bool {
 	return true
 }
 
-// applyRoleOrder：按 order 重排；order 里缺的追加在后，多余的忽略
+// role.ApplyRoleOrder：按 order 重排；order 里缺的追加在后，多余的忽略
 func TestApplyRoleOrder(t *testing.T) {
-	roles := []Role{{Name: "a"}, {Name: "b"}, {Name: "c"}}
+	roles := []role.Role{{Name: "a"}, {Name: "b"}, {Name: "c"}}
 	cases := []struct {
 		name  string
 		order []string
@@ -48,7 +49,7 @@ func TestApplyRoleOrder(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := roleNames(applyRoleOrder(roles, tc.order))
+			got := roleNames(role.ApplyRoleOrder(roles, tc.order))
 			if !eqKeys(got, tc.want) {
 				t.Fatalf("顺序不符: got %v want %v", got, tc.want)
 			}

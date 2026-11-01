@@ -5,10 +5,11 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"workerrest/internal/role"
 )
 
 // 立绘格式换成 webp 后的读取回归（2026-10-23）：meta.json 里写的扩展名与磁盘上的
-// 实际文件不一致时，scanRoles 必须按**实际文件**定位，否则立绘「明明在、却显示不出来」。
+// 实际文件不一致时，role.ScanRoles 必须按**实际文件**定位，否则立绘「明明在、却显示不出来」。
 // 三类情形：完全对齐（webp）、meta.json 落后一拍（写 png、磁盘只有 webp）、
 // meta.json 缺 image 字段（走新默认 figure.webp，但磁盘是老 png）。
 
@@ -34,7 +35,7 @@ func writeRoleDir(t *testing.T, root, dirName string, cfg map[string]any, files 
 }
 
 // findRole 在扫描结果里按名字找（找不到 Fatal）
-func findRole(t *testing.T, roles []Role, name string) Role {
+func findRole(t *testing.T, roles []role.Role, name string) role.Role {
 	t.Helper()
 	for _, r := range roles {
 		if r.Name == name {
@@ -42,7 +43,7 @@ func findRole(t *testing.T, roles []Role, name string) Role {
 		}
 	}
 	t.Fatalf("扫描结果里没有 %s（roles=%d）", name, len(roles))
-	return Role{}
+	return role.Role{}
 }
 
 // TestScanRolesWebpAligned meta.json 与磁盘都是 webp → 直接读 webp
@@ -52,7 +53,7 @@ func TestScanRolesWebpAligned(t *testing.T) {
 		"image": "figure.webp", "preview": "preview.webp",
 	}, map[string]string{"figure.webp": "webp-figure", "preview.webp": "webp-preview"})
 
-	r := findRole(t, scanRoles(root), "眼镜主管")
+	r := findRole(t, role.ScanRoles(root), "眼镜主管")
 	if r.Image != "figure.webp" {
 		t.Fatalf("Image 应为 figure.webp: %q", r.Image)
 	}
@@ -74,7 +75,7 @@ func TestScanRolesImageExtFallback(t *testing.T) {
 		"image": "figure.png", "preview": "preview.png",
 	}, map[string]string{"figure.webp": "webp-figure", "preview.webp": "webp-preview"})
 
-	r := findRole(t, scanRoles(root), "体能教练")
+	r := findRole(t, role.ScanRoles(root), "体能教练")
 	if r.FigurePath == "" {
 		t.Fatal("磁盘上有 figure.webp，立绘不应判为缺失（meta.json 的 png 名要能兜底）")
 	}
@@ -91,7 +92,7 @@ func TestScanRolesDefaultFigureName(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "老自定义", map[string]any{"name": "老自定义", "enabled": true}, map[string]string{"figure.png": "png-figure", "preview.png": "png-preview"})
 
-	r := findRole(t, scanRoles(root), "老自定义")
+	r := findRole(t, role.ScanRoles(root), "老自定义")
 	if r.FigurePath == "" {
 		t.Fatal("只有 figure.png 的老目录也必须能读到立绘")
 	}
@@ -111,7 +112,7 @@ func TestScanRolesMissingImage(t *testing.T) {
 		"image": "figure.webp", "preview": "preview.webp",
 	}, map[string]string{})
 
-	r := findRole(t, scanRoles(root), "空目录")
+	r := findRole(t, role.ScanRoles(root), "空目录")
 	if r.FigurePath != "" || r.Thumb != "" {
 		t.Fatalf("没有图片文件时 FigurePath/Thumb 都应为空: %q %q", r.FigurePath, r.Thumb)
 	}

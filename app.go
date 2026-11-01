@@ -12,6 +12,7 @@ import (
 
 	"workerrest/internal/idle"
 	"workerrest/internal/model"
+	"workerrest/internal/role"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -170,7 +171,7 @@ func NewApp(app *application.App) *App {
 func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) error {
 	ap := a.cfg.AppearanceCfg()
 	log.Printf("[boot] 启动完成 engine=go+wails3 serverMode=%v", serverMode)
-	log.Printf("[boot] 督休专员目录 %s（扫描到 %d 个督休专员）", a.rolesRoot, len(scanRoles(a.rolesRoot)))
+	log.Printf("[boot] 督休专员目录 %s（扫描到 %d 个督休专员）", a.rolesRoot, len(role.ScanRoles(a.rolesRoot)))
 	log.Printf("[boot] 配置 %s；外观 %s %.0f%%x%.0f%%，短休息 %d ms",
 		orNone(a.cfg.Path()), ap.Color, ap.WidthPct, ap.HeightPct, a.cfg.Break("short").DurationMs)
 	// 前端契约自检：shim.js 按名字调用绑定，JS 侧拼错没有任何编译期检查，

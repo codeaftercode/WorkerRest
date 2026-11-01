@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"workerrest/internal/role"
 )
 
 // 导入 / 删除自设立绘的回归（2026-10-26 起；2026-10-28 改成「名字即身份」后重写）。
@@ -28,23 +29,23 @@ func TestCreateRoleDirSameImageGetsDistinctNames(t *testing.T) {
 	root := t.TempDir()
 	src := writeImgSrc(t, t.TempDir(), "我的图.png", "same-bytes")
 
-	n1 := createRoleDir(root, "我的图", src)
-	n2 := createRoleDir(root, "我的图", src)
+	n1 := role.CreateRoleDir(root, "我的图", src)
+	n2 := role.CreateRoleDir(root, "我的图", src)
 	if n1 == "" || n2 == "" {
 		t.Fatalf("导入应成功：n1=%q n2=%q", n1, n2)
 	}
 	if n1 == n2 {
 		t.Fatalf("同一张图导入两次必须给不同名字（否则就是同一个人）：%q", n1)
 	}
-	d1, ok1 := resolveRoleDir(root, n1)
-	d2, ok2 := resolveRoleDir(root, n2)
+	d1, ok1 := role.ResolveRoleDir(root, n1)
+	d2, ok2 := role.ResolveRoleDir(root, n2)
 	if !ok1 || !ok2 {
 		t.Fatalf("两个名字都应能反查到目录：ok1=%v ok2=%v", ok1, ok2)
 	}
 	if d1 == d2 {
 		t.Fatalf("两个名字不该指向同一个目录：%q", d1)
 	}
-	roles := scanRoles(root)
+	roles := role.ScanRoles(root)
 	if len(roles) != 2 {
 		t.Fatalf("扫描应得到 2 个督休专员，实际 %d 个", len(roles))
 	}
@@ -59,23 +60,23 @@ func TestCreateRoleDirSameImageGetsDistinctNames(t *testing.T) {
 func TestRemoveOneDuplicateKeepsTheOther(t *testing.T) {
 	root := t.TempDir()
 	src := writeImgSrc(t, t.TempDir(), "我的图.png", "same-bytes")
-	n1 := createRoleDir(root, "我的图", src)
-	n2 := createRoleDir(root, "我的图", src)
+	n1 := role.CreateRoleDir(root, "我的图", src)
+	n2 := role.CreateRoleDir(root, "我的图", src)
 
-	if !removeRoleDir(root, n2) {
+	if !role.RemoveRoleDir(root, n2) {
 		t.Fatal("删除第二个应成功")
 	}
-	roles := scanRoles(root)
+	roles := role.ScanRoles(root)
 	if len(roles) != 1 || roles[0].Name != n1 {
 		t.Fatalf("删掉第二个后应只剩 %s，实际 %v", n1, roleNames(roles))
 	}
 	root2 := t.TempDir()
-	a1 := createRoleDir(root2, "我的图", src)
-	a2 := createRoleDir(root2, "我的图", src)
-	if !removeRoleDir(root2, a1) {
+	a1 := role.CreateRoleDir(root2, "我的图", src)
+	a2 := role.CreateRoleDir(root2, "我的图", src)
+	if !role.RemoveRoleDir(root2, a1) {
 		t.Fatal("删除第一个应成功")
 	}
-	roles = scanRoles(root2)
+	roles = role.ScanRoles(root2)
 	if len(roles) != 1 || roles[0].Name != a2 {
 		t.Fatalf("删掉第一个后应只剩 %s，实际 %v", a2, roleNames(roles))
 	}
@@ -85,28 +86,28 @@ func TestRemoveOneDuplicateKeepsTheOther(t *testing.T) {
 func TestCancelNamingKeepsPreviouslyImported(t *testing.T) {
 	root := t.TempDir()
 	src := writeImgSrc(t, t.TempDir(), "我的图.png", "same-bytes")
-	n1 := createRoleDir(root, "我的图", src)
-	n2 := createRoleDir(root, "我的图", src)
+	n1 := role.CreateRoleDir(root, "我的图", src)
+	n2 := role.CreateRoleDir(root, "我的图", src)
 
 	// 前端取消分支：removeSupervisorRole(picked.saved)
-	if !removeRoleDir(root, n2) {
+	if !role.RemoveRoleDir(root, n2) {
 		t.Fatal("取消时的清理应成功")
 	}
-	roles := scanRoles(root)
+	roles := role.ScanRoles(root)
 	if len(roles) != 1 || roles[0].Name != n1 {
 		t.Fatalf("取消导入不应误删之前那个：期望只剩 %s，实际 %v", n1, roleNames(roles))
 	}
 }
 
 // 不支持的图片格式必须直接拒绝（不建目录）——
-// 建出 figure.bmp 的话读取侧 isImageName 不认 .bmp →
-// scanRoles 里 image 回落成默认 figure.webp、FigurePath 为空 →
+// 建出 figure.bmp 的话读取侧 role.IsImageName 不认 .bmp →
+// role.ScanRoles 里 image 回落成默认 figure.webp、FigurePath 为空 →
 // 该督休专员**永远出不了场**（buildSupervisorSessionWith 过滤 FigurePath == ""）。
 func TestCreateRoleDirRejectsUnsupportedExt(t *testing.T) {
 	root := t.TempDir()
 	src := writeImgSrc(t, t.TempDir(), "图.bmp", "bmp-bytes")
 
-	if name := createRoleDir(root, "图", src); name != "" {
+	if name := role.CreateRoleDir(root, "图", src); name != "" {
 		t.Fatalf("不支持的扩展名应被拒绝，实际返回 name=%q", name)
 	}
 	entries, err := os.ReadDir(root)
@@ -118,12 +119,12 @@ func TestCreateRoleDirRejectsUnsupportedExt(t *testing.T) {
 	}
 	// 支持的格式照常能建
 	ok := writeImgSrc(t, t.TempDir(), "图.png", "png-bytes")
-	if name := createRoleDir(root, "图", ok); name == "" {
+	if name := role.CreateRoleDir(root, "图", ok); name == "" {
 		t.Fatal("png 应能正常导入")
 	}
 }
 
-// resolveRoleDir 按 meta.json 的 name 反查，**不看目录名**：
+// role.ResolveRoleDir 按 meta.json 的 name 反查，**不看目录名**：
 // 用户手改了 name（或目录名被系统清洗过）也必须能找到。
 func TestResolveRoleDirFollowsMetaName(t *testing.T) {
 	root := t.TempDir()
@@ -134,30 +135,30 @@ func TestResolveRoleDirFollowsMetaName(t *testing.T) {
 		"name": "另一个", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 
-	dir, ok := resolveRoleDir(root, "新名字")
+	dir, ok := role.ResolveRoleDir(root, "新名字")
 	if !ok {
 		t.Fatal("应按 meta.json 的 name 反查到目录")
 	}
 	if filepath.Base(dir) != "旧目录名" {
 		t.Fatalf("命中的目录不对：%q", filepath.Base(dir))
 	}
-	if _, ok := resolveRoleDir(root, "旧目录名"); ok {
+	if _, ok := role.ResolveRoleDir(root, "旧目录名"); ok {
 		t.Fatal("目录名不是身份，不该按它反查到")
 	}
 }
 
-// meta.json 缺 name（用户手放的空壳）→ 用目录名当名字，与 scanRoles 口径一致。
+// meta.json 缺 name（用户手放的空壳）→ 用目录名当名字，与 role.ScanRoles 口径一致。
 func TestResolveRoleDirFallsBackToDirName(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "手放专员", map[string]any{
 		"enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 
-	dir, ok := resolveRoleDir(root, "手放专员")
+	dir, ok := role.ResolveRoleDir(root, "手放专员")
 	if !ok || filepath.Base(dir) != "手放专员" {
 		t.Fatalf("缺 name 时应按目录名反查，实际 %q ok=%v", filepath.Base(dir), ok)
 	}
-	roles := scanRoles(root)
+	roles := role.ScanRoles(root)
 	if len(roles) != 1 || roles[0].Name != "手放专员" {
 		t.Fatalf("缺 name 时应回落成目录名，实际 %v", roleNames(roles))
 	}
@@ -193,7 +194,7 @@ func TestRemoveRoleClearsFixedRoleAndOrder(t *testing.T) {
 	if !a.RemoveRole("乙") {
 		t.Fatal("RemoveRole 应成功")
 	}
-	if _, ok := resolveRoleDir(rolesRoot, "乙"); ok {
+	if _, ok := role.ResolveRoleDir(rolesRoot, "乙"); ok {
 		t.Fatal("乙 的目录应已被删除")
 	}
 	sup := a.cfg.Raw()["supervisor"].(map[string]any)
@@ -220,7 +221,7 @@ func TestRemoveRoleClearsFixedRoleAndOrder(t *testing.T) {
 
 // 换图写失败时，**旧立绘必须还在**。
 //
-// 反例（修复前）：replaceRoleImage 先把 figure.* / preview.* 全删了再写新的，
+// 反例（修复前）：role.ReplaceRoleImage 先把 figure.* / preview.* 全删了再写新的，
 // 写失败就落进「既没有立绘也没有预览图」的状态 —— FigurePath 为空 →
 // 这个督休专员永远出不了场，而 meta.json 还指着已经不存在的旧文件名。
 // 模拟写失败的办法：在目标位置放一个**同名目录**，让改名落不下去。
@@ -240,12 +241,12 @@ func TestReplaceRoleImageKeepsOldImageOnWriteFailure(t *testing.T) {
 	}
 	src := writeImgSrc(t, t.TempDir(), "新图.webp", "new-bytes")
 
-	if replaceRoleImage(root, "督休专员", src) {
-		t.Fatal("写入失败时 replaceRoleImage 应返回 false")
+	if role.ReplaceRoleImage(root, "督休专员", src) {
+		t.Fatal("写入失败时 role.ReplaceRoleImage 应返回 false")
 	}
 	for _, name := range []string{"figure.png", "preview.png"} {
 		p := filepath.Join(dir, name)
-		if !isRegularFile(p) {
+		if !role.IsRegularFile(p) {
 			t.Fatalf("旧文件 %s 不该被毁掉（写失败应保持原样）", name)
 		}
 		b, _ := os.ReadFile(p)
@@ -255,12 +256,12 @@ func TestReplaceRoleImageKeepsOldImageOnWriteFailure(t *testing.T) {
 	}
 }
 
-// 导入失败不能留下半成品目录：没有 meta.json 的目录会被 scanRoles 跳过 ——
+// 导入失败不能留下半成品目录：没有 meta.json 的目录会被 role.ScanRoles 跳过 ——
 // 用户在界面上看不见它，它却占着「名字」，下一次导入就变成 "名字 (2)" 了。
 func TestCreateRoleDirLeavesNoLitterOnFailure(t *testing.T) {
 	root1 := t.TempDir()
 	bad := writeImgSrc(t, t.TempDir(), "图.bmp", "bmp-bytes")
-	if name := createRoleDir(root1, "图", bad); name != "" {
+	if name := role.CreateRoleDir(root1, "图", bad); name != "" {
 		t.Fatalf("不支持的格式应被拒绝，实际 name=%q", name)
 	}
 	if entries, _ := os.ReadDir(root1); len(entries) != 0 {
@@ -272,7 +273,7 @@ func TestCreateRoleDirLeavesNoLitterOnFailure(t *testing.T) {
 	if err := os.WriteFile(big, make([]byte, 21*1024*1024), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if name := createRoleDir(root2, "大图", big); name != "" {
+	if name := role.CreateRoleDir(root2, "大图", big); name != "" {
 		t.Fatalf("超大的文件应被拒绝，实际 name=%q", name)
 	}
 	if entries, _ := os.ReadDir(root2); len(entries) != 0 {
@@ -282,28 +283,28 @@ func TestCreateRoleDirLeavesNoLitterOnFailure(t *testing.T) {
 	// 正常路径：立绘 + meta 齐备，且只扫得到 1 个督休专员
 	root3 := t.TempDir()
 	ok := writeImgSrc(t, t.TempDir(), "图.png", "png-bytes")
-	name := createRoleDir(root3, "图", ok)
+	name := role.CreateRoleDir(root3, "图", ok)
 	if name == "" {
 		t.Fatal("正常导入应成功")
 	}
-	dir, ok2 := resolveRoleDir(root3, name)
+	dir, ok2 := role.ResolveRoleDir(root3, name)
 	if !ok2 {
 		t.Fatal("应能按名字反查到目录")
 	}
 	for _, f := range []string{"figure.png", "meta.json"} {
-		if !isRegularFile(filepath.Join(dir, f)) {
+		if !role.IsRegularFile(filepath.Join(dir, f)) {
 			t.Fatalf("目录里应该有 %s", f)
 		}
 	}
 	// 不再复制一份 preview 当缩略图（那是白占磁盘、还会和立绘脱钩）：缩略图由渲染层生成
 	if entries, err := os.ReadDir(dir); err == nil {
 		for _, e := range entries {
-			if strings.HasPrefix(e.Name(), rolePreviewBase) {
+			if strings.HasPrefix(e.Name(), role.RolePreviewBase) {
 				t.Fatalf("导入后不该出现预览图副本，实际有 %s", e.Name())
 			}
 		}
 	}
-	if n := len(scanRoles(root3)); n != 1 {
+	if n := len(role.ScanRoles(root3)); n != 1 {
 		t.Fatalf("应只扫到 1 个督休专员，实际 %d 个", n)
 	}
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"workerrest/internal/role"
 	"workerrest/internal/winproc"
 )
 
@@ -199,30 +200,30 @@ func (a *App) SaveRole(name string, patch map[string]any) bool {
 		log.Printf("[role] 空的督休专员名")
 		return false
 	}
-	dir, ok := resolveRoleDir(a.rolesRoot, name)
+	dir, ok := role.ResolveRoleDir(a.rolesRoot, name)
 	if !ok {
 		log.Printf("[role] 督休专员不存在或 meta.json 读不出来：%s", name)
 		return false
 	}
-	base, ok := readRoleFile(a.rolesRoot, name)
+	base, ok := role.ReadRoleFile(a.rolesRoot, name)
 	if !ok {
 		return false
 	}
-	next := applyRolePatch(base, patch)
+	next := role.ApplyRolePatch(base, patch)
 	if next.Name == "" {
 		next.Name = name
 	}
 	// 名称变了 → 先查重名（排除自己），重了直接拒绝，不动目录也不写 meta.json
-	if next.Name != base.Name && roleNameTaken(a.rolesRoot, next.Name, base.Name) {
+	if next.Name != base.Name && role.RoleNameTaken(a.rolesRoot, next.Name, base.Name) {
 		log.Printf("[role] 名称重复，拒绝保存：%s → %s", base.Name, next.Name)
 		return false
 	}
-	if err := writeRoleFileAt(dir, next); err != nil {
+	if err := role.WriteRoleFileAt(dir, next); err != nil {
 		log.Printf("[role] 写入失败 %s: %v", next.Name, err)
 		return false
 	}
 	if next.Name != base.Name {
-		renameRoleDir(a.rolesRoot, dir, next.Name)
+		role.RenameRoleDir(a.rolesRoot, dir, next.Name)
 	}
 	return true
 }
@@ -234,7 +235,7 @@ func (a *App) SaveRole(name string, patch map[string]any) bool {
 // 但会让配置随删随涨）。
 // 设置页也会清一遍（它手里有 S，清完再 autoSave），两边一致才不会互相覆盖。
 func (a *App) RemoveRole(name string) bool {
-	if !removeRoleDir(a.rolesRoot, name) {
+	if !role.RemoveRoleDir(a.rolesRoot, name) {
 		log.Printf("[role] 删除失败：%s", name)
 		return false
 	}
@@ -311,7 +312,7 @@ func (a *App) PickSupervisorImage() map[string]any {
 	}
 	src := r.path
 	defaultName := strings.TrimSuffix(filepath.Base(src), filepath.Ext(src))
-	saved := createRoleDir(a.rolesRoot, defaultName, src)
+	saved := role.CreateRoleDir(a.rolesRoot, defaultName, src)
 	if saved == "" {
 		log.Printf("[role] 创建督休专员目录失败：%s", src)
 		return nil
@@ -350,7 +351,7 @@ func (a *App) ReplaceRoleImage(name string) bool {
 		logDialogErr("选择立绘", r.err)
 		return false
 	}
-	return replaceRoleImage(a.rolesRoot, name, r.path)
+	return role.ReplaceRoleImage(a.rolesRoot, name, r.path)
 }
 
 // ---------- 关于页 / 更新 / 窗口 ----------

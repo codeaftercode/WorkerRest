@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"workerrest/internal/role"
 )
 
 // 配置文件命名为 meta.json（2026-10-28 由 role.json 改名）的回归。
@@ -25,10 +26,10 @@ func TestRepoSupervisorsUseMetaName(t *testing.T) {
 			continue
 		}
 		dir := filepath.Join("supervisors", e.Name())
-		if isRegularFile(filepath.Join(dir, "meta.json")) {
+		if role.IsRegularFile(filepath.Join(dir, "meta.json")) {
 			dirs++
 		}
-		if isRegularFile(filepath.Join(dir, "role.json")) {
+		if role.IsRegularFile(filepath.Join(dir, "role.json")) {
 			stale = append(stale, e.Name())
 		}
 	}
@@ -51,23 +52,23 @@ func TestLegacyRoleJSONIsIgnored(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "role.json"), b, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if roles := scanRoles(root); len(roles) != 0 {
+	if roles := role.ScanRoles(root); len(roles) != 0 {
 		t.Fatalf("不该扫到只有 role.json 的目录，实际 %v", roleNames(roles))
 	}
-	if _, ok := resolveRoleDir(root, "custom-old"); ok {
+	if _, ok := role.ResolveRoleDir(root, "custom-old"); ok {
 		t.Fatal("不该按 key 反查到只有 role.json 的目录")
 	}
-	if isRegularFile(filepath.Join(dir, "meta.json")) {
+	if role.IsRegularFile(filepath.Join(dir, "meta.json")) {
 		t.Fatal("不该替用户改名：软件不做旧名迁移")
 	}
-	if !isRegularFile(filepath.Join(dir, "role.json")) {
+	if !role.IsRegularFile(filepath.Join(dir, "role.json")) {
 		t.Fatal("不该动用户的 role.json")
 	}
 }
 
 // 仓库自带的 meta.json 里若写了 fixedId，必须指向真实存在的台词 id。
 //
-// 为什么值得钉死：id 会被 normalizeRoleMessages 重编号，fixedId 靠 remapMsgID 跟着搬。
+// 为什么值得钉死：id 会被 role.NormalizeRoleMessages 重编号，fixedId 靠 remapMsgID 跟着搬。
 // 一旦漏搬（或手改时写错号），「固定显示」模式会指向一条不存在的台词 —— 提醒窗口里
 // 没有台词，日志也不报错，只能靠肉眼发现。
 func TestRepoSupFixedIDResolves(t *testing.T) {
@@ -81,7 +82,7 @@ func TestRepoSupFixedIDResolves(t *testing.T) {
 			continue
 		}
 		path := filepath.Join("supervisors", e.Name(), "meta.json")
-		if !isRegularFile(path) {
+		if !role.IsRegularFile(path) {
 			continue
 		}
 		raw, err := os.ReadFile(path)
@@ -92,7 +93,7 @@ func TestRepoSupFixedIDResolves(t *testing.T) {
 		if err := json.Unmarshal(raw, &m); err != nil {
 			t.Fatalf("解析 %s 失败：%v", path, err)
 		}
-		cfg := normalizeRoleFile(m)
+		cfg := role.NormalizeRoleFile(m)
 		if cfg.Messages.FixedID == "" {
 			continue
 		}
@@ -114,7 +115,7 @@ func TestRepoSupFixedIDResolves(t *testing.T) {
 	}
 }
 
-// 导入立绘（createRoleDir → writeRoleFile）只生成 meta.json。
+// 导入立绘（role.CreateRoleDir → role.WriteRoleFile）只生成 meta.json。
 func TestCreateRoleDirWritesMetaName(t *testing.T) {
 	root := t.TempDir()
 	src := filepath.Join(t.TempDir(), "猫.png")
@@ -125,21 +126,21 @@ func TestCreateRoleDirWritesMetaName(t *testing.T) {
 	if err := os.MkdirAll(rolesRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	name := createRoleDir(rolesRoot, "小花猫", src)
+	name := role.CreateRoleDir(rolesRoot, "小花猫", src)
 	if name == "" {
-		t.Fatal("createRoleDir 失败")
+		t.Fatal("role.CreateRoleDir 失败")
 	}
-	dir, ok := resolveRoleDir(rolesRoot, name)
+	dir, ok := role.ResolveRoleDir(rolesRoot, name)
 	if !ok {
 		t.Fatal("应能按 key 反查到目录")
 	}
-	if !isRegularFile(filepath.Join(dir, "meta.json")) {
+	if !role.IsRegularFile(filepath.Join(dir, "meta.json")) {
 		t.Fatal("导入应生成 meta.json")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "role.json")); err == nil {
 		t.Fatal("导入不该再生成 role.json")
 	}
-	if got, ok := readRoleFile(rolesRoot, name); !ok || got.Name != "小花猫" {
+	if got, ok := role.ReadRoleFile(rolesRoot, name); !ok || got.Name != "小花猫" {
 		t.Fatalf("读回应为 小花猫，实际 %+v ok=%v", got, ok)
 	}
 }

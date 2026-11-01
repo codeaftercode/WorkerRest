@@ -8,6 +8,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"workerrest/internal/model"
+	"workerrest/internal/role"
 )
 
 // settingsWindow 取设置窗口（按名字查，避免跨 tick 持有已销毁的窗口引用 ——
@@ -333,7 +334,7 @@ func (a *App) AppInfo() map[string]any {
 		"node":         "-",
 		"engine":       "go+wails3",
 		"platform":     "windows",
-		"roles":        len(scanRoles(a.rolesRoot)),
+		"roles":        len(role.ScanRoles(a.rolesRoot)),
 		"goVersion":    goVer,
 		"wailsVersion": wailsVersion(),
 		"buildTime":    buildTime,
@@ -363,10 +364,10 @@ func wailsVersion() string {
 // ListRoles 候选督休专员列表（设置页画廊 / 主窗口共用）。
 // 顺序按用户拖动保存的 supervisor.order 排 —— 画廊显示顺序与「顺序轮换」的出场次序
 // 共用这一份顺序，用户拖一次两边同时生效。
-func (a *App) ListRoles() []Role {
-	roles := scanRoles(a.rolesRoot)
+func (a *App) ListRoles() []role.Role {
+	roles := role.ScanRoles(a.rolesRoot)
 	if cfg := a.cfgSnapshot(); cfg != nil {
-		roles = applyRoleOrder(roles, cfg.SupervisorCfg().Order)
+		roles = role.ApplyRoleOrder(roles, cfg.SupervisorCfg().Order)
 	}
 	return roles
 }

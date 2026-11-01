@@ -64,7 +64,7 @@ LOG = os.path.join(TEMP, "wr_go_probe_server.log")
 ISO = os.path.join(TEMP, "wr_probe_iso")
 
 
-# 内置督休专员的固定出场顺序（与 Go 侧 defaultRoleOrder 同源）
+# 内置督休专员的固定出场顺序（与 Go 侧 internal/role 的 DefaultRoleOrder 同源）
 # 注意：这是**顺序**清单，不是「个数」清单 —— 专员的实际个数从磁盘现算（见 scan_role_names）。
 BUILTIN_ROLE_ORDER = [
     "秦始皇", "神秘黑客", "中尉军官", "熊猫侠客",

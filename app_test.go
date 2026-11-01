@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"workerrest/internal/idle"
+	"workerrest/internal/role"
 )
 
 // 督休专员会话构建的纯逻辑回归（脱离窗口与 Wails）。
@@ -141,7 +142,7 @@ func TestPickRoleWithImageSkipsUnreadableFigure(t *testing.T) {
 	if err := os.WriteFile(good, []byte("fake-png-bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	usable := []Role{
+	usable := []role.Role{
 		{Name: "bad", FigurePath: filepath.Join(dir, "missing.png")}, // 文件不存在 → toDataURL 空串
 		{Name: "ok", FigurePath: good},
 	}

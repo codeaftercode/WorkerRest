@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"testing"
 	"workerrest/internal/jsonx"
+	"workerrest/internal/role"
 )
 
 // 造一条提醒内容条目（settings.json 与 meta.json 两侧的条目形状一致）。
@@ -97,7 +98,7 @@ func TestNormalizeRoleMessagesConverges(t *testing.T) {
 			msgItem("builtin-cmd-role_doctor-2", "c"),
 		},
 	}
-	cfg := normalizeRoleMessages(m)
+	cfg := role.NormalizeRoleMessages(m)
 	if cfg.FixedID != "3" {
 		t.Errorf("fixedId = %q，想要 %q（应跟着第三条走）", cfg.FixedID, "3")
 	}
@@ -112,7 +113,7 @@ func TestNormalizeRoleMessagesConverges(t *testing.T) {
 		}
 	}
 	// 收敛后再跑一遍不该再动（幂等）
-	again := normalizeRoleMessages(map[string]any{
+	again := role.NormalizeRoleMessages(map[string]any{
 		"order":   "fixed",
 		"fixedId": cfg.FixedID,
 		"items": []any{
@@ -209,7 +210,7 @@ func TestSeedItemIDsAreSequence(t *testing.T) {
 			}
 		}
 	}
-	generic := genericCommandItems()
+	generic := role.GenericCommandItems()
 	if len(generic) == 0 {
 		t.Fatal("导入模板的台词是空的")
 	}

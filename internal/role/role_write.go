@@ -1,4 +1,4 @@
-package main
+package role
 
 import (
 	"encoding/json"
@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
 	"workerrest/internal/jsonx"
 	"workerrest/internal/model"
 )
@@ -17,10 +18,10 @@ import (
 // saveRoleConfig / deleteRoleDir。
 //
 // 身份是专员名（没有内部 id），所以「写入」有三种情形，别搞混：
-//   - writeRoleFile：按名字写，找不到就建目录（导入 / 首次落盘）；
-//   - writeRoleFileAt：往**已知目录**里写（改名时必须走这条 —— 改名后按新名反查
-//     是找不到旧目录的，走 writeRoleFile 会新建一个空壳，把原来的立绘丢下）；
-//   - renameRoleDir：把目录名跟着新名字改（失败不回滚 meta.json：名字是权威，
+//   - WriteRoleFile：按名字写，找不到就建目录（导入 / 首次落盘）；
+//   - WriteRoleFileAt：往**已知目录**里写（改名时必须走这条 —— 改名后按新名反查
+//     是找不到旧目录的，走 WriteRoleFile 会新建一个空壳，把原来的立绘丢下）；
+//   - RenameRoleDir：把目录名跟着新名字改（失败不回滚 meta.json：名字是权威，
 //     目录名只是投影，改不动只影响好看程度，不影响功能）。
 
 // 立绘尺寸与位置的取值范围：与 types.ts 的 SUP_GEOM_LIMITS 一致（也对应设置页滑条）。
@@ -32,14 +33,14 @@ var supGeomLimits = map[string][2]float64{
 	"posYPct": {0, 40},
 }
 
-// supGeomDefault 软件默认的立绘尺寸与位置（与 types.ts 的 SUP_GEOM_DEFAULT 同值）。
+// SupGeomDefault 软件默认的立绘尺寸与位置（与 types.ts 的 SUP_GEOM_DEFAULT 同值）。
 // 2026-10-28 用户要求：自带专员（含打包 / 恢复默认 / 导入自定义立绘）统一
 // 高度 80%、距窗口左侧 5%、贴底 —— 所以随包 meta.json 的 geom 也一律是这个值。
-var supGeomDefault = model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
+var SupGeomDefault = model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
 
-// normalizeSupGeom 夹紧并补全一份立绘几何：缺失或越界时回落默认值。
+// NormalizeSupGeom 夹紧并补全一份立绘几何：缺失或越界时回落默认值。
 // flip 只认真正的布尔 true（缺这个字段时一律按「不翻转」）。
-func normalizeSupGeom(raw map[string]any) model.SupGeom {
+func NormalizeSupGeom(raw map[string]any) model.SupGeom {
 	pick := func(k string, def float64) float64 {
 		lim, ok := supGeomLimits[k]
 		if !ok {
@@ -59,9 +60,9 @@ func normalizeSupGeom(raw map[string]any) model.SupGeom {
 		return r
 	}
 	out := model.SupGeom{
-		SizePct: pick("sizePct", supGeomDefault.SizePct),
-		PosXPct: pick("posXPct", supGeomDefault.PosXPct),
-		PosYPct: pick("posYPct", supGeomDefault.PosYPct),
+		SizePct: pick("sizePct", SupGeomDefault.SizePct),
+		PosXPct: pick("posXPct", SupGeomDefault.PosXPct),
+		PosYPct: pick("posYPct", SupGeomDefault.PosYPct),
 	}
 	if b, ok := raw["flip"].(bool); ok && b {
 		out.Flip = true
@@ -69,18 +70,18 @@ func normalizeSupGeom(raw map[string]any) model.SupGeom {
 	return out
 }
 
-// readRoleFile 读一个督休专员的 meta.json 并**归一化**（不存在 / 解析失败返回零值 + false）。
+// ReadRoleFile 读一个督休专员的 meta.json 并**归一化**（不存在 / 解析失败返回零值 + false）。
 //
 // 归一化不能省：读出来就是为了改一处再整体写回，若拿原始内容写回，缺字段的督休专员
 // 会被写成「image: ""」，下次扫描再回落是能救回来，但中间任何一次读取者（预览、
 // 会话组装）都会看到不合法的配置。与 上一版的 saveRoleFile → normalizeRoleFile 同路。
-func readRoleFile(root, name string) (RoleFile, bool) {
+func ReadRoleFile(root, name string) (RoleFile, bool) {
 	var cfg RoleFile
-	dir, ok := resolveRoleDir(root, name)
+	dir, ok := ResolveRoleDir(root, name)
 	if !ok {
 		return cfg, false
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, roleMetaFile))
+	raw, err := os.ReadFile(filepath.Join(dir, RoleMetaFile))
 	if err != nil {
 		return cfg, false
 	}
@@ -88,15 +89,15 @@ func readRoleFile(root, name string) (RoleFile, bool) {
 	if err := json.Unmarshal(raw, &rawMap); err != nil {
 		return cfg, false
 	}
-	cfg = normalizeRoleFile(rawMap)
+	cfg = NormalizeRoleFile(rawMap)
 	if cfg.Name == "" {
 		cfg.Name = strings.TrimSpace(name)
 	}
 	return cfg, true
 }
 
-// writeRoleFileAt 往**已知目录**里写 meta.json（先写临时文件再改名，避免写出半截 JSON）。
-func writeRoleFileAt(dir string, cfg RoleFile) error {
+// WriteRoleFileAt 往**已知目录**里写 meta.json（先写临时文件再改名，避免写出半截 JSON）。
+func WriteRoleFileAt(dir string, cfg RoleFile) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
@@ -105,7 +106,7 @@ func writeRoleFileAt(dir string, cfg RoleFile) error {
 		return err
 	}
 	data = append(data, '\n')
-	target := filepath.Join(dir, roleMetaFile)
+	target := filepath.Join(dir, RoleMetaFile)
 	tmp := target + ".tmp"
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return err
@@ -117,11 +118,11 @@ func writeRoleFileAt(dir string, cfg RoleFile) error {
 	return nil
 }
 
-// writeRoleFile 按名字写一个督休专员：已存在就覆盖那份，不存在就按名字建目录再写。
+// WriteRoleFile 按名字写一个督休专员：已存在就覆盖那份，不存在就按名字建目录再写。
 //
 // 改名**不能**走这里（见文件头的说明）：改名后按新名反查不到旧目录，会建出一个空壳，
 // 原来的立绘被留在旧目录里变成孤儿。
-func writeRoleFile(root, name string, cfg RoleFile) error {
+func WriteRoleFile(root, name string, cfg RoleFile) error {
 	roleName := strings.TrimSpace(name)
 	if roleName == "" {
 		roleName = strings.TrimSpace(cfg.Name)
@@ -133,23 +134,23 @@ func writeRoleFile(root, name string, cfg RoleFile) error {
 	if cfg.Name == "" {
 		cfg.Name = roleName
 	}
-	dir, ok := resolveRoleDir(root, roleName)
+	dir, ok := ResolveRoleDir(root, roleName)
 	if !ok {
-		dir = uniqueRoleDir(root, sanitizeRoleDirName(cfg.Name), "")
+		dir = UniqueRoleDir(root, SanitizeRoleDirName(cfg.Name), "")
 	}
-	return writeRoleFileAt(dir, cfg)
+	return WriteRoleFileAt(dir, cfg)
 }
 
-// renameRoleDir 把督休专员目录改名成新名字的投影（去重后）。返回改后的目录路径。
+// RenameRoleDir 把督休专员目录改名成新名字的投影（去重后）。返回改后的目录路径。
 //
 // 目录名与名字不一致是允许的（名字里带 `/` 之类），所以这只是一个「让目录看起来对」
 // 的动作：失败只记日志，不算保存失败 —— meta.json 已经写好，按名字反查照常工作。
-func renameRoleDir(root, dir, newName string) string {
-	base := sanitizeRoleDirName(newName)
+func RenameRoleDir(root, dir, newName string) string {
+	base := SanitizeRoleDirName(newName)
 	if filepath.Base(dir) == base {
 		return dir
 	}
-	target := uniqueRoleDir(root, base, dir)
+	target := UniqueRoleDir(root, base, dir)
 	if err := os.Rename(dir, target); err != nil {
 		log.Printf("[role] 重命名督休专员目录失败 %s→%s: %v", dir, target, err)
 		return dir
@@ -157,11 +158,11 @@ func renameRoleDir(root, dir, newName string) string {
 	return target
 }
 
-// uniqueRoleDir 在 root 下找一个不与现有目录冲突的名称化目录（返回完整路径）：
+// UniqueRoleDir 在 root 下找一个不与现有目录冲突的名称化目录（返回完整路径）：
 // base 已存在（且不是 exclude）就加 (2)/(3) 后缀去重。exclude 是当前督休专员正在用的目录，
 // 改名时跳过自己，避免「同名 → 自指」误判成已占用。
-func uniqueRoleDir(root, base, exclude string) string {
-	base = sanitizeRoleDirName(base)
+func UniqueRoleDir(root, base, exclude string) string {
+	base = SanitizeRoleDirName(base)
 	cand := base
 	i := 2
 	for {
@@ -177,22 +178,22 @@ func uniqueRoleDir(root, base, exclude string) string {
 	}
 }
 
-// replaceRoleImage 替换某个已有督休专员的立绘：把新图复制成 figure<ext>，并回写 meta.json
+// ReplaceRoleImage 替换某个已有督休专员的立绘：把新图复制成 figure<ext>，并回写 meta.json
 // 的 image 字段、把 preview 置空（名字 / 启停 / 几何 / 台词等读取侧字段原样保留）。
 //
-// 与 createRoleDir（新建督休专员）不同：这里身份（名字）不变，只换图。旧预览图**全部删除**，
+// 与 CreateRoleDir（新建督休专员）不同：这里身份（名字）不变，只换图。旧预览图**全部删除**，
 // 由渲染层随后重新生成（settings.js → SaveRolePreview）；旧扩展名不同的立绘也一并清理。
 // 返回是否成功（名字非法 / 督休专员不存在 / 源文件不合法或过大 / 写入失败都会返回 false）。
-func replaceRoleImage(root, name, src string) bool {
+func ReplaceRoleImage(root, name, src string) bool {
 	if strings.TrimSpace(name) == "" {
 		return false
 	}
-	dir, ok := resolveRoleDir(root, name)
+	dir, ok := ResolveRoleDir(root, name)
 	if !ok {
 		log.Printf("[role] 督休专员不存在或 meta.json 读不出来：%s", name)
 		return false
 	}
-	base, ok := readRoleFile(root, name)
+	base, ok := ReadRoleFile(root, name)
 	if !ok {
 		log.Printf("[role] 督休专员不存在或 meta.json 读不出来：%s", name)
 		return false
@@ -206,7 +207,7 @@ func replaceRoleImage(root, name, src string) bool {
 	if ext == "" {
 		ext = ".png"
 	}
-	if _, ok := imageExtMIME[ext]; !ok {
+	if _, ok := ImageExtMIME[ext]; !ok {
 		log.Printf("[role] 不支持的图片格式：%s", ext)
 		return false
 	}
@@ -239,9 +240,9 @@ func replaceRoleImage(root, name, src string) bool {
 		}
 	}
 	base.Image = fig
-	// 预览图待生成：置空而不是指向一个已删掉的文件，读侧靠 roleAsset 兜底
+	// 预览图待生成：置空而不是指向一个已删掉的文件，读侧靠 RoleAsset 兜底
 	base.Preview = ""
-	if err := writeRoleFileAt(dir, base); err != nil {
+	if err := WriteRoleFileAt(dir, base); err != nil {
 		log.Printf("[role] 回写 meta.json 失败 %s: %v", name, err)
 		return false
 	}
@@ -249,10 +250,10 @@ func replaceRoleImage(root, name, src string) bool {
 	return true
 }
 
-// removeRoleDir 删除整个督休专员子目录（督休专员 = 目录，删督休专员就是删目录）。
+// RemoveRoleDir 删除整个督休专员子目录（督休专员 = 目录，删督休专员就是删目录）。
 // 目录名是名字的投影、与身份不完全一一对应，必须按名字反查到真实目录再删。
-func removeRoleDir(root, name string) bool {
-	dir, ok := resolveRoleDir(root, name)
+func RemoveRoleDir(root, name string) bool {
+	dir, ok := ResolveRoleDir(root, name)
 	if !ok {
 		return false
 	}
@@ -262,13 +263,13 @@ func removeRoleDir(root, name string) bool {
 	return true
 }
 
-// applyRolePatch 把设置页送来的 patch（name / enabled / geom / messages）叠到既有
+// ApplyRolePatch 把设置页送来的 patch（name / enabled / geom / messages）叠到既有
 // meta.json 上：**只改传进来的字段**，立绘与预览图文件名等读取侧字段原样保留。
 //
 // 督休专员的名字只做 trim —— 与 supervisor.ts 的 normalizeRoleFile 一致（那里是
 // `String(o.name ?? ”).trim() || fallbackName`）。**不要**套用软件名那套折叠空白 /
 // 限长 30 的规则：立绘库磁贴的名字允许更长，折叠空白也会把用户起的名字改样。
-func applyRolePatch(base RoleFile, patch map[string]any) RoleFile {
+func ApplyRolePatch(base RoleFile, patch map[string]any) RoleFile {
 	if v, ok := patch["name"].(string); ok {
 		if n := strings.TrimSpace(v); n != "" {
 			base.Name = n
@@ -278,10 +279,10 @@ func applyRolePatch(base RoleFile, patch map[string]any) RoleFile {
 		base.Enabled = v
 	}
 	if gm, ok := patch["geom"].(map[string]any); ok {
-		base.Geom = normalizeSupGeom(gm)
+		base.Geom = NormalizeSupGeom(gm)
 	}
 	if mm, ok := patch["messages"].(map[string]any); ok {
-		base.Messages = normalizeRoleMessages(mm)
+		base.Messages = NormalizeRoleMessages(mm)
 	}
 	return base
 }

@@ -1,4 +1,4 @@
-package main
+package role
 
 import (
 	"encoding/base64"
@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
 	"workerrest/internal/jsonx"
 )
 
@@ -24,75 +25,70 @@ import (
 // golang.org/x/image（+ nativewebp 才有 WebP 输出），实测 exe 涨 1.16~1.25 MB，
 // 缩放还得自己挑算法；渲染层是零依赖、零体积，产出还更小。
 //
-// 预览图是**可选优化**：没有 preview.* 时 scanRoles 会让 thumb 回退到立绘原图，
+// 预览图是**可选优化**：没有 preview.* 时 ScanRoles 会让 thumb 回退到立绘原图，
 // 磁贴照样显示（只是多解码几 MB）。所以这里任何一步失败都只是「少了个优化」，
 // 绝不能让导入 / 换图流程失败。
 
 const (
 	// 预览图体积上限：前端产出 6~10 KB，这里给足余量但挡住异常输入
 	rolePreviewMaxBytes = 4 << 20
-	// 预览图文件名主名（与 role.go 的 rolePreviewBase 同源，这里只用于删除旧文件）
+	// 预览图文件名主名（与 role.go 的 RolePreviewBase 同源，这里只用于删除旧文件）
 	rolePreviewGlob = "preview.*"
 )
 
-// RoleFigureDataURL 返回某个督休专员立绘原图的 data URL（渲染层据此生成缩略图）。
+// FigureDataURL 返回某个督休专员立绘原图的 data URL（渲染层据此生成缩略图）。
 // 找不到立绘（或 meta.json 读不出来）返回空串。
-func (a *App) RoleFigureDataURL(name string) string {
+func FigureDataURL(root, name string) string {
 	name = strings.TrimSpace(name)
-	if name == "" || a.rolesRoot == "" {
+	if name == "" || root == "" {
 		return ""
 	}
-	dir, ok := resolveRoleDir(a.rolesRoot, name)
+	dir, ok := ResolveRoleDir(root, name)
 	if !ok {
 		return ""
 	}
-	cfg, ok := readRoleFile(a.rolesRoot, name)
+	cfg, ok := ReadRoleFile(root, name)
 	if !ok {
 		return ""
 	}
-	asset := roleAsset(dir, cfg.Image, roleFigureBase)
+	asset := RoleAsset(dir, cfg.Image, RoleFigureBase)
 	if asset == "" {
 		return ""
 	}
-	return toDataURL(filepath.Join(dir, asset))
+	return ToDataURL(filepath.Join(dir, asset))
 }
 
 // SaveRolePreview 保存渲染层生成好的预览图（data URL）并回写 meta.json。
 //
 // 返回是否成功。数据不合法（不是图片 / 过大）或专员不存在都返回 false，
 // 渲染层据此静默跳过 —— 预览图只是优化，没有它磁贴会回退到立绘原图。
-func (a *App) SaveRolePreview(name, dataURL string) bool {
+func SaveRolePreview(root, name, dataURL string) bool {
 	name = strings.TrimSpace(name)
-	if name == "" || a.rolesRoot == "" {
+	if name == "" || root == "" {
 		return false
 	}
-	return saveRolePreview(a.rolesRoot, name, dataURL)
-}
-
-// saveRolePreview 落盘实现（拆出来便于单测直接喂字节）。
-func saveRolePreview(root, name, dataURL string) bool {
-	dir, ok := resolveRoleDir(root, name)
+	dir, ok := ResolveRoleDir(root, name)
 	if !ok {
 		log.Printf("[role] 保存预览图失败：找不到督休专员 %s", name)
 		return false
 	}
-	cfg, ok := readRoleFile(root, name)
+	cfg, ok := ReadRoleFile(root, name)
 	if !ok {
 		log.Printf("[role] 保存预览图失败：读不出 meta.json %s", name)
 		return false
 	}
-	raw, ext, ok := decodeImageDataURL(dataURL)
+	raw, ext, ok := DecodeImageDataURL(dataURL)
 	if !ok {
 		log.Printf("[role] 保存预览图失败：数据不是可识别的图片（%s）", name)
 		return false
 	}
-	target := rolePreviewBase + ext
+	target := RolePreviewBase + ext
 	if err := jsonx.WriteFileAtomic(filepath.Join(dir, target), raw); err != nil {
 		log.Printf("[role] 写入预览图失败 %s: %v", name, err)
 		return false
 	}
 	// 清掉扩展名不同的旧预览（preview.png / preview.jpg …），刚写的那份跳过。
-	// 顺序与 replaceRoleImage 一致：**先写新的、再删旧的**，中途失败也不至于没有预览。
+	// 顺序与 ReplaceRoleImage 一致：**先写新的、再删旧的**，中途失败也不至于没有预览。
 	if matches, _ := filepath.Glob(filepath.Join(dir, rolePreviewGlob)); matches != nil {
 		for _, m := range matches {
 			if filepath.Base(m) == target {
@@ -101,18 +97,18 @@ func saveRolePreview(root, name, dataURL string) bool {
 			_ = os.Remove(m)
 		}
 	}
-	// meta.json 里记下真实的预览文件名（没有这一步，roleAsset 只能靠「同名换扩展名」兜底）
+	// meta.json 里记下真实的预览文件名（没有这一步，RoleAsset 只能靠「同名换扩展名」兜底）
 	cfg.Preview = target
-	if err := writeRoleFileAt(dir, cfg); err != nil {
+	if err := WriteRoleFileAt(dir, cfg); err != nil {
 		log.Printf("[role] 回写 meta.json 失败 %s: %v", name, err)
 		return false
 	}
 	return true
 }
 
-// decodeImageDataURL 解析 "data:image/webp;base64,..."（也接受裸 base64），
+// DecodeImageDataURL 解析 "data:image/webp;base64,..."（也接受裸 base64），
 // 并**按魔数**判断真实格式 —— 扩展名由内容决定，不信任前端的 MIME 声明。
-func decodeImageDataURL(s string) ([]byte, string, bool) {
+func DecodeImageDataURL(s string) ([]byte, string, bool) {
 	s = strings.TrimSpace(s)
 	if s == "" {
 		return nil, "", false
@@ -139,14 +135,14 @@ func decodeImageDataURL(s string) ([]byte, string, bool) {
 	if len(raw) < 32 || len(raw) > rolePreviewMaxBytes {
 		return nil, "", false
 	}
-	if ext, ok := sniffImageExt(raw); ok {
+	if ext, ok := SniffImageExt(raw); ok {
 		return raw, ext, true
 	}
 	return nil, "", false
 }
 
-// sniffImageExt 按魔数认格式，返回与 imageExtMIME 对应的扩展名。
-func sniffImageExt(b []byte) (string, bool) {
+// SniffImageExt 按魔数认格式，返回与 ImageExtMIME 对应的扩展名。
+func SniffImageExt(b []byte) (string, bool) {
 	switch {
 	case len(b) >= 12 && string(b[0:4]) == "RIFF" && string(b[8:12]) == "WEBP":
 		return ".webp", true

@@ -7,6 +7,7 @@ import (
 	"time"
 	"workerrest/internal/jsonx"
 	"workerrest/internal/model"
+	"workerrest/internal/role"
 )
 
 func (a *App) buildSupervisorSession(force bool, forceKey string) *model.SupStageInfo {
@@ -24,8 +25,8 @@ func (a *App) buildSupervisorSessionWith(cfg model.SupervisorConfig, force bool,
 	if !cfg.Enabled {
 		return nil
 	}
-	all := applyRoleOrder(scanRoles(a.rolesRoot), cfg.Order)
-	usable := make([]Role, 0, len(all))
+	all := role.ApplyRoleOrder(role.ScanRoles(a.rolesRoot), cfg.Order)
+	usable := make([]role.Role, 0, len(all))
 	for _, r := range all {
 		if r.FigurePath != "" {
 			usable = append(usable, r)
@@ -35,8 +36,8 @@ func (a *App) buildSupervisorSessionWith(cfg model.SupervisorConfig, force bool,
 		return nil
 	}
 
-	var picked *Role
-	pickByName := func(rs []Role, name string) *Role {
+	var picked *role.Role
+	pickByName := func(rs []role.Role, name string) *role.Role {
 		if strings.TrimSpace(name) == "" {
 			return nil
 		}
@@ -110,9 +111,9 @@ func (a *App) buildSupervisorSessionWith(cfg model.SupervisorConfig, force bool,
 		Geom:     &picked.Geom,
 		Lines: model.SupLines{
 			// 第一段兜底：提醒内容为空时督休专员不至于哑口（正常由渲染层优先用提醒的提醒内容）
-			Urge: pickOne(urgeLines, a.rng),
+			Urge: role.PickOne(role.UrgeLines, a.rng),
 			// 第二段（命令）：该督休专员 meta.json 的台词池（空池返回空串，渲染层沿用第一段台词）
-			Command: pickRoleLine(picked.Messages, picked.Name, a.cursor, a.rng),
+			Command: role.PickRoleLine(picked.Messages, picked.Name, a.cursor, a.rng),
 		},
 	}
 }
@@ -122,9 +123,9 @@ func (a *App) buildSupervisorSessionWith(cfg model.SupervisorConfig, force bool,
 //
 // 为什么要有它：曾经首选督休专员的 toDataURL 返回空串就直接返回 nil，提醒窗口于是变成
 // 一个既没有立绘也没有对话框的空壳；用户只能反复点「预览」撞运气。
-func pickRoleWithImage(usable []Role, prefer *Role) (*Role, string) {
+func pickRoleWithImage(usable []role.Role, prefer *role.Role) (*role.Role, string) {
 	if prefer != nil {
-		if img := toDataURL(prefer.FigurePath); img != "" {
+		if img := role.ToDataURL(prefer.FigurePath); img != "" {
 			return prefer, img
 		}
 	}
@@ -132,7 +133,7 @@ func pickRoleWithImage(usable []Role, prefer *Role) (*Role, string) {
 		if prefer != nil && strings.EqualFold(usable[i].Name, prefer.Name) {
 			continue
 		}
-		if img := toDataURL(usable[i].FigurePath); img != "" {
+		if img := role.ToDataURL(usable[i].FigurePath); img != "" {
 			return &usable[i], img
 		}
 	}
@@ -173,11 +174,11 @@ func (a *App) SupervisorPreview(sup map[string]any, name string) *model.SupStage
 }
 
 // enabledRoles 过滤掉已禁用督休专员（force=true 预览时不过滤）
-func (a *App) enabledRoles(all []Role, force bool) []Role {
+func (a *App) enabledRoles(all []role.Role, force bool) []role.Role {
 	if force {
 		return all
 	}
-	out := make([]Role, 0, len(all))
+	out := make([]role.Role, 0, len(all))
 	for _, r := range all {
 		if r.Enabled {
 			out = append(out, r)

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"workerrest/internal/model"
+	"workerrest/internal/role"
 )
 
 // 内置督休专员统一几何的回归（2026-10-28 用户要求）。
@@ -15,7 +16,7 @@ import (
 // 都是这一组值；导入自定义立绘时默认也是这一组值。
 //
 // 所以这条测试同时钉三件事：
-//  1. 默认值本身（Go 侧 supGeomDefault —— 「恢复默认」与「导入自定义立绘」都走它）
+//  1. 默认值本身（Go 侧 role.SupGeomDefault —— 「恢复默认」与「导入自定义立绘」都走它）
 //  2. 仓库里每个内置 meta.json 的 geom 与默认值一致（打包发布出去的就是这些文件）
 //  3. 前端几处 fallback 常量不能跟 Go 侧劈叉（读不到 geom 时显示成另一套比例）
 //
@@ -23,8 +24,8 @@ import (
 // 本来就翻转），不属于统一项。
 func TestBuiltinRoleGeomDefaults(t *testing.T) {
 	want := model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
-	if supGeomDefault != want {
-		t.Fatalf("supGeomDefault 应为 %+v，得到 %+v", want, supGeomDefault)
+	if role.SupGeomDefault != want {
+		t.Fatalf("role.SupGeomDefault 应为 %+v，得到 %+v", want, role.SupGeomDefault)
 	}
 
 	entries, err := os.ReadDir("supervisors")
@@ -46,7 +47,7 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 			t.Fatalf("%s 解析失败：%v", path, err)
 		}
 		geom, _ := m["geom"].(map[string]any)
-		got := normalizeSupGeom(geom)
+		got := role.NormalizeSupGeom(geom)
 		if got.SizePct != want.SizePct || got.PosXPct != want.PosXPct || got.PosYPct != want.PosYPct {
 			t.Errorf("%s 的 geom 应为 高度 %v%% / 距左 %v%% / 距底 %v%%，得到 高度 %v%% / 距左 %v%% / 距底 %v%%",
 				path, want.SizePct, want.PosXPct, want.PosYPct, got.SizePct, got.PosXPct, got.PosYPct)
@@ -89,7 +90,7 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 }
 
 // 导入自定义立绘：新建的 meta.json 直接用默认几何（80 / 5 / 0），不是别的数。
-// 走真实的 createRoleDir（导入按钮背后那条路），不是只读 supGeomDefault 变量。
+// 走真实的 role.CreateRoleDir（导入按钮背后那条路），不是只读 role.SupGeomDefault 变量。
 func TestImportedRoleUsesDefaultGeom(t *testing.T) {
 	root := t.TempDir()
 	src := filepath.Join(root, "cat.png")
@@ -100,11 +101,11 @@ func TestImportedRoleUsesDefaultGeom(t *testing.T) {
 	if err := os.MkdirAll(rolesRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	name := createRoleDir(rolesRoot, "小花猫", src)
+	name := role.CreateRoleDir(rolesRoot, "小花猫", src)
 	if name == "" {
-		t.Fatal("createRoleDir 失败，导入路径本身就有问题")
+		t.Fatal("role.CreateRoleDir 失败，导入路径本身就有问题")
 	}
-	cfg, ok := readRoleFile(rolesRoot, name)
+	cfg, ok := role.ReadRoleFile(rolesRoot, name)
 	if !ok {
 		t.Fatal("读不回刚导入的督休专员")
 	}

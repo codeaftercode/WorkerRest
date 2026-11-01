@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 	"workerrest/internal/jsonx"
+	"workerrest/internal/role"
 )
 
 // 归一化的快速回归。
@@ -577,7 +578,7 @@ func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
 	// 牙齿在这：名字必须是内置清单里的人。写成别的（拼错、或写了个清单外的名字）直接红，
 	// 而且不碰磁盘，用户删专员也不会误报。
 	builtin := false
-	for _, n := range defaultRoleOrder {
+	for _, n := range role.DefaultRoleOrder {
 		if strings.EqualFold(n, fixed) {
 			builtin = true
 			break
@@ -586,7 +587,7 @@ func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
 	if !builtin {
 		t.Fatalf("出厂固定专员 %q 不在 defaultRoleOrder 里：写错了名字，或者它不是内置专员", fixed)
 	}
-	if _, ok := resolveRoleDir("supervisors", fixed); !ok {
+	if _, ok := role.ResolveRoleDir("supervisors", fixed); !ok {
 		t.Logf("磁盘上没有专员 %q（内置专员可被用户删除），本轮跳过 meta.json 名字比对", fixed)
 	}
 }
