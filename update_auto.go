@@ -5,16 +5,7 @@ import (
 	"math/rand"
 	"time"
 	"workerrest/internal/logx"
-)
-
-const (
-	// autoCheckWindow 当天第一次检测到键鼠活动后，在这么长的时间窗内随机取一刻检查
-	autoCheckWindow = 3 * time.Hour
-	// autoCheckRetry 到点却处于「暂停休息」时，在这么长的时间窗内再随机取一刻重试，
-	// 仍暂停就再取一刻，如此反复
-	autoCheckRetry = 30 * time.Minute
-	// autoCheckPoll 调度轮询粒度（判断是否跨天 / 是否已有键鼠活动 / 是否到点）
-	autoCheckPoll = 2 * time.Second
+	"workerrest/internal/update"
 )
 
 // 时间源与随机源注入点：生产直接用真实实现，单测换成假时钟/定值。
@@ -30,61 +21,8 @@ var (
 	}
 )
 
-// 调度动作
-const (
-	autoActNone  = ""      // 继续等
-	autoActCheck = "check" // 现在去检查更新
-)
-
-// autoUpdateState 自动检查更新的调度状态（只保存「当天」这一份，跨天整体重置）。
-type autoUpdateState struct {
-	day     string    // 本次调度所属的本地日期
-	armedAt time.Time // 该日期内的目标时刻；零值＝还没排期（在等当天第一次键鼠活动）
-}
-
-// autoUpdateTick 推进一次调度状态机，返回这一拍该做什么。规则：
-//  1. 当天首次检测到键鼠活动 → 在 0~3 小时内随机取一个时刻（armedAt）；
-//  2. 到点时若不在「暂停休息」状态 → 去检查更新；
-//  3. 到点时正处于「暂停休息」→ 在 0~30 分钟内再随机取一个时刻，到点再判，反复；
-//  4. 跨天（含排期或重试期间跨过零点）一律整体重置，当天有没有查成都不影响第二天；
-//  5. 当天已经查过（done）→ 不再排期。
-//
-// 纯逻辑，不碰时钟、不碰 IO，时间由参数给、随机由 randDur 给，方便单测。
-func autoUpdateTick(st *autoUpdateState, today string, now time.Time,
-	active, paused, done bool, randDur func(time.Duration) time.Duration) string {
-	if st.day != today {
-		*st = autoUpdateState{day: today}
-	}
-	if done {
-		st.armedAt = time.Time{}
-		return autoActNone
-	}
-	if st.armedAt.IsZero() {
-		// 还在等这一天的第一次键鼠活动；没活动就不排期
-		if !active {
-			return autoActNone
-		}
-		st.armedAt = now.Add(randDur(autoCheckWindow))
-		return autoActNone
-	}
-	// 系统时钟被往回调（手动改时间 / 校时）会把已排的 armedAt 推到很远的未来，
-	// 那一整天的自动检查就永远等不到。超过本日窗口 + 5 分钟就当作失效、重新排期。
-	if st.armedAt.After(now.Add(autoCheckWindow + 5*time.Minute)) {
-		st.armedAt = now.Add(randDur(autoCheckWindow))
-	}
-	if now.Before(st.armedAt) {
-		return autoActNone
-	}
-	if paused {
-		st.armedAt = now.Add(randDur(autoCheckRetry))
-		return autoActNone
-	}
-	st.armedAt = time.Time{}
-	return autoActCheck
-}
-
 // startAutoUpdateCheck 实现「自动检查更新」：勾选了才跑；当天已查过则跳过（不重复联网）。
-// 真正的触发时机由 autoUpdateLoop + autoUpdateTick 决定（见那里的规则说明），
+// 真正的触发时机由 autoUpdateLoop + update.Tick 决定（见那里的规则说明），
 // 失败不打扰用户（结果仍会推给设置页，由它显示）。
 func (a *App) startAutoUpdateCheck() {
 	if serverMode {
@@ -99,7 +37,7 @@ func (a *App) startAutoUpdateCheck() {
 		log.Printf("[update] 读不到系统空闲状态，跳过自动检查")
 		return
 	}
-	if a.cfg.LastUpdateCheck() == todayStr() {
+	if a.cfg.LastUpdateCheck() == update.TodayStr() {
 		log.Printf("[update] 今天已检查过更新，等明天再自动检查")
 	}
 	go a.autoUpdateLoop()
@@ -117,7 +55,7 @@ func (a *App) lastUpdateCheckLocked() string {
 
 // autoUpdateLoop 常驻调度循环：进程活多久就转多久，跨天自动进入下一天。
 func (a *App) autoUpdateLoop() {
-	var st autoUpdateState
+	var st update.State
 	for {
 		// 用户中途关掉「自动检查更新」就不再排期（重新打开需重启软件才生效，
 		// 与「开关只在启动时读一次」的既有口径一致）
@@ -132,9 +70,9 @@ func (a *App) autoUpdateLoop() {
 		}
 		today := autoUpdateNow().Format("2006-01-02")
 		now := autoUpdateNow()
-		action := autoUpdateTick(&st, today, now,
+		action := update.Tick(&st, today, now,
 			a.idle != nil && a.idle.IsActive(), a.schedPaused(), done, autoUpdateRand)
-		if action == autoActCheck {
+		if action == update.ActCheck {
 			// 网络请求 + JSON 解析 + 落盘，是这条循环里唯一有实质 panic 风险的部分。
 			// 被 panic 打断时不能立刻重试（一秒内连炸三次就会触发熔断），退到下一轮排期。
 			if !logx.GuardRunOK("update.check", func() { a.runAutoUpdateCheck(today) }) {
@@ -144,7 +82,7 @@ func (a *App) autoUpdateLoop() {
 			}
 			continue // 立刻下一拍：成功则 done 生效，失败则重新按当天规则排期
 		}
-		autoUpdateSleep(autoCheckPoll)
+		autoUpdateSleep(update.AutoCheckPoll)
 	}
 }
 

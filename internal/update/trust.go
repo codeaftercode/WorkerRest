@@ -1,4 +1,4 @@
-package main
+package update
 
 import (
 	"crypto/sha256"
@@ -15,7 +15,7 @@ import (
 	"workerrest/internal/urltls"
 )
 
-// 更新链的信任边界。
+// 更新链的信任边界（纯逻辑，零 App 依赖）。
 //
 // 自动更新是**远程内容直接落到本地并被执行**的唯一条路：version.json 能改更新源、
 // 能指定下载地址，下载下来的 zip 里就是新 exe。只靠 TLS 是不够的 ——
@@ -36,25 +36,22 @@ import (
 // exe 的通道，宁可停在旧版本，也不能在「看起来正常」的情况下装入未经校验的内容。
 
 const (
-	// maxVersionJSONBytes 清单体积上限：正常只有几百字节，1 MiB 足够宽松。
-	maxVersionJSONBytes = 1 << 20
-	// maxPackageBytes 更新包（rest.zip）体积上限：实际约 7~15 MiB。
-	maxPackageBytes = 64 << 20
-	// maxExtractTotalBytes 解压后总字节上限（防 zip bomb：压缩比可达 1000:1）。
-	maxExtractTotalBytes = 192 << 20
-	// maxExtractEntries 解压条目数上限（正常包只有几个文件）。
-	maxExtractEntries = 2048
+	// MaxVersionJSONBytes 清单体积上限：正常只有几百字节，1 MiB 足够宽松。
+	MaxVersionJSONBytes = 1 << 20
+	// MaxPackageBytes 更新包（rest.zip）体积上限：实际约 7~15 MiB。
+	MaxPackageBytes = 64 << 20
+	// MaxExtractTotalBytes 解压后总字节上限（防 zip bomb：压缩比可达 1000:1）。
+	MaxExtractTotalBytes = 192 << 20
+	// MaxExtractEntries 解压条目数上限（正常包只有几个文件）。
+	MaxExtractEntries = 2048
 	// maxUpdateRedirects 跟随重定向的上限
 	maxUpdateRedirects = 5
 	// sha256HexLen sha256 十六进制长度
 	sha256HexLen = 64
 )
 
-// 更新源地址校验（CheckUpdateURL / IsLoopbackHost）已下沉到 internal/urltls，
-// 供 settings 与 update 两域共用（避免 settings → update 的跨包依赖）。
-
-// sanitizeUpdateURLs 过滤出合规地址（保持原顺序）；被丢弃的记一行日志便于排查。
-func sanitizeUpdateURLs(in []string) []string {
+// SanitizeUpdateURLs 过滤出合规地址（保持原顺序）；被丢弃的记一行日志便于排查。
+func SanitizeUpdateURLs(in []string) []string {
 	out := make([]string, 0, len(in))
 	for _, raw := range in {
 		s := strings.TrimSpace(raw)
@@ -70,9 +67,9 @@ func sanitizeUpdateURLs(in []string) []string {
 	return out
 }
 
-// newUpdateClient 构造更新专用 HTTP 客户端：带超时，并在**每一次重定向**上重新
+// NewUpdateClient 构造更新专用 HTTP 客户端：带超时，并在**每一次重定向**上重新
 // 校验协议 —— 否则一个 https 地址可以 302 到 http，前面所有校验都白做。
-func newUpdateClient(timeout time.Duration) *http.Client {
+func NewUpdateClient(timeout time.Duration) *http.Client {
 	return &http.Client{
 		Timeout: timeout,
 		CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -84,9 +81,9 @@ func newUpdateClient(timeout time.Duration) *http.Client {
 	}
 }
 
-// parseSHA256 规范化并校验清单里的 sha256（大小写不敏感、允许 "sha256:" 前缀）。
+// ParseSHA256 规范化并校验清单里的 sha256（大小写不敏感、允许 "sha256:" 前缀）。
 // 格式不对等同于「没有校验值」—— 宁可拒绝，也不能拿一个残值去比。
-func parseSHA256(s string) (string, error) {
+func ParseSHA256(s string) (string, error) {
 	v := strings.TrimSpace(s)
 	v = strings.TrimPrefix(strings.ToLower(v), "sha256:")
 	v = strings.TrimSpace(v)
@@ -116,20 +113,20 @@ func sha256File(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
-// verifySHA256 校验文件哈希与期望值一致（want 应已由 parseSHA256 规范化）。
-func verifySHA256(path, want string) error {
+// VerifySHA256 校验文件哈希与期望值一致（want 应已由 ParseSHA256 规范化）。
+func VerifySHA256(path, want string) error {
 	got, err := sha256File(path)
 	if err != nil {
 		return fmt.Errorf("计算校验值失败: %w", err)
 	}
 	if got != want {
-		return fmt.Errorf("sha256 校验失败（期望 %s…，实际 %s…）", head8(want), head8(got))
+		return fmt.Errorf("sha256 校验失败（期望 %s…，实际 %s…）", Head8(want), Head8(got))
 	}
 	return nil
 }
 
-// head8 取前 8 位用于提示：完整 64 位太长，日志与界面上没必要刷屏。
-func head8(s string) string {
+// Head8 取前 8 位用于提示：完整 64 位太长，日志与界面上没必要刷屏。
+func Head8(s string) string {
 	if len(s) <= 8 {
 		return s
 	}

@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 	"workerrest/internal/platform"
+	"workerrest/internal/update"
 	"workerrest/internal/urltls"
 )
 
@@ -48,7 +49,7 @@ func (a *App) StartUpdate() map[string]any {
 	}
 	// 校验值先取出并规范化：状态可能是上个版本持久化下来的（那时还没有 sha256），
 	// 这种「没有哈希的待更新状态」一律拒绝，绝不降级成「只靠 TLS」。
-	wantSHA, err := parseSHA256(statusString(st, "sha256"))
+	wantSHA, err := update.ParseSHA256(statusString(st, "sha256"))
 	if err != nil {
 		return map[string]any{"status": "error", "message": "更新清单缺少有效的 sha256 校验值，已拒绝更新"}
 	}
@@ -140,7 +141,7 @@ func (a *App) StartUpdate() map[string]any {
 // 三道闸：协议白名单（含重定向）、Content-Length 预检、实际写入字节上限 ——
 // 最后一道必须有，服务端可以不发 Content-Length 或用 chunked 慢慢灌。
 func downloadFile(url, dest string) error {
-	return downloadFileLimited(url, dest, maxPackageBytes)
+	return downloadFileLimited(url, dest, update.MaxPackageBytes)
 }
 
 // downloadFileLimited 是 downloadFile 的可注入上限版本（单测用小上限验证截断逻辑，
@@ -149,7 +150,7 @@ func downloadFileLimited(url, dest string, limit int64) error {
 	if err := urltls.CheckUpdateURL(url); err != nil {
 		return err
 	}
-	client := newUpdateClient(10 * time.Minute)
+	client := update.NewUpdateClient(10 * time.Minute)
 	req, err := http.NewRequest(http.MethodGet, url, nil)
 	if err != nil {
 		return err
@@ -227,7 +228,7 @@ func normalizePackageURL(raw string) string {
 // 哈希不符时删除已下载的文件再换下一个镜像 —— 换镜像本身是安全的，因为每个镜像都要过
 // 同一道哈希；而「哈希不符但继续装」绝对不允许。
 func downloadPackage(urls []string, dest string, wantSHA string) error {
-	want, err := parseSHA256(wantSHA)
+	want, err := update.ParseSHA256(wantSHA)
 	if err != nil {
 		return fmt.Errorf("拒绝下载：%w", err)
 	}
@@ -248,13 +249,13 @@ func downloadPackage(urls []string, dest string, wantSHA string) error {
 			lastErr = err
 			continue
 		}
-		if err := verifySHA256(dest, want); err != nil {
+		if err := update.VerifySHA256(dest, want); err != nil {
 			log.Printf("[update] 更新包校验失败，丢弃后换下一镜像: %v", err)
 			_ = os.Remove(dest)
 			lastErr = err
 			continue
 		}
-		log.Printf("[update] 更新包校验通过: sha256=%s…", head8(want))
+		log.Printf("[update] 更新包校验通过: sha256=%s…", update.Head8(want))
 		return nil
 	}
 	if lastErr == nil {
@@ -269,7 +270,7 @@ func downloadPackage(urls []string, dest string, wantSHA string) error {
 // 除目录穿越外还挡 zip bomb：条目数与解压总量都有上限，且落盘时再用 LimitReader
 // 兜一层 —— 条目声明的 UncompressedSize 可以造假，实际写出来的字节数才是真的。
 func extractZip(archive, dest string) error {
-	return extractZipLimited(archive, dest, maxExtractTotalBytes, maxExtractEntries)
+	return extractZipLimited(archive, dest, update.MaxExtractTotalBytes, update.MaxExtractEntries)
 }
 
 // extractZipLimited 是 extractZip 的可注入上限版本（单测用小上限验证截断逻辑）。

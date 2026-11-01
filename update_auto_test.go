@@ -13,9 +13,10 @@ import (
 	"time"
 	"workerrest/internal/idle"
 	"workerrest/internal/settings"
+	"workerrest/internal/update"
 )
 
-// ---------- 自动检查更新的调度（autoUpdateTick）----------
+// ---------- 自动检查更新的调度（update.Tick 状态机）----------
 
 // fixedRand 固定随机时长，便于断言排期时刻。
 func fixedRand(d time.Duration) func(time.Duration) time.Duration {
@@ -24,7 +25,7 @@ func fixedRand(d time.Duration) func(time.Duration) time.Duration {
 
 // TestAutoUpdateRandWithinWindow 随机时长必须落在 [0, max) 内。
 func TestAutoUpdateRandWithinWindow(t *testing.T) {
-	for _, max := range []time.Duration{autoCheckWindow, autoCheckRetry} {
+	for _, max := range []time.Duration{update.AutoCheckWindow, update.AutoCheckRetry} {
 		for i := 0; i < 200; i++ {
 			if d := autoUpdateRand(max); d < 0 || d >= max {
 				t.Fatalf("随机时长 %v 超出 [0,%v)", d, max)
@@ -36,114 +37,6 @@ func TestAutoUpdateRandWithinWindow(t *testing.T) {
 	}
 	if d := autoUpdateRand(-time.Minute); d != 0 {
 		t.Fatalf("上界为负时应返回 0，实得 %v", d)
-	}
-}
-
-// TestAutoUpdateTickDailyTiming 当天首次键鼠活动后，3 小时内随机一刻才真正检查。
-func TestAutoUpdateTickDailyTiming(t *testing.T) {
-	const day = "2026-10-23"
-	t0 := time.Date(2026, 10, 23, 9, 0, 0, 0, time.Local)
-	var st autoUpdateState
-
-	// 1) 还没有键鼠活动：不排期（一直不用电脑就永远不检查）
-	if act := autoUpdateTick(&st, day, t0, false, false, false, fixedRand(time.Hour)); act != autoActNone {
-		t.Fatalf("无活动时不该有动作，实得 %q", act)
-	}
-	if !st.armedAt.IsZero() {
-		t.Fatalf("无活动时不该排期，实得 %v", st.armedAt)
-	}
-
-	// 2) 首次活动：只在 3 小时窗内排期，不当场检查
-	if act := autoUpdateTick(&st, day, t0, true, false, false, fixedRand(time.Hour)); act != autoActNone {
-		t.Fatalf("首次活动后不该立刻检查，实得 %q", act)
-	}
-	if want := t0.Add(time.Hour); !st.armedAt.Equal(want) {
-		t.Fatalf("排期时刻 = %v，期望 %v", st.armedAt, want)
-	}
-
-	// 3) 未到点：什么也不做
-	if act := autoUpdateTick(&st, day, t0.Add(59*time.Minute), true, false, false, fixedRand(time.Hour)); act != autoActNone {
-		t.Fatalf("未到点不该检查，实得 %q", act)
-	}
-
-	// 4) 到点且不在暂停休息：去检查，并清掉本次排期
-	if act := autoUpdateTick(&st, day, t0.Add(time.Hour), true, false, false, fixedRand(time.Hour)); act != autoActCheck {
-		t.Fatalf("到点应检查更新，实得 %q", act)
-	}
-	if !st.armedAt.IsZero() {
-		t.Fatalf("检查后应清空排期，实得 %v", st.armedAt)
-	}
-}
-
-// TestAutoUpdateTickRetriesWhilePaused 到点若处于暂停休息，30 分钟内再随机，反复。
-func TestAutoUpdateTickRetriesWhilePaused(t *testing.T) {
-	const day = "2026-10-23"
-	t0 := time.Date(2026, 10, 23, 9, 0, 0, 0, time.Local)
-	st := autoUpdateState{day: day}
-	autoUpdateTick(&st, day, t0, true, false, false, fixedRand(time.Hour))
-	at := t0.Add(time.Hour)
-
-	// 第 1 次到点：暂停 → 推 10 分钟
-	if act := autoUpdateTick(&st, day, at, true, true, false, fixedRand(10*time.Minute)); act != autoActNone {
-		t.Fatalf("暂停时不该检查，实得 %q", act)
-	}
-	if want := at.Add(10 * time.Minute); !st.armedAt.Equal(want) {
-		t.Fatalf("重试时刻 = %v，期望 %v", st.armedAt, want)
-	}
-
-	// 第 2 次到点：还暂停 → 再推 5 分钟
-	at = at.Add(10 * time.Minute)
-	if act := autoUpdateTick(&st, day, at, true, true, false, fixedRand(5*time.Minute)); act != autoActNone {
-		t.Fatalf("仍暂停时不该检查，实得 %q", act)
-	}
-	if want := at.Add(5 * time.Minute); !st.armedAt.Equal(want) {
-		t.Fatalf("重试时刻 = %v，期望 %v", st.armedAt, want)
-	}
-
-	// 第 3 次到点：已恢复 → 检查
-	if act := autoUpdateTick(&st, day, at.Add(5*time.Minute), true, false, false, fixedRand(time.Minute)); act != autoActCheck {
-		t.Fatalf("恢复后到点应检查，实得 %q", act)
-	}
-}
-
-// TestAutoUpdateTickResetsAtMidnight 跨天整体重置：昨晚没查成不影响今天。
-func TestAutoUpdateTickResetsAtMidnight(t *testing.T) {
-	const d1, d2 = "2026-10-23", "2026-10-24"
-	st := autoUpdateState{day: d1}
-	late := time.Date(2026, 10, 23, 23, 50, 0, 0, time.Local)
-	autoUpdateTick(&st, d1, late, true, false, false, fixedRand(2*time.Hour)) // 排到次日 01:50
-	if st.armedAt.IsZero() {
-		t.Fatalf("应已排期")
-	}
-
-	// 次日 00:30：跨天 → 排期作废，回到「等今天首次活动」（此刻无活动）
-	act := autoUpdateTick(&st, d2, time.Date(2026, 10, 24, 0, 30, 0, 0, time.Local),
-		false, false, false, fixedRand(time.Hour))
-	if act != autoActNone {
-		t.Fatalf("跨天不该检查，实得 %q", act)
-	}
-	if st.day != d2 || !st.armedAt.IsZero() {
-		t.Fatalf("跨天应整体重置，实得 day=%q armed=%v", st.day, st.armedAt)
-	}
-
-	// 新的一天首次活动 → 重新按 3 小时窗排期（前一天一直暂停没查成也不影响）
-	next := time.Date(2026, 10, 24, 8, 0, 0, 0, time.Local)
-	autoUpdateTick(&st, d2, next, true, true, false, fixedRand(30*time.Minute))
-	if want := next.Add(30 * time.Minute); !st.armedAt.Equal(want) {
-		t.Fatalf("新一天的排期 = %v，期望 %v（暂停不影响「首次活动后 3 小时窗」的起算）", st.armedAt, want)
-	}
-}
-
-// TestAutoUpdateTickSkipsWhenDone 当天已查过 → 不再排期、不再检查。
-func TestAutoUpdateTickSkipsWhenDone(t *testing.T) {
-	const day = "2026-10-23"
-	now := time.Date(2026, 10, 23, 10, 0, 0, 0, time.Local)
-	st := autoUpdateState{day: day, armedAt: now}
-	if act := autoUpdateTick(&st, day, now, true, false, true, fixedRand(time.Hour)); act != autoActNone {
-		t.Fatalf("当天已查过不该再检查，实得 %q", act)
-	}
-	if !st.armedAt.IsZero() {
-		t.Fatalf("当天已查过应清空排期，实得 %v", st.armedAt)
 	}
 }
 
@@ -271,12 +164,12 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 // 这里刻意用真实的 autoUpdateRand，用「区间断言」验证随机窗口没越界。
 func driveAutoUpdate(from, to time.Time, step time.Duration,
 	active, paused func(time.Time) bool) []time.Time {
-	var st autoUpdateState
+	var st update.State
 	var checks []time.Time
 	doneDay := ""
 	for now := from; now.Before(to); now = now.Add(step) {
 		day := now.Format("2006-01-02")
-		if autoUpdateTick(&st, day, now, active(now), paused(now), doneDay == day, autoUpdateRand) == autoActCheck {
+		if update.Tick(&st, day, now, active(now), paused(now), doneDay == day, autoUpdateRand) == update.ActCheck {
 			checks = append(checks, now)
 			doneDay = day
 		}

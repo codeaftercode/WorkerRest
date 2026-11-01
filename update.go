@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"workerrest/internal/update"
 )
 
 const (
@@ -271,7 +273,7 @@ func (a *App) restoreUpdateStatus() {
 	}
 	if latest, ok := res["latest"].(string); ok && latest != "" {
 		// update-available：校验版本仍有效
-		if !isNewerVersion(appVersion, latest) {
+		if !update.IsNewerVersion(appVersion, latest) {
 			a.clearUpdateResult()
 			return
 		}
