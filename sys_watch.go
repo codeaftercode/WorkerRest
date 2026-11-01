@@ -4,6 +4,9 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"workerrest/internal/windnd"
+	"workerrest/internal/winproc"
 )
 
 // 系统能力监视器：空闲 / 勿扰 / 应用占用 —— 三条链路都汇聚到调度器的
@@ -42,8 +45,8 @@ func (a *App) startSystemWatchers() {
 		a.idle = NewIdleState()
 	}
 	a.idle.Start()
-	dnd := GetDndStatus()
-	procs := ListProcessNames()
+	dnd := windnd.GetDndStatus()
+	procs := winproc.ListProcessNames()
 	dndNote := dnd.Detail
 	if !dnd.Supported {
 		dndNote += "（不支持，勿扰暂停不生效）"
@@ -136,15 +139,13 @@ func (a *App) dndWatchTick() {
 	if a.sched == nil {
 		return
 	}
-	state, ok := queryQunsState()
 	cfg := a.cfgSnapshot()
+	dnd, fs := windnd.Query()
 
-	dnd := dndStatusOf(state, ok)
 	a.applyAutoPause(cfg.DndPause() && dnd.Active, pauseReasonDnd, &a.dndActiveLogged,
 		"[dnd] 系统勿扰 / 专注 / 演示模式已开启："+dnd.Detail+"，暂停提醒",
 		"[dnd] 系统勿扰 / 专注 / 演示模式已关闭：恢复提醒")
 
-	fs := fullScreenStatusOf(state, ok)
 	a.applyAutoPause(cfg.FullScreenPause() && fs.Active, pauseReasonFullScr, &a.fsActiveLogged,
 		"[fullscreen] 检测到全屏独占应用运行（"+fs.Detail+"），暂停提醒",
 		"[fullscreen] 全屏独占应用已退出：恢复提醒")
@@ -179,7 +180,7 @@ func (a *App) appPauseWatchTick() {
 		return
 	}
 	cfg := a.cfgSnapshot()
-	r := ListProcessNames()
+	r := winproc.ListProcessNames()
 	hit, matched := false, []string(nil)
 	if r.Supported {
 		hit, matched = matchAppPause(cfg.AppPauseCfg(), r.Names)
@@ -215,7 +216,7 @@ func (a *App) SysProbe() map[string]any {
 	if a.idle != nil {
 		idle = a.idle.Info()
 	}
-	procs := ListProcessNames()
+	procs := winproc.ListProcessNames()
 	cur := ReadRunEntry()
 	dis := ApprovalDisabled()
 	autostart := map[string]any{
@@ -236,8 +237,8 @@ func (a *App) SysProbe() map[string]any {
 	}
 	return map[string]any{
 		"idle":       idle,
-		"dnd":        GetDndStatus(),
-		"fullscreen": GetFullScreenStatus(),
+		"dnd":        windnd.GetDndStatus(),
+		"fullscreen": windnd.GetFullScreenStatus(),
 		"processes":  procs,
 		"autostart":  autostart,
 	}

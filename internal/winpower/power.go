@@ -1,4 +1,4 @@
-package main
+package winpower
 
 import "syscall"
 
@@ -22,19 +22,19 @@ var (
 // 设 60 秒：把 NTP 校时、手动改时间这类秒级跳变挡在门外，只认真正的睡眠 / 休眠。
 const sleepThresholdMs = 60 * 1000
 
-// sysWakeTick 读系统自开机以来的毫秒数（GetTickCount64，**不含睡眠 / 休眠时间**）。
+// SysWakeTick 读系统自开机以来的毫秒数（GetTickCount64，**不含睡眠 / 休眠时间**）。
 // 第二个返回值表示是否读到。kernel32 的 GetTickCount64 永不失败，这里恒为 true；
 // 保留布尔返回是为了与 idleState 的 tickFn 保持同一形状，方便单测注入假源。
-func sysWakeTick() (int64, bool) {
+func SysWakeTick() (int64, bool) {
 	r, _, _ := procGetTickCount64.Call()
 	return int64(r), true
 }
 
-// detectSleep 判定一次采样是否跨过了睡眠：返回睡眠时长（>0 表示睡过）。
+// DetectSleep 判定一次采样是否跨过了睡眠：返回睡眠时长（>0 表示睡过）。
 // wallDelta 是墙钟跳变（毫秒），tickDelta 是唤醒 tick 跳变（毫秒）。正常时两者相等；
 // 睡眠时墙钟跳了很远、tick 只跳一点，差值就是睡眠时长。
 // 抽成纯函数是为了能脱离时钟与 Win32 做表驱动单测。
-func detectSleep(wallDelta, tickDelta int64) int64 {
+func DetectSleep(wallDelta, tickDelta int64) int64 {
 	d := wallDelta - tickDelta
 	if d > sleepThresholdMs {
 		return d

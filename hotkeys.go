@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"unsafe"
 )
 
@@ -36,6 +37,7 @@ const (
 )
 
 var (
+	modKernel32            = syscall.NewLazyDLL("kernel32.dll")
 	procRegisterHotKey     = modUser32.NewProc("RegisterHotKey")
 	procUnregisterHotKey   = modUser32.NewProc("UnregisterHotKey")
 	procGetMessageW        = modUser32.NewProc("GetMessageW")

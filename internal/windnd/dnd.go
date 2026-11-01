@@ -1,4 +1,4 @@
-package main
+package windnd
 
 import (
 	"fmt"
@@ -127,4 +127,13 @@ func GetDndStatus() DndStatus {
 func GetFullScreenStatus() FullScreenStatus {
 	state, ok := queryQunsState()
 	return fullScreenStatusOf(state, ok)
+}
+
+// Query 一次查询同时返回勿扰与全屏独占两个结论。
+//
+// 两条支路共用同一次 SHQueryUserNotificationState 调用（同一个返回值的不同取值），
+// 分开调会多打一次 DLL —— 3 秒一跳的监视循环里，这是无谓的开销。
+func Query() (dnd DndStatus, full FullScreenStatus) {
+	state, ok := queryQunsState()
+	return dndStatusOf(state, ok), fullScreenStatusOf(state, ok)
 }

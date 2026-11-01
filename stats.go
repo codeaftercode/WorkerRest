@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"workerrest/internal/winpower"
 )
 
 // 使用统计：按**本地日期**记账，落盘在统计文件里（落点见 App.appStatsFile）。
@@ -375,7 +377,7 @@ func NewStatsStore(fileFn func() string) *StatsStore {
 		workSegStartAt: now,
 		nowFn:          nowMs,
 		fileFn:         fileFn,
-		wakeTickFn:     sysWakeTick,
+		wakeTickFn:     winpower.SysWakeTick,
 		stopCh:         make(chan struct{}),
 		notifyCh:       make(chan struct{}, 1),
 	}
@@ -1248,7 +1250,7 @@ func (st *StatsStore) StartWorkAccumulator(isBreak, isIdle func() bool) {
 					// 醒来后第一跳就触发，把睡眠整段补记成离开并跳过工作记账（见 NotifySlept）。
 					if haveTick && st.wakeTickFn != nil {
 						if tick, ok := st.wakeTickFn(); ok {
-							if detectSleep(now-last, tick-lastTick) > 0 {
+							if winpower.DetectSleep(now-last, tick-lastTick) > 0 {
 								st.NotifySlept(last, now)
 								last = now
 								lastTick = tick

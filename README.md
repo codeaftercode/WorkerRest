@@ -219,9 +219,13 @@ python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次�
   *.go                    后端源码（App 窗口/会话 + 调度器/计划 + 统计 + 系统能力 + 各窗口）
   main.go                 入口：注册服务 + 主窗口（= 设置窗口）
   contract.go             前端绑定「契约表」：wiredCalls 列表 + 启动自检
+  internal/               可复用的底层能力（零 App 依赖，独立子包）：
+    winproc/              系统进程枚举（Toolhelp32）
+    windnd/               系统勿扰 / 全屏独占检测（SHQueryUserNotificationState）
+    winpower/             系统睡眠检测（GetTickCount64 跳变）
+  docs/                   设计 / 审计 / 测试报告（含 manual/ 操作手册）
   supervisors/            内置督休专员模板（17 个专员，立绘均为 webp，约 4.5 MB，随包分发；子目录用专员名称命名，meta.json 里只有名字（名字即身份，没有内部 id）；无 meta.json 的目录只作素材、不进包）
   sounds/                 内置提示音源文件（四个 wav，打包时预置进便携包）
-  manual/操作手册.html     随包操作手册（自包含 HTML）
   frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）+ 全部图片资产：
                           icon.png **全项目唯一图标**（标题栏 20px / 托盘 / exe 图标源三处共用）、
                           sitting_risk.webp 关于页横幅 —— 整个目录 go:embed 进 exe，运行时只认这里
@@ -235,9 +239,10 @@ python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次�
 
 核心模块一览：`breakplan.go`（计划层）、`scheduler.go`（调度器状态机）、`stats.go`（使用统计）、
 `sound.go`（提示音）、`prebreak.go`（提前提示窗）、`takeout.go`（外卖提醒）、
-`sys_*.go`（空闲 / 勿扰 / 进程 / 自启动 / 睡眠检测）、`filedialog.go`（原生文件对话框）、
+`sys_*.go`（空闲 / 自启动检测）、`filedialog.go`（原生文件对话框）、
 `window_size.go`（设置窗口的默认 / 最小 / 记住上次尺寸）、`update.go`（检查更新）、
-`migrate_roles.go`（旧配置督休专员迁移）。
+`migrate_roles.go`（旧配置督休专员迁移）。系统探测类底层能力已拆到 `internal/`：
+`winproc`（进程枚举）、`windnd`（勿扰 / 全屏）、`winpower`（睡眠检测）。
 
 ## 数据与配置落点
 

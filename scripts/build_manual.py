@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""生成 manual/操作手册.html：把当前真实界面截图 base64 内嵌，并写入更新后的中文正文。
+"""生成 docs/manual/操作手册.html：把当前真实界面截图 base64 内嵌，并写入更新后的中文正文。
 
 用法：python scripts/build_manual.py
 截图来源：C:/Users/lwb/AppData/Local/Temp/wr_manual_shots/ （由 scripts/manual_shots.py 产出）
@@ -20,7 +20,7 @@ if not os.path.isdir(os.path.join(_TEMP, "wr_manual_shots")):
 SHOTS_DIR = os.path.join(_TEMP, "wr_manual_shots")
 STYLE_FILE = os.path.join(_TEMP, "manual_style.css")
 OUT_FILE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-                        "manual", "操作手册.html")
+                        "docs", "manual", "操作手册.html")
 
 # 占位符 -> 截图文件名（不含扩展名）
 IMG_MAP = {
@@ -54,7 +54,7 @@ def fig(placeholder, caption):
 if not os.path.exists(STYLE_FILE):
     raise SystemExit(
         "缺少样式文件：%s\n"
-        "它不随源码入库，需要从现有 manual/操作手册.html 的 <style> 块提取一次。" % STYLE_FILE)
+        "它不随源码入库，需要从现有 docs/manual/操作手册.html 的 <style> 块提取一次。" % STYLE_FILE)
 if not os.path.isdir(SHOTS_DIR):
     raise SystemExit(
         "缺少截图目录：%s\n先跑 python scripts/manual_shots.py 生成 16 张界面截图。" % SHOTS_DIR)

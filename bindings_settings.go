@@ -12,6 +12,8 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
+
+	"workerrest/internal/winproc"
 )
 
 // 设置页（settings.html）用到的绑定：读配置 / 存配置 / 督休专员目录增删改 / 关于页与更新 /
@@ -462,7 +464,7 @@ func audioFilterPattern() string {
 // 返回的是 **`{supported, names, detail}` 对象**而不是字符串数组 —— 设置页要按
 // `r.supported` 分流（不支持时把 detail 当说明文字显示），旧占位返回 `[]string{}`
 // 会让 `.supported` 恒为 undefined，页面永远停在「当前平台不支持读取程序列表」。
-func (a *App) ListRunningApps() AppProcessList { return ListProcessNames() }
+func (a *App) ListRunningApps() winproc.AppProcessList { return winproc.ListProcessNames() }
 
 // PickAppExe 选择本地可执行文件。取消返回 **null**（设置页用 `if (!r) return` 判空）。
 // 成功返回 {path, exe}（exe 是去掉路径的文件名，设置页只按文件名匹配，见 上一版的
