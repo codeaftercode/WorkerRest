@@ -1,4 +1,4 @@
-package main
+package stats
 
 import (
 	"encoding/json"
@@ -17,7 +17,7 @@ import (
 func (st *StatsStore) Flush() {
 	st.mu.Lock()
 	st.dirty = false
-	path := st.file()
+	path := st.File()
 	text, err := st.marshalLocked()
 	st.mu.Unlock()
 	if err != nil {
@@ -188,7 +188,7 @@ func (st *StatsStore) Stop() {
 }
 
 // file 当前统计文件路径（每次现算：便携判据可能随配置来源变化）
-func (st *StatsStore) file() string {
+func (st *StatsStore) File() string {
 	if st.fileFn == nil {
 		return ""
 	}
@@ -201,7 +201,7 @@ func (st *StatsStore) file() string {
 func (st *StatsStore) dayOfLocked(key string) *DayStats {
 	d := st.days[key]
 	if d == nil {
-		e := emptyDay(key)
+		e := EmptyDay(key)
 		d = &e
 		st.days[key] = d
 	}
@@ -210,7 +210,7 @@ func (st *StatsStore) dayOfLocked(key string) *DayStats {
 
 // touchTodayLocked 今天的条目（没有就建一条；跨零点后第一次调用自然翻到新的一天）
 func (st *StatsStore) touchTodayLocked() *DayStats {
-	return st.dayOfLocked(dayKeyOf(st.nowFn()))
+	return st.dayOfLocked(DayKeyOf(st.nowFn()))
 }
 
 // Today 今天的统计（深拷贝）
@@ -271,7 +271,7 @@ func (st *StatsStore) onBreakTickLocked() int64 {
 		return 0
 	}
 	st.breakLogSettledAt = now
-	for _, seg := range splitByDay(from, now) {
+	for _, seg := range SplitByDay(from, now) {
 		d := st.dayOfLocked(seg.date)
 		d.BreakMs += seg.ms
 		if st.breakLogType == "short" {
@@ -424,9 +424,9 @@ func (st *StatsStore) NotifyResume() {
 func (st *StatsStore) NotifySlept(fromMs, toMs int64) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	day := dayKeyOf(fromMs)
+	day := DayKeyOf(fromMs)
 	var added int64
-	for _, seg := range splitByDay(fromMs, toMs) {
+	for _, seg := range SplitByDay(fromMs, toMs) {
 		if seg.date == day {
 			st.dayOfLocked(seg.date).AwayMs += seg.ms
 			added += seg.ms
@@ -444,7 +444,7 @@ func (st *StatsStore) NotifySlept(fromMs, toMs int64) {
 	}
 }
 
-// countedSpan 算出这一跳真正该计入**工作**的区间 `[a, b)`，跨睡眠的部分剪掉；
+// CountedSpan 算出这一跳真正该计入**工作**的区间 `[a, b)`，跨睡眠的部分剪掉；
 // 整跳都不该计入时 ok=false。
 //
 //   - sleepStartedAt != 0（睡眠中）：这一跳最多只算到入睡那一刻 —— 之后每一跳都落在入睡
@@ -457,7 +457,7 @@ func (st *StatsStore) NotifySlept(fromMs, toMs int64) {
 // 节拍确实停摆，但进程若仍能跑（合盖前的短暂 suspend），只有第一跳会被 sleepStartedAt
 // 剪到，从第二跳起它已在 last 之后、不再起剪裁作用。钉住 b 让「睡着就不算工作」在任何
 // 情况下成立。
-func countedSpan(last, now, sleepStartedAt, sleepEndedAt int64) (int64, int64, bool) {
+func CountedSpan(last, now, sleepStartedAt, sleepEndedAt int64) (int64, int64, bool) {
 	a, b := last, now
 	if sleepStartedAt != 0 {
 		b = min(b, sleepStartedAt)

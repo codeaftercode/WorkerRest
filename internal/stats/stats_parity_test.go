@@ -1,4 +1,4 @@
-package main
+package stats
 
 import (
 	"encoding/json"
@@ -27,7 +27,7 @@ type statsRefDoc struct {
 		From   int64  `json:"from"`
 		To     int64  `json:"to"`
 		Expect []any  `json:"expect"`
-	} `json:"splitByDay"`
+	} `json:"SplitByDay"`
 	PeriodRange []struct {
 		Name   string         `json:"name"`
 		Unit   string         `json:"unit"`
@@ -61,7 +61,7 @@ func TestDumpStatsForParity(t *testing.T) {
 	splitOut := make([]map[string]any, 0, len(doc.SplitByDay))
 	for _, sc := range doc.SplitByDay {
 		list := make([]map[string]any, 0, 4)
-		for _, s := range splitByDay(sc.From, sc.To) {
+		for _, s := range SplitByDay(sc.From, sc.To) {
 			list = append(list, map[string]any{"date": s.date, "ms": s.ms})
 		}
 		splitOut = append(splitOut, map[string]any{"name": sc.Name, "expect": list})
@@ -70,7 +70,7 @@ func TestDumpStatsForParity(t *testing.T) {
 	// ② 周期区间
 	periodOut := make([]map[string]any, 0, len(doc.PeriodRange))
 	for _, sc := range doc.PeriodRange {
-		r := periodRangeOf(sc.Unit, sc.Offset, time.UnixMilli(sc.Now).Local())
+		r := PeriodRangeOf(sc.Unit, sc.Offset, time.UnixMilli(sc.Now).Local())
 		periodOut = append(periodOut, map[string]any{
 			"name": sc.Name,
 			"expect": map[string]any{
@@ -97,7 +97,7 @@ func TestDumpStatsForParity(t *testing.T) {
 	}
 
 	out := map[string]any{
-		"splitByDay":  splitOut,
+		"SplitByDay":  splitOut,
 		"periodRange": periodOut,
 		"aggregate":   agg,
 	}

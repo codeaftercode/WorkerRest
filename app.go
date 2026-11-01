@@ -13,6 +13,7 @@ import (
 	"workerrest/internal/idle"
 	"workerrest/internal/model"
 	"workerrest/internal/role"
+	"workerrest/internal/stats"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -128,9 +129,9 @@ type App struct {
 	// 全局快捷键（见 hotkeys.go）：server 模式为 nil。
 	hotkeys *HotkeyManager
 
-	// 使用统计（见 stats.go）：天记录 + 名字快照 + 防抖落盘 + 每秒工作累加。
+	// 使用统计（见 internal/stats）：天记录 + 名字快照 + 防抖落盘 + 每秒工作累加。
 	// 懒建（statsStore 首次访问时建好并读盘），启动时由 startStats 起后台 goroutine。
-	stats *StatsStore
+	stats *stats.StatsStore
 
 	// 随包 sounds/ 的启动体检（见 sound_scan.go）：只在新发现 / 有缺失时非空，
 	// 用户处理完或点「暂不」就置 nil，本次运行不再询问。用独立锁，不要与 a.mu 交叉。

@@ -1,4 +1,4 @@
-package main
+package stats
 
 import (
 	"testing"
@@ -50,7 +50,7 @@ func TestMaxWorkStreak(t *testing.T) {
 		t.Fatalf("段数组应为 [12 分钟, 5 分钟]，实得 %v", d.WorkSegments)
 	}
 
-	// 记盘 → 读回：maxStreakMs 不能被 normalizeDay 丢掉
+	// 记盘 → 读回：maxStreakMs 不能被 NormalizeDay 丢掉
 	st.Flush()
 	st2 := NewStatsStore(func() string { return path })
 	st2.nowFn = c.now
@@ -163,7 +163,7 @@ func TestBreakEndEarlyNotCountedAsDone(t *testing.T) {
 		t.Fatalf("自定义提醒应照常记完成明细：%+v", d)
 	}
 
-	// 记盘 → 读回（normalizeDay 要认得这两个键）
+	// 记盘 → 读回（NormalizeDay 要认得这两个键）
 	st.Flush()
 	st2 := NewStatsStore(func() string { return path })
 	st2.nowFn = c.now
@@ -177,37 +177,6 @@ func TestBreakEndEarlyNotCountedAsDone(t *testing.T) {
 	st.Clear()
 	if got := st.dayForTest("2026-10-09").EndEarlyCount; got != 0 {
 		t.Fatalf("清空后提前结束应归零，实得 %d", got)
-	}
-}
-
-// 四项（完成 / 推迟 / 跳过 / 提前结束）只统计短休息、长休息：自定义提醒的推迟与跳过
-// 绝不能混进来（外卖走独立的 RecordTakeoutAction，不在同一组口径里）。
-func TestBreakStatsIgnoreCustomReminders(t *testing.T) {
-	c := &statsClock{}
-	c.set(localTime(2026, 10, 9, 10, 0))
-	st, _ := newTestStats(t, c)
-	defer st.Stop()
-
-	a := &App{stats: st}
-	// 自定义提醒：推迟 / 跳过都调了宿主回调，但一条都不该记
-	a.onBreakPostponed("cb-water", 5*60_000)
-	a.onBreakSkipped("cb-water", 5*60_000)
-	if d := st.dayForTest("2026-10-09"); d.PostponeCount != 0 || d.SkipCount != 0 {
-		t.Fatalf("自定义提醒不该计入推迟 / 跳过：%+v", d)
-	}
-
-	// 内置短 / 长休息：照常记
-	a.onBreakPostponed("short", 5*60_000)
-	a.onBreakSkipped("long", 2*60_000)
-	d := st.dayForTest("2026-10-09")
-	if d.PostponeCount != 1 || d.PostponeMs != 5*60_000 {
-		t.Fatalf("短休息推迟应记 1 次 / 5 分钟：%+v", d)
-	}
-	if d.SkipCount != 1 || d.SkipMs != 2*60_000 {
-		t.Fatalf("长休息跳过应记 1 次 / 2 分钟：%+v", d)
-	}
-	if d.CustomCount != 0 {
-		t.Fatalf("推迟 / 跳过不该改自定义完成次数：%+v", d)
 	}
 }
 

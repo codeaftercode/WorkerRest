@@ -1,4 +1,4 @@
-package main
+package stats
 
 import (
 	"path/filepath"
@@ -182,23 +182,23 @@ func TestAwayPartOf(t *testing.T) {
 func TestCountedSpanSleep(t *testing.T) {
 	last, now := int64(1000), int64(2000)
 	// 不睡眠：整跳都算
-	if a, b, ok := countedSpan(last, now, 0, 0); !ok || a != last || b != now {
+	if a, b, ok := CountedSpan(last, now, 0, 0); !ok || a != last || b != now {
 		t.Fatalf("普通跳应整跳计入，得到 %d/%d/%v", a, b, ok)
 	}
 	// 睡眠中：上限钉在入睡那一刻
-	if a, b, ok := countedSpan(last, now, 1500, 0); !ok || a != 1000 || b != 1500 {
+	if a, b, ok := CountedSpan(last, now, 1500, 0); !ok || a != 1000 || b != 1500 {
 		t.Fatalf("睡眠中应剪到入睡时刻，得到 %d/%d/%v", a, b, ok)
 	}
 	// 整跳都在入睡之后：不计
-	if _, _, ok := countedSpan(1600, 2000, 1500, 0); ok {
+	if _, _, ok := CountedSpan(1600, 2000, 1500, 0); ok {
 		t.Fatal("入睡之后的跳不该计入工作")
 	}
 	// 这一跳跨过醒来时刻：从醒来那一刻算起
-	if a, b, ok := countedSpan(1000, 2000, 0, 1500); !ok || a != 1500 || b != 2000 {
+	if a, b, ok := CountedSpan(1000, 2000, 0, 1500); !ok || a != 1500 || b != 2000 {
 		t.Fatalf("跨醒来应从头算，得到 %d/%d/%v", a, b, ok)
 	}
 	// 醒来时刻在区间之外：不受影响
-	if a, _, _ := countedSpan(1000, 2000, 0, 900); a != 1000 {
+	if a, _, _ := CountedSpan(1000, 2000, 0, 900); a != 1000 {
 		t.Fatalf("醒来早于起点时不该剪，得到 %d", a)
 	}
 }
@@ -373,17 +373,17 @@ func TestNotifySleptDuringAway(t *testing.T) {
 // ---------- 落点推导 ----------
 
 func TestStatsFileForConfig(t *testing.T) {
-	if got := statsFileForConfig(""); got != "stats.json" {
+	if got := StatsFileForConfig(""); got != "stats.json" {
 		t.Fatalf("空路径应退回 stats.json，得到 %q", got)
 	}
 	// 便携形态：<运行目录>/config/settings.json → <运行目录>/data/stats.json
 	portable := filepath.Join("C:", "app", "config", "settings.json")
-	if got, want := statsFileForConfig(portable), filepath.Join("C:", "app", "data", "stats.json"); got != want {
+	if got, want := StatsFileForConfig(portable), filepath.Join("C:", "app", "data", "stats.json"); got != want {
 		t.Fatalf("便携形态落点 = %q，应为 %q", got, want)
 	}
 	// 非 config 目录形态：与配置文件同目录
 	loose := filepath.Join("C:", "somewhere", "else", "settings.json")
-	if got, want := statsFileForConfig(loose), filepath.Join("C:", "somewhere", "else", "stats.json"); got != want {
+	if got, want := StatsFileForConfig(loose), filepath.Join("C:", "somewhere", "else", "stats.json"); got != want {
 		t.Fatalf("非 config 形态落点 = %q，应为 %q", got, want)
 	}
 }

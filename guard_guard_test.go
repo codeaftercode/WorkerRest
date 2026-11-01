@@ -55,6 +55,7 @@ func TestBackgroundGoroutinesAreGuarded(t *testing.T) {
 // 关键是日志里那句「判定为不可恢复」。
 func TestPanicFuseExitsWithCodeOne(t *testing.T) {
 	if os.Getenv("WR_PANIC_FUSE_CHILD") == "1" {
+		logx.SetHeadless(true)             // 子进程模拟无头环境：熔断时不弹系统框（会卡住自动化）
 		log.SetOutput(logx.AppLogWriter()) // 用 WR_LOG_FILE 指到父进程给的临时文件
 		for i := 0; i < logx.PanicBurstLimit; i++ {
 			logx.GuardRun("test.fuse", func() { panic("fuse") })

@@ -10,6 +10,7 @@ import (
 	"time"
 	"workerrest/internal/idle"
 	"workerrest/internal/model"
+	"workerrest/internal/stats"
 )
 
 // 外卖提醒的纯逻辑回归（脱离窗口与 Wails）。
@@ -359,7 +360,7 @@ func TestCheckTakeoutPostponeNoLead(t *testing.T) {
 func TestTakeoutActionRecordsStats(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
-	st := NewStatsStore(func() string { return filepath.Join(t.TempDir(), "stats.json") })
+	st := stats.NewStatsStore(func() string { return filepath.Join(t.TempDir(), "stats.json") })
 	a.stats = st
 	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0, 0)

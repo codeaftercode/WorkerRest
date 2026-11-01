@@ -1,4 +1,4 @@
-package main
+package stats
 
 import (
 	"bytes"
@@ -13,10 +13,10 @@ import (
 // 统计层的回归（对应 历史源码/stats.ts）。
 //
 // 这一层最容易错的三处，都在这里钉死：
-//   - **跨零点切段**（splitByDay）：工作 / 休息 / 离开的每一段都按本地零点切成多段，
+//   - **跨零点切段**（SplitByDay）：工作 / 休息 / 离开的每一段都按本地零点切成多段，
 //     各归各天。写错了不会报错，只会让账目悄悄记到隔壁那天；
 //   - **离开的三重封顶**（BeginAway）：不越过工作段起点、按当天 workMs 封顶、不跨天；
-//   - **ISO 周号与季度起始月**（periodRangeOf）：日期算术的经典雷区。
+//   - **ISO 周号与季度起始月**（PeriodRangeOf）：日期算术的经典雷区。
 //
 // 真实性的兜底是 scripts/verify_stats_parity.py —— 拿 上一版的 stats.ts 当黄金参考
 // 对同一组输入逐字段对拍。这里只负责把规则本身钉死。
@@ -51,7 +51,7 @@ func (st *StatsStore) dayForTest(date string) DayStats {
 	if d := st.days[date]; d != nil {
 		return d.clone()
 	}
-	return emptyDay(date)
+	return EmptyDay(date)
 }
 
 // ---------- 跨零点切段 ----------
@@ -59,14 +59,14 @@ func (st *StatsStore) dayForTest(date string) DayStats {
 func TestSplitByDay(t *testing.T) {
 	base := localTime(2026, 10, 8, 10, 0)
 	// 同一天内的一段：只有一段
-	segs := splitByDay(base.UnixMilli(), base.Add(90*time.Second).UnixMilli())
+	segs := SplitByDay(base.UnixMilli(), base.Add(90*time.Second).UnixMilli())
 	if len(segs) != 1 || segs[0].date != "2026-10-08" || segs[0].ms != 90_000 {
 		t.Fatalf("同一天内应切出 1 段 90s，得到 %+v", segs)
 	}
 	// 跨零点：23:58 → 次日 00:03 切成「前一天 2 分钟 + 当天 3 分钟」
 	from := localTime(2026, 10, 8, 23, 58)
 	to := localTime(2026, 10, 9, 0, 3)
-	segs = splitByDay(from.UnixMilli(), to.UnixMilli())
+	segs = SplitByDay(from.UnixMilli(), to.UnixMilli())
 	if len(segs) != 2 {
 		t.Fatalf("跨零点应切出 2 段，得到 %+v", segs)
 	}
@@ -77,22 +77,22 @@ func TestSplitByDay(t *testing.T) {
 		t.Fatalf("后一段应是 10-09 的 3 分钟，得到 %+v", segs[1])
 	}
 	// 防御：逆序 / 空区间都不产出
-	if n := len(splitByDay(to.UnixMilli(), from.UnixMilli())); n != 0 {
+	if n := len(SplitByDay(to.UnixMilli(), from.UnixMilli())); n != 0 {
 		t.Fatalf("逆序区间不该产出，得到 %d 段", n)
 	}
-	if n := len(splitByDay(from.UnixMilli(), from.UnixMilli())); n != 0 {
+	if n := len(SplitByDay(from.UnixMilli(), from.UnixMilli())); n != 0 {
 		t.Fatalf("空区间不该产出，得到 %d 段", n)
 	}
 }
 
 func TestDayKeyAndDayStart(t *testing.T) {
 	ts := localTime(2026, 10, 8, 23, 59).UnixMilli()
-	if got := dayKeyOf(ts); got != "2026-10-08" {
-		t.Fatalf("dayKeyOf = %q，应为 2026-10-08", got)
+	if got := DayKeyOf(ts); got != "2026-10-08" {
+		t.Fatalf("DayKeyOf = %q，应为 2026-10-08", got)
 	}
 	want := localTime(2026, 10, 8, 0, 0).UnixMilli()
-	if got := dayStartTs(ts); got != want {
-		t.Fatalf("dayStartTs = %d，应为当日本地零点 %d", got, want)
+	if got := DayStartTs(ts); got != want {
+		t.Fatalf("DayStartTs = %d，应为当日本地零点 %d", got, want)
 	}
 }
 
@@ -109,7 +109,7 @@ func TestISOWeekNumber(t *testing.T) {
 		{localTime(2026, 12, 31, 12, 0), 53}, // 2026 是 53 周年
 	}
 	for _, c := range cases {
-		if got := isoWeekNumber(c.day); got != c.want {
+		if got := ISOWeekNumber(c.day); got != c.want {
 			t.Errorf("%s 的 ISO 周号 = %d，应为 %d", c.day.Format("2006-01-02"), got, c.want)
 		}
 	}
@@ -117,11 +117,11 @@ func TestISOWeekNumber(t *testing.T) {
 
 func TestPeriodRangeDay(t *testing.T) {
 	now := localTime(2026, 10, 8, 15, 0)
-	r := periodRangeOf("day", 0, now)
+	r := PeriodRangeOf("day", 0, now)
 	if r.Key != "2026-10-08" || r.Start != "2026-10-08" || r.End != "2026-10-08" {
 		t.Fatalf("当天区间不对：%+v", r)
 	}
-	if prev := periodRangeOf("day", -1, now); prev.Key != "2026-10-07" {
+	if prev := PeriodRangeOf("day", -1, now); prev.Key != "2026-10-07" {
 		t.Fatalf("前一天 = %q，应为 2026-10-07", prev.Key)
 	}
 }
@@ -130,7 +130,7 @@ func TestPeriodRangeDay(t *testing.T) {
 // 跨年那周（周一在去年）键就是去年。这是 stats.ts 的实现细节，必须照抄。
 func TestPeriodRangeWeekKeyUsesMondayYear(t *testing.T) {
 	now := localTime(2026, 1, 1, 9, 0) // 周四；本周周一 = 2025-12-29
-	r := periodRangeOf("week", 0, now)
+	r := PeriodRangeOf("week", 0, now)
 	if r.Start != "2025-12-29" || r.End != "2026-01-04" {
 		t.Fatalf("本周区间应为 2025-12-29 ~ 2026-01-04，得到 %+v", r)
 	}
@@ -144,11 +144,11 @@ func TestPeriodRangeWeekKeyUsesMondayYear(t *testing.T) {
 
 func TestPeriodRangeWeekOffset(t *testing.T) {
 	now := localTime(2026, 10, 8, 15, 0) // 周四
-	r := periodRangeOf("week", 0, now)
+	r := PeriodRangeOf("week", 0, now)
 	if r.Start != "2026-10-05" || r.End != "2026-10-11" {
 		t.Fatalf("本周应为 10-05 ~ 10-11，得到 %+v", r)
 	}
-	prev := periodRangeOf("week", -1, now)
+	prev := PeriodRangeOf("week", -1, now)
 	if prev.Start != "2026-09-28" || prev.End != "2026-10-04" {
 		t.Fatalf("上周应为 09-28 ~ 10-04，得到 %+v", prev)
 	}
@@ -156,35 +156,35 @@ func TestPeriodRangeWeekOffset(t *testing.T) {
 
 func TestPeriodRangeMonthQuarterYear(t *testing.T) {
 	now := localTime(2026, 10, 8, 15, 0)
-	m := periodRangeOf("month", 0, now)
+	m := PeriodRangeOf("month", 0, now)
 	if m.Key != "2026-10" || m.Label != "2026 年 10 月" || m.Start != "2026-10-01" || m.End != "2026-10-31" {
 		t.Fatalf("当月不对：%+v", m)
 	}
 	// 负偏移跨年：2026-01 的上一个月是 2025-12
-	if jan := periodRangeOf("month", -9, now); jan.Key != "2026-01" || jan.End != "2026-01-31" {
+	if jan := PeriodRangeOf("month", -9, now); jan.Key != "2026-01" || jan.End != "2026-01-31" {
 		t.Fatalf("2026-01 不对：%+v", jan)
 	}
-	if dec := periodRangeOf("month", -10, now); dec.Key != "2025-12" || dec.Start != "2025-12-01" || dec.End != "2025-12-31" {
+	if dec := PeriodRangeOf("month", -10, now); dec.Key != "2025-12" || dec.Start != "2025-12-01" || dec.End != "2025-12-31" {
 		t.Fatalf("2025-12 不对：%+v", dec)
 	}
 
-	q := periodRangeOf("quarter", 0, now)
+	q := PeriodRangeOf("quarter", 0, now)
 	if q.Key != "2026-Q4" || q.Start != "2026-10-01" || q.End != "2026-12-31" {
 		t.Fatalf("当季不对：%+v", q)
 	}
-	if q3 := periodRangeOf("quarter", -1, now); q3.Key != "2026-Q3" || q3.Start != "2026-07-01" || q3.End != "2026-09-30" {
+	if q3 := PeriodRangeOf("quarter", -1, now); q3.Key != "2026-Q3" || q3.Start != "2026-07-01" || q3.End != "2026-09-30" {
 		t.Fatalf("上一季不对：%+v", q3)
 	}
 	// 负偏移跨年 + 季度进位
-	if q := periodRangeOf("quarter", -4, now); q.Key != "2025-Q4" || q.Start != "2025-10-01" {
+	if q := PeriodRangeOf("quarter", -4, now); q.Key != "2025-Q4" || q.Start != "2025-10-01" {
 		t.Fatalf("2025-Q4 不对：%+v", q)
 	}
 
-	y := periodRangeOf("year", 0, now)
+	y := PeriodRangeOf("year", 0, now)
 	if y.Key != "2026" || y.Start != "2026-01-01" || y.End != "2026-12-31" {
 		t.Fatalf("当年不对：%+v", y)
 	}
-	if p := periodRangeOf("year", -1, now); p.Key != "2025" {
+	if p := PeriodRangeOf("year", -1, now); p.Key != "2025" {
 		t.Fatalf("去年 = %q，应为 2025", p.Key)
 	}
 }
@@ -203,7 +203,7 @@ func TestNormalizeDay(t *testing.T) {
 		"unknownField": float64(999), // 未知键忽略
 		"customCounts": map[string]any{"cb-water": float64(3), "other": float64(4), "cb-bad": float64(-1)},
 	}
-	d := normalizeDay(raw, "2026-10-08")
+	d := NormalizeDay(raw, "2026-10-08")
 	if d.Date != "2026-10-08" {
 		t.Fatalf("date 应保留，得到 %q", d.Date)
 	}
@@ -221,7 +221,7 @@ func TestNormalizeDay(t *testing.T) {
 		t.Fatalf("customCounts 只应留下 cb-water=3，得到 %+v", d.CustomCounts)
 	}
 	// 空条目：CustomCounts 必须是空 map（序列化成 {} 而不是 null）
-	if e := emptyDay("2026-01-01"); e.CustomCounts == nil || len(e.CustomCounts) != 0 {
+	if e := EmptyDay("2026-01-01"); e.CustomCounts == nil || len(e.CustomCounts) != 0 {
 		t.Fatal("空条目的 CustomCounts 应是非 nil 空 map")
 	}
 }

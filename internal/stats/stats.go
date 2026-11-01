@@ -1,4 +1,4 @@
-package main
+package stats
 
 import (
 	"encoding/json"
@@ -15,6 +15,17 @@ import (
 	"workerrest/internal/jsonx"
 	"workerrest/internal/winpower"
 )
+
+// nowMs 当前毫秒时间戳（包内自足：不依赖 main 包）
+func nowMs() int64 { return time.Now().UnixMilli() }
+
+// pad2 两位补零（与 breakplan 域的 pad2 同义；stats 下沉后独立自足，不复用 main 包）
+func pad2(n int) string {
+	if n < 10 {
+		return "0" + strconv.Itoa(n)
+	}
+	return strconv.Itoa(n)
+}
 
 type DayStats struct {
 	// Date 本地日期 YYYY-MM-DD
@@ -53,7 +64,7 @@ type DayStats struct {
 	// TakeoutPostponed 推迟点外卖次数
 	TakeoutPostponed int64 `json:"takeoutPostponed"`
 	// MaxStreakMs 今日最长的一段「连续工作时长」（毫秒）：「今天卡」久坐面板用。
-	// 与 WorkMs 的关系是「max 不是 sum」—— 它不进 statNumKeys，周期汇总不做累加
+	// 与 WorkMs 的关系是「max 不是 sum」—— 它不进 StatNumKeys，周期汇总不做累加
 	//（跨天聚合取 max 没有业务意义，所以 PeriodStats 里也不带这个字段）。
 	MaxStreakMs int64 `json:"maxStreakMs"`
 	// WorkSegments 今日各段连续工作时长（毫秒）。**最后一项是正在进行中的那段**，每跳实时
@@ -67,9 +78,9 @@ type DayStats struct {
 	EndEarlyCount int64 `json:"endEarlyCount"`
 }
 
-// statNumKeys 与 stats.ts 的 NUM_KEYS 同序：聚合、归一化、周期汇总都按这份清单走。
+// StatNumKeys 与 stats.ts 的 NUM_KEYS 同序：聚合、归一化、周期汇总都按这份清单走。
 // 注意 shortMs / longMs 也在里面 —— 周期汇总的输出里确实带这两个字段。
-var statNumKeys = []string{
+var StatNumKeys = []string{
 	"workMs", "breakMs", "awayMs", "shortMs", "longMs", "shortCount", "longCount", "customCount",
 	"postponeCount", "postponeMs", "skipCount", "skipMs", "endEarlyCount",
 	"takeoutOrdered", "takeoutSkipped", "takeoutPostponed",
@@ -79,8 +90,8 @@ var statNumKeys = []string{
 // 病态数据 / 手改文件也不至于把 stats.json 撑成无限大。
 const maxSegsPerDay = 500
 
-// numPtr 取某个数值字段的地址（nil = 未知键）
-func numPtr(d *DayStats, key string) *int64 {
+// NumPtr 取某个数值字段的地址（nil = 未知键）
+func NumPtr(d *DayStats, key string) *int64 {
 	switch key {
 	case "workMs":
 		return &d.WorkMs
@@ -118,10 +129,10 @@ func numPtr(d *DayStats, key string) *int64 {
 	return nil
 }
 
-// statDateRe 合法日期键（与 stats.ts 的 /^\d{4}-\d{2}-\d{2}$/ 同口径）
-var statDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
+// StatDateRe 合法日期键（与 stats.ts 的 /^\d{4}-\d{2}-\d{2}$/ 同口径）
+var StatDateRe = regexp.MustCompile(`^\d{4}-\d{2}-\d{2}$`)
 
-func emptyDay(date string) DayStats {
+func EmptyDay(date string) DayStats {
 	return DayStats{Date: date, CustomCounts: map[string]int64{}}
 }
 
@@ -138,14 +149,14 @@ func (d DayStats) clone() DayStats {
 	return out
 }
 
-// normalizeDay 把磁盘上任何形态的条目夹紧成合法值（旧版本数据 / 手改都不会炸）
-func normalizeDay(raw any, date string) DayStats {
+// NormalizeDay 把磁盘上任何形态的条目夹紧成合法值（旧版本数据 / 手改都不会炸）
+func NormalizeDay(raw any, date string) DayStats {
 	o, _ := raw.(map[string]any)
-	out := emptyDay(date)
-	for _, k := range statNumKeys {
-		v := numFromAny(o[k])
+	out := EmptyDay(date)
+	for _, k := range StatNumKeys {
+		v := NumFromAny(o[k])
 		if v > 0 {
-			*numPtr(&out, k) = int64(math.Round(v))
+			*NumPtr(&out, k) = int64(math.Round(v))
 		}
 	}
 	// 按 id 分的提醒计数：只认 cb- 前缀键与正整数，其它形态一概丢弃
@@ -154,14 +165,14 @@ func normalizeDay(raw any, date string) DayStats {
 			if !strings.HasPrefix(id, "cb-") {
 				continue
 			}
-			if v := numFromAny(rv); v > 0 {
+			if v := NumFromAny(rv); v > 0 {
 				out.CustomCounts[id] = int64(math.Round(v))
 			}
 		}
 	}
-	// maxStreakMs / workSegments 不在 statNumKeys 里（它们不参与累加聚合：
+	// maxStreakMs / workSegments 不在 StatNumKeys 里（它们不参与累加聚合：
 	// 最长段是取 max、段数组是分布本身），逐个单独读回
-	if v := numFromAny(o["maxStreakMs"]); v > 0 {
+	if v := NumFromAny(o["maxStreakMs"]); v > 0 {
 		out.MaxStreakMs = int64(math.Round(v))
 	}
 	if arr, ok := o["workSegments"].([]any); ok {
@@ -170,7 +181,7 @@ func normalizeDay(raw any, date string) DayStats {
 			if len(out.WorkSegments) >= maxSegsPerDay {
 				break
 			}
-			if v := numFromAny(it); v > 0 {
+			if v := NumFromAny(it); v > 0 {
 				out.WorkSegments = append(out.WorkSegments, int64(math.Round(v)))
 			}
 		}
@@ -178,8 +189,8 @@ func normalizeDay(raw any, date string) DayStats {
 	return out
 }
 
-// numFromAny 宽容地取数字：非数字 / 非有限值一律当 0
-func numFromAny(v any) float64 {
+// NumFromAny 宽容地取数字：非数字 / 非有限值一律当 0
+func NumFromAny(v any) float64 {
 	switch n := v.(type) {
 	case float64:
 		if math.IsNaN(n) || math.IsInf(n, 0) {
@@ -200,15 +211,15 @@ func numFromAny(v any) float64 {
 	return 0
 }
 
-// ---------- 本地日期工具（与 stats.ts 的 dayKey / dayStartTs / splitByDay 同口径） ----------
+// ---------- 本地日期工具（与 stats.ts 的 dayKey / DayStartTs / SplitByDay 同口径） ----------
 
-// dayKeyOf 某个时刻所在**本地**日期的 YYYY-MM-DD
-func dayKeyOf(ts int64) string {
+// DayKeyOf 某个时刻所在**本地**日期的 YYYY-MM-DD
+func DayKeyOf(ts int64) string {
 	return time.UnixMilli(ts).Local().Format("2006-01-02")
 }
 
-// dayStartTs 某个时刻所在本地日期的零点（毫秒时间戳）
-func dayStartTs(ts int64) int64 {
+// DayStartTs 某个时刻所在本地日期的零点（毫秒时间戳）
+func DayStartTs(ts int64) int64 {
 	d := time.UnixMilli(ts).Local()
 	return time.Date(d.Year(), d.Month(), d.Day(), 0, 0, 0, 0, time.Local).UnixMilli()
 }
@@ -219,7 +230,7 @@ type daySeg struct {
 	ms   int64
 }
 
-// splitByDay 把一段时间 `[from, to)` 按本地零点切成若干段，每段带自己所属的本地日期。
+// SplitByDay 把一段时间 `[from, to)` 按本地零点切成若干段，每段带自己所属的本地日期。
 //
 // 跨零点时返回多段：23:58 → 次日 00:03 切成「前一天 2 分钟 + 当天 3 分钟」，各记各天的账。
 // 正常 1 秒一跳的累加只会得到单段，只有跨零点那一跳才真正切开；休息跨零点（含睡眠跨零点）
@@ -227,17 +238,17 @@ type daySeg struct {
 //
 // `+26 小时` 再取零点 = 次日的零点：夏令时下当天可能是 23 或 25 小时，26 小时一定越过次日
 // 零点而不会跳到后天（中国无夏令时，这里只是不把逻辑写死）。
-func splitByDay(from, to int64) []daySeg {
+func SplitByDay(from, to int64) []daySeg {
 	out := []daySeg{}
 	cur := from
 	// 防御：时间戳逆序或异常大跨度时不要转不出去（正常最多切 2~3 段）
 	for guard := 0; cur < to && guard < 1000; guard++ {
 		end := to
-		if next := dayStartTs(dayStartTs(cur) + 26*3600_000); next < end {
+		if next := DayStartTs(DayStartTs(cur) + 26*3600_000); next < end {
 			end = next
 		}
 		if ms := end - cur; ms > 0 {
-			out = append(out, daySeg{date: dayKeyOf(cur), ms: ms})
+			out = append(out, daySeg{date: DayKeyOf(cur), ms: ms})
 		}
 		cur = end
 	}
@@ -358,7 +369,7 @@ func NewStatsStore(fileFn func() string) *StatsStore {
 
 // Load 读统计文件，并把落点修成「一定有一份可用的空表」。四情形：
 //
-//	① 文件存在且能解析 → 正常读入（走 normalizeDay，旧数据 / 手改都不会炸）；
+//	① 文件存在且能解析 → 正常读入（走 NormalizeDay，旧数据 / 手改都不会炸）；
 //	② 文件不存在（新装 / 用户删了 data 目录）→ **建目录 + 写一份空表**，
 //	   所以打包时不再预置 data/stats.json，首跑自己长出来；
 //	③ 文件存在但**读不出来**（权限 / 被占用 / 路径是个目录）：不冒险动用户的文件，
@@ -374,7 +385,7 @@ func (st *StatsStore) Load() {
 	st.days = map[string]*DayStats{}
 	st.customNames = map[string]string{}
 	st.loadNotice = nil
-	path := st.file()
+	path := st.File()
 	if path == "" {
 		return
 	}
@@ -401,7 +412,7 @@ func (st *StatsStore) Load() {
 		reason = "文件内容不是一个 JSON 对象"
 	}
 	if reason != "" {
-		backup, berr := renameBrokenStatsFile(path)
+		backup, berr := RenameBrokenStatsFile(path)
 		if berr != nil {
 			log.Printf("[stats] 统计文件损坏（%s），且改名保留失败（%v）：直接重建空表", reason, berr)
 			backup = ""
@@ -428,10 +439,10 @@ func (st *StatsStore) Load() {
 		}
 	}
 	for date, v := range top {
-		if !statDateRe.MatchString(date) {
+		if !StatDateRe.MatchString(date) {
 			continue
 		}
-		d := normalizeDay(v, date)
+		d := NormalizeDay(v, date)
 		st.days[date] = &d
 	}
 }
@@ -451,9 +462,9 @@ func (st *StatsStore) createEmptyLocked(path string) {
 	log.Printf("[stats] 空统计表已就位：%s", path)
 }
 
-// brokenStatsBackupName 损坏文件的备份路径：同目录 `stats_20261028_164510.json`。
+// BrokenStatsBackupName 损坏文件的备份路径：同目录 `stats_20261028_164510.json`。
 // 同一秒里反复触发（手动换文件连点两次）时依次退让成 `-2` / `-3`，绝不覆盖已有备份。
-func brokenStatsBackupName(dir, base, ext, stamp string, n int) string {
+func BrokenStatsBackupName(dir, base, ext, stamp string, n int) string {
 	name := base + "_" + stamp
 	if n > 1 {
 		name += "-" + strconv.Itoa(n)
@@ -461,15 +472,15 @@ func brokenStatsBackupName(dir, base, ext, stamp string, n int) string {
 	return filepath.Join(dir, name+ext)
 }
 
-// renameBrokenStatsFile 把损坏的统计文件改名保留（不删除：里面可能有用户手改过的数据），
+// RenameBrokenStatsFile 把损坏的统计文件改名保留（不删除：里面可能有用户手改过的数据），
 // 返回备份后的完整路径。
-func renameBrokenStatsFile(path string) (string, error) {
+func RenameBrokenStatsFile(path string) (string, error) {
 	dir, name := filepath.Split(path)
 	ext := filepath.Ext(name)
 	base := strings.TrimSuffix(name, ext)
 	stamp := time.Now().Format("20060102_150405")
 	for n := 1; n <= 100; n++ {
-		cand := brokenStatsBackupName(dir, base, ext, stamp, n)
+		cand := BrokenStatsBackupName(dir, base, ext, stamp, n)
 		if _, err := os.Stat(cand); err == nil {
 			continue // 已存在（同秒重名），换下一个后缀
 		}

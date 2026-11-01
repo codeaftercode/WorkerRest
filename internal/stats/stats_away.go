@@ -1,4 +1,4 @@
-package main
+package stats
 
 import (
 	"time"
@@ -21,12 +21,12 @@ func (st *StatsStore) BeginAway(sinceTs int64) int64 {
 	st.awayOpen = true
 	st.awayStartedAt = sinceTs
 	st.awaySettledAt = now
-	st.awayDayKey = dayKeyOf(from)
+	st.awayDayKey = DayKeyOf(from)
 	st.awayCountedMs = 0
 	if now <= from {
 		return 0
 	}
-	for _, seg := range splitByDay(from, now) {
+	for _, seg := range SplitByDay(from, now) {
 		if seg.date != st.awayDayKey {
 			continue
 		}
@@ -68,7 +68,7 @@ func (st *StatsStore) onAwayTickLocked() int64 {
 	}
 	st.awaySettledAt = now
 	var added int64
-	for _, seg := range splitByDay(from, now) {
+	for _, seg := range SplitByDay(from, now) {
 		if seg.date != st.awayDayKey {
 			continue
 		}
@@ -119,7 +119,7 @@ func (st *StatsStore) AwayInfo() StatsAwayInfo {
 // 那一行，这里只是把同一个过滤单独暴露出来，好让断言能在不伪造系统时间的前提下验证它。
 func AwayPartOf(from, to int64, day string) int64 {
 	var ms int64
-	for _, seg := range splitByDay(from, to) {
+	for _, seg := range SplitByDay(from, to) {
 		if seg.date == day {
 			ms += seg.ms
 		}
@@ -140,8 +140,8 @@ func AwayPartOf(from, to int64, day string) int64 {
 //     用电脑（开会、看视频、跑全屏应用），照样计入；
 //   - 空闲那一跳**只跳过、不改任何记账状态**：搬运区间由 workSegStartAt 与当天 WorkMs
 //     双重封顶，不需要额外的余额变量；
-//   - **系统睡眠 / 休眠**：只算到入睡那一刻，醒来后重新开始（见 countedSpan）；
-//   - 每次计入都**按本地零点切开、各记各天**（见 splitByDay）。
+//   - **系统睡眠 / 休眠**：只算到入睡那一刻，醒来后重新开始（见 CountedSpan）；
+//   - 每次计入都**按本地零点切开、各记各天**（见 SplitByDay）。
 // ---------- 连续工作段（久坐指标）----------
 //
 // 「最长连续工作」= 今天最长的一段不间断工作时长。口径：
@@ -167,7 +167,7 @@ func (st *StatsStore) settleStreakLocked(to int64) {
 		return
 	}
 	changed := false
-	segs := splitByDay(st.streakStartMs, to)
+	segs := SplitByDay(st.streakStartMs, to)
 	for i, seg := range segs {
 		d := st.dayOfLocked(seg.date)
 		if seg.ms > d.MaxStreakMs {
@@ -223,7 +223,7 @@ func (st *StatsStore) endStreakAt(at int64) {
 func (st *StatsStore) accountWorkTick(a, b int64) {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	for _, seg := range splitByDay(a, b) {
+	for _, seg := range SplitByDay(a, b) {
 		st.dayOfLocked(seg.date).WorkMs += seg.ms
 	}
 	st.streakBeginLocked(a)
@@ -276,7 +276,7 @@ func (st *StatsStore) StartWorkAccumulator(isBreak, isIdle func() bool) {
 						return
 					}
 					st.mu.Lock()
-					a, b, ok := countedSpan(from, now, st.sleepStartedAt, st.sleepEndedAt)
+					a, b, ok := CountedSpan(from, now, st.sleepStartedAt, st.sleepEndedAt)
 					st.mu.Unlock()
 					if !ok {
 						// 整跳都在睡眠里 → 连续工作段断在这里
