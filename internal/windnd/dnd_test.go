@@ -2,27 +2,6 @@ package windnd
 
 import "testing"
 
-func TestDndProbeShape(t *testing.T) {
-	st := GetDndStatus()
-	if st.Detail == "" {
-		t.Fatal("detail 不该为空（无论支持与否都要有说明）")
-	}
-	if !st.Supported {
-		t.Skipf("本机勿扰检测不可用：%s", st.Detail)
-	}
-	if st.Active {
-		known := false
-		for _, name := range winDndStates {
-			if name == st.Detail {
-				known = true
-			}
-		}
-		if !known {
-			t.Fatalf("判定为勿扰时 detail 应是已知勿扰状态之一，得到 %q", st.Detail)
-		}
-	}
-}
-
 // QUERY_USER_NOTIFICATION_STATE 取值 → 结论的映射表。这里钉死三条口径，改动前先看注释：
 //   - 2 / 4 是勿扰（Win10 专注助手、Win11 勿扰、演示模式）
 //   - 6（首次登录 / 大版本升级后的静默时间）**不算**勿扰（2026-10-27 用户明确要求）

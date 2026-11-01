@@ -13,8 +13,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
+
+	"workerrest/internal/platform"
 )
 
 // 检查更新 + 自动更新：更新源由配置里的 `sites` 数组给出，每一项都是 **https**
@@ -823,7 +824,7 @@ func (a *App) StartUpdate() map[string]any {
 
 	// 启动 self-update 子进程（独立副本，避免锁住自身），随后退出
 	cmd := exec.Command(stagePath, "--self-update", pendingPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000200}
+	cmd.SysProcAttr = platform.HiddenSysProcAttr()
 	if err := cmd.Start(); err != nil {
 		return map[string]any{"status": "error", "message": "启动更新程序失败：" + err.Error()}
 	}
@@ -1127,7 +1128,7 @@ func runSelfUpdate(pendingPath string) {
 		log.Fatalf("[self-update] 替换程序失败: %v", err)
 	}
 	cmd := exec.Command(p.OldExe, "--updated", pendingPath)
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000200}
+	cmd.SysProcAttr = platform.HiddenSysProcAttr()
 	if err := cmd.Start(); err != nil {
 		log.Fatalf("[self-update] 启动新程序失败: %v", err)
 	}

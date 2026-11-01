@@ -1,10 +1,6 @@
 package windnd
 
-import (
-	"fmt"
-	"syscall"
-	"unsafe"
-)
+import "fmt"
 
 // 系统「不希望被打扰」状态检测（勿扰 / 专注助手 / 演示模式 / 全屏独占）——
 // 历史源码/dnd.ts 的 Go 版。
@@ -13,14 +9,15 @@ import (
 // 上一版用 koffi 调用；Go 不需要任何外部依赖，直接用 syscall 调 DLL，
 // 也就没有「打包遗漏原生模块 → 整体降级」这条失败路径了。
 //
-// 本项目只做 Windows（Wails v3 的目标平台），所以 dnd.ts 里的 Linux（gsettings）与
-// macOS（无公开 API）两条分支不移植。
-//
 // 一次 API 查询要同时服务两件事，所以**取值只查一次、结论分开算**：
 //   - 勿扰 / 专注 / 演示模式（2 / 4）→ 自动暂停提醒（开关 dndPause）
 //   - 全屏独占（3）→ 自动暂停提醒（开关 fullscreenPause，默认关）
 //
 // 调用失败一律降级为「不支持」，绝不抛错 —— 自动暂停只是锦上添花的功能。
+//
+// 本文件是平台中立部分：类型、取值常量、以及「取值 → 结论」的纯函数。
+// 平台相关的「查一次 DLL」在 dnd_windows.go（//go:build windows）；
+// 其它平台返回「不支持」的桩在 dnd_other.go（//go:build !windows）。
 
 // QUERY_USER_NOTIFICATION_STATE 的取值（winuser.h / shellapi.h 里的 QUNS_*）；
 // 用常量而不是魔法数字，注释里写清每个取值在用户眼里是什么。
@@ -70,22 +67,6 @@ var winDndStateText = map[uint32]string{
 	qunsApp:                  "app（Windows 商店应用在前台，不视为勿扰）",
 }
 
-var (
-	modShell32                       = syscall.NewLazyDLL("shell32.dll")
-	procSHQueryUserNotificationState = modShell32.NewProc("SHQueryUserNotificationState")
-)
-
-// queryQunsState 查一次系统通知状态。ok=假表示 API 不可用（非 Windows / 调用失败）。
-// 勿扰与全屏独占共用这一次查询：两者是同一个返回值的不同取值，分开调会多打一次 DLL。
-func queryQunsState() (state uint32, ok bool) {
-	hr, _, _ := procSHQueryUserNotificationState.Call(uintptr(unsafe.Pointer(&state)))
-	// HRESULT：S_OK = 0；失败值当 uintptr 看是大正数，判 != 0 即可
-	if hr != 0 {
-		return 0, false
-	}
-	return state, true
-}
-
 // qunsStateText 取值 → 人话。未知取值也给出可读说明，绝不返回空串。
 func qunsStateText(state uint32) string {
 	if text, ok := winDndStateText[state]; ok {
@@ -115,25 +96,4 @@ func fullScreenStatusOf(state uint32, ok bool) FullScreenStatus {
 		return FullScreenStatus{Supported: true, Active: true, Detail: qunsStateText(state)}
 	}
 	return FullScreenStatus{Supported: true, Active: false, Detail: qunsStateText(state)}
-}
-
-// GetDndStatus 查询当前系统勿扰状态。永远返回结果，不抛错。
-func GetDndStatus() DndStatus {
-	state, ok := queryQunsState()
-	return dndStatusOf(state, ok)
-}
-
-// GetFullScreenStatus 查询当前是否处于全屏独占。永远返回结果，不抛错。
-func GetFullScreenStatus() FullScreenStatus {
-	state, ok := queryQunsState()
-	return fullScreenStatusOf(state, ok)
-}
-
-// Query 一次查询同时返回勿扰与全屏独占两个结论。
-//
-// 两条支路共用同一次 SHQueryUserNotificationState 调用（同一个返回值的不同取值），
-// 分开调会多打一次 DLL —— 3 秒一跳的监视循环里，这是无谓的开销。
-func Query() (dnd DndStatus, full FullScreenStatus) {
-	state, ok := queryQunsState()
-	return dndStatusOf(state, ok), fullScreenStatusOf(state, ok)
 }

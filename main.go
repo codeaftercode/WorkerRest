@@ -7,6 +7,9 @@ import (
 	"os"
 	"runtime/debug"
 
+	"workerrest/internal/notifier"
+	"workerrest/internal/platform"
+
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
@@ -91,15 +94,16 @@ func main() {
 	// 脚本用 exe 吐默认配置时不会在包里留下 logs/。
 	log.SetOutput(appLogWriter())
 
-	// WebView2 运行时预检：必须在 application.New / app.Run() **之前**。
-	// 缺运行时时 Wails 建不出 webview，handleError 写完日志就整个进程退出；发布版是
-	// GUI 子系统，用户只看到「双击没反应」。这里先探一次，确认缺失才提示 + 打开下载页，
-	// 然后直接退出 —— 不留下半初始化的单例互斥与后台 goroutine。
-	// 只拦「确认缺失」：探测读不到（权限、非标准部署）一律放行，见 webview2_check.go。
+	// WebView 运行时预检：必须在 application.New / app.Run() **之前**。
+	// Windows 缺 WebView2 运行时 Wails 建不出 webview，handleError 写完日志就整个
+	// 进程退出；发布版是 GUI 子系统，用户只看到「双击没反应」。这里先探一次，确认
+	// 缺失才提示 + 打开下载页，然后直接退出 —— 不留下半初始化的单例互斥与后台 goroutine。
+	// 只拦「确认缺失」：探测读不到（权限、非标准部署）一律放行，见 internal/platform。
+	// 非 Windows 平台（Linux/macOS）用系统自带 WebKit/WKWebView，无需预检，恒放行。
 	if !serverMode {
-		switch p := probeWebView2(); {
+		switch p := platform.ProbeWebView2(); {
 		case p.Found:
-			log.Printf("[boot] WebView2 运行时 %s", p.Version)
+			log.Printf("[boot] WebView 运行时 %s", p.Version)
 		case p.Certain:
 			log.Printf("[boot] 未检测到 WebView2 运行时，提示用户安装后退出")
 			promptWebView2Missing()
@@ -211,5 +215,26 @@ func main() {
 
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
+	}
+}
+
+// promptWebView2Missing 提示用户并打开官方下载页（仅 Windows，缺 WebView2 时）。
+//
+// 用系统原生消息框（internal/notifier）而不是 Wails 的对话框：这时应用还没建起来，
+// WebView2 也渲染不了 HTML，能用的只有系统原生消息框。消息框是阻塞调用，用户点掉
+// 才继续 —— 正好当「等用户看完」的同步点。
+func promptWebView2Missing() {
+	const text = "本程序需要 Microsoft Edge WebView2 运行时才能显示界面，" +
+		"当前系统未检测到它。\r\n\r\n" +
+		"点「确定」后会打开微软官方下载页，安装完成后重新打开本程序即可。\r\n" +
+		"（体积很小，普通权限安装，不需要管理员。）"
+	const title = "吃饼人也敢休息？— 缺少 WebView2 运行时"
+
+	notifier.Error(title, text)
+
+	if url := platform.WebView2DownloadURL(); url != "" {
+		if err := notifier.OpenURL(url); err != nil {
+			log.Printf("[boot] 打开 WebView2 下载页失败: %v", err)
+		}
 	}
 }

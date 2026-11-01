@@ -1,4 +1,6 @@
-package main
+//go:build windows
+
+package platform
 
 import (
 	"strings"
@@ -77,9 +79,9 @@ func TestProbeWebView2NeverContradictsInstallDir(t *testing.T) {
 	if dirVer == "" {
 		t.Skip("本机没有 EdgeWebView 安装目录，跳过（该不变量在此环境不成立）")
 	}
-	p := probeWebView2()
+	p := ProbeWebView2()
 	if !p.Found {
-		t.Fatalf("安装目录存在版本 %q，但 probeWebView2 报缺失（certain=%v）", dirVer, p.Certain)
+		t.Fatalf("安装目录存在版本 %q，但 ProbeWebView2 报缺失（certain=%v）", dirVer, p.Certain)
 	}
 	if p.Version == "" {
 		t.Fatal("Found=true 时必须带版本号")

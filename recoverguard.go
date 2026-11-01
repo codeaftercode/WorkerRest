@@ -7,9 +7,8 @@ import (
 	"runtime/debug"
 	"sync"
 	"time"
-	"unsafe"
 
-	"golang.org/x/sys/windows"
+	"workerrest/internal/notifier"
 )
 
 // 后台 goroutine 的 panic 兜底。
@@ -175,7 +174,7 @@ func fatalPanicExit(name string, burst int) {
 
 // promptPanicExit 用系统原生消息框告知用户并指出日志位置。
 //
-// 复用 webview2_check.go 里的 MessageBoxW 封装：此时窗口状态可能已经不可信，
+// 复用 internal/notifier 的消息框封装：此时窗口状态可能已经不可信，
 // 能可靠显示的只有系统原生框。
 func promptPanicExit(name string) {
 	const title = "吃饼人也敢休息？— 遇到内部错误"
@@ -185,18 +184,7 @@ func promptPanicExit(name string) {
 		"日志文件：" + logPathForUserMessage() + "\r\n\r\n" +
 		"重新打开通常可以继续使用；若反复出现，把日志文件反馈给作者即可定位。"
 
-	bodyPtr, err := windows.UTF16PtrFromString(text)
-	if err != nil {
-		return
-	}
-	titlePtr, err := windows.UTF16PtrFromString(title)
-	if err != nil {
-		return
-	}
-	msgBoxW.Call(0,
-		uintptr(unsafe.Pointer(bodyPtr)),
-		uintptr(unsafe.Pointer(titlePtr)),
-		uintptr(mbOK|mbIconError|mbSetForeground|mbTopmost))
+	notifier.Error(title, text)
 }
 
 // logPathForUserMessage 日志文件的绝对路径（给用户看的那个）。

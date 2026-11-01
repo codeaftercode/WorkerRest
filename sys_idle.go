@@ -4,9 +4,9 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
-	"syscall"
 	"time"
-	"unsafe"
+
+	"workerrest/internal/platform"
 )
 
 // 空闲状态机（软件侧维护的「连续无输入时长 L」）—— 历史源码/idleState.ts 的移植。
@@ -16,9 +16,10 @@ import (
 //
 //		L = 现在 − max(最后一次输入时刻, 重置点)
 //
-//	  - **最后一次输入时刻**：读 `user32!GetLastInputInfo`。它返回的是 GetTickCount 域的
-//	    tick，与墙钟不同源、不能相减 —— 所以靠「两次采样 tick 变了」推定「这段采样窗口里
-//	    有过键鼠输入」，再把**墙钟**记下来（与 systemInput.ts 的口径逐字一致）。
+//	  - **最后一次输入时刻**：读 `user32!GetLastInputInfo`（已收进 internal/platform 的
+//	    LastInputTick）。它返回的是 GetTickCount 域的 tick，与墙钟不同源、不能相减 ——
+//	    所以靠「两次采样 tick 变了」推定「这段采样窗口里有过键鼠输入」，再把**墙钟**
+//	    记下来（与 systemInput.ts 的口径逐字一致）。
 //	  - **重置点**：休息窗口关闭时由 endBreak 流程调 ResetBaseline() 置为当时。
 //	  - **存活去抖**：连续 idleActiveMs 都采到输入才算「人真的回来了」。猫踩一下鼠标
 //	    不会把一段离开切成 离开 / 工作 1 秒 / 离开。
@@ -42,31 +43,10 @@ func init() {
 	idleSampleInterval.Store(int64(idleSampleMs) * int64(time.Millisecond))
 }
 
-// ---------- Win32：最后一次键鼠输入时刻 ----------
-
-// lastInputInfo 对应 LASTINPUTINFO { UINT cbSize; DWORD dwTime; }
-// x64 下 sizeof = 8，dwTime 在偏移 4（Go 的结构体布局与之一致，无需手算偏移）。
-type lastInputInfo struct {
-	cbSize uint32
-	dwTime uint32
-}
-
-var (
-	modUser32            = syscall.NewLazyDLL("user32.dll")
-	procGetLastInputInfo = modUser32.NewProc("GetLastInputInfo")
-)
-
 // lastInputTick 读系统「最后一次键鼠输入」的毫秒 tick；第二个返回值表示是否读到。
 // 只用它做「两次采样是否相同」的比较，**绝不与墙钟相减**（零点在开机时刻）。
-func lastInputTick() (int64, bool) {
-	var li lastInputInfo
-	li.cbSize = uint32(unsafe.Sizeof(li))
-	r, _, _ := procGetLastInputInfo.Call(uintptr(unsafe.Pointer(&li)))
-	if r == 0 {
-		return 0, false
-	}
-	return int64(li.dwTime), true
-}
+// 平台实现见 internal/platform.LastInputTick。
+func lastInputTick() (int64, bool) { return platform.LastInputTick() }
 
 // ---------- 状态机 ----------
 

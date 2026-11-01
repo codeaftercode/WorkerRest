@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"workerrest/internal/autostart"
 	"workerrest/internal/windnd"
 	"workerrest/internal/winproc"
 )
@@ -217,29 +218,29 @@ func (a *App) SysProbe() map[string]any {
 		idle = a.idle.Info()
 	}
 	procs := winproc.ListProcessNames()
-	cur := ReadRunEntry()
-	dis := ApprovalDisabled()
-	autostart := map[string]any{
-		"valueName": runValueName,
+	cur := autostart.ReadRunEntry()
+	dis := autostart.ApprovalDisabled()
+	autostartInfo := map[string]any{
+		"valueName": autostart.ValueName(),
 		"command":   nil,
 		"exists":    cur != nil,
 		"disabled":  nil,
 		"wanted":    false,
 	}
 	if cur != nil {
-		autostart["command"] = *cur
+		autostartInfo["command"] = *cur
 	}
 	if dis != nil {
-		autostart["disabled"] = *dis
+		autostartInfo["disabled"] = *dis
 	}
 	if a.cfg != nil {
-		autostart["wanted"] = a.cfgSnapshot().Autostart()
+		autostartInfo["wanted"] = a.cfgSnapshot().Autostart()
 	}
 	return map[string]any{
 		"idle":       idle,
 		"dnd":        windnd.GetDndStatus(),
 		"fullscreen": windnd.GetFullScreenStatus(),
 		"processes":  procs,
-		"autostart":  autostart,
+		"autostart":  autostartInfo,
 	}
 }

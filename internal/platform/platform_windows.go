@@ -1,18 +1,20 @@
-package main
+//go:build windows
+
+package platform
 
 import (
 	"errors"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/registry"
 )
 
-// WebView2 运行时预检。
+// WebView2 运行时预检（Windows）。
 //
 // 为什么项目自己要探一次：Wails v3.0.0 没有 v2 那套 install mode / bootstrapper
 // （`WebviewInstallMode` 在 v3 里不存在），缺运行时时唯一的表现是
@@ -23,28 +25,48 @@ import (
 // 判据取微软官方推荐的注册表口径（EdgeUpdate\Clients\{GUID} 的 pv），外加
 // msedgewebview2.exe 的目录存在性做二次确认。**只在「确认缺失」时拦人**：
 // 读不到（权限、非标准部署）一律放行 —— 探测本身的误判比不提示更糟。
+
 const (
 	// webView2ClientGUID 是 WebView2 Runtime 在 EdgeUpdate 里的固定产品 GUID
 	// （微软文档「Detect if the WebView2 Runtime is already installed」给的同一个值）。
 	webView2ClientGUID = `{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`
 	// webView2DownloadURL 微软官方 Evergreen Bootstrapper 的短链（fwlink 会跳到当前语言页）。
 	webView2DownloadURL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
-
-	// MessageBoxW 的 uType 位
-	mbOK            = 0x00000000
-	mbIconError     = 0x00000010
-	mbSetForeground = 0x00010000
-	mbTopmost       = 0x00040000
 )
 
-// webview2Probe 探测结果。
+// WebView2DownloadURL 返回 WebView2 运行时官方下载页短链（给 main 包提示用户用）。
+func WebView2DownloadURL() string { return webView2DownloadURL }
+
+// HiddenSysProcAttr 返回「隐藏子进程窗口」的 SysProcAttr（Windows）。
 //
-// Found=false 表示三个注册表位置与两个安装目录都没找到运行时；此时
-// Certain 才说明「这不是权限问题，是真的没装」—— 只有这种情况才该拦人。
-type webview2Probe struct {
-	Version string
-	Found   bool
-	Certain bool
+// 自更新/重启拉起子进程时，默认会闪一个控制台黑框；HideWindow + CREATE_NO_WINDOW
+// （0x00000200）把它藏起来。其它平台无此概念，返回 nil（即不设置，走默认行为）。
+func HiddenSysProcAttr() *syscall.SysProcAttr {
+	return &syscall.SysProcAttr{HideWindow: true, CreationFlags: 0x00000200}
+}
+
+// lastInputInfo 对应 LASTINPUTINFO { UINT cbSize; DWORD dwTime; }
+// x64 下 sizeof = 8，dwTime 在偏移 4（Go 的结构体布局与之一致，无需手算偏移）。
+type lastInputInfo struct {
+	cbSize uint32
+	dwTime uint32
+}
+
+var (
+	modUser32            = syscall.NewLazyDLL("user32.dll")
+	procGetLastInputInfo = modUser32.NewProc("GetLastInputInfo")
+)
+
+// LastInputTick 读系统「最后一次键鼠输入」的毫秒 tick；第二个返回值表示是否读到。
+// 只用它做「两次采样是否相同」的比较，**绝不与墙钟相减**（零点在开机时刻）。
+func LastInputTick() (int64, bool) {
+	var li lastInputInfo
+	li.cbSize = uint32(unsafe.Sizeof(li))
+	r, _, _ := procGetLastInputInfo.Call(uintptr(unsafe.Pointer(&li)))
+	if r == 0 {
+		return 0, false
+	}
+	return int64(li.dwTime), true
 }
 
 type registryQuery struct {
@@ -68,8 +90,8 @@ func webView2RegistryQueries() []registryQuery {
 	}
 }
 
-// probeWebView2 探测本机 WebView2 运行时。
-func probeWebView2() webview2Probe {
+// ProbeWebView2 探测本机 WebView2 运行时。
+func ProbeWebView2() WebView2Probe {
 	unknown := false
 	for _, q := range webView2RegistryQueries() {
 		k, err := registry.OpenKey(q.root, q.path, q.access)
@@ -86,13 +108,13 @@ func probeWebView2() webview2Probe {
 			// 键在但 pv 为空/0.0.0.0：微软文档明确这种情况等于「运行时已不在了」。
 			continue
 		}
-		return webview2Probe{Version: pv, Found: true}
+		return WebView2Probe{Version: pv, Found: true}
 	}
 	// 注册表没读到，再用安装目录兜一层：某些离线部署/企业分发只落文件不写 EdgeUpdate。
 	if v := webView2VersionFromInstallDir(); v != "" {
-		return webview2Probe{Version: v, Found: true}
+		return WebView2Probe{Version: v, Found: true}
 	}
-	return webview2Probe{Certain: !unknown}
+	return WebView2Probe{Certain: !unknown}
 }
 
 // webView2VersionUsable pv 为 "0.0.0.0" 或空串时，微软的判定是「未安装」。
@@ -144,56 +166,4 @@ func webView2VersionFromInstallDir() string {
 		}
 	}
 	return ""
-}
-
-// promptWebView2Missing 提示用户并打开官方下载页。
-//
-// 用 MessageBoxW 而不是 Wails 的对话框：这时应用还没建起来，WebView2 也渲染不了 HTML，
-// 能用的只有系统原生消息框。MessageBoxW 是阻塞调用，用户点掉才继续 —— 正好当「等用户
-// 看完」的同步点。
-func promptWebView2Missing() {
-	const text = "本程序需要 Microsoft Edge WebView2 运行时才能显示界面，" +
-		"当前系统未检测到它。\r\n\r\n" +
-		"点「确定」后会打开微软官方下载页，安装完成后重新打开本程序即可。\r\n" +
-		"（体积很小，普通权限安装，不需要管理员。）"
-	const title = "吃饼人也敢休息？— 缺少 WebView2 运行时"
-
-	textPtr, err := windows.UTF16PtrFromString(text)
-	if err != nil {
-		return
-	}
-	titlePtr, err := windows.UTF16PtrFromString(title)
-	if err != nil {
-		return
-	}
-	msgBoxW.Call(0,
-		uintptr(unsafe.Pointer(textPtr)),
-		uintptr(unsafe.Pointer(titlePtr)),
-		uintptr(mbOK|mbIconError|mbSetForeground|mbTopmost))
-
-	if err := openExternalURL(webView2DownloadURL); err != nil {
-		log.Printf("[boot] 打开 WebView2 下载页失败: %v", err)
-	}
-}
-
-var (
-	user32  = windows.NewLazySystemDLL("user32.dll")
-	msgBoxW = user32.NewProc("MessageBoxW")
-)
-
-// openExternalURL 用 ShellExecuteW("open") 交给默认浏览器。
-//
-// 不走 exec.Command("rundll32"/"cmd /c start")：那两条会拉起子进程，在限制子进程的
-// 安全策略下直接失败，且容易闪出黑框；ShellExecute 是 shell 的既有入口，行为与用户
-// 双击链接一致。
-func openExternalURL(url string) error {
-	verb, err := windows.UTF16PtrFromString("open")
-	if err != nil {
-		return err
-	}
-	target, err := windows.UTF16PtrFromString(url)
-	if err != nil {
-		return err
-	}
-	return windows.ShellExecute(0, verb, target, nil, nil, windows.SW_SHOWNORMAL)
 }

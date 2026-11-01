@@ -1,6 +1,10 @@
 package main
 
-import "testing"
+import (
+	"testing"
+
+	"workerrest/internal/hotkey"
+)
 
 // TestParseAccelerator 全局快捷键字符串解析（设置页录入格式 Ctrl+Alt+R）。
 func TestParseAccelerator(t *testing.T) {
@@ -10,16 +14,16 @@ func TestParseAccelerator(t *testing.T) {
 		vk   uintptr
 		ok   bool
 	}{
-		{"Ctrl+Alt+R", modControl | modAlt, 'R', true},
-		{"Ctrl+Shift+F5", modControl | modShift, 0x74, true},
-		{"Alt+F4", modAlt, 0x73, true},
-		{"Super+1", modWin, '1', true},
-		{"Ctrl+X", modControl, 'X', true},
-		{"Ctrl+ ", modControl, 0x20, true},       // 空格键（录入端存成 "Ctrl+ "）
-		{"Ctrl+ArrowUp", modControl, 0x26, true}, // 方向键
-		{"Ctrl+Delete", modControl, 0x2E, true},  // 命名键
-		{"Shift+Space", modShift, 0x20, true},    // 命名键（大写形态）
-		{"Ctrl+Alt+Shift+F24", modControl | modAlt | modShift, 0x87, true},
+		{"Ctrl+Alt+R", hotkey.ModControl | hotkey.ModAlt, 'R', true},
+		{"Ctrl+Shift+F5", hotkey.ModControl | hotkey.ModShift, 0x74, true},
+		{"Alt+F4", hotkey.ModAlt, 0x73, true},
+		{"Super+1", hotkey.ModWin, '1', true},
+		{"Ctrl+X", hotkey.ModControl, 'X', true},
+		{"Ctrl+ ", hotkey.ModControl, 0x20, true},       // 空格键（录入端存成 "Ctrl+ "）
+		{"Ctrl+ArrowUp", hotkey.ModControl, 0x26, true}, // 方向键
+		{"Ctrl+Delete", hotkey.ModControl, 0x2E, true},  // 命名键
+		{"Shift+Space", hotkey.ModShift, 0x20, true},    // 命名键（大写形态）
+		{"Ctrl+Alt+Shift+F24", hotkey.ModControl | hotkey.ModAlt | hotkey.ModShift, 0x87, true},
 		{"X", 0, 0, false},        // 无修饰键：会吃掉正常打字，必须拒绝
 		{"Ctrl", 0, 0, false},     // 只有修饰键
 		{"Ctrl+", 0, 0, false},    // 主键缺失
@@ -32,9 +36,9 @@ func TestParseAccelerator(t *testing.T) {
 		{"", 0, 0, false},         // 空串（禁用态，apply 直接跳过）
 	}
 	for _, c := range cases {
-		mods, vk, ok := parseAccelerator(c.in)
+		mods, vk, ok := hotkey.ParseAccelerator(c.in)
 		if ok != c.ok || (ok && (mods != c.mods || vk != c.vk)) {
-			t.Errorf("parseAccelerator(%q) = (%#x, %#x, %v)，期望 (%#x, %#x, %v)",
+			t.Errorf("ParseAccelerator(%q) = (%#x, %#x, %v)，期望 (%#x, %#x, %v)",
 				c.in, mods, vk, ok, c.mods, c.vk, c.ok)
 		}
 	}
