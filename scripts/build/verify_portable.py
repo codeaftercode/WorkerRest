@@ -37,6 +37,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
+MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（含 embed 资源）
 
 # 同目录的 version.py（release 子目录名里带 tag，按 tag 拼路径最准）
 if HERE not in sys.path:
@@ -189,7 +190,7 @@ def main():
     # 内嵌进 exe 的是同一份文件，所以这一条同时钉住「声明与分发物一致」：
     # 包里被别处替换/漏更新都会红。
     notices_ship = os.path.join(iso, "THIRD-PARTY-NOTICES.txt")
-    notices_repo = os.path.join(ROOT, "THIRD-PARTY-NOTICES.txt")
+    notices_repo = os.path.join(MAIN_DIR, "THIRD-PARTY-NOTICES.txt")
     if os.path.isfile(notices_ship) and os.path.isfile(notices_repo):
         with open(notices_ship, "rb") as f:
             ship_hash = hashlib.sha256(f.read()).hexdigest()

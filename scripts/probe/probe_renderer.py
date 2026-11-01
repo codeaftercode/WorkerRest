@@ -29,7 +29,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
-DIST = os.path.join(ROOT, "frontend", "dist")
+DIST = os.path.join(ROOT, "cmd", "workerrest", "frontend", "dist")
 # 印泥变体档数：与 scripts/make_seal_ink.py 的 VARIANTS、两份 JS 的 SEAL_VARIANTS 一致。
 # 这里只断言「挑中的那一档在 1~N 之间且文件存在」——不断言具体是几号（那是随机的）。
 SEAL_VARIANTS = 6

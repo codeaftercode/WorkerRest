@@ -18,7 +18,7 @@ const { chromium } = require("playwright");
 
 const ROOT = path.resolve(__dirname, "..");
 const SUP = path.join(ROOT, "supervisors");
-const THUMB_JS = path.join(ROOT, "frontend", "dist", "role_thumb.js");
+const THUMB_JS = path.join(ROOT, "cmd", "workerrest", "frontend", "dist", "role_thumb.js");
 const MIME = {
   ".webp": "image/webp",
   ".png": "image/png",

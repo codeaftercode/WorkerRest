@@ -132,10 +132,11 @@ func TestBuiltinSoundsPresent(t *testing.T) {
 }
 
 // 仓库里的内置音源文件四个都在 —— 打包预置的源头（make_portable.py 从这里拷），
-// 缺一个打出来的便携包就没声音。默认兜底目录就是相对 cwd 的 sounds/（单测 cwd = 模块根）。
+// 缺一个打出来的便携包就没声音。sounds/ 是运行时资源，留在模块根（不在 main 包里）。
 func TestBuiltinSoundSourceFilesOnDisk(t *testing.T) {
+	root := repoRoot(t)
 	for _, b := range settings.BuiltinSounds() {
-		st, err := os.Stat(filepath.Join("sounds", filepath.Base(b.File)))
+		st, err := os.Stat(filepath.Join(root, "sounds", filepath.Base(b.File)))
 		if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
 			t.Errorf("源文件缺失或为空：%s/%s", "sounds", b.File)
 		}
@@ -205,7 +206,11 @@ func TestResolveSoundFileSingle(t *testing.T) {
 		t.Errorf("文件不存在应静音，得到 %q", got)
 	}
 
-	// 内置音（相对文件名）也要能解析出来
+	// 内置音（相对文件名）也要能解析出来 —— 判定走随包目录，这里注入一个
+	// 临时内置目录并造出 short_start.wav（不依赖仓库布局，见 TestBuiltinSoundsPresent）。
+	builtin := t.TempDir()
+	injectBuiltinSoundDir(t, builtin)
+	writeSoundFile(t, filepath.Join(builtin, "short_start.wav"), 64)
 	cfg = soundCfgFromJSON(t, `{"sound":{"mode":"single","singleId":"sm-b",
 		"music":[{"id":"sm-b","file":"short_start.wav","name":"双音上行","enabled":true}]}}`)
 	if got := sound.ResolveSoundFile(cfg); got != "short_start.wav" {
@@ -281,6 +286,10 @@ func TestSoundPickNext(t *testing.T) {
 
 func TestSoundFileURL(t *testing.T) {
 	a, dir := newSoundApp(t, `{}`)
+	// 内置音判定走随包目录，注入临时目录并造出 short_start.wav
+	builtin := t.TempDir()
+	injectBuiltinSoundDir(t, builtin)
+	writeSoundFile(t, filepath.Join(builtin, "short_start.wav"), 64)
 
 	// 内置音 → 资源服务的 /sounds/xxx.wav
 	if got := a.SoundFileURL("short_start.wav"); got != "/sounds/short_start.wav" {

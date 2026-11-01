@@ -25,18 +25,18 @@
 
 ```powershell
 # 开发运行（GUI，直接启动设置窗口）
-go run .
+go run ./cmd/workerrest
 
 # 构建 GUI 产物（无控制台窗口，去符号，不带构建机路径）
-go build -trimpath -o build/bin/rest.exe -ldflags "-H windowsgui -s -w" .
+go build -trimpath -o build/bin/rest.exe -ldflags "-H windowsgui -s -w" ./cmd/workerrest
 
 # 无头构建（验证专用：没有原生窗口，但照样服务资源与绑定端点）
-go build -trimpath -tags server -o build/bin/chibingren_server.exe -ldflags "-s -w" .
+go build -trimpath -tags server -o build/bin/chibingren_server.exe -ldflags "-s -w" ./cmd/workerrest
 ```
 
 `-trimpath` 不是可选项：不加它，二进制里每个源文件都以 `D:/…/xxx.go` 的绝对路径存在
 （panic 栈、运行时符号），等于把构建机的目录结构和用户名一起发出去。加了之后路径统一
-变成 `workerrest/xxx.go`。`scripts/build/verify_portable.py` 有一条断言专门扫这个泄漏。
+变成 `workerrest/cmd/workerrest/xxx.go`。`scripts/build/verify_portable.py` 有一条断言专门扫这个泄漏。
 
 产物 `rest.exe` 约 13.9 MB（Go 1.27.3 + Wails v3.0.0 下实测 13,949,440 字节），已含
 embed 的前端资源与图标；四个内置提示音不再 embed 进二进制，打包时随包放在 `sounds/`
@@ -129,7 +129,7 @@ python scripts/build/verify_portable.py
   `release/WorkerRest-<tag>/version.json` 的 `changes`**，改成面向用户的发布说明。
 - **更新包的完整性只认 `sha256`**（`version.json` 的 `sha256` / `size` 由
   `make_portable.py` 从刚生成的 `rest.zip` 现算，不是手填；改过 `rest.zip` 就必须重算）。
-  客户端的规矩（实现见 `update_trust.go`）：
+  客户端的规矩（实现见 `internal/update/trust.go`）：
   - 只接受 **https** 源，`http://` 明文源一律丢弃（唯一例外是回环地址，仅为单测的
     httptest 保留）；**重定向的每一跳也重新校验**，所以 https 302 到 http 会被拦下；
   - 清单缺 `sha256`、格式不对、或 `url` 全是 http → `checkForUpdate` 直接返回 error
@@ -144,7 +144,7 @@ python scripts/build/verify_portable.py
   删目录前先跑包里的 `清除开机自启动项.bat`：它只删 `HKCU\…\Run` 与
   `HKCU\…\Explorer\StartupApproved\Run` 里本软件那一项，不删文件、不碰别的软件。
   这个脚本**刻意不叫「卸载.bat」**——它不删任何文件，叫卸载会让用户以为删完目录就干净了。
-  脚本里的值名与 `sys_autostart.go` 的 `runValueName` 是两份真源，`make_portable.py`
+  脚本里的值名与 `internal/autostart/autostart_windows.go` 的 `runValueName` 是两份真源，`make_portable.py`
   打包前会解析源码逐字比对（连键路径一起），不一致直接停；`verify_zip` 断言包里有它。
 
 ## 检查更新：自动 vs 手动
@@ -216,9 +216,18 @@ python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次�
 ## 目录结构
 
 ```
-  *.go                    后端源码（App 窗口/会话 + 调度器/计划 + 统计 + 系统能力 + 各窗口）
-  main.go                 入口：注册服务 + 主窗口（= 设置窗口）
-  contract.go             前端绑定「契约表」：wiredCalls 列表 + 启动自检
+  cmd/workerrest/          main 包（后端源码 + 前端资源 + Windows 资源）：
+    *.go                  后端源码（App 窗口/会话 + 调度器/计划 + 统计 + 系统能力 + 各窗口）
+    main.go               入口：注册服务 + 主窗口（= 设置窗口）
+    contract.go           前端绑定「契约表」：wiredCalls 列表 + 启动自检
+    frontend/dist/        渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）+ 全部图片资产：
+                          icon.png **全项目唯一图标**（标题栏 20px / 托盘 / exe 图标源三处共用）、
+                          sitting_risk.webp 关于页横幅 —— 整个目录 go:embed 进 exe，运行时只认这里
+    rsrc_windows_amd64.syso exe 的 Windows 资源（RT_GROUP_ICON/RT_ICON + RT_VERSION + RT_MANIFEST，
+                          由 scripts/build/gen_windows_res.py 用 goversioninfo 生成，随源码入库）
+    versioninfo.json      VERSIONINFO 的源配置（gen_windows_res.py 生成，与 syso 同源留档）
+    app.manifest          应用清单源（longPathAware + supportedOS，gen_windows_res.py 生成）
+    THIRD-PARTY-NOTICES.txt 开源鸣谢清单（gen_notices.py 生成，go:embed 进 exe + 随包分发）
   internal/               可复用的底层能力（零 App 依赖，独立子包）：
     winproc/              系统进程枚举（Toolhelp32）
     windnd/               系统勿扰 / 全屏独占检测（SHQueryUserNotificationState）
@@ -226,14 +235,7 @@ python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次�
   docs/                   设计 / 审计 / 测试报告（含 manual/ 操作手册）
   supervisors/            内置督休专员模板（17 个专员，立绘均为 webp，约 4.5 MB，随包分发；子目录用专员名称命名，meta.json 里只有名字（名字即身份，没有内部 id）；无 meta.json 的目录只作素材、不进包）
   sounds/                 内置提示音源文件（四个 wav，打包时预置进便携包）
-  frontend/dist/          渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）+ 全部图片资产：
-                          icon.png **全项目唯一图标**（标题栏 20px / 托盘 / exe 图标源三处共用）、
-                          sitting_risk.webp 关于页横幅 —— 整个目录 go:embed 进 exe，运行时只认这里
-  rsrc_windows_amd64.syso exe 的 Windows 资源（RT_GROUP_ICON/RT_ICON + RT_VERSION + RT_MANIFEST，
-                          由 scripts/build/gen_windows_res.py 用 goversioninfo 生成，随源码入库）
-  versioninfo.json        VERSIONINFO 的源配置（gen_windows_res.py 生成，与 syso 同源留档）
-  app.manifest            应用清单源（longPathAware + supportedOS，gen_windows_res.py 生成）
-  default_settings.json   出厂默认配置（go:embed）
+  default_settings.json   出厂默认配置（打包预置，与 internal/settings 的 go:embed 副本逐字一致）
   scripts/                验证与打包脚本
 ```
 

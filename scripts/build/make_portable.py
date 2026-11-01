@@ -60,6 +60,7 @@ from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
+MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（含 embed 资源与 .syso）
 
 # 同目录的 version.py（版本号只认 git tag）—— 显式加 sys.path，便于任意 cwd 下运行
 if HERE not in sys.path:
@@ -80,7 +81,7 @@ RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json", "logs"]
 # 开源鸣谢清单：同一份文件有两个去处 ——（a）被 //go:embed 嵌进 exe（见 notices.go），
 # （b）随便携包放在根目录。只发 exe 的用户靠内嵌 + 关于页入口，收整包的用户直接能读。
 NOTICES_NAME = "THIRD-PARTY-NOTICES.txt"
-NOTICES_SRC = os.path.join(ROOT, NOTICES_NAME)
+NOTICES_SRC = os.path.join(MAIN_DIR, NOTICES_NAME)
 
 # 清除开机自启动项脚本：便携版没有安装器（删文件夹就算卸载），但用户勾过「开机自启动」
 # 就往注册表里写过一项，删了文件夹之后它指向一个不存在的 exe，任务管理器「启动」页里
@@ -170,7 +171,7 @@ def build_exe(version: str) -> bool:
     build_time = datetime.now().astimezone().isoformat()
     ldflags = f'-X main.appVersion={version} -X main.buildTime={build_time} -H windowsgui -s -w'
 
-    syso = os.path.join(ROOT, "rsrc_windows_amd64.syso")
+    syso = os.path.join(MAIN_DIR, "rsrc_windows_amd64.syso")
     gen = os.path.join(HERE, "gen_windows_res.py")
     backup = syso + ".buildbak"
     tmp_syso = None
@@ -181,7 +182,7 @@ def build_exe(version: str) -> bool:
         os.close(fd)
         r = subprocess.run(
             [sys.executable, gen, "--version", version, "--out", tmp_syso],
-            cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
+            cwd=MAIN_DIR, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         if r.returncode != 0:
             out = ((r.stdout or "") + (r.stderr or "")).strip()
@@ -196,7 +197,7 @@ def build_exe(version: str) -> bool:
         print(f"[make-portable] go build -trimpath -> {exe} (version={version})")
         r = subprocess.run(
             ["go", "build", "-trimpath", "-o", exe, "-ldflags", ldflags, "."],
-            cwd=ROOT,
+            cwd=MAIN_DIR,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
         )
@@ -591,32 +592,49 @@ def _compiled_sources() -> list:
     直接解析 `//go:embed` 指令而不是手写一份资源清单：漏写清单的代价是「新加的内嵌
     资源改了也放行」，而那正是这条防线要防的事。`all:` 前缀只表示「连隐藏文件一起」，
     剥掉后按普通 glob 处理。
+
+    源码布局：main 包在 cmd/workerrest/（含其 embed 资源），纯逻辑在 internal/。
+    两处都要扫，go.mod/go.sum 留在模块根。
     """
     files = []
-    for name in sorted(os.listdir(ROOT)):
-        if name.endswith(".go") and not name.endswith("_test.go"):
-            files.append(os.path.join(ROOT, name))
+
+    def add_go(dirpath: str) -> None:
+        for name in sorted(os.listdir(dirpath)):
+            if name.endswith(".go") and not name.endswith("_test.go"):
+                files.append(os.path.join(dirpath, name))
+
+    def add_embeds(dirpath: str) -> None:
+        for name in sorted(os.listdir(dirpath)):
+            if not name.endswith(".go"):
+                continue
+            p = os.path.join(dirpath, name)
+            try:
+                with open(p, encoding="utf-8", errors="replace") as f:
+                    src = f.read()
+            except OSError:
+                continue
+            for m in _EMBED_DIRECTIVE.finditer(src):
+                for raw in m.group(1).split():
+                    pat = raw[4:] if raw.startswith("all:") else raw
+                    # embed 路径相对「声明它的包目录」解析
+                    for hit in glob.glob(os.path.join(dirpath, pat), recursive=True):
+                        if os.path.isdir(hit):
+                            for d2, _dirs, names in os.walk(hit):
+                                files.extend(os.path.join(d2, n) for n in names)
+                        else:
+                            files.append(hit)
+
+    add_go(MAIN_DIR)
+    add_embeds(MAIN_DIR)
+    for sub in sorted(os.listdir(os.path.join(ROOT, "internal"))):
+        d = os.path.join(ROOT, "internal", sub)
+        if os.path.isdir(d):
+            add_go(d)
+            add_embeds(d)
     for name in ("go.mod", "go.sum"):
         p = os.path.join(ROOT, name)
         if os.path.isfile(p):
             files.append(p)
-    for name in sorted(os.listdir(ROOT)):
-        if not name.endswith(".go"):
-            continue
-        try:
-            with open(os.path.join(ROOT, name), encoding="utf-8", errors="replace") as f:
-                src = f.read()
-        except OSError:
-            continue
-        for m in _EMBED_DIRECTIVE.finditer(src):
-            for raw in m.group(1).split():
-                pat = raw[4:] if raw.startswith("all:") else raw
-                for hit in glob.glob(os.path.join(ROOT, pat), recursive=True):
-                    if os.path.isdir(hit):
-                        for dirpath, _dirs, names in os.walk(hit):
-                            files.extend(os.path.join(dirpath, n) for n in names)
-                    else:
-                        files.append(hit)
     seen, out = set(), []
     for p in files:
         if p not in seen:
@@ -758,12 +776,15 @@ def check_toolchain() -> str:
 
 
 def autostart_facts() -> dict:
-    """从 sys_autostart.go 解析出值名与两处键路径（唯一真源在 Go 源码里）。
+    """从 internal/autostart 的 Windows 实现解析值名与两处键路径（唯一真源在 Go 源码里）。
 
     清脚本里硬编码了一份，打包时逐字比对。不比对的话，改了值名脚本还在删旧名字 ——
     这种失败对用户是静默的：屏幕上说「已删除」，开机照样启动，而且无从察觉。
+
+    自启动逻辑已下沉到 internal/autostart（值名 runValueName 是 const；runKeyPath /
+    approvedKeyPath 是 var 块里的变量，单测会替换成临时键）。Windows 实现里才有真值。
     """
-    path = os.path.join(ROOT, "sys_autostart.go")
+    path = os.path.join(ROOT, "internal", "autostart", "autostart_windows.go")
     try:
         with open(path, encoding="utf-8") as f:
             src = f.read()

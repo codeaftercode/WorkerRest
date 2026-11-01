@@ -16,7 +16,9 @@ import (
 // 仓库自带的 supervisors/ 里不许出现旧名：改了名还有人按老习惯放 role.json，
 // 会变成「文件在那儿、软件永远不读」的隐形坑。
 func TestRepoSupervisorsUseMetaName(t *testing.T) {
-	entries, err := os.ReadDir("supervisors")
+	root := repoRoot(t)
+	sup := filepath.Join(root, "supervisors")
+	entries, err := os.ReadDir(sup)
 	if err != nil {
 		t.Fatalf("读不到 supervisors/：%v", err)
 	}
@@ -25,7 +27,7 @@ func TestRepoSupervisorsUseMetaName(t *testing.T) {
 		if !e.IsDir() {
 			continue
 		}
-		dir := filepath.Join("supervisors", e.Name())
+		dir := filepath.Join(sup, e.Name())
 		if role.IsRegularFile(filepath.Join(dir, "meta.json")) {
 			dirs++
 		}
@@ -72,7 +74,9 @@ func TestLegacyRoleJSONIsIgnored(t *testing.T) {
 // 一旦漏搬（或手改时写错号），「固定显示」模式会指向一条不存在的台词 —— 提醒窗口里
 // 没有台词，日志也不报错，只能靠肉眼发现。
 func TestRepoSupFixedIDResolves(t *testing.T) {
-	entries, err := os.ReadDir("supervisors")
+	root := repoRoot(t)
+	sup := filepath.Join(root, "supervisors")
+	entries, err := os.ReadDir(sup)
 	if err != nil {
 		t.Fatalf("读不到 supervisors/：%v", err)
 	}
@@ -81,7 +85,7 @@ func TestRepoSupFixedIDResolves(t *testing.T) {
 		if !e.IsDir() {
 			continue
 		}
-		path := filepath.Join("supervisors", e.Name(), "meta.json")
+		path := filepath.Join(sup, e.Name(), "meta.json")
 		if !role.IsRegularFile(path) {
 			continue
 		}

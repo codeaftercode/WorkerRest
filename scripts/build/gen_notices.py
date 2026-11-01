@@ -31,9 +31,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-OUT = os.path.join(ROOT, "THIRD-PARTY-NOTICES.txt")
+MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（含 embed 资源）
+OUT = os.path.join(MAIN_DIR, "THIRD-PARTY-NOTICES.txt")
 VENDOR = os.path.join(HERE, "notices")
-BUNDLE = os.path.join(ROOT, "frontend", "dist", "takeout.js")
+BUNDLE = os.path.join(MAIN_DIR, "frontend", "dist", "takeout.js")
 
 # 前端内联第三方库。fingerprint 是产物里必须出现的标识串：库被换掉/删掉时这里立刻红，
 # 免得清单继续声明一个已经不在产物里的库（或漏掉新内联进来的库）。
@@ -136,7 +137,7 @@ def escape_module_path(p):
 
 def linked_modules(go_bin):
     """实际链接进二进制的第三方模块（去主模块、去重、按路径排序）。"""
-    out = go(go_bin, "list", "-deps", "-f", "{{with .Module}}{{.Path}}|{{.Version}}{{end}}", ".")
+    out = go(go_bin, "list", "-deps", "-f", "{{with .Module}}{{.Path}}|{{.Version}}{{end}}", "./cmd/workerrest")
     mods = set()
     for ln in out.splitlines():
         ln = ln.strip()

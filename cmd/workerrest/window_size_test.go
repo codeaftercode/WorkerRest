@@ -21,10 +21,10 @@ import (
 // 再低就滚（verify_window_size.py 断言出厂高度不滚、-10px 就滚）。
 // 最小宽度 760 也是实测的：740 宽时 .row.field 横向溢出 2px、750 起归零。
 func TestDefaultWindowSizeIsMeasured(t *testing.T) {
-	raw, err := os.ReadFile("default_settings.json")
-	if err != nil {
-		t.Fatalf("读出厂默认失败: %v", err)
-	}
+	// 出厂唯一源 = internal/settings 内嵌的 default_settings.json（见 settings.go 的
+	// //go:embed）。这里读它而不是读模块根那份同名文件，两者内容一致，但内嵌这份
+	// 才是「恢复默认设置」真正下发的那份 —— 读它才能钉住「下发的默认尺寸 == 实测值」。
+	raw := settings.DefaultSettingsJSON()
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
 		t.Fatalf("解析出厂默认失败: %v", err)

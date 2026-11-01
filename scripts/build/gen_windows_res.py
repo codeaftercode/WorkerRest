@@ -42,6 +42,7 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
+MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（含 embed 资源与 .syso）
 
 # 复用 version.py 的 tag 语义（tag_at_head / latest_tag / sort_key），
 # 保证这里读到的版本号与 make_portable.py 逐字同源 —— 两个脚本对「版本是什么」
@@ -49,10 +50,10 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 import version as version_mod  # noqa: E402
 
-ICON_SRC = os.path.join(ROOT, "frontend", "dist", "icon.png")
-SYSO_OUT = os.path.join(ROOT, "rsrc_windows_amd64.syso")
-VERSIONINFO_JSON = os.path.join(ROOT, "versioninfo.json")
-MANIFEST_SRC = os.path.join(ROOT, "app.manifest")
+ICON_SRC = os.path.join(MAIN_DIR, "frontend", "dist", "icon.png")
+SYSO_OUT = os.path.join(MAIN_DIR, "rsrc_windows_amd64.syso")
+VERSIONINFO_JSON = os.path.join(MAIN_DIR, "versioninfo.json")
+MANIFEST_SRC = os.path.join(MAIN_DIR, "app.manifest")
 
 # 图标多尺寸（与早期 rsrc 方案的 sizes=[16,24,32,48,64,128,256] 一致）
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]

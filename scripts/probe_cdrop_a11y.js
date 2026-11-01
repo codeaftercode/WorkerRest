@@ -14,6 +14,9 @@
 const { chromium } = require('playwright-core');
 const path = require('path');
 
+const ROOT = path.resolve(__dirname, '..');
+const DIST = path.join(ROOT, 'cmd', 'workerrest', 'frontend', 'dist');
+
 let failed = 0;
 function check(ok, label, detail) {
   if (ok) {
@@ -33,9 +36,9 @@ function check(ok, label, detail) {
 // route 根本拦不到。所以改走 shim.js 本身：把它的 runtime() 换成「直接 resolve 内联桩」，
 // shim 其余逻辑（call/on/str/arr、window.api 形状、__WR_SHIM）原样保留。
 const fs = require('fs');
-const SHIM_SRC = fs.readFileSync(path.resolve('frontend/dist/shim.js'), 'utf8');
+const SHIM_SRC = fs.readFileSync(path.join(DIST, 'shim.js'), 'utf8');
 const DEFAULT_SETTINGS = JSON.stringify(
-  JSON.parse(fs.readFileSync(path.resolve('default_settings.json'), 'utf8')),
+  JSON.parse(fs.readFileSync(path.join(ROOT, 'default_settings.json'), 'utf8')),
 );
 // 内联桩：Call.ByName 对 GetSettings 返回出厂配置、ListRoles 返回空数组、
 // BuiltinMsgDefaults 返回「三类提醒的空种子」（空 kinds，避免硬编码会过时的文案），
@@ -69,7 +72,7 @@ if (SHIM_STUB === SHIM_SRC) {
   await page.route('**/shim.js', (route) =>
     route.fulfill({ status: 200, contentType: 'application/javascript', body: SHIM_STUB }),
   );
-  const url = 'file:///' + path.resolve('frontend/dist', 'settings.html').replace(/\\/g, '/');
+  const url = 'file:///' + path.resolve(DIST, 'settings.html').replace(/\\/g, '/');
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
 

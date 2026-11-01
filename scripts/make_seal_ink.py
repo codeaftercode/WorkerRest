@@ -267,7 +267,7 @@ def main():
     if len(sys.argv) > 1:
         count = int(sys.argv[1])
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    out_dir = os.path.join(root, "frontend", "dist")
+    out_dir = os.path.join(root, "cmd", "workerrest", "frontend", "dist")
     total = 0
     for i in range(1, count + 1):
         params = variant_params(i)

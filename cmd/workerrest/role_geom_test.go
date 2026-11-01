@@ -28,7 +28,8 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 		t.Fatalf("role.SupGeomDefault 应为 %+v，得到 %+v", want, role.SupGeomDefault)
 	}
 
-	entries, err := os.ReadDir("supervisors")
+	root := repoRoot(t)
+	entries, err := os.ReadDir(filepath.Join(root, "supervisors"))
 	if err != nil {
 		t.Fatalf("读不到 supervisors/：%v", err)
 	}
@@ -37,7 +38,7 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 		if !e.IsDir() {
 			continue
 		}
-		path := filepath.Join("supervisors", e.Name(), "meta.json")
+		path := filepath.Join(root, "supervisors", e.Name(), "meta.json")
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			continue // 素材目录（没有 meta.json）本来就该跳过
@@ -61,12 +62,13 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 
 	// 前端三处 fallback 常量：读不到 geom 时按它显示，跟 Go 侧劈叉就会「换台机器
 	// 立绘突然小一圈」。这四处是同一组数字的手工副本，只能靠测试钉住。
+	dist := filepath.Join(root, "cmd", "workerrest", "frontend", "dist")
 	for _, c := range []struct{ file, decl string }{
-		{"frontend/dist/settings.js", "SUP_GEOM_DEFAULT"},
-		{"frontend/dist/break.js", "GEOM_FALLBACK"},
-		{"frontend/dist/takeout.js", "GEOM_FALLBACK"},
+		{"settings.js", "SUP_GEOM_DEFAULT"},
+		{"break.js", "GEOM_FALLBACK"},
+		{"takeout.js", "GEOM_FALLBACK"},
 	} {
-		body, err := os.ReadFile(c.file)
+		body, err := os.ReadFile(filepath.Join(dist, c.file))
 		if err != nil {
 			t.Errorf("读不到 %s：%v", c.file, err)
 			continue

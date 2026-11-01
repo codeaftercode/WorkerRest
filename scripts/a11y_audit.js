@@ -26,7 +26,7 @@ const PAGES = ['settings.html', 'break.html', 'takeout.html', 'prebreak.html'];
   for (const f of PAGES) {
     const page = await browser.newPage({ viewport: { width: 913, height: 857 } });
     await page.route('**/*.js', (r) => r.abort());
-    const url = 'file:///' + path.resolve(ROOT, 'frontend/dist', f).replace(/\\/g, '/');
+    const url = 'file:///' + path.resolve(ROOT, 'cmd/workerrest/frontend/dist', f).replace(/\\/g, '/');
     await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
     out[f] = await page.evaluate(() => {
       // 注意用 textContent 而不是 innerText：`<details>` 收起时其内容的 innerText 是空串，

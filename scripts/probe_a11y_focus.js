@@ -13,6 +13,9 @@
 const { chromium } = require('playwright-core');
 const path = require('path');
 
+const ROOT = path.resolve(__dirname, '..');
+const DIST = path.join(ROOT, 'cmd', 'workerrest', 'frontend', 'dist');
+
 const MODALS = [
   'batch-modal',
   'confirm-modal',
@@ -52,7 +55,7 @@ export default { Call, Events };
     route.fulfill({ status: 200, contentType: 'text/javascript', body: RUNTIME_STUB }),
   );
 
-  const url = 'file:///' + path.resolve('frontend/dist', 'settings.html').replace(/\\/g, '/');
+  const url = 'file:///' + path.resolve(DIST, 'settings.html').replace(/\\/g, '/');
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(300);
 
