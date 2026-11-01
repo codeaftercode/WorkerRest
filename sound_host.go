@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"workerrest/internal/sound"
 )
 
 // ---------- 播放宿主 ----------
@@ -150,13 +152,13 @@ func (a *App) SoundFileURL(file string) string {
 		return ""
 	}
 	if !filepath.IsAbs(file) {
-		if !builtinSoundExists(file) {
+		if !sound.BuiltinExists(file) {
 			return ""
 		}
 		return builtinSoundURL(file)
 	}
 	abs := filepath.Clean(file)
-	if !soundFileUsable(abs) {
+	if !sound.FileUsable(abs) {
 		return ""
 	}
 	return soundURLPrefix + "?p=" + url.QueryEscape(abs)

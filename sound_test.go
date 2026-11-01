@@ -11,6 +11,7 @@ import (
 	"testing"
 	"workerrest/internal/model"
 	"workerrest/internal/settings"
+	"workerrest/internal/sound"
 )
 
 // 提示音这一层的回归。
@@ -81,39 +82,14 @@ func musicItem(id, file, name string, enabled bool) string {
 }
 
 // ---------- 扩展名与内置音 ----------
-
-func TestSoundExtSupported(t *testing.T) {
-	cases := []struct {
-		name string
-		want bool
-	}{
-		{"short_start.wav", true},
-		{"a.MP3", true},
-		{"x.ogg", true},
-		{"x.oga", true},
-		{"x.m4a", true},
-		{"x.aac", true},
-		{"x.flac", true},
-		{"x.opus", true},
-		{"x.webm", true},
-		{"noext", false},
-		{"readme.txt", false},
-		{"hello.mp3.exe", false},
-		{"", false},
-	}
-	for _, c := range cases {
-		if got := soundExtSupported(c.name); got != c.want {
-			t.Errorf("soundExtSupported(%q) = %v，期望 %v", c.name, got, c.want)
-		}
-	}
-}
+// TestSoundExtSupported 已下沉到 internal/sound（TestSupported）。
 
 // injectBuiltinSoundDir 把内置音目录指到 dir，测试结束后恢复原注入点
 func injectBuiltinSoundDir(t *testing.T, dir string) {
 	t.Helper()
-	old := builtinSoundDirFn
-	builtinSoundDirFn = func() string { return dir }
-	t.Cleanup(func() { builtinSoundDirFn = old })
+	old := sound.BuiltinDir()
+	sound.SetBuiltinDirFn(func() string { return dir })
+	t.Cleanup(func() { sound.SetBuiltinDirFn(func() string { return old }) })
 }
 
 // 四个内置提示音必须真的能被判为可用 —— 它们是「默认配置的 singleId 指向的那一条」，
@@ -130,7 +106,7 @@ func TestBuiltinSoundsPresent(t *testing.T) {
 		writeSoundFile(t, filepath.Join(dir, b.File), 64)
 	}
 	for _, b := range settings.BuiltinSounds() {
-		if !builtinSoundExists(b.File) {
+		if !sound.BuiltinExists(b.File) {
 			t.Errorf("内置提示音 %s 不在随包目录里（%s/%s）", b.File, dir, b.File)
 		}
 		url := builtinSoundURL(b.File)
@@ -138,19 +114,19 @@ func TestBuiltinSoundsPresent(t *testing.T) {
 			t.Errorf("%s 的播放 URL 应是 %s，得到 %s", b.File, builtinSoundURLDir+b.File, url)
 		}
 	}
-	if builtinSoundExists("nope.wav") {
+	if sound.BuiltinExists("nope.wav") {
 		t.Error("不存在的内置音不该被判为可用")
 	}
 	// 空文件与「同扩展名的目录」也不算可用
 	writeSoundFile(t, filepath.Join(dir, "empty.wav"), 0)
-	if builtinSoundExists("empty.wav") {
+	if sound.BuiltinExists("empty.wav") {
 		t.Error("0 字节的内置音不该被判为可用")
 	}
 	// 路径穿越与非法扩展名都必须在扩展名那一关就被挡掉
-	if builtinSoundExists("../settings.json") {
+	if sound.BuiltinExists("../settings.json") {
 		t.Error("非音频扩展名不该通过")
 	}
-	if builtinSoundExists("../../../etc/passwd") {
+	if sound.BuiltinExists("../../../etc/passwd") {
 		t.Error("非音频扩展名不该通过")
 	}
 }
@@ -159,9 +135,9 @@ func TestBuiltinSoundsPresent(t *testing.T) {
 // 缺一个打出来的便携包就没声音。默认兜底目录就是相对 cwd 的 sounds/（单测 cwd = 模块根）。
 func TestBuiltinSoundSourceFilesOnDisk(t *testing.T) {
 	for _, b := range settings.BuiltinSounds() {
-		st, err := os.Stat(filepath.Join(builtinSoundRelDir, filepath.Base(b.File)))
+		st, err := os.Stat(filepath.Join("sounds", filepath.Base(b.File)))
 		if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
-			t.Errorf("源文件缺失或为空：%s/%s", builtinSoundRelDir, b.File)
+			t.Errorf("源文件缺失或为空：%s/%s", "sounds", b.File)
 		}
 	}
 }
@@ -204,35 +180,35 @@ func TestResolveSoundFileSingle(t *testing.T) {
 	// 命中且文件可用（条目被停用也照样播 —— 单曲循环与启停无关）
 	cfg := soundCfgFromJSON(t, soundCfgJSON("single", "sm-1",
 		musicItem("sm-1", real, "我的歌", false)))
-	if got := resolveSoundFile(cfg); got != real {
+	if got := sound.ResolveSoundFile(cfg); got != real {
 		t.Errorf("单曲循环应返回选中的那条（停用也照样播），得到 %q", got)
 	}
 
 	// 未指定 singleId
 	cfg = soundCfgFromJSON(t, soundCfgJSON("single", "",
 		musicItem("sm-1", real, "我的歌", true)))
-	if got := resolveSoundFile(cfg); got != "" {
+	if got := sound.ResolveSoundFile(cfg); got != "" {
 		t.Errorf("未指定单曲应静音，得到 %q", got)
 	}
 
 	// 条目已删（singleId 指向一个不存在的 id）
 	cfg = soundCfgFromJSON(t, soundCfgJSON("single", "sm-gone",
 		musicItem("sm-1", real, "我的歌", true)))
-	if got := resolveSoundFile(cfg); got != "" {
+	if got := sound.ResolveSoundFile(cfg); got != "" {
 		t.Errorf("条目已删应静音，得到 %q", got)
 	}
 
 	// 文件不可用（磁盘上不存在）
 	cfg = soundCfgFromJSON(t, soundCfgJSON("single", "sm-1",
 		musicItem("sm-1", filepath.Join(dir, "sounds", "missing.mp3"), "丢了", true)))
-	if got := resolveSoundFile(cfg); got != "" {
+	if got := sound.ResolveSoundFile(cfg); got != "" {
 		t.Errorf("文件不存在应静音，得到 %q", got)
 	}
 
 	// 内置音（相对文件名）也要能解析出来
 	cfg = soundCfgFromJSON(t, `{"sound":{"mode":"single","singleId":"sm-b",
 		"music":[{"id":"sm-b","file":"short_start.wav","name":"双音上行","enabled":true}]}}`)
-	if got := resolveSoundFile(cfg); got != "short_start.wav" {
+	if got := sound.ResolveSoundFile(cfg); got != "short_start.wav" {
 		t.Errorf("内置音应原样返回文件名，得到 %q", got)
 	}
 }
@@ -247,7 +223,7 @@ func TestEnabledMusicFilesSkipsDisabledAndMissing(t *testing.T) {
 		musicItem("sm-3", filepath.Join(dir, "sounds", "gone.mp3"), "文件丢了", true),
 		musicItem("sm-4", "", "没文件名", true),
 	))
-	got := enabledMusicFiles(cfg)
+	got := sound.EnabledMusicFiles(cfg)
 	if len(got) != 1 || got[0] != ok1 {
 		t.Fatalf("只应留下「启用且文件存在」的那一条，得到 %v", got)
 	}
@@ -493,7 +469,7 @@ func TestImportAndDeleteMusicSound(t *testing.T) {
 		t.Fatalf("导入应成功，得到错误 %q", errText)
 	}
 	got, _ := item["file"].(string)
-	if !sameDir(filepath.Dir(got), sounds) {
+	if !sound.SameDir(filepath.Dir(got), sounds) {
 		t.Fatalf("副本应落在音频目录里，得到 %q（期望目录 %q）", got, sounds)
 	}
 	if filepath.Ext(got) != ".mp3" {

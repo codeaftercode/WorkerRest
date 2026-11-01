@@ -10,6 +10,7 @@ import (
 	"workerrest/internal/jsonx"
 	"workerrest/internal/model"
 	"workerrest/internal/settings"
+	"workerrest/internal/sound"
 )
 
 // 随包提示音目录（sounds/）的启动体检。
@@ -61,7 +62,7 @@ func (n *SoundScanNotice) empty() bool {
 // 「已登记」= 内置 4 条的固定文件名（无论有没有种进 music 列表，它们都由内置音逻辑
 // 直接使用）∪ 配置里 file 为相对名的那些条目。路径比较一律小写（Windows 不区分）。
 func (a *App) scanSoundDir() SoundScanNotice {
-	out := SoundScanNotice{Dir: builtinSoundDir()}
+	out := SoundScanNotice{Dir: sound.BuiltinDir()}
 
 	registered := make(map[string]bool, len(settings.BuiltinSoundFiles())+4)
 	for _, f := range settings.BuiltinSoundFiles() {
@@ -90,19 +91,19 @@ func (a *App) scanSoundDir() SoundScanNotice {
 			if strings.HasPrefix(name, ".") || strings.HasPrefix(name, "~$") {
 				continue
 			}
-			if !soundExtSupported(name) {
+			if !sound.Supported(name) {
 				continue
 			}
 			if registered[strings.ToLower(name)] {
 				continue
 			}
 			info, err := e.Info()
-			if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxMusicBytes {
+			if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > sound.MaxMusicBytes {
 				continue
 			}
 			out.New = append(out.New, SoundScanFile{
 				File: name,
-				Name: soundDisplayName(name),
+				Name: sound.DisplayName(name),
 				Size: info.Size(),
 			})
 		}
@@ -115,29 +116,19 @@ func (a *App) scanSoundDir() SoundScanNotice {
 
 	// 配置里点名、但文件已经不在了的条目（相对名查随包目录，绝对路径查磁盘）
 	for _, m := range cfg.Music {
-		if soundFileUsable(m.File) {
+		if sound.FileUsable(m.File) {
 			continue
 		}
 		name := m.Name
 		if strings.TrimSpace(name) == "" {
-			name = soundDisplayName(m.File)
+			name = sound.DisplayName(m.File)
 		}
 		out.Missing = append(out.Missing, SoundScanMissing{ID: m.ID, File: m.File, Name: name})
 	}
 	return out
 }
 
-// soundDisplayName 从文件名推显示名（去目录、去扩展名；去空了就退回原名）
-func soundDisplayName(file string) string {
-	base := filepath.Base(file)
-	if i := strings.LastIndex(base, "."); i > 0 {
-		base = base[:i]
-	}
-	if strings.TrimSpace(base) == "" {
-		return filepath.Base(file)
-	}
-	return base
-}
+// soundDisplayName 已下沉到 internal/sound（DisplayName）。
 
 // startSoundScan 启动时扫一次（只记录，等设置页来取）
 func (a *App) startSoundScan() {

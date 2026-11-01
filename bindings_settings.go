@@ -16,6 +16,7 @@ import (
 
 	"workerrest/internal/role"
 	"workerrest/internal/settings"
+	"workerrest/internal/sound"
 	"workerrest/internal/winproc"
 )
 
@@ -447,7 +448,7 @@ func (a *App) AddMusicSound() map[string]any {
 	if len(items) == 0 {
 		return map[string]any{
 			"canceled": false,
-			"error":    fmt.Sprintf("不支持的音频格式，或文件超过 20 MB（支持 %s）", strings.Join(customSoundExts, " / ")),
+			"error":    fmt.Sprintf("不支持的音频格式，或文件超过 20 MB（支持 %s）", strings.Join(sound.Exts, " / ")),
 		}
 	}
 	return map[string]any{"canceled": false, "items": items, "skipped": skipped}
@@ -455,8 +456,8 @@ func (a *App) AddMusicSound() map[string]any {
 
 // audioFilterPattern 音乐对话框的文件过滤器（把扩展名白名单拼成 *.ext;*.ext 形式）
 func audioFilterPattern() string {
-	exts := make([]string, 0, len(customSoundExts))
-	for _, e := range customSoundExts {
+	exts := make([]string, 0, len(sound.Exts))
+	for _, e := range sound.Exts {
 		exts = append(exts, "*."+e)
 	}
 	return strings.Join(exts, ";")

@@ -6,78 +6,14 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 
 	"workerrest/internal/settings"
+	"workerrest/internal/sound"
 )
 
 // ---------- 音乐副本的文件名 ----------
-
-// isLegacyMusicName 旧版导入留下的副本名：music-<8-4-4-4-12 位十六进制>.<ext>。
-// 新版统一成 music-<序号>.<ext>，用户打开目录能看懂哪个是哪个。
-func isLegacyMusicName(name string) bool {
-	ext := filepath.Ext(name)
-	if ext == "" {
-		return false
-	}
-	base := strings.TrimSuffix(name, ext)
-	if !strings.HasPrefix(base, "music-") {
-		return false
-	}
-	key := base[len("music-"):]
-	if len(key) != 36 {
-		return false
-	}
-	for i := 0; i < len(key); i++ {
-		c := key[i]
-		switch i {
-		case 8, 13, 18, 23:
-			if c != '-' {
-				return false
-			}
-		default:
-			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
-				return false
-			}
-		}
-	}
-	return true
-}
-
-// nextMusicIndex 目录里 music-<N>.<ext> 的最大序号 +1（一条都没有就从 1 开始）
-func nextMusicIndex(dir string) int {
-	ents, err := os.ReadDir(dir)
-	if err != nil {
-		return 1
-	}
-	max := 0
-	for _, e := range ents {
-		if e.IsDir() {
-			continue
-		}
-		base := strings.TrimSuffix(e.Name(), filepath.Ext(e.Name()))
-		if !strings.HasPrefix(base, "music-") {
-			continue
-		}
-		if n, err := strconv.Atoi(strings.TrimPrefix(base, "music-")); err == nil && n > max {
-			max = n
-		}
-	}
-	return max + 1
-}
-
-// freeMusicPath 在 dir 里找一个还没被占用的 music-<序号>.<ext>。
-// 循环是为了防同名（用户手动放了一个同名文件、或两个导入同时进来）。
-func freeMusicPath(dir, ext string) string {
-	for i := 0; i < 1000; i++ {
-		p := filepath.Join(dir, fmt.Sprintf("music-%d.%s", nextMusicIndex(dir), ext))
-		if _, err := os.Stat(p); os.IsNotExist(err) {
-			return p
-		}
-	}
-	return ""
-}
+// isLegacyMusicName / nextMusicIndex / freeMusicPath 已下沉到 internal/sound（纯文件名规则）。
 
 // rewriteMusicPath 把配置里所有指向 oldPath 的音乐条目改到 newPath
 // （大小写不敏感：Windows 路径本就不区分，配置里存的是用户选文件时的原样大小写）。
@@ -120,12 +56,12 @@ func (a *App) migrateMusicFileNames() int {
 	cfg := a.cfg.Raw()
 	changed := 0
 	for _, e := range ents {
-		if e.IsDir() || !isLegacyMusicName(e.Name()) {
+		if e.IsDir() || !sound.IsLegacyMusicName(e.Name()) {
 			continue
 		}
 		oldPath := filepath.Join(dir, e.Name())
 		ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(e.Name()), "."))
-		dest := freeMusicPath(dir, ext)
+		dest := sound.FreeMusicPath(dir, ext)
 		if dest == "" {
 			continue
 		}
@@ -147,14 +83,14 @@ func (a *App) migrateMusicFileNames() int {
 // 返回条目与空错误串；格式不支持 / 文件不可读 / 超限 / 复制失败返回 nil 与原因。
 func (a *App) importMusicSound(src string) (map[string]any, string) {
 	src = strings.TrimSpace(src)
-	if !soundExtSupported(src) {
-		return nil, fmt.Sprintf("不支持的音频格式（可用：%s）", strings.Join(customSoundExts, " / "))
+	if !sound.Supported(src) {
+		return nil, fmt.Sprintf("不支持的音频格式（可用：%s）", strings.Join(sound.Exts, " / "))
 	}
 	st, err := os.Stat(src)
 	if err != nil || !st.Mode().IsRegular() {
 		return nil, "文件不可读"
 	}
-	if st.Size() > maxMusicBytes {
+	if st.Size() > sound.MaxMusicBytes {
 		return nil, "文件超过 20 MB"
 	}
 	dir := a.customSoundDir()
@@ -167,7 +103,7 @@ func (a *App) importMusicSound(src string) (map[string]any, string) {
 	ext := strings.ToLower(strings.TrimPrefix(filepath.Ext(src), "."))
 	// 文件名用递增序号（music-1.mp3、music-2.mp3）：用户在目录里能对上号，
 	// 也不用担心随机长串被误认成别的东西。
-	dest := freeMusicPath(dir, ext)
+	dest := sound.FreeMusicPath(dir, ext)
 	if dest == "" {
 		return nil, "音频目录里没有可用的文件序号"
 	}
@@ -191,7 +127,7 @@ func (a *App) deleteMusicSound(file string) bool {
 		return false
 	}
 	abs := filepath.Clean(file)
-	if !sameDir(filepath.Dir(abs), dir) {
+	if !sound.SameDir(filepath.Dir(abs), dir) {
 		return false
 	}
 	if err := os.Remove(abs); err != nil {
@@ -232,11 +168,11 @@ func (a *App) soundMiddleware(next http.Handler) http.Handler {
 func (a *App) serveBuiltinSound(w http.ResponseWriter, r *http.Request) {
 	// net/http 的 URL.Path 已是解码后的路径（%2F 会还原成 /），再取一次 Base 兜住穿越
 	name := filepath.Base(strings.TrimPrefix(r.URL.Path, builtinSoundURLDir))
-	if !soundExtSupported(name) {
+	if !sound.Supported(name) {
 		http.NotFound(w, r)
 		return
 	}
-	abs := filepath.Join(builtinSoundDir(), name)
+	abs := filepath.Join(sound.BuiltinDir(), name)
 	f, err := os.Open(abs)
 	if err != nil {
 		http.NotFound(w, r)
@@ -259,7 +195,7 @@ func (a *App) serveBuiltinSound(w http.ResponseWriter, r *http.Request) {
 // 绝对路径」，其余一律拒绝。返回规范化后的绝对路径。
 func (a *App) allowedSoundPath(p string) (string, bool) {
 	p = strings.TrimSpace(p)
-	if p == "" || !filepath.IsAbs(p) || !soundExtSupported(p) {
+	if p == "" || !filepath.IsAbs(p) || !sound.Supported(p) {
 		return "", false
 	}
 	abs := filepath.Clean(p)
@@ -307,7 +243,7 @@ func (a *App) serveSoundFile(w http.ResponseWriter, r *http.Request) {
 	}
 	defer f.Close()
 	st, err := f.Stat()
-	if err != nil || !st.Mode().IsRegular() || st.Size() > maxMusicBytes {
+	if err != nil || !st.Mode().IsRegular() || st.Size() > sound.MaxMusicBytes {
 		http.NotFound(w, r)
 		return
 	}

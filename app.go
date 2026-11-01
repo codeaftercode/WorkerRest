@@ -14,6 +14,7 @@ import (
 	"workerrest/internal/model"
 	"workerrest/internal/role"
 	"workerrest/internal/settings"
+	"workerrest/internal/sound"
 	"workerrest/internal/stats"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -164,7 +165,7 @@ func NewApp(app *application.App) *App {
 	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
 	settings.SetResourcesRootHint(a.resourcesRoot)
 	// 内置提示音随包目录：<resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）
-	builtinSoundDirFn = func() string { return filepath.Join(a.resourcesRoot(), "sounds") }
+	sound.SetBuiltinDirFn(func() string { return filepath.Join(a.resourcesRoot(), "sounds") })
 	a.cfg = settings.Load(a.resourcesRoot())
 	return a
 }

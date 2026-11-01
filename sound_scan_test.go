@@ -7,6 +7,7 @@ import (
 	"testing"
 	"workerrest/internal/model"
 	"workerrest/internal/settings"
+	"workerrest/internal/sound"
 )
 
 // 随包提示音目录体检（sound_scan.go）的回归。
@@ -20,9 +21,9 @@ import (
 // withBuiltinSoundDir 把随包提示音目录指到临时目录（生产是 <resourcesRoot>/sounds）
 func withBuiltinSoundDir(t *testing.T, dir string) {
 	t.Helper()
-	old := builtinSoundDirFn
-	builtinSoundDirFn = func() string { return dir }
-	t.Cleanup(func() { builtinSoundDirFn = old })
+	old := sound.BuiltinDir()
+	sound.SetBuiltinDirFn(func() string { return dir })
+	t.Cleanup(func() { sound.SetBuiltinDirFn(func() string { return old }) })
 }
 
 // musicFiles 配置音乐列表里的 id → file 快照，方便断言
