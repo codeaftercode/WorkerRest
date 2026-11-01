@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 	"time"
+	"workerrest/internal/model"
 )
 
 // 时间轴审计（全量组合）的回归用例。
@@ -97,7 +98,7 @@ func TestPausedScheduleNextKeepsFrozenRemain(t *testing.T) {
 // 归属次日 —— 否则去重键会与当天同一条目的旧键相撞（提前通知被吞），预通知窗的
 // 倒计时也会指着已经过去的时刻（进窗即 0 秒）。
 func TestSlotOccurrenceAcrossMidnight(t *testing.T) {
-	slot := TimeSlot{ID: "s1", Hour: 0, Minute: 10, Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 0, Minute: 10, Enabled: true}
 	lead := int64(20 * 60_000) // 提前 20 分钟 → 23:50 进入提前区间
 
 	now := time.Date(2026, 10, 27, 23, 50, 0, 0, time.Local).UnixMilli()
@@ -108,7 +109,7 @@ func TestSlotOccurrenceAcrossMidnight(t *testing.T) {
 
 	// 不跨午夜的普通情形：仍归属当天
 	now2 := time.Date(2026, 10, 27, 11, 50, 0, 0, time.Local).UnixMilli()
-	slot2 := TimeSlot{ID: "s2", Hour: 12, Minute: 10, Enabled: true}
+	slot2 := model.TimeSlot{ID: "s2", Hour: 12, Minute: 10, Enabled: true}
 	want2 := time.Date(2026, 10, 27, 12, 10, 0, 0, time.Local).UnixMilli()
 	if got := slotOccurrenceAt(slot2, lead, now2); got != want2 {
 		t.Fatalf("同日 occurrence 应为 %d，实际 %d", want2, got)
@@ -125,7 +126,7 @@ func TestSlotOccurrenceAcrossMidnight(t *testing.T) {
 // 避免修复跨午夜时把普通情形改错。
 func TestSlotOccurrenceSameDayNoShift(t *testing.T) {
 	now := time.Date(2026, 10, 27, 9, 0, 0, 0, time.Local).UnixMilli()
-	slot := TimeSlot{ID: "s3", Hour: 9, Minute: 30, Enabled: true}
+	slot := model.TimeSlot{ID: "s3", Hour: 9, Minute: 30, Enabled: true}
 	got := slotOccurrenceAt(slot, 10*60_000, now)
 	want := time.Date(2026, 10, 27, 9, 30, 0, 0, time.Local).UnixMilli()
 	if got != want {
@@ -136,7 +137,7 @@ func TestSlotOccurrenceSameDayNoShift(t *testing.T) {
 // TestTakeoutPreNotifyTargetNotInPast 预通知窗的倒计时目标必须是「即将到来的那一次」。
 // 23:50 弹次日 00:10 的预通知，若 targetAt 按"今天 00:10"算，进窗就是 0 秒。
 func TestTakeoutPreNotifyTargetNotInPast(t *testing.T) {
-	slot := TimeSlot{ID: "s4", Hour: 0, Minute: 5, Enabled: true}
+	slot := model.TimeSlot{ID: "s4", Hour: 0, Minute: 5, Enabled: true}
 	now := time.Date(2026, 10, 27, 23, 58, 0, 0, time.Local).UnixMilli()
 	target := slotOccurrenceAt(slot, 7*60_000, now)
 	if target <= now {

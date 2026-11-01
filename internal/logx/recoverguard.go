@@ -1,4 +1,4 @@
-package main
+package logx
 
 import (
 	"log"
@@ -6,10 +6,19 @@ import (
 	"path/filepath"
 	"runtime/debug"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"workerrest/internal/notifier"
 )
+
+// headless 无头 / 探针模式：true 时熔断不弹窗（会卡住自动化），直接以非零码退出。
+// 由 main 包在启动早期根据 serverMode 调用 SetHeadless 注入 —— serverMode 是
+// main 包的 build-tag 常量，logx 不能反向 import main，故用注入式标志。
+var headless atomic.Bool
+
+// SetHeadless 设置无头模式（server 构建 / 探针调用）。熔断时据此决定是否弹错误框。
+func SetHeadless(v bool) { headless.Store(v) }
 
 // 后台 goroutine 的 panic 兜底。
 //
@@ -34,13 +43,13 @@ import (
 const (
 	// panicBurstWindow 判定「连炸」的时间窗：两轮 tick 的正常间隔远小于它
 	panicBurstWindow = 2 * time.Second
-	// panicBurstLimit 窗口内达到这个次数就熔断
-	panicBurstLimit = 3
+	// PanicBurstLimit 窗口内达到这个次数就熔断
+	PanicBurstLimit = 3
 	// panicFullStackGap 同一处再次打印完整栈的最小间隔 —— 循环里每 500 ms 炸一次时，
 	// 全栈会把滚动日志的 6 MiB 瞬间填满，反而把第一次的现场冲掉
 	panicFullStackGap = 5 * time.Minute
-	// panicExitCode 熔断退出码：不能是 0（0 = 正常结束）
-	panicExitCode = 1
+	// PanicExitCode 熔断退出码：不能是 0（0 = 正常结束）
+	PanicExitCode = 1
 )
 
 // panicTally 单个位置的 panic 计数（名字 → 统计）。自带锁，不与全局表锁混用。
@@ -57,15 +66,15 @@ var (
 	panicTallies   = map[string]*panicTally{}
 )
 
-// guardRun 跑一轮可能 panic 的后台逻辑。
+// GuardRun 跑一轮可能 panic 的后台逻辑。
 //
 // 用法：循环体每轮包一次（不要只包循环外层 —— 那样一次 panic 就让整条循环永久停摆）：
 //
 //	case <-t.C:
-//	    guardRun("scheduler.tick", s.onTick)
+//	    logx.GuardRun("scheduler.tick", s.onTick)
 //
 // 也用于一次性 goroutine 的整体（panic 后 goroutine 结束，没有进程级后果）。
-func guardRun(name string, fn func()) {
+func GuardRun(name string, fn func()) {
 	defer func() {
 		if r := recover(); r != nil {
 			guardPanic(name, r)
@@ -74,12 +83,12 @@ func guardRun(name string, fn func()) {
 	fn()
 }
 
-// guardRunOK 与 guardRun 相同，但告诉调用方这一轮是否完整跑完（false = 被 panic 打断）。
+// GuardRunOK 与 GuardRun 相同，但告诉调用方这一轮是否完整跑完（false = 被 panic 打断）。
 //
 // 需要它的是「失败后立刻重试会变成连炸」的场景：例如自动更新检查 panic 后，外层若
 // 直接 continue 就会在一秒内重来三次，正好撞上熔断阈值 —— 而一次网络解析异常远不到
 // 「不可恢复」的程度。拿到 false 后改成退避，才是对的处置。
-func guardRunOK(name string, fn func()) (ok bool) {
+func GuardRunOK(name string, fn func()) (ok bool) {
 	ok = true
 	defer func() {
 		if r := recover(); r != nil {
@@ -113,7 +122,7 @@ func decidePanic(t *panicTally, now time.Time) panicDecision {
 	t.lastAt = now
 
 	d := panicDecision{total: t.total, burst: t.burst}
-	d.trip = t.burst >= panicBurstLimit
+	d.trip = t.burst >= PanicBurstLimit
 	// 第一次、隔了很久的复发、以及要熔断的那次：打完整栈。
 	// 其余只累加 —— 循环里连续 panic 时，日志该留给第一次的现场。
 	d.full = d.total == 1 || now.Sub(t.lastFull) >= panicFullStackGap || d.trip
@@ -164,19 +173,19 @@ func fatalPanicExit(name string, burst int) {
 	log.Printf("[panic] %s 在 %s 内连续 %d 次 panic，判定为不可恢复，退出进程（日志：%s）",
 		name, panicBurstWindow, burst, logPathForUserMessage())
 
-	if serverMode {
+	if headless.Load() {
 		// 无头 / 探针：不弹窗（会卡住自动化），但退出码要反映「崩了」
-		os.Exit(panicExitCode)
+		os.Exit(PanicExitCode)
 	}
-	promptPanicExit(name)
-	os.Exit(panicExitCode)
+	PromptPanicExit(name)
+	os.Exit(PanicExitCode)
 }
 
-// promptPanicExit 用系统原生消息框告知用户并指出日志位置。
+// PromptPanicExit 用系统原生消息框告知用户并指出日志位置。
 //
 // 复用 internal/notifier 的消息框封装：此时窗口状态可能已经不可信，
 // 能可靠显示的只有系统原生框。
-func promptPanicExit(name string) {
+func PromptPanicExit(name string) {
 	const title = "吃饼人也敢休息？— 遇到内部错误"
 	// 不放栈、不放技术细节：用户要看的是「发生了什么、日志在哪、重开会不会好」。
 	text := "程序内部出错，已停止运行。\r\n\r\n" +

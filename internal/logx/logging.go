@@ -1,4 +1,7 @@
-package main
+// Package logx 是日志落点 / 滚动策略与后台 goroutine panic 兜底的基础设施。
+// 两者都零 App 依赖、零类型耦合，一起下沉到本包（recoverguard 的 logPathForUserMessage
+// 复用本包的 appLogDirs / logFileName，放同一包避免跨包导出）。
+package logx
 
 import (
 	"io"
@@ -34,8 +37,8 @@ var (
 	appLogOut  io.Writer
 )
 
-// appLogWriter 返回全局日志目标（进程内只算一次，log 与 slog 共用同一份）。
-func appLogWriter() io.Writer {
+// AppLogWriter 返回全局日志目标（进程内只算一次，log 与 slog 共用同一份）。
+func AppLogWriter() io.Writer {
 	appLogOnce.Do(func() { appLogOut = newAppLogWriter() })
 	return appLogOut
 }
@@ -97,21 +100,21 @@ func appLogDirs() []string {
 	return dirs
 }
 
-// appLogger 给 Wails 运行时的日志器。
+// AppLogger 给 Wails 运行时的日志器。
 //
-// 默认写到 appLogWriter()（以前默认返回 nil = 丢弃，见文件头注释）。
+// 默认写到 AppLogWriter()（以前默认返回 nil = 丢弃，见文件头注释）。
 // WR_LOG_LEVEL=debug 时放开 Debug 级 —— 那是唯一能直接看到 Wails 真实注册了哪些
 // 全限定名（FQN）的地方，排查「前端按名字调绑定失败」时用：
 //
 //	WR_LOG_LEVEL=debug ./chibingren_server.exe    # 日志里会打出 fqn=main.App.Xxx
 //
 // 本项目就是靠它确认了 FQN 前缀是 "main.App."（而不是模块名 workerrest）。
-func appLogger() *slog.Logger {
+func AppLogger() *slog.Logger {
 	level := slog.LevelInfo
 	if os.Getenv("WR_LOG_LEVEL") == "debug" {
 		level = slog.LevelDebug
 	}
-	return slog.New(slog.NewTextHandler(appLogWriter(), &slog.HandlerOptions{Level: level}))
+	return slog.New(slog.NewTextHandler(AppLogWriter(), &slog.HandlerOptions{Level: level}))
 }
 
 // rotatingLogWriter 按大小滚动的文件写入器（并发安全：log 与 slog 可能同时写）。

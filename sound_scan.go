@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"workerrest/internal/jsonx"
 )
 
 // 随包提示音目录（sounds/）的启动体检。
@@ -220,7 +221,7 @@ func (a *App) ImportScannedSounds(files []string) map[string]any {
 		have := make(map[string]bool, len(music))
 		for _, it := range music {
 			if m, ok := it.(map[string]any); ok {
-				have[strings.ToLower(jsStr(m["file"]))] = true
+				have[strings.ToLower(jsonx.JsStr(m["file"]))] = true
 			}
 		}
 		for _, f := range want {
@@ -230,7 +231,7 @@ func (a *App) ImportScannedSounds(files []string) map[string]any {
 			}
 			have[key] = true
 			music = append(music, map[string]any{
-				"id":      "sm-" + newRandomID(),
+				"id":      "sm-" + jsonx.NewRandomID(),
 				"file":    f.File,
 				"name":    f.Name,
 				"enabled": true,
@@ -279,8 +280,8 @@ func (a *App) DropMissingSounds(ids []string) map[string]any {
 	ok := a.mutateSoundMusic(func(music []any) ([]any, bool) {
 		keep := make([]any, 0, len(music))
 		for _, it := range music {
-			if m, isMap := it.(map[string]any); isMap && want[jsStr(m["id"])] {
-				removed = append(removed, jsStr(m["id"]))
+			if m, isMap := it.(map[string]any); isMap && want[jsonx.JsStr(m["id"])] {
+				removed = append(removed, jsonx.JsStr(m["id"]))
 				continue
 			}
 			keep = append(keep, it)
@@ -370,7 +371,7 @@ func (a *App) mutateSoundMusic(fn func(music []any) ([]any, bool)) bool {
 		snd = map[string]any{}
 		raw["sound"] = snd
 	}
-	next, changed := fn(anySlice(snd["music"]))
+	next, changed := fn(jsonx.AnySlice(snd["music"]))
 	if !changed {
 		a.mu.Unlock()
 		return false

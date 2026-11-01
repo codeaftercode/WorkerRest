@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -20,23 +21,31 @@ import (
 // 往白名单里加东西必须同时写清理由，否则这条断言会被人情一点点蛀空。
 func TestReminderWindowsEnableCaptureGuard(t *testing.T) {
 	skip := map[string]string{
-		"main.go":  "设置窗口：用户主动打开，内容就是设置本身，没有提醒文案",
-		"sound.go": "提示音播放宿主：1×1 且 Hidden，画面上根本不出现",
+		"main.go":       "设置窗口：用户主动打开，内容就是设置本身，没有提醒文案",
+		"sound_host.go": "提示音播放宿主：1×1 且 Hidden，画面上根本不出现",
 	}
-	files := []string{"app.go", "prebreak.go", "takeout.go", "main.go", "sound.go"}
+	// 扫描所有源文件（而非固定清单）：源码拆分后建窗点会散到 app_windows.go、
+	// takeout_windows.go 等主题文件，逐个点名反而会漏掉新增的建窗文件。
+	files, err := filepath.Glob("*.go")
+	if err != nil {
+		t.Fatalf("列出源文件失败：%v", err)
+	}
 
 	checked := 0
 	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
+			continue
+		}
 		src, err := os.ReadFile(name)
 		if err != nil {
 			t.Fatalf("读不到 %s: %v", name, err)
 		}
-		if _, ok := skip[name]; ok {
-			continue
-		}
 		blocks := windowOptionBlocks(string(src))
 		if len(blocks) == 0 {
-			t.Fatalf("%s 里一个建窗点都没扫到：文件挪过位置或写法变了", name)
+			continue // 该文件没有建窗点，不是本次检查对象
+		}
+		if _, ok := skip[name]; ok {
+			continue
 		}
 		for i, blk := range blocks {
 			checked++

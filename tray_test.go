@@ -1,6 +1,7 @@
 package main
 
 import "testing"
+import "workerrest/internal/model"
 
 func TestFmtTrayAboutMin(t *testing.T) {
 	cases := []struct {
@@ -29,7 +30,7 @@ func TestTrayTexts(t *testing.T) {
 	now := nowMs()
 
 	t.Run("倒计时中：约数到分钟", func(t *testing.T) {
-		tip, status, action, pause := trayTexts(SchedulerState{
+		tip, status, action, pause := trayTexts(model.SchedulerState{
 			Phase: "idle", NextType: "short", NextName: shortBreakName,
 			NextAt: now + 10*60_000,
 		})
@@ -45,7 +46,7 @@ func TestTrayTexts(t *testing.T) {
 	})
 
 	t.Run("没有下一次", func(t *testing.T) {
-		tip, status, action, pause := trayTexts(SchedulerState{Phase: "idle", NextAt: 0})
+		tip, status, action, pause := trayTexts(model.SchedulerState{Phase: "idle", NextAt: 0})
 		if tip != "未安排休息" || status != "状态：未安排休息" {
 			t.Errorf("tooltip = %q / 状态行 = %q", tip, status)
 		}
@@ -55,7 +56,7 @@ func TestTrayTexts(t *testing.T) {
 	})
 
 	t.Run("休息中：秒级剩余", func(t *testing.T) {
-		tip, status, action, pause := trayTexts(SchedulerState{
+		tip, status, action, pause := trayTexts(model.SchedulerState{
 			Phase: "break", NextName: shortBreakName, BreakEndsAt: now + 30_000,
 		})
 		if want := "休息中，剩余 30 秒"; tip != want {
@@ -67,7 +68,7 @@ func TestTrayTexts(t *testing.T) {
 	})
 
 	t.Run("已暂停：立即休息项不留空白", func(t *testing.T) {
-		tip, status, action, pause := trayTexts(SchedulerState{
+		tip, status, action, pause := trayTexts(model.SchedulerState{
 			Paused: true, Phase: "idle", NextName: shortBreakName,
 			NextAt: now + 60_000, PauseReasons: []string{"manual"},
 		})

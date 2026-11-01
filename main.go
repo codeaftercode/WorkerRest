@@ -7,6 +7,7 @@ import (
 	"os"
 	"runtime/debug"
 
+	"workerrest/internal/logx"
 	"workerrest/internal/notifier"
 	"workerrest/internal/platform"
 
@@ -42,7 +43,11 @@ func loadTrayIcon() []byte {
 }
 
 func main() {
-	// 主 goroutine 的 panic 兜底（第三层，见 recoverguard.go）。
+	// 熔断兜底需要知道「是否无头 / 探针」以决定要不要弹系统错误框：serverMode 是
+	// main 包的 build-tag 常量，logx 包不能反向 import main，故启动最早处注入。
+	logx.SetHeadless(serverMode)
+
+	// 主 goroutine 的 panic 兜底（第三层，见 internal/logx/recoverguard.go）。
 	// 放在最前面：application.New 内部、自更新分支都在它覆盖范围内。
 	// 这里能做的只有「留下现场 + 让用户看到一句人话」，做不到继续运行 ——
 	// 主 goroutine 的栈已经展开，进程状态不可信。
@@ -50,12 +55,12 @@ func main() {
 		if r := recover(); r != nil {
 			// 若还没走到 log.SetOutput（例如参数解析阶段就炸了），这里补上，
 			// 保证现场一定落盘而不是写进 GUI 那片无效的 stderr。
-			log.SetOutput(appLogWriter())
+			log.SetOutput(logx.AppLogWriter())
 			log.Printf("[panic] 主 goroutine: %v\n%s", r, debug.Stack())
 			if !serverMode {
-				promptPanicExit("主线程")
+				logx.PromptPanicExit("主线程")
 			}
-			os.Exit(panicExitCode)
+			os.Exit(logx.PanicExitCode)
 		}
 	}()
 	// 自更新分支：必须在构建 Wails 应用之前处理，避免触发单例互斥。
@@ -92,7 +97,7 @@ func main() {
 	// GUI 版 stderr 不可见，排查「提示音不响」「缺 WebView2 直接退出」靠它抓现场。
 	// 注意顺序：--dump-default-settings / --self-update 在上面已经 return，所以打包
 	// 脚本用 exe 吐默认配置时不会在包里留下 logs/。
-	log.SetOutput(appLogWriter())
+	log.SetOutput(logx.AppLogWriter())
 
 	// WebView 运行时预检：必须在 application.New / app.Run() **之前**。
 	// Windows 缺 WebView2 运行时 Wails 建不出 webview，handleError 写完日志就整个
@@ -169,7 +174,7 @@ func main() {
 				})
 			},
 		},
-		Logger: appLogger(),
+		Logger: logx.AppLogger(),
 	})
 
 	backend = NewApp(app)

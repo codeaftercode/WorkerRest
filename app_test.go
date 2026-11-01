@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"workerrest/internal/idle"
 )
 
 // 督休专员会话构建的纯逻辑回归（脱离窗口与 Wails）。
@@ -24,7 +25,7 @@ func newSupTestApp(t *testing.T, cfgJSON string) *App {
 		rolesRoot: t.TempDir(),
 		rng:       rand.New(rand.NewSource(1)),
 		cursor:    make(map[string]int),
-		idle:      NewIdleState(),
+		idle:      idle.NewIdleState(),
 	}
 }
 

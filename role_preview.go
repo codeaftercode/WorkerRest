@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"workerrest/internal/jsonx"
 )
 
 // 立绘预览图（磁贴缩略图）的生成与落盘。
@@ -86,7 +87,7 @@ func saveRolePreview(root, name, dataURL string) bool {
 		return false
 	}
 	target := rolePreviewBase + ext
-	if err := writeFileAtomic(filepath.Join(dir, target), raw); err != nil {
+	if err := jsonx.WriteFileAtomic(filepath.Join(dir, target), raw); err != nil {
 		log.Printf("[role] 写入预览图失败 %s: %v", name, err)
 		return false
 	}

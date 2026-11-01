@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+	"workerrest/internal/idle"
+	"workerrest/internal/model"
 )
 
 // 外卖提醒的纯逻辑回归（脱离窗口与 Wails）。
@@ -27,7 +29,7 @@ func newTakeoutApp(t *testing.T, cfgJSON string) *App {
 		cursor:          make(map[string]int),
 		takeoutFired:    map[string]bool{},
 		takeoutPreFired: map[string]bool{},
-		idle:            NewIdleState(),
+		idle:            idle.NewIdleState(),
 	}
 }
 
@@ -46,7 +48,7 @@ const takeoutCfg = `{
 
 func TestBuildTakeoutInfo(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	info := a.buildTakeoutInfo(slot, false, 0, 0)
 	if info == nil {
 		t.Fatal("会话不应为空")
@@ -88,7 +90,7 @@ func TestBuildTakeoutInfo(t *testing.T) {
 func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]},"installId":"dev-1234"}`
 	a := newTakeoutApp(t, cfg)
-	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
+	info := a.buildTakeoutInfo(model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
 	if info == nil {
 		t.Fatal("会话不应为空")
 	}
@@ -126,7 +128,7 @@ func TestTakeoutPostponeMinClamp(t *testing.T) {
 func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":[]},"installId":"dev-1234"}`
 	a := newTakeoutApp(t, cfg)
-	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 18, Minute: 0, Enabled: true}, false, 0, 0)
+	info := a.buildTakeoutInfo(model.TimeSlot{ID: "s1", Hour: 18, Minute: 0, Enabled: true}, false, 0, 0)
 	if info.RedPacketData == nil {
 		t.Fatal("外卖提醒窗口应始终展示外卖优惠券（redPacketData 不应为 nil）")
 	}
@@ -150,7 +152,7 @@ func TestBuildTakeoutInfoSupervisorClearsCommand(t *testing.T) {
 	// 有督休专员时 supervisor 的 command 必须清空（外卖窗口第二段不换台词）
 	// 这里只验证「nil 时不炸」——有督休专员的路径由 GUI/对拍覆盖（需要真实立绘 data URL）
 	a := newTakeoutApp(t, takeoutCfg)
-	info := a.buildTakeoutInfo(TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
+	info := a.buildTakeoutInfo(model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
 	if info.Supervisor != nil {
 		t.Fatalf("空督休专员目录应无 supervisor，得到 %+v", info.Supervisor)
 	}
@@ -189,9 +191,9 @@ func TestCheckTakeoutFiresOnDueSlot(t *testing.T) {
 func TestCheckTakeoutPostponeLine(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	// 直接注入一笔「已到点」的推迟计划
-	a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: nowMs() - 1, Count: 2}
+	a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: nowMs() - 1, Count: 2}
 	a.checkTakeoutReminders()
 	if a.takeoutCurrent == nil {
 		t.Fatal("到点的推迟计划应重新弹窗")
@@ -208,8 +210,8 @@ func TestCheckTakeoutPostponeLine(t *testing.T) {
 func TestCheckTakeoutPostponeExpired(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: nowMs() - takeoutPostponeGraceMs - 1000, Count: 1}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: nowMs() - takeoutPostponeGraceMs - 1000, Count: 1}
 	a.checkTakeoutReminders()
 	if a.takeoutCurrent != nil {
 		t.Fatal("过期的推迟计划不应弹窗")
@@ -223,7 +225,7 @@ func TestCheckTakeoutPostponeExpired(t *testing.T) {
 func TestCheckTakeoutDisabled(t *testing.T) {
 	a := newTakeoutApp(t, `{"takeout":{"enabled":false,"leadSec":0,"postponeMin":15,"slots":[]}}`)
 	a.sched = nil
-	a.takeoutPostponed = &TakeoutPostponed{Slot: TimeSlot{}, DueAt: nowMs() - 1, Count: 1}
+	a.takeoutPostponed = &model.TakeoutPostponed{Slot: model.TimeSlot{}, DueAt: nowMs() - 1, Count: 1}
 	a.checkTakeoutReminders()
 	if a.takeoutPostponed != nil {
 		t.Fatal("外卖关闭时应清掉推迟计划")
@@ -235,7 +237,7 @@ func TestCheckTakeoutDisabled(t *testing.T) {
 func TestTakeoutActionOrderedAndSkip(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0, 0)
 	if err := a.TakeoutAction("takeout", "ordered"); err != nil {
 		t.Fatalf("ordered 动作报错: %v", err)
@@ -248,7 +250,7 @@ func TestTakeoutActionOrderedAndSkip(t *testing.T) {
 func TestTakeoutActionPostpone(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0, 0)
 	if err := a.TakeoutAction("takeout", "postpone"); err != nil {
 		t.Fatalf("postpone 动作报错: %v", err)
@@ -276,7 +278,7 @@ func TestTakeoutActionPostpone(t *testing.T) {
 func TestTakeoutActionPreview(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	a.takeoutCurrent = a.buildTakeoutInfo(slot, true, 0, 0)
 	if err := a.TakeoutAction("takeout", "postpone"); err != nil {
 		t.Fatalf("预览 postpone 报错: %v", err)
@@ -293,10 +295,10 @@ func TestCheckTakeoutPostponePreNotify(t *testing.T) {
 		`[{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
 	a := newTakeoutApp(t, cfg)
 	a.sched = nil
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	// 推迟到 30 秒后（仍在 60 秒提前窗内）：此刻应弹「推迟后的提前通知」
 	due := nowMs() + 30*1000
-	a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: due, Count: 1}
+	a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: due, Count: 1}
 	a.checkTakeoutReminders()
 	if a.takeoutPostponed == nil || !a.takeoutPostponed.PreFired {
 		t.Fatal("推迟后的提前通知应已标记 PreFired")
@@ -324,9 +326,9 @@ func TestCheckTakeoutPostponePreNotifyThenFire(t *testing.T) {
 		`[{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
 	a := newTakeoutApp(t, cfg)
 	a.sched = nil
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	// ①b 已弹过提前通知（PreFired=true），现在到点
-	a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: nowMs() - 1, Count: 1, PreFired: true}
+	a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: nowMs() - 1, Count: 1, PreFired: true}
 	a.checkTakeoutReminders()
 	if a.takeoutCurrent == nil {
 		t.Fatal("推迟线到点应弹真窗")
@@ -342,8 +344,8 @@ func TestCheckTakeoutPostponeNoLead(t *testing.T) {
 		`[{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
 	a := newTakeoutApp(t, cfg)
 	a.sched = nil
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: nowMs() + 30*1000, Count: 1}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: nowMs() + 30*1000, Count: 1}
 	a.checkTakeoutReminders()
 	if a.takeoutPostponed != nil && a.takeoutPostponed.PreFired {
 		t.Fatal("leadSec=0 时不应弹推迟后的提前通知")
@@ -359,7 +361,7 @@ func TestTakeoutActionRecordsStats(t *testing.T) {
 	a.sched = nil
 	st := NewStatsStore(func() string { return filepath.Join(t.TempDir(), "stats.json") })
 	a.stats = st
-	slot := TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
+	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
 	a.takeoutCurrent = a.buildTakeoutInfo(slot, false, 0, 0)
 	_ = a.TakeoutAction("takeout", "ordered")
 	d := st.Today()
@@ -403,14 +405,14 @@ func TestRaiseStateBookkeeping(t *testing.T) {
 // 明天，时分落回 0 点附近，按今天算就成了「已经过去 22 小时」的时刻 —— 于是剩余被钳成 0、
 // 今日时间线也不展开，测试在晚上必红（2026-10-25 22:05 踩到）。跨天时改取「现在 → 今天
 // 23:59」的中点，保证时分仍属今天且在未来。
-func futureSlot() TimeSlot {
+func futureSlot() model.TimeSlot {
 	now := time.Now()
 	ft := now.Add(2 * time.Hour)
 	if ft.Year() != now.Year() || ft.YearDay() != now.YearDay() {
 		end := time.Date(now.Year(), now.Month(), now.Day(), 23, 59, 0, 0, now.Location())
 		ft = now.Add(end.Sub(now) / 2)
 	}
-	return TimeSlot{ID: "s1", Hour: ft.Hour(), Minute: ft.Minute(), Repeat: "daily", Enabled: true}
+	return model.TimeSlot{ID: "s1", Hour: ft.Hour(), Minute: ft.Minute(), Repeat: "daily", Enabled: true}
 }
 
 // 外卖预通知：showTakeoutPreNotify 把内容标记为 owner=takeout，PreBreakState 据此返回

@@ -4,8 +4,10 @@ import (
 	"log"
 	"strings"
 	"time"
+	"workerrest/internal/logx"
 
 	"workerrest/internal/autostart"
+	"workerrest/internal/idle"
 	"workerrest/internal/windnd"
 	"workerrest/internal/winproc"
 )
@@ -43,7 +45,7 @@ const (
 // 空闲**采样**本身照旧启动（只读、不改任何状态），这样无头模式下也能断言探测能力可用。
 func (a *App) startSystemWatchers() {
 	if a.idle == nil {
-		a.idle = NewIdleState()
+		a.idle = idle.NewIdleState()
 	}
 	a.idle.Start()
 	dnd := windnd.GetDndStatus()
@@ -52,7 +54,7 @@ func (a *App) startSystemWatchers() {
 	if !dnd.Supported {
 		dndNote += "（不支持，勿扰暂停不生效）"
 	}
-	log.Printf("[sys] 空闲=%s / 勿扰=%s / 进程=%s", a.idle.detail(), dndNote, procs.Detail)
+	log.Printf("[sys] 空闲=%s / 勿扰=%s / 进程=%s", a.idle.Detail(), dndNote, procs.Detail)
 	if serverMode {
 		log.Printf("[sys] 无头模式：不启动空闲 / 勿扰 / 应用占用监视（冒烟需要确定性时间轴）")
 		return
@@ -63,7 +65,7 @@ func (a *App) startSystemWatchers() {
 	// 既停不下来也不再轮询（应用退出时留下一个卡住的监视器）。
 	stop := a.sysStop
 	// 空闲：不立刻判一次（先攒够采样），其余两条与上一版 一样启动即判一次
-	go a.watchLoop(stop, "空闲", idleSampleMs, false, func() { a.idleAway = a.idleWatchTick(a.idleAway) })
+	go a.watchLoop(stop, "空闲", idle.SampleMs, false, func() { a.idleAway = a.idleWatchTick(a.idleAway) })
 	go a.watchLoop(stop, "勿扰", dndWatchMs, true, a.dndWatchTick)
 	go a.watchLoop(stop, "应用占用", appPauseWatchMs, true, a.appPauseWatchTick)
 }
@@ -83,7 +85,7 @@ func (a *App) stopSystemWatchers() {
 // `void tick()` + `setInterval(tick, …)` 就是这个形状）。
 func (a *App) watchLoop(stop <-chan struct{}, name string, intervalMs int, immediate bool, fn func()) {
 	if immediate {
-		guardRun("sys."+name, fn)
+		logx.GuardRun("sys."+name, fn)
 	}
 	t := time.NewTicker(time.Duration(intervalMs) * time.Millisecond)
 	defer t.Stop()
@@ -93,7 +95,7 @@ func (a *App) watchLoop(stop <-chan struct{}, name string, intervalMs int, immed
 			log.Printf("[sys] %s监视已停止", name)
 			return
 		case <-t.C:
-			guardRun("sys."+name, fn)
+			logx.GuardRun("sys."+name, fn)
 		}
 	}
 }
@@ -106,9 +108,9 @@ func (a *App) idleWatchTick(away bool) bool {
 	cfg := a.cfgSnapshot()
 	threshold := int64(cfg.IdlePauseMin()) * 60_000
 	idleMs := a.idle.IdleSinceMs()
-	switch decideIdleStep(a.sched.currentPhase(), away, idleMs, threshold,
+	switch idle.DecideIdleStep(a.sched.currentPhase(), away, idleMs, threshold,
 		a.sched.pausedForBusyReason(), a.idle.IsActive()) {
-	case idleStepAway:
+	case idle.IdleStepAway:
 		a.sched.pause(pauseReasonIdle)
 		// 统计：把「从最后一次输入到现在」这段从工作时长**搬进**离开时长
 		//（三重封顶在 BeginAway 里：不越过工作段起点、按当天 workMs 封顶、不跨天）
@@ -116,7 +118,7 @@ func (a *App) idleWatchTick(away bool) bool {
 		log.Printf("[idle] 已连续无输入 %ds ≥ %ds：暂停提醒（%d ms 从工作搬进离开）",
 			idleMs/1000, threshold/1000, moved)
 		return true
-	case idleStepBack:
+	case idle.IdleStepBack:
 		a.sched.resume(pauseReasonIdle)
 		// 离开结束后内置倒计时重新开始计时（自定义提醒与固定时刻线不动，见 reanchorCountdown）
 		a.sched.reanchorCountdown()
@@ -213,9 +215,9 @@ func (a *App) appPauseWatchTick() {
 // SysProbe 系统能力自检：空闲 / 勿扰 / 进程 / 自启动注册表。
 // 诊断页与无头冒烟都靠它断言「这几条系统链路真的通了」，而不是只看日志。
 func (a *App) SysProbe() map[string]any {
-	idle := IdleInfo{Detail: "未初始化"}
+	idleInfo := idle.IdleInfo{Detail: "未初始化"}
 	if a.idle != nil {
-		idle = a.idle.Info()
+		idleInfo = a.idle.Info()
 	}
 	procs := winproc.ListProcessNames()
 	cur := autostart.ReadRunEntry()
@@ -237,7 +239,7 @@ func (a *App) SysProbe() map[string]any {
 		autostartInfo["wanted"] = a.cfgSnapshot().Autostart()
 	}
 	return map[string]any{
-		"idle":       idle,
+		"idle":       idleInfo,
 		"dnd":        windnd.GetDndStatus(),
 		"fullscreen": windnd.GetFullScreenStatus(),
 		"processes":  procs,

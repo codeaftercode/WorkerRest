@@ -2,9 +2,11 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
+	"workerrest/internal/model"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -95,7 +97,7 @@ func TestShowPreBreakWindowConcurrent(t *testing.T) {
 			if i%2 == 0 {
 				a.ShowPreBreakWindow(a.preBreakInfoOfType("short"))
 			} else {
-				a.showTakeoutPreNotify(TimeSlot{ID: "t", Hour: 12, Minute: 0, Enabled: true}, 0)
+				a.showTakeoutPreNotify(model.TimeSlot{ID: "t", Hour: 12, Minute: 0, Enabled: true}, 0)
 			}
 		}(i)
 	}
@@ -105,18 +107,28 @@ func TestShowPreBreakWindowConcurrent(t *testing.T) {
 
 // 源码钉子：休息窗口复用前必须确认窗口还活着（否则 Show() 会把已销毁窗口重新 Run）。
 func TestBreakWindowReuseChecksLiveness(t *testing.T) {
-	b, err := os.ReadFile("app.go")
-	if err != nil {
-		t.Fatalf("读 app.go 失败：%v", err)
+	files, err := filepath.Glob("app*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("找不到 app*.go：%v", err)
 	}
-	for _, line := range strings.Split(string(b), "\n") {
-		if !strings.Contains(line, "breakWinReusable(") || strings.HasPrefix(strings.TrimSpace(line), "func ") {
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		if !strings.Contains(line, "windowsLive(") {
-			t.Errorf("复用判断缺少存活检查：%q（已销毁窗口调 Show() 会被 Wails 当成重新 Run）", strings.TrimSpace(line))
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("读 %s 失败：%v", name, err)
 		}
-		return
+		for _, line := range strings.Split(string(b), "\n") {
+			if !strings.Contains(line, "breakWinReusable(") || strings.HasPrefix(strings.TrimSpace(line), "func ") {
+				continue
+			}
+			if !strings.Contains(line, "windowsLive(") {
+				t.Errorf("%s：复用判断缺少存活检查：%q（已销毁窗口调 Show() 会被 Wails 当成重新 Run）",
+					name, strings.TrimSpace(line))
+			}
+			return
+		}
 	}
 	t.Fatal("没找到 breakWinReusable 的调用点 —— 测试失效，请更新")
 }
@@ -165,7 +177,7 @@ func TestSchedEndBreakOutsideBreakDoesNotTouchTakeout(t *testing.T) {
 		t.Skip("构造出来的调度器正好在休息阶段，换个用例")
 	}
 	a.mu.Lock()
-	a.takeoutCurrent = &TakeoutInfo{ID: "keep", Preview: false}
+	a.takeoutCurrent = &model.TakeoutInfo{ID: "keep", Preview: false}
 	a.mu.Unlock()
 
 	a.schedEndBreak()

@@ -1,6 +1,7 @@
 package main
 
 import "strconv"
+import "workerrest/internal/model"
 
 // 内置提醒内容：与 历史源码/messages.ts 的 builtinKindMessages 逐字同源。
 //
@@ -56,11 +57,11 @@ var builtinKindMessages = map[string][]string{
 }
 
 // builtinKindItems 某类提醒的预置提醒内容条目（id 固定、默认启用）
-func builtinKindItems(kind string) []ReminderMessageItem {
+func builtinKindItems(kind string) []model.ReminderMessageItem {
 	texts := builtinKindMessages[kind]
-	out := make([]ReminderMessageItem, 0, len(texts))
+	out := make([]model.ReminderMessageItem, 0, len(texts))
 	for i, text := range texts {
-		out = append(out, ReminderMessageItem{ID: strconv.Itoa(i + 1), Text: text, Enabled: true})
+		out = append(out, model.ReminderMessageItem{ID: strconv.Itoa(i + 1), Text: text, Enabled: true})
 	}
 	return out
 }

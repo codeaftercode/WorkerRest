@@ -5,6 +5,8 @@ import (
 	"log"
 	"strings"
 	"time"
+	"workerrest/internal/logx"
+	"workerrest/internal/model"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -110,7 +112,7 @@ func (a *App) startTrayRefresh() {
 			case <-ch:
 				return
 			case <-t.C:
-				guardRun("tray.refresh", a.refreshTray)
+				logx.GuardRun("tray.refresh", a.refreshTray)
 			}
 		}
 	}()
@@ -192,7 +194,7 @@ func (a *App) refreshTray() {
 //
 // 提示语**不带标题前缀**：托盘图标本身就是身份，而标题由用户自定义、可能很长，
 // 不该把「还剩多久」这半句挤掉（Windows 工具提示的宽度有限）。
-func trayTexts(st SchedulerState) (tip, statusText, actionText, pauseText string) {
+func trayTexts(st model.SchedulerState) (tip, statusText, actionText, pauseText string) {
 	switch {
 	case st.Paused:
 		tip = "已暂停：" + pauseReasonsText(st.PauseReasons)

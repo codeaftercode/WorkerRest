@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"workerrest/internal/jsonx"
 )
 
 // 归一化的快速回归。
@@ -401,7 +402,7 @@ func TestNormalizeSoundDefaultsSingleId(t *testing.T) {
 	if got := len(snd["music"].([]any)); got != len(builtinMusic) {
 		t.Fatalf("应种入 %d 条内置音，得到 %d", len(builtinMusic), got)
 	}
-	if got := jsStr(snd["singleId"]); got != builtinMusic[0].id {
+	if got := jsonx.JsStr(snd["singleId"]); got != builtinMusic[0].id {
 		t.Fatalf("全新安装 singleId 应默认指向第一首内置音 %q，得到 %q", builtinMusic[0].id, got)
 	}
 
@@ -411,7 +412,7 @@ func TestNormalizeSoundDefaultsSingleId(t *testing.T) {
 		"music": []any{map[string]any{"id": "x1", "file": "a.wav", "name": "A", "enabled": true}},
 	}}
 	normalizeSound(raw2)
-	if got := jsStr(raw2["sound"].(map[string]any)["singleId"]); got != "x1" {
+	if got := jsonx.JsStr(raw2["sound"].(map[string]any)["singleId"]); got != "x1" {
 		t.Fatalf("singleId 空但有启用项应兜底指向 x1，得到 %q", got)
 	}
 
@@ -421,7 +422,7 @@ func TestNormalizeSoundDefaultsSingleId(t *testing.T) {
 		"music": []any{map[string]any{"id": "x1", "file": "a.wav", "name": "A", "enabled": false}},
 	}}
 	normalizeSound(raw3)
-	if got := jsStr(raw3["sound"].(map[string]any)["singleId"]); got != "" {
+	if got := jsonx.JsStr(raw3["sound"].(map[string]any)["singleId"]); got != "" {
 		t.Fatalf("全部停用应尊重用户选择保持 singleId 空，得到 %q", got)
 	}
 }
@@ -481,14 +482,14 @@ func TestSupervisorSelectionDefault(t *testing.T) {
 	}
 	raw := map[string]any{"supervisor": map[string]any{"selection": "bogus"}}
 	normalizeSupervisorMessages(raw)
-	if got := jsStr(raw["supervisor"].(map[string]any)["selection"]); got != "random" {
+	if got := jsonx.JsStr(raw["supervisor"].(map[string]any)["selection"]); got != "random" {
 		t.Fatalf("非法 selection 应回退 random，得到 %q", got)
 	}
 	// 显式三种取值都必须原样保留，不能被兜底吞掉
 	for _, v := range []string{"fixed", "sequence", "random"} {
 		r := map[string]any{"supervisor": map[string]any{"selection": v}}
 		normalizeSupervisorMessages(r)
-		if got := jsStr(r["supervisor"].(map[string]any)["selection"]); got != v {
+		if got := jsonx.JsStr(r["supervisor"].(map[string]any)["selection"]); got != v {
 			t.Fatalf("合法 selection=%q 被改成 %q", v, got)
 		}
 	}

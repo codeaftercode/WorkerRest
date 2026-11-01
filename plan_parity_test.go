@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 	"time"
+	"workerrest/internal/model"
 )
 
 // 计划层对拍：把 scenes 矩阵喂给 Go 侧的计划函数，导出成与
@@ -23,14 +24,14 @@ type planScenarioIn struct {
 	Skip     []string       `json:"skip"`
 	Settings map[string]any `json:"settings"`
 	Opts     struct {
-		Paused           bool              `json:"paused"`
-		TakeoutFired     []string          `json:"takeoutFired"`
-		TakeoutPostponed *TakeoutPostponed `json:"takeoutPostponed"`
+		Paused           bool                    `json:"paused"`
+		TakeoutFired     []string                `json:"takeoutFired"`
+		TakeoutPostponed *model.TakeoutPostponed `json:"takeoutPostponed"`
 		// Shifts / ExtraLines 是参考侧**实际用到的**输入（不是从配置现算的）：
 		// 有些场景会覆盖 shifts（被推迟的那一跳），有些挂起线在配置里已被删除、
 		// 只存在于调度器内存里 —— 不把它们带过来，两边输入就不同，对拍没有意义。
-		Shifts     map[string]int64 `json:"shifts"`
-		ExtraLines []PlannedBreak   `json:"extraLines"`
+		Shifts     map[string]int64     `json:"shifts"`
+		ExtraLines []model.PlannedBreak `json:"extraLines"`
 	} `json:"opts"`
 }
 
@@ -48,14 +49,14 @@ func setOfStrings(list []string) map[string]bool {
 	return out
 }
 
-func planAsAny(p PlannedBreak, ok bool) any {
+func planAsAny(p model.PlannedBreak, ok bool) any {
 	if !ok {
 		return nil
 	}
 	return p
 }
 
-func describePlanAny(p PlannedBreak, ok bool) string {
+func describePlanAny(p model.PlannedBreak, ok bool) string {
 	if !ok {
 		return describePlan(nil)
 	}
@@ -103,7 +104,7 @@ func TestDumpPlanForParity(t *testing.T) {
 		}
 		cdLines := lines
 		if len(sc.Opts.ExtraLines) > 0 {
-			cdLines = append(append([]PlannedBreak{}, lines...), sc.Opts.ExtraLines...)
+			cdLines = append(append([]model.PlannedBreak{}, lines...), sc.Opts.ExtraLines...)
 		}
 		tl := todayTimeline(s, sc.Now, TimelineOptions{
 			Skip:             skip,

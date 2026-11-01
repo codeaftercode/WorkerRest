@@ -3,6 +3,7 @@ package main
 import (
 	"path/filepath"
 	"testing"
+	"workerrest/internal/model"
 )
 
 // 预览不许打扰真实提醒。
@@ -56,7 +57,7 @@ func TestPreviewTakeoutRejectedWhileRealTakeoutRunning(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 
 	a.mu.Lock()
-	a.takeoutCurrent = &TakeoutInfo{Preview: false}
+	a.takeoutCurrent = &model.TakeoutInfo{Preview: false}
 	a.mu.Unlock()
 	if !a.realTakeoutActive() {
 		t.Fatal("构造了真实外卖会话，realTakeoutActive 应为 true")
@@ -67,7 +68,7 @@ func TestPreviewTakeoutRejectedWhileRealTakeoutRunning(t *testing.T) {
 
 	// 预览态不算「真实在场」：预览覆盖预览仍是预览（不受这条拦截影响）
 	a.mu.Lock()
-	a.takeoutCurrent = &TakeoutInfo{Preview: true}
+	a.takeoutCurrent = &model.TakeoutInfo{Preview: true}
 	a.mu.Unlock()
 	if a.realTakeoutActive() {
 		t.Fatal("预览会话不该被当成真实外卖提醒")

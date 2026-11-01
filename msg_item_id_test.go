@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strconv"
 	"testing"
+	"workerrest/internal/jsonx"
 )
 
 // 造一条提醒内容条目（settings.json 与 meta.json 两侧的条目形状一致）。
@@ -18,7 +19,7 @@ func msgItem(id any, text string) map[string]any {
 func itemIDsOf(items []any) []string {
 	out := make([]string, 0, len(items))
 	for _, it := range items {
-		out = append(out, jsStr(it.(map[string]any)["id"]))
+		out = append(out, jsonx.JsStr(it.(map[string]any)["id"]))
 	}
 	return out
 }
@@ -35,11 +36,11 @@ func TestNextSeqID(t *testing.T) {
 		{"乱序取最大", []string{"3", "1", "2"}, "4"},
 		{"中间的号被删了也不复用", []string{"1", "3"}, "4"},
 		{"非数字 id 直接跳过", []string{"a3", "b2"}, "1"},
-		{"随机串混入也不炸", []string{newRandomID(), "7"}, "8"},
+		{"随机串混入也不炸", []string{jsonx.NewRandomID(), "7"}, "8"},
 	}
 	for _, c := range cases {
-		if got := nextSeqID(c.ids); got != c.want {
-			t.Errorf("%s: nextSeqID(%v) = %q，想要 %q", c.name, c.ids, got, c.want)
+		if got := jsonx.NextSeqID(c.ids); got != c.want {
+			t.Errorf("%s: jsonx.NextSeqID(%v) = %q，想要 %q", c.name, c.ids, got, c.want)
 		}
 	}
 }

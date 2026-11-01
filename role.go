@@ -1,32 +1,15 @@
 package main
 
 import (
-	"encoding/base64"
 	"encoding/json"
-	"fmt"
-	"math/rand"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"workerrest/internal/jsonx"
+	"workerrest/internal/model"
 )
 
-// 督休专员目录读取：语义与 历史源码/supervisor.ts 对齐（那里配置文件叫 role.json，
-// 这里 2026-10-28 起改名为 meta.json；不做旧名兼容，见 roleMetaFile 的说明）——
-// 一个督休专员 = supervisors/<名称>/ 一个子目录，内含 meta.json + 立绘 + 预览图。
-//
-// **身份就是专员名**：meta.json 里没有内部 id（2026-10-28 用户要求去掉 key —— 软件自带
-// 的专员与用户导入的没有区别，不需要区分）。目录名是 name 的文件系统投影（sanitize 后），
-// 读写都按 name 反查目录、比对 meta.json 的 name 字段。
-//
-// 代价是「重命名 = 换身份」：改名必须连同目录一起改（renameRoleDir），并同步配置里指向
-// 它的 fixedRole / order；唯一性由 roleNameTaken 在写入前强制（口径是**目录名**而不是
-// 显示名，见 roleIdentity 的注释）。
-//
-// 用户在该目录里增删子目录即增删督休专员，重启即生效（本阶段先做到「扫描 + 读取」，
-// 增删改留到设置页迁移那一阶段）。
-
-// RoleMessageItem 一条台词（命令阶段），id 沿用内置前缀规则
 type RoleMessageItem struct {
 	ID      string `json:"id"`
 	Text    string `json:"text"`
@@ -43,12 +26,12 @@ type RoleMessages struct {
 // RoleFile meta.json 的磁盘结构。Name 就是身份，没有单独的 id 字段：
 // 同一份配置里两个督休专员不许重名，写入前由 roleNameTaken 拦。
 type RoleFile struct {
-	Name     string       `json:"name"`
-	Enabled  bool         `json:"enabled"`
-	Image    string       `json:"image"`
-	Preview  string       `json:"preview,omitempty"`
-	Geom     SupGeom      `json:"geom"`
-	Messages RoleMessages `json:"messages"`
+	Name     string        `json:"name"`
+	Enabled  bool          `json:"enabled"`
+	Image    string        `json:"image"`
+	Preview  string        `json:"preview,omitempty"`
+	Geom     model.SupGeom `json:"geom"`
+	Messages RoleMessages  `json:"messages"`
 }
 
 // defaultRoleOrder 软件自带督休专员的默认出场次序（按**名称**列，不是身份）。
@@ -106,7 +89,7 @@ func normalizeRoleMessages(m map[string]any) RoleMessages {
 	if s, ok := m["fixedId"].(string); ok {
 		out.FixedID = s
 	}
-	items := anySlice(m["items"])
+	items := jsonx.AnySlice(m["items"])
 	ids := make([]string, 0, len(items))
 	seen := make(map[string]bool, len(items))
 	remap := make(map[string]string, len(items))
@@ -119,8 +102,8 @@ func normalizeRoleMessages(m map[string]any) RoleMessages {
 		if !ok {
 			continue
 		}
-		old := itemID(mm["id"])
-		id := seqIDFor(old, ids, seen)
+		old := jsonx.ItemID(mm["id"])
+		id := jsonx.SeqIDFor(old, ids, seen)
 		if old != "" && old != id && !seen[old] {
 			remap[old] = id
 		}
@@ -128,7 +111,7 @@ func normalizeRoleMessages(m map[string]any) RoleMessages {
 		ids = append(ids, id)
 		out.Items = append(out.Items, RoleMessageItem{ID: id, Text: text, Enabled: mm["enabled"] != false})
 	}
-	out.FixedID = remapMsgID(remap, out.FixedID)
+	out.FixedID = jsonx.RemapMsgID(remap, out.FixedID)
 	return out
 }
 
@@ -138,11 +121,11 @@ func normalizeRoleMessages(m map[string]any) RoleMessages {
 // 对 posXPct/posYPct 却合法 —— 混了就会把「没写过 geom」的督休专员算成缩到 20%。
 func normalizeRoleFile(raw map[string]any) RoleFile {
 	out := RoleFile{
-		Name:     strings.TrimSpace(jsStr(raw["name"])),
+		Name:     strings.TrimSpace(jsonx.JsStr(raw["name"])),
 		Enabled:  raw["enabled"] != false,
 		Image:    defaultFigureName,
-		Geom:     normalizeSupGeom(asMap(raw["geom"])),
-		Messages: normalizeRoleMessages(asMap(raw["messages"])),
+		Geom:     normalizeSupGeom(jsonx.AsMap(raw["geom"])),
+		Messages: normalizeRoleMessages(jsonx.AsMap(raw["messages"])),
 	}
 	if s, ok := raw["image"].(string); ok && isImageName(s) {
 		out.Image = s
@@ -153,14 +136,6 @@ func normalizeRoleFile(raw map[string]any) RoleFile {
 	return out
 }
 
-// asMap 取子对象；缺失 / 类型不符给空 map
-func asMap(v any) map[string]any {
-	if m, ok := v.(map[string]any); ok {
-		return m
-	}
-	return map[string]any{}
-}
-
 // Role 扫描结果 = 历史源码/supervisor.ts 里 listRoleViews() 的输出
 // （{thumb, ...cfg}），字段名对齐 —— 设置页直接读这些字段：
 //   - name     → 身份，同时是磁贴标题、台词气泡与提醒面板里的称呼；
@@ -169,13 +144,13 @@ func asMap(v any) map[string]any {
 //   - messages → 「提醒内容」面板的条目（见 settings.js 的 msgCfgOf），
 //     少了下发面板会永远显示「暂无提醒内容」。
 type Role struct {
-	Thumb    string       `json:"thumb"`
-	Name     string       `json:"name"`
-	Enabled  bool         `json:"enabled"`
-	Image    string       `json:"image"`
-	Preview  string       `json:"preview,omitempty"`
-	Geom     SupGeom      `json:"geom"`
-	Messages RoleMessages `json:"messages"`
+	Thumb    string        `json:"thumb"`
+	Name     string        `json:"name"`
+	Enabled  bool          `json:"enabled"`
+	Image    string        `json:"image"`
+	Preview  string        `json:"preview,omitempty"`
+	Geom     model.SupGeom `json:"geom"`
+	Messages RoleMessages  `json:"messages"`
 	// FigurePath 立绘绝对路径，只给 Go 侧用（组装会话时读图）
 	FigurePath string `json:"-"`
 }
@@ -360,286 +335,3 @@ func scanRoles(root string) []Role {
 //   - CON / PRN / COM1 这类保留名靠 sanitize 加前缀避开，折算后仍要一致。
 //
 // 所以「没有重名」的判据是 roleIdentity 相等，而不是字符串相等。
-func roleIdentity(name string) string {
-	return strings.ToLower(sanitizeRoleDirName(name))
-}
-
-// roleNameTaken 判断显示名 name 是否已被**其它**督休专员占用。
-//
-// excludeName 是「自己」的当前名字（改名时要排除自己 —— 否则用户不改名直接点确定
-// 会被自己的旧名字挡住）。
-//
-// 「重名」的危害不是显示层的小瑕疵，而是 name ↔ 目录 ↔ fixedRole/order 三者失配：
-// 目录名靠 uniqueRoleDir 去重成「X (2)」，meta.json 里却还是「X」，于是同一个名字在
-// 画廊 / 台词气泡 / 提醒面板标题里指向两个不同的人，删一个还会删错。
-func roleNameTaken(root, name, excludeName string) bool {
-	n := strings.TrimSpace(name)
-	if n == "" {
-		return false
-	}
-	id := roleIdentity(n)
-	ex := roleIdentity(excludeName)
-	for _, other := range scanRoleNames(root) {
-		if excludeName != "" && roleIdentity(other) == ex {
-			continue
-		}
-		if roleIdentity(other) == id {
-			return true
-		}
-	}
-	return false
-}
-
-// scanRoleNames 只读各 meta.json 的显示名，**不碰立绘 / 预览图**。
-//
-// 为什么不用 scanRoles：它会给每个督休专员生成缩略图的 data URL（17 个自带专员
-// 约 3.5 MB 的图片要读一遍再 base64 编码），而查重名只需要名字。
-// uniqueRoleName 还要循环调用查重（"X" → "X (2)" → "X (3)"），
-// 走 scanRoles 就是把整套图片反复解码若干遍 —— 改个名字要等好几秒。
-func scanRoleNames(root string) []string {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil
-	}
-	out := make([]string, 0, len(entries))
-	for _, e := range entries {
-		if !e.IsDir() || !validRoleDirName(e.Name()) {
-			continue
-		}
-		dir := filepath.Join(root, e.Name())
-		raw, err := os.ReadFile(filepath.Join(dir, roleMetaFile))
-		if err != nil {
-			continue
-		}
-		var rawMap map[string]any
-		if err := json.Unmarshal(raw, &rawMap); err != nil {
-			continue
-		}
-		name := strings.TrimSpace(jsStr(rawMap["name"]))
-		if name == "" {
-			name = e.Name()
-		}
-		out = append(out, name)
-	}
-	return out
-}
-
-// uniqueRoleName 给显示名去重：name 已被占用时依次试「name (2)」「name (3)」。
-//
-// 用于**软件自己起名**的地方（导入时用文件名当默认名）——这类场景不能弹窗问用户，
-// 就自动退让一位。用户**主动**改名（SaveRole）不走这里：那条路要拒绝保存、要求重新输入。
-//
-// excludeName 是「自己」的当前名字：改名时把自己算进去，会把「不改名直接确定」
-// 误判成重名。
-func uniqueRoleName(root, name, excludeName string) string {
-	base := strings.TrimSpace(name)
-	if base == "" {
-		base = "自定义督休专员"
-	}
-	// 只扫一次：循环里反复查重会把目录读上好几遍。
-	taken := make([]string, 0, 16)
-	ex := roleIdentity(excludeName)
-	for _, other := range scanRoleNames(root) {
-		if excludeName != "" && roleIdentity(other) == ex {
-			continue
-		}
-		taken = append(taken, roleIdentity(other))
-	}
-	free := func(cand string) bool {
-		id := roleIdentity(cand)
-		for _, t := range taken {
-			if t == id {
-				return false
-			}
-		}
-		return true
-	}
-	if free(base) {
-		return base
-	}
-	for i := 2; ; i++ {
-		cand := fmt.Sprintf("%s (%d)", base, i)
-		if free(cand) {
-			return cand
-		}
-	}
-}
-
-// applyRoleOrder 按用户保存的顺序重排督休专员。
-//
-// order 是专员名数组（设置页拖动立绘磁贴得到的顺序，落在 config/settings.json 的
-// supervisor.order 里）：
-//   - order 里出现的名字，按 order 的先后排；
-//   - order 里没有的（后来导入的 / 改过名的）保持 scanRoles 给的相对顺序，追加在后面 ——
-//     不会因为没写进 order 就消失；
-//   - order 里多余的名字（专员已删除或已改名）直接忽略。
-//
-// order 为空时原样返回，即默认清单顺序 + 其余按目录名排序。
-func applyRoleOrder(roles []Role, order []string) []Role {
-	if len(order) == 0 || len(roles) == 0 {
-		return roles
-	}
-	byName := make(map[string]Role, len(roles))
-	for _, r := range roles {
-		byName[roleIdentity(r.Name)] = r
-	}
-	out := make([]Role, 0, len(roles))
-	used := make(map[string]bool, len(roles))
-	for _, want := range order {
-		id := roleIdentity(want)
-		r, ok := byName[id]
-		if !ok || used[id] {
-			continue
-		}
-		out = append(out, r)
-		used[id] = true
-	}
-	for _, r := range roles {
-		if !used[roleIdentity(r.Name)] {
-			out = append(out, r)
-		}
-	}
-	return out
-}
-
-// resolveRoleDir 按专员名反查子目录：目录名是 name 的投影（sanitize 后可能不同，
-// 比如名字里带 `/`），所以必须读 meta.json 的 name 比对，不能直接拼路径。
-// 找不到返回 ("", false)。
-func resolveRoleDir(root, name string) (string, bool) {
-	want := strings.TrimSpace(name)
-	if want == "" {
-		return "", false
-	}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return "", false
-	}
-	for _, e := range entries {
-		if !e.IsDir() || !validRoleDirName(e.Name()) {
-			continue
-		}
-		dir := filepath.Join(root, e.Name())
-		raw, err := os.ReadFile(filepath.Join(dir, roleMetaFile))
-		if err != nil {
-			continue
-		}
-		var m map[string]any
-		if err := json.Unmarshal(raw, &m); err != nil {
-			continue
-		}
-		got := strings.TrimSpace(jsStr(m["name"]))
-		if got == "" {
-			// name 缺失：目录名就是身份（与 scanRoles 的口径一致）
-			if strings.EqualFold(e.Name(), want) {
-				return dir, true
-			}
-			continue
-		}
-		if strings.EqualFold(got, want) {
-			return dir, true
-		}
-	}
-	return "", false
-}
-
-// windowsReservedNames Windows 不允许直接当目录名的设备名（不区分大小写，
-// 带扩展名也一样：CON.txt 同样非法）。
-var windowsReservedNames = map[string]bool{
-	"con": true, "prn": true, "aux": true, "nul": true,
-	"com1": true, "com2": true, "com3": true, "com4": true, "com5": true,
-	"com6": true, "com7": true, "com8": true, "com9": true,
-	"lpt1": true, "lpt2": true, "lpt3": true, "lpt4": true, "lpt5": true,
-	"lpt6": true, "lpt7": true, "lpt8": true, "lpt9": true,
-}
-
-// sanitizeRoleDirName 把专员名收敛成合法目录名。
-//
-// 目录名是身份的文件系统投影，所以这里多做几件「不处理就会静默撞车」的事：
-//   - 剔除 Windows 非法字符；
-//   - 去掉尾随的点与空格（系统会吞掉它们，"abc." 与 "abc" 会指向同一个目录）；
-//   - 保留名（CON / PRN / COM1 …）加下划线前缀，否则 mkdir 直接失败；
-//   - 限制长度：目录名上限 255 字节，中文按 3 字节算，60 个字符留足余量。
-func sanitizeRoleDirName(name string) string {
-	s := strings.TrimSpace(name)
-	s = strings.Map(func(r rune) rune {
-		switch r {
-		case '/', '\\', ':', '*', '?', '"', '<', '>', '|':
-			return -1
-		default:
-			return r
-		}
-	}, s)
-	s = strings.TrimRight(strings.TrimSpace(s), " .")
-	if runes := []rune(s); len(runes) > 60 {
-		s = strings.TrimSpace(string(runes[:60]))
-	}
-	s = strings.TrimRight(s, " .")
-	if s == "" {
-		return "督休专员"
-	}
-	base := strings.ToLower(s)
-	if i := strings.IndexByte(base, '.'); i >= 0 {
-		base = base[:i]
-	}
-	if windowsReservedNames[base] {
-		s = "_" + s
-	}
-	return s
-}
-
-// isRegularFile 路径存在且是普通文件
-func isRegularFile(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.Mode().IsRegular()
-}
-
-// toDataURL 读图并转 data URL（渲染层 <img src> 直接用，省一次 HTTP 往返）
-func toDataURL(file string) string {
-	b, err := os.ReadFile(file)
-	if err != nil {
-		return ""
-	}
-	mime, ok := imageExtMIME[strings.ToLower(filepath.Ext(file))]
-	if !ok {
-		mime = "image/png"
-	}
-	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(b)
-}
-
-// pickRoleLine 从督休专员的台词池里选 1 条（与 上一版 pickRoleLine 同规则）：
-// fixed 取指定条目（与启停无关）；sequence 在启用条目间轮换（游标按**专员名**记忆，
-// 改名会让游标归零 —— 这是改名换身份的附带代价，不影响正确性）；
-// random 等概率抽启用条目。取不到返回空串——由渲染层沿用第一段台词。
-func pickRoleLine(cfg RoleMessages, name string, seq map[string]int, rng *rand.Rand) string {
-	if cfg.Order == "fixed" {
-		for _, it := range cfg.Items {
-			if it.ID == cfg.FixedID {
-				return it.Text
-			}
-		}
-		return ""
-	}
-	pool := make([]RoleMessageItem, 0, len(cfg.Items))
-	for _, it := range cfg.Items {
-		if it.Enabled {
-			pool = append(pool, it)
-		}
-	}
-	if len(pool) == 0 {
-		return ""
-	}
-	if cfg.Order == "sequence" {
-		cur := seq[name] % len(pool)
-		seq[name] = (cur + 1) % len(pool)
-		return pool[cur].Text
-	}
-	return pool[rng.Intn(len(pool))].Text
-}
-
-// pickOne 等概率取一条（掷骰子交给调用方持有的 rng，便于测试时固定种子）
-func pickOne(lines []string, rng *rand.Rand) string {
-	if len(lines) == 0 {
-		return ""
-	}
-	return lines[rng.Intn(len(lines))]
-}

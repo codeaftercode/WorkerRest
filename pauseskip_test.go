@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 	"time"
+	"workerrest/internal/model"
 )
 
 // 「暂停休息时」三种处置（正常提醒 / 推迟提醒 / 跳过提醒，默认推迟）的回归：
@@ -517,8 +518,8 @@ func TestTakeoutPausedSkipPostponedLine(t *testing.T) {
 	s, _ := newTestSched(t, cfg)
 	s.pause("manual")
 	a.sched = s
-	a.takeoutPostponed = &TakeoutPostponed{
-		Slot:  TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true},
+	a.takeoutPostponed = &model.TakeoutPostponed{
+		Slot:  model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true},
 		DueAt: nowMs() - 1000,
 		Count: 1,
 	}

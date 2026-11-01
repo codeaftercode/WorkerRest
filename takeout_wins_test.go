@@ -2,8 +2,10 @@ package main
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+	"workerrest/internal/model"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -26,14 +28,14 @@ func TestReplaceTakeoutWinsHandsBackStale(t *testing.T) {
 	second := []*application.WebviewWindow{w2, w3}
 	third := []*application.WebviewWindow{w1}
 
-	if old := a.replaceTakeoutWins(first, &TakeoutInfo{ID: "t1"}); len(old) != 0 {
+	if old := a.replaceTakeoutWins(first, &model.TakeoutInfo{ID: "t1"}); len(old) != 0 {
 		t.Fatalf("首次登记不该有旧窗口，实际交还 %d 个", len(old))
 	}
-	old := a.replaceTakeoutWins(second, &TakeoutInfo{ID: "t2"})
+	old := a.replaceTakeoutWins(second, &model.TakeoutInfo{ID: "t2"})
 	if len(old) != 1 || old[0] != w1 {
 		t.Fatalf("第二次登记必须把第一批交还（供调用方关闭），实际 %d 个", len(old))
 	}
-	old = a.replaceTakeoutWins(third, &TakeoutInfo{ID: "t3"})
+	old = a.replaceTakeoutWins(third, &model.TakeoutInfo{ID: "t3"})
 	if len(old) != 2 || old[0] != w2 || old[1] != w3 {
 		t.Fatalf("第三次登记必须交还第二批的 2 个窗口，实际 %d 个", len(old))
 	}
@@ -59,12 +61,12 @@ func TestReplaceTakeoutWinsHandsBackStale(t *testing.T) {
 	}
 }
 
-// 源码级钉子：takeout.go 里对 a.takeoutWins 的写入只允许三种形态，
+// 源码级钉子：外卖窗口集合的写入只允许三种形态，
 // 直接赋整批（`= wins`）会重现野窗，必须走 replaceTakeoutWins。
 func TestTakeoutWinsAssignedOnlyThroughReplace(t *testing.T) {
-	b, err := os.ReadFile("takeout.go")
-	if err != nil {
-		t.Fatalf("读 takeout.go 失败：%v", err)
+	files, err := filepath.Glob("takeout*.go")
+	if err != nil || len(files) == 0 {
+		t.Fatalf("找不到 takeout*.go：%v", err)
 	}
 	allowed := map[string]bool{
 		"a.takeoutWins = next":                        true, // replaceTakeoutWins
@@ -72,15 +74,24 @@ func TestTakeoutWinsAssignedOnlyThroughReplace(t *testing.T) {
 		"a.takeoutWins = nil":                         true, // closeTakeoutWindows
 	}
 	seen := 0
-	for _, line := range strings.Split(string(b), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "//") || !strings.Contains(trimmed, "a.takeoutWins = ") {
+	for _, name := range files {
+		if strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		seen++
-		if !allowed[trimmed] {
-			t.Errorf("takeout.go 出现了计划外的 a.takeoutWins 赋值：%q（整批替换请走 replaceTakeoutWins，"+
-				"否则旧窗引用会丢、变成关不掉的野窗）", trimmed)
+		b, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatalf("读 %s 失败：%v", name, err)
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			trimmed := strings.TrimSpace(line)
+			if strings.HasPrefix(trimmed, "//") || !strings.Contains(trimmed, "a.takeoutWins = ") {
+				continue
+			}
+			seen++
+			if !allowed[trimmed] {
+				t.Errorf("%s 出现了计划外的 a.takeoutWins 赋值：%q（整批替换请走 replaceTakeoutWins，"+
+					"否则旧窗引用会丢、变成关不掉的野窗）", name, trimmed)
+			}
 		}
 	}
 	if seen != len(allowed) {
@@ -95,7 +106,7 @@ func TestRemoveTakeoutWindowClearsCurrentSession(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 
 	w1 := new(application.WebviewWindow)
-	info := &TakeoutInfo{ID: "real-1", Preview: false}
+	info := &model.TakeoutInfo{ID: "real-1", Preview: false}
 	a.replaceTakeoutWins([]*application.WebviewWindow{w1}, info)
 
 	a.removeTakeoutWindow(w1)
@@ -121,9 +132,9 @@ func TestRemoveTakeoutWindowIgnoresStaleSession(t *testing.T) {
 
 	oldWin := new(application.WebviewWindow)
 	newWin := new(application.WebviewWindow)
-	a.replaceTakeoutWins([]*application.WebviewWindow{oldWin}, &TakeoutInfo{ID: "old", Preview: false})
+	a.replaceTakeoutWins([]*application.WebviewWindow{oldWin}, &model.TakeoutInfo{ID: "old", Preview: false})
 	// 顶替：新会话 + 新窗口，旧窗口在屏幕上的引用已交给调用方关闭
-	a.replaceTakeoutWins(nil, &TakeoutInfo{ID: "new", Preview: false})
+	a.replaceTakeoutWins(nil, &model.TakeoutInfo{ID: "new", Preview: false})
 	a.replaceTakeoutWins([]*application.WebviewWindow{newWin}, nil)
 
 	a.removeTakeoutWindow(oldWin) // 旧窗的关闭回调姗姗来迟

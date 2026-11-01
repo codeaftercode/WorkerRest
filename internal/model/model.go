@@ -1,8 +1,18 @@
-package main
+package model
 
 // 会话与状态的数据结构：字段名/JSON 形状必须与现有渲染层（renderer/break.ts、
 // takeout.ts、supervisorStage.ts）期望的结构**逐字对齐**——渲染层代码原样复用，
 // 只把 window.api 的实现从 上一版 IPC 换成 Wails 绑定（见 frontend/dist/shim.js）。
+
+// TimeSlot 一条固定时刻：时刻 + 重复周期（1=周一 … 7=周日）
+type TimeSlot struct {
+	ID      string `json:"id"`
+	Hour    int    `json:"hour"`
+	Minute  int    `json:"minute"`
+	Repeat  string `json:"repeat"`
+	Days    []int  `json:"days"`
+	Enabled bool   `json:"enabled"`
+}
 
 // Appearance 提醒窗口外观（颜色 / 透明度 / 模糊 / 全屏）
 type Appearance struct {

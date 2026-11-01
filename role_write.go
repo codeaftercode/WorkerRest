@@ -8,6 +8,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"workerrest/internal/jsonx"
+	"workerrest/internal/model"
 )
 
 // 督休专员目录的写入侧：设置页改一个督休专员的名字 / 启停 / 尺寸位置 / 台词，或整个删掉督休专员。
@@ -33,11 +35,11 @@ var supGeomLimits = map[string][2]float64{
 // supGeomDefault 软件默认的立绘尺寸与位置（与 types.ts 的 SUP_GEOM_DEFAULT 同值）。
 // 2026-10-28 用户要求：自带专员（含打包 / 恢复默认 / 导入自定义立绘）统一
 // 高度 80%、距窗口左侧 5%、贴底 —— 所以随包 meta.json 的 geom 也一律是这个值。
-var supGeomDefault = SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
+var supGeomDefault = model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
 
 // normalizeSupGeom 夹紧并补全一份立绘几何：缺失或越界时回落默认值。
 // flip 只认真正的布尔 true（缺这个字段时一律按「不翻转」）。
-func normalizeSupGeom(raw map[string]any) SupGeom {
+func normalizeSupGeom(raw map[string]any) model.SupGeom {
 	pick := func(k string, def float64) float64 {
 		lim, ok := supGeomLimits[k]
 		if !ok {
@@ -56,7 +58,7 @@ func normalizeSupGeom(raw map[string]any) SupGeom {
 		}
 		return r
 	}
-	out := SupGeom{
+	out := model.SupGeom{
 		SizePct: pick("sizePct", supGeomDefault.SizePct),
 		PosXPct: pick("posXPct", supGeomDefault.PosXPct),
 		PosYPct: pick("posYPct", supGeomDefault.PosYPct),
@@ -218,7 +220,7 @@ func replaceRoleImage(root, name, src string) bool {
 	// 立绘也没有预览图了 —— FigurePath 为空 → 永远出不了场（buildSupervisorSessionWith
 	// 过滤 FigurePath == ""），而 meta.json 里还指着已经不存在的旧文件名。
 	fig := "figure" + ext
-	if err := writeFileAtomic(filepath.Join(dir, fig), b); err != nil {
+	if err := jsonx.WriteFileAtomic(filepath.Join(dir, fig), b); err != nil {
 		log.Printf("[role] 写入新立绘失败 %s: %v", name, err)
 		return false
 	}

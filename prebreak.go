@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"workerrest/internal/model"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -384,7 +385,7 @@ func (a *App) preBreakAct(action string) error {
 				prevCount = a.takeoutPostponed.Count
 			}
 			a.takeoutFired[occurrenceKey("takeout", at)] = true
-			a.takeoutPostponed = &TakeoutPostponed{Slot: slot, DueAt: nowMs() + int64(mins)*60000, Count: prevCount + 1}
+			a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: nowMs() + int64(mins)*60000, Count: prevCount + 1}
 			a.mu.Unlock()
 			a.closePreBreakWindow()
 			a.refreshStateAfterTakeout()

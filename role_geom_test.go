@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"workerrest/internal/model"
 )
 
 // 内置督休专员统一几何的回归（2026-10-28 用户要求）。
@@ -21,7 +22,7 @@ import (
 // 只比 sizePct / posXPct / posYPct：flip 是每个专员各自的美术设定（温柔学姐、魔法师
 // 本来就翻转），不属于统一项。
 func TestBuiltinRoleGeomDefaults(t *testing.T) {
-	want := SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
+	want := model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
 	if supGeomDefault != want {
 		t.Fatalf("supGeomDefault 应为 %+v，得到 %+v", want, supGeomDefault)
 	}

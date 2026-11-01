@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"workerrest/internal/jsonx"
 )
 
 // 导入本地图片为新的督休专员（设置页「导入立绘」背后那条路）。
@@ -55,7 +56,7 @@ func createRoleDir(rolesRoot, name, src string) string {
 	// 任何一步失败都把刚建的目录整个清掉：没有 meta.json 的目录会被 scanRoles 跳过
 	// —— 用户在界面上看不见它，它却占着「名字」，下一次导入就变成 "名字 (2)" 了。
 	abort := func() { _ = os.RemoveAll(dir) }
-	if err := writeFileAtomic(filepath.Join(dir, "figure"+ext), b); err != nil {
+	if err := jsonx.WriteFileAtomic(filepath.Join(dir, "figure"+ext), b); err != nil {
 		abort()
 		return ""
 	}
@@ -72,7 +73,7 @@ func createRoleDir(rolesRoot, name, src string) string {
 		return ""
 	}
 	data = append(data, '\n')
-	if err := writeFileAtomic(filepath.Join(dir, roleMetaFile), data); err != nil {
+	if err := jsonx.WriteFileAtomic(filepath.Join(dir, roleMetaFile), data); err != nil {
 		abort()
 		return ""
 	}

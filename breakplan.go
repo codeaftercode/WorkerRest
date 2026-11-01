@@ -1,113 +1,10 @@
 package main
 
 import (
-	"sort"
-	"strconv"
 	"strings"
-	"time"
+	"workerrest/internal/jsonx"
+	"workerrest/internal/model"
 )
-
-// 休息计划层：历史源码/breakPlan.ts + fixedTime.ts + types.ts 的纯函数逐条移植。
-//
-// 这一层刻意**不持有任何状态、不碰 App**：喂进「一份配置 + 一个基准时刻 + 已消费集合」
-// 就吐出「下一次该什么时候休息」。好处有两个：
-//   - 它是整个调度器的口径来源，纯粹才能被 scripts/verify_plan_parity.py 拿去
-//     与上一版 自己的 breakPlan.ts 逐字段对拍（移植漏规则的错不报错，只能对拍出来）；
-//   - 时间基准一律用**绝对毫秒时间戳**（JS 用 Date.now()，Go 用 UnixMilli），
-//     两边都靠本地时区解释「几点几分」，不跨时区搬运。
-//
-// 模型（与 breakPlan.ts 的注释一致）：每种休息是一条「触发线」——
-//   - 倒计时线：距上次休息 intervalMs 后触发（内置短/长**共用**一条，按
-//     「每 N 次短休息接一次长休息」挑一条；自定义提醒各有一条自己的线）；
-//   - 固定时刻线：每种休息各一条，按自己的时刻表找下一个时刻。
-// 谁的更早就听谁的（同一时刻长休息优先）。全部关闭时返回 null。
-
-// ---------- 类型 ----------
-
-// BreakEntry 一条休息的身份 + 配置（内置短/长 + 全部自定义提醒）：计划与调度按它遍历
-type BreakEntry struct {
-	ID     string      `json:"id"`
-	Name   string      `json:"name"`
-	Config BreakConfig `json:"config"`
-}
-
-// PlannedBreak 计划出来的一次休息（托盘/状态卡直接用 Name）
-type PlannedBreak struct {
-	Type   string    `json:"type"`
-	Name   string    `json:"name"`
-	At     int64     `json:"at"`
-	Source string    `json:"source"` // countdown | fixed
-	Slot   *TimeSlot `json:"slot,omitempty"`
-}
-
-// PlanRef 状态卡上的「下一次 XX」分组（只有名字与时刻）
-type PlanRef struct {
-	Name string `json:"name"`
-	At   int64  `json:"at"`
-}
-
-// PlanSplit 按设置页状态卡的口径把下一跳分成两组
-type PlanSplit struct {
-	Builtin *PlannedBreak `json:"builtin"`
-	Other   *PlannedBreak `json:"other"`
-}
-
-// TimelineItem 今日提醒时间线的一项
-//
-// Paused 是**指针**：上一版 只给倒计时线的项写 paused 键（固定线没有这个键），
-// 用 *bool + omitempty 才能连「键在不在」都对上。
-type TimelineItem struct {
-	Key    string `json:"key"`
-	Type   string `json:"type"`
-	Name   string `json:"name"`
-	At     int64  `json:"at"`
-	Source string `json:"source"`
-	Paused *bool  `json:"paused,omitempty"`
-}
-
-// TakeoutPostponed 外卖的待推迟提醒（窗口上点「推迟」时由外卖模块记账）
-type TakeoutPostponed struct {
-	Slot  TimeSlot `json:"slot"`
-	DueAt int64    `json:"dueAt"`
-	Count int      `json:"count"`
-	// PreFired 推迟后的提前通知是否已弹过：leadSec>0 时，推迟线在 DueAt 前 leadMs
-	// 要再弹一次预通知（与原始提前通知线同口径），用这个标记去重，避免每秒 tick 重复弹。
-	PreFired bool `json:"preFired"`
-}
-
-// SchedulerState 调度器状态快照。
-// 字段集**必须完整**：设置页的 renderStatus() 一上来就读 paused / pauseReasons.length /
-// phase，缺一个就在 init 里抛错、整页停摆（见 历史源码/types.ts 的 SchedulerState）。
-type SchedulerState struct {
-	Phase string `json:"phase"` // idle | pre | break
-	// NextType 下一次休息的身份（'short' | 'long' | 自定义 id）
-	NextType string `json:"nextType"`
-	// NextName 下一次休息的展示名（托盘提示与状态卡直接用，免得再回查配置）
-	NextName string `json:"nextName"`
-	NextAt   int64  `json:"nextAt"`
-	// NextSource 没有安排（全部关闭）时为 null
-	NextSource *string `json:"nextSource"`
-	// Rest 短/长休息线里最近的一条（状态卡「下次休息提醒」格）；null = 两者都没安排
-	Rest *PlanRef `json:"rest"`
-	// Other 外卖提醒与所有自定义提醒里最近的一条（状态卡「下次XX提醒」格）；null = 都没启用
-	Other *PlanRef `json:"other"`
-	// Lines 调度器当前挂起的全部触发线（replan 时算好；推迟/恢复时跟着平移）
-	Lines []PlannedBreak `json:"lines"`
-	// Timeline 今日提醒时间线（主进程在状态快照时按当前设置与调度状态现算）
-	Timeline []TimelineItem `json:"timeline"`
-	// FixedNext 各「固定时刻线」身份下一次实际触发的时刻（键 = BreakId 或 'takeout'）
-	FixedNext      map[string]int64 `json:"fixedNext"`
-	BreakEndsAt    int64            `json:"breakEndsAt"`
-	BreakStartedAt int64            `json:"breakStartedAt"`
-	// BreakWhilePaused 这次休息是在「暂停态」下主动发起的（托盘 / 侧栏「立即休息」）。
-	// 这种休息不参与暂停的时间冻结：用户既然点了开始，就要按真实时钟走完并自动收窗。
-	BreakWhilePaused bool     `json:"breakWhilePaused"`
-	Paused           bool     `json:"paused"`
-	PauseReasons     []string `json:"pauseReasons"`
-	// PausedAt 进入暂停的时刻（冻结倒计时用：暂停期间剩余时间按此锚定，不再往下掉）
-	PausedAt        int64 `json:"pausedAt"`
-	ShortsSinceLong int   `json:"shortsSinceLong"`
-}
 
 // ---------- 常量 ----------
 
@@ -211,33 +108,19 @@ func (s *Settings) TakeoutPauseAction() string {
 	return normPauseAction(s.Str(PauseActionPostpone, "takeout", "pauseAction"))
 }
 
-// AppPauseItem 指定应用运行时暂停的一条规则
-type AppPauseItem struct {
-	ID      string
-	Exe     string // 可执行文件名（只存 basename，匹配时忽略路径与大小写）
-	Name    string // 软件名：只用于显示，可留空（界面回退到可执行文件名）
-	Enabled bool
-}
-
-// AppPauseConfig 指定应用运行时自动暂停（总开关默认关，与升级前行为一致）
-type AppPauseConfig struct {
-	Enabled bool
-	Items   []AppPauseItem
-}
-
 // AppPauseCfg 指定应用运行时自动暂停（enabled 只认真正的 true）
-func (s *Settings) AppPauseCfg() AppPauseConfig {
-	return AppPauseConfig{
+func (s *Settings) AppPauseCfg() model.AppPauseConfig {
+	return model.AppPauseConfig{
 		Enabled: s.Flag(false, "appPause", "enabled"),
 		Items:   s.AppPauseItems(),
 	}
 }
 
 // AppPauseItems 应用列表（已归一化：非对象项与空 exe 丢弃、按小写去重）
-func (s *Settings) AppPauseItems() []AppPauseItem {
+func (s *Settings) AppPauseItems() []model.AppPauseItem {
 	seen := map[string]bool{}
-	out := []AppPauseItem{}
-	for _, it := range anySlice(s.lookup("appPause", "items")) {
+	out := []model.AppPauseItem{}
+	for _, it := range jsonx.AnySlice(s.lookup("appPause", "items")) {
 		m, ok := it.(map[string]any)
 		if !ok {
 			continue
@@ -255,7 +138,7 @@ func (s *Settings) AppPauseItems() []AppPauseItem {
 		if v, ok := m["name"].(string); ok {
 			name = normalizeAppName(v)
 		}
-		out = append(out, AppPauseItem{
+		out = append(out, model.AppPauseItem{
 			ID:      mapStr(m, "id", ""),
 			Exe:     exe,
 			Name:    name,
@@ -267,7 +150,7 @@ func (s *Settings) AppPauseItems() []AppPauseItem {
 
 // matchAppPause 纯函数：拿当前运行的进程名（小写）判断是否命中暂停规则。
 // 判定逻辑抽出来是为了让 watcher 与测试共用同一份实现，不碰任何状态。
-func matchAppPause(cfg AppPauseConfig, runningNames []string) (hit bool, matched []string) {
+func matchAppPause(cfg model.AppPauseConfig, runningNames []string) (hit bool, matched []string) {
 	if !cfg.Enabled || len(cfg.Items) == 0 {
 		return false, nil
 	}
@@ -293,27 +176,19 @@ func clampInt(v int64, min, max int) int {
 	return int(v)
 }
 
-// CustomBreak 一条自定义提醒（设置页「时间规划」页底部新建的第 3 种及以后提醒）。
-// 选项、默认值与含义与「短休息」完全一致（同一套 BreakConfig），提醒内容也自成一套。
-type CustomBreak struct {
-	ID     string
-	Name   string
-	Config BreakConfig
-}
-
 // CustomBreakList 全部自定义提醒（配置里 customBreaks 数组的顺序即设置页卡片顺序）
-func (s *Settings) CustomBreakList() []CustomBreak {
-	raw := anySlice(s.lookup("customBreaks"))
-	out := make([]CustomBreak, 0, len(raw))
+func (s *Settings) CustomBreakList() []model.CustomBreak {
+	raw := jsonx.AnySlice(s.lookup("customBreaks"))
+	out := make([]model.CustomBreak, 0, len(raw))
 	for _, it := range raw {
 		m, ok := it.(map[string]any)
 		if !ok {
 			continue
 		}
-		out = append(out, CustomBreak{
+		out = append(out, model.CustomBreak{
 			ID:     mapStr(m, "id", ""),
 			Name:   mapStr(m, "name", ""),
-			Config: breakConfigOf(asMap(m["config"])),
+			Config: breakConfigOf(jsonx.AsMap(m["config"])),
 		})
 	}
 	return out
@@ -324,7 +199,7 @@ func (s *Settings) CustomBreakByID(id string) map[string]any {
 	if id == "" {
 		return nil
 	}
-	for _, it := range anySlice(s.lookup("customBreaks")) {
+	for _, it := range jsonx.AnySlice(s.lookup("customBreaks")) {
 		m, ok := it.(map[string]any)
 		if !ok {
 			continue
@@ -338,26 +213,26 @@ func (s *Settings) CustomBreakByID(id string) map[string]any {
 
 // BreakEntries 全部休息的清单（内置短/长 + 自定义各条，顺序固定）：计划与调度按它遍历。
 // 内置两条永远在列，自定义提醒被删掉后自然消失。
-func (s *Settings) BreakEntries() []BreakEntry {
-	out := []BreakEntry{
+func (s *Settings) BreakEntries() []model.BreakEntry {
+	out := []model.BreakEntry{
 		{ID: "short", Name: shortBreakName, Config: s.Break("short")},
 		{ID: "long", Name: longBreakName, Config: s.Break("long")},
 	}
 	for _, c := range s.CustomBreakList() {
-		out = append(out, BreakEntry{ID: c.ID, Name: c.Name, Config: c.Config})
+		out = append(out, model.BreakEntry{ID: c.ID, Name: c.Name, Config: c.Config})
 	}
 	return out
 }
 
 // BreakByID 按身份取配置；这条休息已不存在（设置页删掉了自定义提醒）时返回 false，
 // 调用方各自兜底（与 types.ts 的 breakConfigById 返回 null 同义）
-func (s *Settings) BreakByID(id string) (BreakConfig, bool) {
+func (s *Settings) BreakByID(id string) (model.BreakConfig, bool) {
 	for _, e := range s.BreakEntries() {
 		if e.ID == id {
 			return e.Config, true
 		}
 	}
-	return BreakConfig{}, false
+	return model.BreakConfig{}, false
 }
 
 // BreakNameByID 按身份取展示名；不认识的身份回落成「休息」
@@ -368,691 +243,4 @@ func (s *Settings) BreakNameByID(id string) string {
 		}
 	}
 	return "休息"
-}
-
-// ---------- 固定时刻（fixedTime.ts） ----------
-
-// pad2 两位补零（与 fixedTime.ts 的 pad2 同义）
-func pad2(n int) string {
-	if n < 10 {
-		if n < 0 {
-			return strconv.Itoa(n)
-		}
-		return "0" + strconv.Itoa(n)
-	}
-	return strconv.Itoa(n)
-}
-
-// slotTimeText 时刻文本 HH:MM（界面与日志共用）
-func slotTimeText(s TimeSlot) string {
-	return pad2(s.Hour) + ":" + pad2(s.Minute)
-}
-
-// isoWeekday 与 types.ts 的 isoWeekday 同义：1=周一 … 7=周日
-// （Go 的 time.Weekday 与 JS 的 getDay() 同为 0=周日 … 6=周六，换算一致）
-func isoWeekday(t time.Time) int {
-	w := int(t.Weekday())
-	if w == 0 {
-		return 7
-	}
-	return w
-}
-
-// localDateKey YYYY-MM-DD（本地时区，与 JS 的 `${y}-${pad2(m)}-${pad2(d)}` 同义）
-func localDateKey(t time.Time) string {
-	return strconv.Itoa(t.Year()) + "-" + pad2(int(t.Month())) + "-" + pad2(t.Day())
-}
-
-// startOfDay 本地零点
-func startOfDay(t time.Time) time.Time {
-	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
-}
-
-// sameLocalDay 两个时间戳是否落在本地的同一天
-func sameLocalDay(a, b int64) bool {
-	ta, tb := time.UnixMilli(a), time.UnixMilli(b)
-	return ta.Year() == tb.Year() && ta.Month() == tb.Month() && ta.Day() == tb.Day()
-}
-
-// slotAlertAt 提前量下「实际弹出提醒的时刻」：条目时刻减去提前量（跨天时自动落到前一天）
-func slotAlertAt(slot TimeSlot, leadMs, dayMs int64) int64 {
-	d := time.UnixMilli(dayMs)
-	at := time.Date(d.Year(), d.Month(), d.Day(), slot.Hour, slot.Minute, 0, 0, d.Location())
-	return at.UnixMilli() - leadMs
-}
-
-// slotOccurrenceAt 提前线所属的 occurrence 时刻（提醒**真正发生**的那一次）。
-//
-// 提前量会把「进入提前区间」的那一刻推到前一天（00:10 的提醒提前 20 分钟 → 23:50 就要
-// 弹提前通知），但 occurrence 仍归属 00:10 那一次。基准取 now+leadMs 再构造当天时刻，
-// 跨午夜时自然落到次日；直接用 slotAlertAt(slot, lead, now) 会得到「前一天 00:10」，
-// 与次日同一条目的去重键相撞（提前通知被吞），预通知窗的倒计时也会指向过去（进窗即 0 秒）。
-func slotOccurrenceAt(slot TimeSlot, leadMs, nowMs int64) int64 {
-	return slotAlertAt(slot, 0, nowMs+leadMs)
-}
-
-// slotFireKey 触发去重键：同一条目在同一天同一时刻（精确到分钟）只会触发一次
-func slotFireKey(slot TimeSlot, nowMs, leadMs int64) string {
-	t := time.UnixMilli(nowMs + leadMs)
-	return slot.ID + "#" + localDateKey(t) + "#" + slotTimeText(slot)
-}
-
-// isTimeSlotDue 这一刻该条目是否到期：启用中、时刻吻合（含提前量）、周期吻合
-func isTimeSlotDue(slot TimeSlot, nowMs, leadMs int64) bool {
-	if !slot.Enabled {
-		return false
-	}
-	t := time.UnixMilli(nowMs + leadMs)
-	if slot.Hour != t.Hour() || slot.Minute != t.Minute() {
-		return false
-	}
-	if slot.Repeat == "weekly" && !intIn(slot.Days, isoWeekday(t)) {
-		return false
-	}
-	return true
-}
-
-// findDueTimeSlots 找出给定的时刻表中此刻所有到期的条目，并把它们记入已触发集合
-// （重复调用不会重复返回同一个时刻）。fired 跨 tick 复用同一个 map。
-func findDueTimeSlots(slots []TimeSlot, nowMs int64, fired map[string]bool, leadMs int64) []TimeSlot {
-	var out []TimeSlot
-	for _, slot := range slots {
-		if !isTimeSlotDue(slot, nowMs, leadMs) {
-			continue
-		}
-		key := slotFireKey(slot, nowMs, leadMs)
-		if fired[key] {
-			continue
-		}
-		fired[key] = true
-		out = append(out, slot)
-	}
-	pruneFiredSlotKeys(fired, nowMs+leadMs)
-	return out
-}
-
-// pruneFiredSlotKeys 只保留「当前这一天」的键：跨天后旧键没有意义，长期运行也不会把集合撑大
-func pruneFiredSlotKeys(fired map[string]bool, nowMs int64) {
-	today := "#" + localDateKey(time.UnixMilli(nowMs)) + "#"
-	for k := range fired {
-		if !strings.Contains(k, today) {
-			delete(fired, k)
-		}
-	}
-}
-
-// describeTimeSlot 条目描述：界面与日志共用的中文摘要（如「每天 12:00」「每周 一、三 09:30」）
-func describeTimeSlot(slot TimeSlot) string {
-	txt := slotTimeText(slot)
-	if slot.Repeat != "weekly" {
-		return "每天 " + txt
-	}
-	var names []string
-	for _, d := range weekdays {
-		if intIn(slot.Days, d.Value) {
-			names = append(names, d.Short)
-		}
-	}
-	joined := strings.Join(names, "、")
-	if joined == "" {
-		joined = "（未选）"
-	}
-	return "每周 " + joined + " " + txt
-}
-
-// ---------- 下一次休息（breakPlan.ts） ----------
-
-// occurrenceKey 已消费 occurrence 的去重键：`${type}#${计划时刻毫秒}`
-func occurrenceKey(typ string, at int64) string {
-	return typ + "#" + strconv.FormatInt(at, 10)
-}
-
-// occurrenceKeyAt 拆出 occurrenceKey 里的时刻（拆不出返回 0，与 JS 的 Number(”)===0 同义）
-func occurrenceKeyAt(key string) int64 {
-	i := strings.LastIndex(key, "#")
-	if i < 0 {
-		return 0
-	}
-	f, err := strconv.ParseFloat(strings.TrimSpace(key[i+1:]), 64)
-	if err != nil || f != f { // NaN
-		return 0
-	}
-	return int64(f)
-}
-
-// SlotHit 时刻表的命中结果
-type SlotHit struct {
-	At   int64
-	Slot TimeSlot
-}
-
-// nextSlotAt 下一次触发的时刻：返回最近一次触发的时刻与对应条目，没有启用的条目返回 false。
-// 逐字对应 types.ts 的 nextSlotAt —— 每个条目各往后找 8 天，找到第一个**严格晚于** from 的
-// 时刻就停（这一条不再往后看）；周重复还要落脚那天在勾选范围内。
-func nextSlotAt(slots []TimeSlot, from int64) (SlotHit, bool) {
-	var best SlotHit
-	found := false
-	base := startOfDay(time.UnixMilli(from))
-	for _, slot := range slots {
-		if !slot.Enabled {
-			continue
-		}
-		for d := 0; d < 8; d++ {
-			day := base.AddDate(0, 0, d)
-			if slot.Repeat == "weekly" && !intIn(slot.Days, isoWeekday(day)) {
-				continue
-			}
-			at := time.Date(day.Year(), day.Month(), day.Day(), slot.Hour, slot.Minute, 0, 0, day.Location())
-			ms := at.UnixMilli()
-			if ms <= from {
-				continue
-			}
-			if !found || ms < best.At {
-				best = SlotHit{At: ms, Slot: slot}
-				found = true
-			}
-			break
-		}
-	}
-	return best, found
-}
-
-// builtinCountdownLine 内置短/长的倒计时线：没有启用中的倒计时类型时返回 false。
-// 自定义提醒不参与这条线（各自独立成线），所以这里只看 short / long。
-func builtinCountdownLine(s *Settings, now int64, shortsSinceLong int) (PlannedBreak, bool) {
-	var cds []string
-	short, long := s.Break("short"), s.Break("long")
-	if short.Enabled && short.Mode == "countdown" {
-		cds = append(cds, "short")
-	}
-	if long.Enabled && long.Mode == "countdown" {
-		cds = append(cds, "long")
-	}
-	if len(cds) == 0 {
-		return PlannedBreak{}, false
-	}
-	// 短/长都是倒计时：沿用「每 N 次短休息后换长休息」的节奏；只有一方是倒计时时就用那一方
-	typ := cds[0]
-	if len(cds) == 2 && shortsSinceLong >= s.LongEveryNShort() {
-		typ = "long"
-	}
-	cfg := short
-	name := shortBreakName
-	if typ == "long" {
-		cfg, name = long, longBreakName
-	}
-	return PlannedBreak{
-		Type: typ, Name: name,
-		// 倒计时线不受任何时段限制：就是「从当前这一刻起再过 intervalMs」。
-		// 已消费的 occurrence 由 schedulerLines 的 skip 过滤统一剔除。
-		At: now + cfg.IntervalMs, Source: "countdown",
-	}, true
-}
-
-// fixedLines 固定时刻线：每种启用且为固定时间模式的休息各查一次时刻表
-func fixedLines(s *Settings, now int64) []PlannedBreak {
-	out := []PlannedBreak{}
-	for _, e := range s.BreakEntries() {
-		if !e.Config.Enabled || e.Config.Mode != "fixed" {
-			continue
-		}
-		if hit, ok := nextSlotAt(e.Config.Slots, now); ok {
-			slot := hit.Slot
-			out = append(out, PlannedBreak{Type: e.ID, Name: e.Name, At: hit.At, Source: "fixed", Slot: &slot})
-		}
-	}
-	return out
-}
-
-// sortPlans 按时刻升序；时刻相同（多条撞在一起）时让内置长休息优先——
-// 休息时间更长的那次覆盖短的那次。Array.sort 是稳定排序，这里用 SliceStable 对齐。
-func sortPlans(pool []PlannedBreak) {
-	sort.SliceStable(pool, func(i, j int) bool {
-		a, b := pool[i], pool[j]
-		if a.At != b.At {
-			return a.At < b.At
-		}
-		if a.Type == "long" {
-			return b.Type != "long"
-		}
-		return false
-	})
-}
-
-// filterConsumed 剔除已消费的 occurrence：提前结束 / 立即休息 / 跳过过的安排不得再弹第二次
-func filterConsumed(pool []PlannedBreak, skip map[string]bool) []PlannedBreak {
-	if len(skip) == 0 {
-		return pool
-	}
-	out := make([]PlannedBreak, 0, len(pool))
-	for _, p := range pool {
-		if !skip[occurrenceKey(p.Type, p.At)] {
-			out = append(out, p)
-		}
-	}
-	return out
-}
-
-// cdAnchor 上一轮挂起的倒计时锚点：At = 触发时刻，Iv = 产生该锚点的间隔（ms）。
-// Frozen 表示这个锚点是在**暂停期间**收集的：暂停中时间不流逝，即使 At 已经早于真实
-// 墙钟，它也没有「过期」，replan 必须原样沿用（见 Scheduler.prevCountdownAnchorsLocked）。
-type cdAnchor struct {
-	At     int64
-	Iv     int64
-	Frozen bool
-}
-
-// schedulerLines 调度器的全部挂起线（不含外卖——外卖窗口独立于休息调度）：
-// 固定时刻线各取下一跳、内置短/长共用倒计时线、每条自定义提醒各一条倒计时线，
-// 已消费的 occurrence 已剔除，按时刻升序。
-//
-// prev 是上一轮挂起的倒计时锚点（键 = 休息身份，见 Scheduler 的
-// prevCountdownAnchorsLocked）：未到期、未被消费且间隔未变的锚点原样沿用——
-// 设置页任意保存都会触发 replan，不能把用户已流逝的倒计时进度清零；
-// 间隔改了的立刻按新间隔重新起算。
-func schedulerLines(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) []PlannedBreak {
-	lines := fixedLines(s, now)
-	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
-		cur, _ := s.BreakByID(cd.Type)
-		cd.At = countdownAnchor(prev, cd.Type, now, skip, cd.At, cur.IntervalMs)
-		lines = append(lines, cd)
-	}
-	// 自定义提醒：每条各一条倒计时线（内置的短/长已由上面那条线统一代表）
-	for _, c := range s.CustomBreakList() {
-		if !c.Config.Enabled || c.Config.Mode != "countdown" {
-			continue
-		}
-		l := PlannedBreak{
-			Type: c.ID, Name: c.Name, At: now + c.Config.IntervalMs, Source: "countdown",
-		}
-		l.At = countdownAnchor(prev, l.Type, now, skip, l.At, c.Config.IntervalMs)
-		lines = append(lines, l)
-	}
-	pool := filterConsumed(lines, skip)
-	sortPlans(pool)
-	return pool
-}
-
-// countdownAnchor 倒计时线的锚点：上一轮同身份的锚点仍未到期、未被消费且产生间隔
-// 与当前配置一致时原样沿用（倒计时进度跨 replan 保留）；间隔已改的立刻按新间隔
-// 重新起算。到期、被跳过/立即休息（已消费）或该身份被删除后，同样回落到 fresh。
-//
-// Frozen 锚点（暂停期间收集）跳过「到期」判定：暂停中时间冻结，At 早于真实墙钟不代表
-// 这一跳已经过去 —— 用真实墙钟判会把冻结进度整段丢掉。
-func countdownAnchor(prev map[string]cdAnchor, typ string, now int64, skip map[string]bool, fresh, curIv int64) int64 {
-	if a, ok := prev[typ]; ok && (a.Frozen || a.At > now) &&
-		!skip[occurrenceKey(typ, a.At)] && a.Iv == curIv {
-		return a.At
-	}
-	return fresh
-}
-
-// planNextBreak 算出下一次该休息的时刻；全部关闭 / 固定模式下没有启用条目时返回 false
-func planNextBreak(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) (PlannedBreak, bool) {
-	pool := schedulerLines(s, now, shortsSinceLong, skip, prev)
-	if len(pool) == 0 {
-		return PlannedBreak{}, false
-	}
-	return pool[0], true
-}
-
-// describePlan 计划的中文摘要：日志与托盘提示共用（如「长休息（固定时刻）12:00」）
-func describePlan(p *PlannedBreak) string {
-	if p == nil {
-		return "未安排休息"
-	}
-	src := "倒计时"
-	if p.Source == "fixed" {
-		src = "固定时刻"
-	}
-	return p.Name + "（" + src + "）" + time.UnixMilli(p.At).Format("15:04")
-}
-
-// takeoutLine 外卖提醒的「原定时刻」（下一次条目的时刻，不含提前通知——提前通知只是
-// 先弹个小窗，真实提醒窗口仍在原定时刻弹出）。外卖不进休息调度（窗口独立、永不自动收窗），
-// 这里只为设置页状态卡提供倒计时。固定时刻每天循环，查今天与明天两天足够覆盖「下一个还没到的时刻」。
-func takeoutLine(s *Settings, now int64) (PlannedBreak, bool) {
-	if !s.TakeoutEnabled() {
-		return PlannedBreak{}, false
-	}
-	slots := s.TakeoutSlots()
-	if len(slots) == 0 {
-		return PlannedBreak{}, false
-	}
-	best := int64(0)
-	found := false
-	// 用日历日推进（AddDate）而不是 now+86400000：夏令时切换日一天可能是 23/25 小时，
-	// 加固定毫秒会在那两天落回同一天或跳过一天。中国无夏令时，但这段逻辑不该因此写死。
-	base := time.UnixMilli(now)
-	for d := 0; d < 2; d++ {
-		day := base.AddDate(0, 0, d).UnixMilli()
-		for _, sl := range slots {
-			at := slotAlertAt(sl, 0, day)
-			if at > now && (!found || at < best) {
-				best, found = at, true
-			}
-		}
-	}
-	if !found {
-		return PlannedBreak{}, false
-	}
-	return PlannedBreak{Type: "takeout", Name: TAKEOUT_NAME, At: best, Source: "fixed"}, true
-}
-
-// planNextBreakSplit 按设置页状态卡的口径把下一跳分成两组：短/长一组（「下次休息提醒」），
-// 外卖 + 自定义提醒一组（「下次XX提醒」），两边互不混用。
-// 全局 next（planNextBreak）不含外卖 —— 外卖窗口独立于休息调度；分组视图把它算进
-// other 只是为了让状态卡能显示「下次外卖提醒还有多久」。
-func planNextBreakSplit(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) PlanSplit {
-	lines := fixedLines(s, now)
-	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
-		cur, _ := s.BreakByID(cd.Type)
-		cd.At = countdownAnchor(prev, cd.Type, now, skip, cd.At, cur.IntervalMs)
-		lines = append(lines, cd)
-	}
-	for _, c := range s.CustomBreakList() {
-		if !c.Config.Enabled || c.Config.Mode != "countdown" {
-			continue
-		}
-		l := PlannedBreak{
-			Type: c.ID, Name: c.Name, At: now + c.Config.IntervalMs, Source: "countdown",
-		}
-		l.At = countdownAnchor(prev, l.Type, now, skip, l.At, c.Config.IntervalMs)
-		lines = append(lines, l)
-	}
-	if tk, ok := takeoutLine(s, now); ok {
-		lines = append(lines, tk)
-	}
-	pool := filterConsumed(lines, skip)
-	pick := func(isBuiltin bool) *PlannedBreak {
-		xs := make([]PlannedBreak, 0, len(pool))
-		for _, p := range pool {
-			builtin := p.Type == "short" || p.Type == "long"
-			if builtin == isBuiltin {
-				xs = append(xs, p)
-			}
-		}
-		if len(xs) == 0 {
-			return nil
-		}
-		sortPlans(xs)
-		first := xs[0]
-		return &first
-	}
-	return PlanSplit{Builtin: pick(true), Other: pick(false)}
-}
-
-// fixedNextMap 各「固定时刻线」身份下一次实际触发的时刻表（键 = BreakId 或 'takeout'）。
-// 与 planNextBreak 同一口径：已消费的 occurrence 不返回，并顺着时刻表找**再下一次**
-// （今天 12:00 被跳过后，摘要应显示明天 12:00，而不是把这条身份整个抹掉）。
-// 倒计时模式的身份不出现在表里（摘要里倒计时本就不展示具体时刻）。
-func fixedNextMap(s *Settings, now int64, skip map[string]bool) map[string]int64 {
-	out := map[string]int64{}
-	for _, e := range s.BreakEntries() {
-		c := e.Config
-		if !c.Enabled || c.Mode != "fixed" {
-			continue
-		}
-		from := now
-		for i := 0; i < 8; i++ {
-			hit, ok := nextSlotAt(c.Slots, from)
-			if !ok {
-				break
-			}
-			if !skip[occurrenceKey(e.ID, hit.At)] {
-				out[e.ID] = hit.At
-				break
-			}
-			from = hit.At + 1 // 这一次已被消费：找再下一次
-		}
-	}
-	if tk, ok := takeoutLine(s, now); ok {
-		out["takeout"] = tk.At
-	}
-	return out
-}
-
-// ---------- 今日时间线 ----------
-
-// cdExpandMax 倒计时链展开的安全上限：intervalMs 极小时防止同一天撑出天文数字条目
-const cdExpandMax = 64
-
-// expandBuiltinCountdown 内置短/长倒计时链：从挂起那一跳出发，按调度器的真实节奏推算
-// 今天剩余的每一次，供今日时间线展示（固定线/外卖早已展开全天，倒计时此前只列一跳）。
-// 推演口径与调度器逐条对齐：
-//   - 计数推进 = advanceCounter（短 +1、长清零；只有双倒计时才参与长短交替）；
-//   - 锚点 = 上一跳**开始**时刻 + 上一跳的提醒时长（调度器是「休息结束 → replan」，
-//     replan 时刻 ≈ 开始 + 时长；用落点起算会与真实节奏漂移）；
-//   - 落点 = 锚点 + 下一跳的 intervalMs；
-//   - 交替 = 双倒计时且 ssL >= longEveryNShort 时选长（与 builtinCountdownLine 同口径）。
-func expandBuiltinCountdown(s *Settings, now int64, shortsSinceLong int, skip map[string]bool, first *PlannedBreak) []PlannedBreak {
-	if first == nil {
-		return []PlannedBreak{}
-	}
-	cfgOf := func(t string) BreakConfig { return s.Break(t) }
-	out := []PlannedBreak{*first}
-	curType, curAt, ssL := first.Type, first.At, shortsSinceLong
-	for i := 0; i < cdExpandMax; i++ {
-		// ① 模拟 advanceCounter：上一跳被消费后计数如何推进（挂起跳本身尚未计数）
-		if curType == "short" {
-			ssL++
-		} else if curType == "long" {
-			ssL = 0
-		}
-		// ② 下一跳类型（单倒计时恒为那一类型，短/长交替只在双倒计时时发生）
-		var cds []string
-		for _, t := range []string{"short", "long"} {
-			c := cfgOf(t)
-			if c.Enabled && c.Mode == "countdown" {
-				cds = append(cds, t)
-			}
-		}
-		if len(cds) == 0 {
-			break
-		}
-		nextType := cds[0]
-		if len(cds) == 2 && ssL >= s.LongEveryNShort() {
-			nextType = "long"
-		}
-		// ③ 锚点 = 上一跳开始 + 上一跳时长；退化配置直接收链防死循环
-		curCfg, nextCfg := cfgOf(curType), cfgOf(nextType)
-		if curCfg.DurationMs <= 0 || nextCfg.IntervalMs <= 0 {
-			break
-		}
-		at := curAt + curCfg.DurationMs + nextCfg.IntervalMs
-		// ⑤ 不前进（异常）或已跨天 → 今天到此为止
-		if at <= curAt || !sameLocalDay(at, now) {
-			break
-		}
-		curType, curAt = nextType, at
-		// ⑥ 已消费的这一跳不展示，但链条照常推进（与固定线的处理一致）
-		if skip[occurrenceKey(nextType, at)] {
-			continue
-		}
-		name := shortBreakName
-		if nextType == "long" {
-			name = longBreakName
-		}
-		out = append(out, PlannedBreak{Type: nextType, Name: name, At: at, Source: "countdown"})
-	}
-	return out
-}
-
-// expandCustomCountdown 自定义提醒倒计时链：anchor = 上一跳 at + 上一跳时长 + 自己的
-// intervalMs，同样剔已消费、今天截断、上限保护。
-//
-// 为什么加时长：调度器是「休息结束 → replan → now + interval」，replan 发生在窗口关闭
-// 那一刻（≈ 开始 + 时长）。只加 interval 会把整条链算早一个「提醒时长」，用户按今日
-// 时间线核对时会发现「写着 10:00，实际 10:05 才提醒」。
-func expandCustomCountdown(now int64, skip map[string]bool, first PlannedBreak, intervalMs, durationMs int64) []PlannedBreak {
-	out := []PlannedBreak{first}
-	curAt := first.At
-	step := durationMs + intervalMs
-	for i := 0; i < cdExpandMax && step > 0; i++ {
-		at := curAt + step
-		if !sameLocalDay(at, now) {
-			break
-		}
-		curAt = at
-		if skip[occurrenceKey(first.Type, at)] {
-			continue
-		}
-		out = append(out, PlannedBreak{Type: first.Type, Name: first.Name, At: at, Source: "countdown"})
-	}
-	return out
-}
-
-// TimelineOptions todayTimeline 的入参（对应 breakPlan.ts 的 opts）
-type TimelineOptions struct {
-	Skip             map[string]bool
-	Shifts           map[string]int64
-	CountdownLines   []PlannedBreak
-	Paused           bool
-	TakeoutFired     map[string]bool
-	TakeoutPostponed *TakeoutPostponed
-	ShortsSinceLong  int
-}
-
-// todayTimeline 今日提醒时间线（时间规划页顶部的折叠列表）：综合当前全部提醒设置，
-// 推算**当天**尚未触发的提醒时刻，按时间排序。
-func todayTimeline(s *Settings, now int64, opts TimelineOptions) []TimelineItem {
-	out := []TimelineItem{}
-	// ① 固定时刻线：展开当天全部剩余 occurrence（不只下一跳）
-	for _, e := range s.BreakEntries() {
-		c := e.Config
-		if !c.Enabled || c.Mode != "fixed" {
-			continue
-		}
-		from := now
-		for i := 0; i < len(c.Slots)+2; i++ {
-			hit, ok := nextSlotAt(c.Slots, from)
-			if !ok || !sameLocalDay(hit.At, now) {
-				break
-			}
-			if opts.Skip[occurrenceKey(e.ID, hit.At)] {
-				from = hit.At + 1
-				continue
-			}
-			// 被推迟的那一跳：原时刻不再展示（推迟后的时刻由 shifts 里覆盖过的值体现）
-			if shift, ok := opts.Shifts[e.ID]; ok && hit.At < shift {
-				from = hit.At + 1
-				continue
-			}
-			out = append(out, TimelineItem{
-				Key: occurrenceKey(e.ID, hit.At), Type: e.ID, Name: e.Name, At: hit.At, Source: "fixed",
-			})
-			from = hit.At + 1
-		}
-		// 被推迟的固定时刻线：上面的循环把「原时刻那一跳」跳过了，但没把「推迟后的时刻」
-		// 补回来——否则推迟后该条会从今日时间线消失。这里把 shifts 里覆盖过的时刻补成
-		// 这一身份下一次实际触发（若该时刻已作为后续 slot 出现则不再重复）。
-		if shift, ok := opts.Shifts[e.ID]; ok && shift > now {
-			dup := false
-			for _, it := range out {
-				if it.Type == e.ID && it.At == shift {
-					dup = true
-					break
-				}
-			}
-			if !dup {
-				out = append(out, TimelineItem{
-					Key: occurrenceKey(e.ID, shift), Type: e.ID, Name: e.Name, At: shift, Source: "fixed",
-				})
-			}
-		}
-	}
-	// ② 外卖：展开当天剩余条目（原定时刻；提前通知只弹小窗，真实窗口仍按原定时刻弹出）
-	if s.TakeoutEnabled() {
-		day := time.UnixMilli(now)
-		for _, sl := range s.TakeoutSlots() {
-			if !sl.Enabled {
-				continue
-			}
-			if sl.Repeat == "weekly" && !intIn(sl.Days, isoWeekday(day)) {
-				continue
-			}
-			at := slotAlertAt(sl, 0, now)
-			if at <= now {
-				continue
-			}
-			if opts.TakeoutFired[occurrenceKey("takeout", at)] {
-				continue
-			}
-			out = append(out, TimelineItem{
-				Key:  "takeout#" + strconv.FormatInt(at, 10) + "#" + sl.ID,
-				Type: "takeout", Name: TAKEOUT_NAME, At: at, Source: "fixed",
-			})
-		}
-		if pp := opts.TakeoutPostponed; pp != nil && pp.DueAt > now {
-			out = append(out, TimelineItem{
-				Key:  "takeout#pp#" + strconv.FormatInt(pp.DueAt, 10),
-				Type: "takeout", Name: TAKEOUT_NAME, At: pp.DueAt, Source: "fixed",
-			})
-		}
-	}
-	// ③ 倒计时线展开成链：链首 = 挂起那一跳（保留调度器平移/冻结结果），
-	// 后续按调度器真实节奏（开始+时长 → 下一跳间隔）推算今天剩余的每一次；暂停时全链冻结。
-	paused := opts.Paused
-	pushCd := func(p PlannedBreak) {
-		flag := paused
-		out = append(out, TimelineItem{
-			Key:  "cd#" + p.Type + "#" + strconv.FormatInt(p.At, 10),
-			Type: p.Type, Name: p.Name, At: p.At, Source: "countdown", Paused: &flag,
-		})
-	}
-	var cds []PlannedBreak
-	for _, l := range opts.CountdownLines {
-		if l.Source == "countdown" {
-			cds = append(cds, l)
-		}
-	}
-	// 内置短/长：最多一条挂起线，展开成链
-	var builtinFirst *PlannedBreak
-	for i := range cds {
-		if cds[i].Type == "short" || cds[i].Type == "long" {
-			builtinFirst = &cds[i]
-			break
-		}
-	}
-	for _, p := range expandBuiltinCountdown(s, now, opts.ShortsSinceLong, opts.Skip, builtinFirst) {
-		pushCd(p)
-	}
-	// 自定义提醒：每条各一条链；配置里已删/已改模式的残留线退化为只显示挂起一跳（旧行为）
-	for _, l := range cds {
-		if l.Type == "short" || l.Type == "long" {
-			continue
-		}
-		c := s.CustomBreakByID(l.Type)
-		cfg := BreakConfig{}
-		if c != nil {
-			cfg = breakConfigOf(asMap(c["config"]))
-		}
-		if c == nil || cfg.Mode != "countdown" {
-			pushCd(l)
-			continue
-		}
-		for _, p := range expandCustomCountdown(now, opts.Skip, l, cfg.IntervalMs, cfg.DurationMs) {
-			pushCd(p)
-		}
-	}
-	sort.SliceStable(out, func(i, j int) bool { return out[i].At < out[j].At })
-	return out
-}
-
-// intIn 整数是否在切片里（小切片线性查找就够）
-func intIn(a []int, v int) bool {
-	for _, x := range a {
-		if x == v {
-			return true
-		}
-	}
-	return false
-}
-
-// fmtClock 日志用的 HH:MM
-func fmtClock(ms int64) string {
-	if ms == 0 {
-		return "0"
-	}
-	return time.UnixMilli(ms).Format("15:04")
 }

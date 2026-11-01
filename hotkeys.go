@@ -5,6 +5,7 @@ import (
 	"runtime"
 	"strings"
 	"sync/atomic"
+	"workerrest/internal/logx"
 
 	"workerrest/internal/hotkey"
 )
@@ -77,7 +78,7 @@ func (h *HotkeyManager) run() {
 	var m hotkey.WinMsg
 	hotkey.PeekMessage(&m)
 	h.threadID.Store(hotkey.CurrentThreadID())
-	guardRun("hotkeys.apply", h.apply)
+	logx.GuardRun("hotkeys.apply", h.apply)
 	for {
 		if !hotkey.GetMessage(&m) { // WM_QUIT / 错误
 			h.unregisterAll()
@@ -85,9 +86,9 @@ func (h *HotkeyManager) run() {
 		}
 		switch m.Message {
 		case hotkey.WmHotkey:
-			guardRun("hotkeys.dispatch", func() { h.dispatch(int(m.WParam)) })
+			logx.GuardRun("hotkeys.dispatch", func() { h.dispatch(int(m.WParam)) })
 		case hotkey.HkReloadMsg:
-			guardRun("hotkeys.apply", h.apply)
+			logx.GuardRun("hotkeys.apply", h.apply)
 		}
 	}
 }

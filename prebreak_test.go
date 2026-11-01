@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"workerrest/internal/model"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -141,7 +142,7 @@ func TestPreBreakBoundsSecondScreen(t *testing.T) {
 
 // 休息窗口按目标屏工作区计算：多屏下每块屏各算各的，不能用主屏尺寸（会跑到屏幕外）
 func TestBreakBoundsFor(t *testing.T) {
-	cfg := AppearanceConfig{WidthPct: 50, HeightPct: 50}
+	cfg := model.AppearanceConfig{WidthPct: 50, HeightPct: 50}
 
 	// 主屏 1920x1040（任务栏已扣除）→ 半屏居中
 	wa := application.Rect{X: 0, Y: 0, Width: 1920, Height: 1040}
@@ -164,7 +165,7 @@ func TestBreakBoundsFor(t *testing.T) {
 	}
 
 	// 全屏：铺满工作区；最小尺寸兜底
-	if x, y, w, h = breakBoundsFor(wa, AppearanceConfig{Fullscreen: true}); x != 0 || y != 0 || w != 1920 || h != 1040 {
+	if x, y, w, h = breakBoundsFor(wa, model.AppearanceConfig{Fullscreen: true}); x != 0 || y != 0 || w != 1920 || h != 1040 {
 		t.Fatalf("全屏应铺满工作区，得到 %dx%d @(%d,%d)", w, h, x, y)
 	}
 	small := application.Rect{X: 0, Y: 0, Width: 400, Height: 300}
