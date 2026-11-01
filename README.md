@@ -36,7 +36,7 @@ go build -trimpath -tags server -o build/bin/chibingren_server.exe -ldflags "-s 
 
 `-trimpath` 不是可选项：不加它，二进制里每个源文件都以 `D:/…/xxx.go` 的绝对路径存在
 （panic 栈、运行时符号），等于把构建机的目录结构和用户名一起发出去。加了之后路径统一
-变成 `workerrest/xxx.go`。`scripts/verify_portable.py` 有一条断言专门扫这个泄漏。
+变成 `workerrest/xxx.go`。`scripts/build/verify_portable.py` 有一条断言专门扫这个泄漏。
 
 产物 `rest.exe` 约 13.9 MB（Go 1.27.3 + Wails v3.0.0 下实测 13,949,440 字节），已含
 embed 的前端资源与图标；四个内置提示音不再 embed 进二进制，打包时随包放在 `sounds/`
@@ -46,10 +46,10 @@ embed 的前端资源与图标；四个内置提示音不再 embed 进二进制�
 
 ```powershell
 # 便携目录打包：构建发布版 exe → 组装 exe + supervisors/ → 打 zip → 校验内容
-python scripts/make_portable.py
+python scripts/build/make_portable.py
 
 # （可选）隔离环境解包首跑，验证预置三件套与首跑落点（不外溢到 APPDATA）
-python scripts/verify_portable.py
+python scripts/build/verify_portable.py
 ```
 
 产出（`release/WorkerRest-<tag>/`，tag 形如 `v0.9.1`）：
@@ -69,7 +69,7 @@ python scripts/verify_portable.py
 - **版本号只认 git tag**（`v主.次.修订`，如 `v0.9.0`）：打包要求**当前提交上有 tag**，
   没 tag 直接停止并提示先打 tag（同时显示最近一次 tag）。`app.go` 的 `appVersion`
   只是 `dev` 占位符，真实版本由 `-ldflags "-X main.appVersion=<tag 去掉 v>"` 注入。
-- `python scripts/version.py` 显示最近一次 tag 的版本号（`--bare` 去掉 `v`）。
+- `python scripts/build/version.py` 显示最近一次 tag 的版本号（`--bare` 去掉 `v`）。
 - **出厂默认只有一份源文件** `default_settings.json`：`//go:embed` 进 exe 的是它（「恢复默认
   设置」用的就是这份），便携包的 `config/settings.json` 也是它（新装首跑读这份）。两份必须
   一致，否则「首装看到的值」与「点恢复默认后的值」会不同。打包时 `make_portable.py` 先让
@@ -98,10 +98,10 @@ python scripts/verify_portable.py
     `SetProcessDpiAwarenessContext(PER_MONITOR_V2)`，清单里再写会冲突
   重新生成（**改了图标 / 改了清单**之后；打新 tag **不必**重新生成，见下）：
   ```bash
-  python scripts/gen_windows_res.py          # 重新生成 syso（同时落盘 versioninfo.json / app.manifest）
-  python scripts/gen_windows_res.py --check  # 核对当前 syso 的图标/清单内容是否与源码一致（打包门禁里会跑）
+  python scripts/build/gen_windows_res.py          # 重新生成 syso（同时落盘 versioninfo.json / app.manifest）
+  python scripts/build/gen_windows_res.py --check  # 核对当前 syso 的图标/清单内容是否与源码一致（打包门禁里会跑）
   ```
-  校验方式：`python scripts/verify_windows_res.py <exe>` 解析 PE 断言三类资源齐全；
+  校验方式：`python scripts/build/verify_windows_res.py <exe>` 解析 PE 断言三类资源齐全；
   `make_portable.py` 打包前会自动跑 `check_winres`（资源齐全 + exe 的 VERSIONINFO 版本号
   == 本次 tag + syso 图标/清单内容未漂移三重门禁）。
 
@@ -121,7 +121,7 @@ python scripts/verify_portable.py
 - `version.json` 的两个地址字段口径不同：`url` 是**下载**地址数组（按顺序容错，第一项失败
   取下一项），`sites` 是**检查更新**地址数组（远程下发会整体覆盖客户端本地 `sites`）。
   **其他地址（含 `nav.hcctc.cn`）都是可选项**：发布清单里给了就用、没给就不用，程序不针对
-  任何具体域名做特殊处理。`scripts/make_portable.py` 里的 `UPDATE_SITES` 必须与
+  任何具体域名做特殊处理。`scripts/build/make_portable.py` 里的 `UPDATE_SITES` 必须与
   `default_settings.json` 的 `sites` 逐字一致——打包前会校验，不一致直接停止；发布后
   `verify_portable.py` 还会核对便携包的 `sites` 与同版本 `version.json` 的 `sites` 相同。
 - `version.json` 的 `changes` 取「上一个 tag → 当前 tag」的提交标题，按时间顺序自动编号；
@@ -183,17 +183,17 @@ python scripts/verify_portable.py
 go test -tags server ./...         # 单元测试（295 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
                                    # 系统能力 / 提示音 / 统计 / 督休专员迁移与命名唯一 / 外卖 / 更新 / 睡眠检测
 python scripts/smoke_server.py     # 绑定层无头冒烟：179 项断言
-python scripts/probe_renderer.py   # 渲染层探针：297 项断言 + 截图（需先 npm install）
+python scripts/probe/probe_renderer.py   # 渲染层探针：297 项断言 + 截图（需先 npm install）
 node   scripts/a11y_audit.js         # 可访问性静态审计：无名控件 / 活区 / 对话框语义，写 build/a11y_audit.json
 node   scripts/probe_a11y_focus.js # 对话框焦点管理行为探针：101 项（进得去 / Tab 跑不出 / 关后回得来）
-python scripts/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
-python scripts/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
-python scripts/probe_stats_file.py # 统计文件自愈探针：19 项（首跑自建 data/ / 损坏改名备份 / 弹窗说明 / Ack 清空）
-python scripts/probe_sound_scan.py # 提示音目录体检探针：27 项（新音频原地登记 / 死条目删除 / 重启不重复提示）
-python scripts/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）
-python scripts/verify_window_size.py  # 设置窗口尺寸：14 项（勾选框 / 默认尺寸下恰好不滚 / 宽度边界 / 落盘）
-python scripts/probe_window_size.py   # 尺寸**测量**（不是断言）：逐 10px 扫宽度、逐 2px 扫高度，改版式后重测用
-python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出厂尺寸 / 拖拽记录 / 重启沿用 / 关掉开关回默认）
+python scripts/probe/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
+python scripts/probe/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
+python scripts/probe/probe_stats_file.py # 统计文件自愈探针：19 项（首跑自建 data/ / 损坏改名备份 / 弹窗说明 / Ack 清空）
+python scripts/probe/probe_sound_scan.py # 提示音目录体检探针：27 项（新音频原地登记 / 死条目删除 / 重启不重复提示）
+python scripts/verify/verify_about.py     # 关于页字段与配色核对（浅色 / 深色各一张截图）
+python scripts/verify/verify_window_size.py  # 设置窗口尺寸：14 项（勾选框 / 默认尺寸下恰好不滚 / 宽度边界 / 落盘）
+python scripts/probe/probe_window_size.py   # 尺寸**测量**（不是断言）：逐 10px 扫宽度、逐 2px 扫高度，改版式后重测用
+python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出厂尺寸 / 拖拽记录 / 重启沿用 / 关掉开关回默认）
 ```
 
 - **单测必须带 `-tags server`**：不带时「提前提示窗」用例会因 `a.app == nil` panic（无头形态
@@ -226,7 +226,7 @@ python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出�
                           icon.png **全项目唯一图标**（标题栏 20px / 托盘 / exe 图标源三处共用）、
                           sitting_risk.webp 关于页横幅 —— 整个目录 go:embed 进 exe，运行时只认这里
   rsrc_windows_amd64.syso exe 的 Windows 资源（RT_GROUP_ICON/RT_ICON + RT_VERSION + RT_MANIFEST，
-                          由 scripts/gen_windows_res.py 用 goversioninfo 生成，随源码入库）
+                          由 scripts/build/gen_windows_res.py 用 goversioninfo 生成，随源码入库）
   versioninfo.json        VERSIONINFO 的源配置（gen_windows_res.py 生成，与 syso 同源留档）
   app.manifest            应用清单源（longPathAware + supportedOS，gen_windows_res.py 生成）
   default_settings.json   出厂默认配置（go:embed）
@@ -277,8 +277,8 @@ python scripts/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出�
 它由生成器从**构建事实**推导（不是手抄清单）：
 
 ```powershell
-python scripts/gen_notices.py           # 重新生成（依赖或 Go 版本变了才需要）
-python scripts/gen_notices.py --check   # 只校验：与当前构建不一致则退出码 1
+python scripts/build/gen_notices.py           # 重新生成（依赖或 Go 版本变了才需要）
+python scripts/build/gen_notices.py --check   # 只校验：与当前构建不一致则退出码 1
 ```
 
 - 收录口径 = **实际参与构建**的组件：Go 模块取自 `go list -deps`（与 `go version -m`
@@ -290,7 +290,7 @@ python scripts/gen_notices.py --check   # 只校验：与当前构建不一致�
 - **依赖变了必须重新生成**：`make_portable.py` 在 `go build` **之前**跑 `--check`，过期直接
   停止 —— 清单是编进 exe 的，编进去之后所有校验都看不出「一致地过期」。单测
   `TestNoticesCoversLinkedModules` 用 `go list -deps` 两个方向核对（不缺、也不多声明）。
-- 升级前端内联库时，把 npm 包里的许可原文放回 `scripts/notices/`，并同步 `gen_notices.py`
+- 升级前端内联库时，把 npm 包里的许可原文放回 `scripts/build/notices/`，并同步 `gen_notices.py`
   的 `FRONTEND`（含产物指纹串）：指纹在 bundle 里找不到会直接报错，防止清单悄悄过期。
 - 这份文件只声明**第三方**组件；本仓库自己的代码没有单独的 `LICENSE` 文件。
 
@@ -328,7 +328,7 @@ Wails v3 只保护**绑定方法**（`pkg/application/bindings.go` 把 panic 转
 ```
 
 - **874 是用户选定的宽度**（2026-10-29 他把窗口拖到这个尺寸后要求「记住现在的尺寸，设为默认」）。
-- **高度不是随手填的**：`scripts/probe_window_size.py` 起无头服务后逐 2px 扫高度，取宽度 ≥820 时
+- **高度不是随手填的**：`scripts/probe/probe_window_size.py` 起无头服务后逐 2px 扫高度，取宽度 ≥820 时
   「关于页恰好不出垂直滚动条」的那一档。2026-10-31 关于页先因「第三方许可」一行抬到 893，
   同一天又把「发布时间」并进「版本」行、删掉独立的一行（−36px 行高），边界回落到 **857**
   （`857 − 44（38 标题栏 + 6 底部透明边框）= 813 = 内容区高度`；855 就滚 2px）。

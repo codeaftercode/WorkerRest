@@ -30,7 +30,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 OUT = os.path.join(ROOT, "THIRD-PARTY-NOTICES.txt")
 VENDOR = os.path.join(HERE, "notices")
 BUNDLE = os.path.join(ROOT, "frontend", "dist", "takeout.js")

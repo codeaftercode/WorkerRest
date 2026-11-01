@@ -22,7 +22,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)  # 项目根
+ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根
 
 # 版本 tag 的唯一定义：v主.次.修订（不许带后缀，避免排序/比较歧义）
 TAG_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")

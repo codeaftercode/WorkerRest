@@ -40,7 +40,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_capguard.exe")
 TEMP = os.environ.get("TEMP", ROOT)
 ISO = os.path.join(TEMP, "wr_capguard_iso")

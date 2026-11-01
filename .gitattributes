@@ -13,7 +13,7 @@
 # 开源鸣谢清单必须是 LF：//go:embed 内嵌的是仓库里的原始字节，checkout 转 CRLF 会让
 # 「内嵌必须 LF」这条测试变红（notices_test.go）。gen_notices.py 生成的就是 LF，禁止手改。
 THIRD-PARTY-NOTICES.txt -text
-scripts/notices/*.txt -text
+scripts/build/notices/*.txt -text
 
 # 批处理脚本是 GBK + CRLF：cmd 按 OEM 代码页 936 读文件，换个换行或编码就满屏乱码。
 # 关掉一切换行转换（-text），谁 clone 到哪种系统上拿到的都是同一串字节。

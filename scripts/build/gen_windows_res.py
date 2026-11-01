@@ -41,7 +41,7 @@ import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 
 # 复用 version.py 的 tag 语义（tag_at_head / latest_tag / sort_key），
 # 保证这里读到的版本号与 make_portable.py 逐字同源 —— 两个脚本对「版本是什么」

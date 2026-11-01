@@ -27,7 +27,7 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
+ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
 DIST = os.path.join(ROOT, "frontend", "dist")
 # 印泥变体档数：与 scripts/make_seal_ink.py 的 VARIANTS、两份 JS 的 SEAL_VARIANTS 一致。

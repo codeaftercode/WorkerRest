@@ -29,7 +29,7 @@ import urllib.request
 import secrets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 TEMP = os.environ.get("TEMP", ROOT)
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
 REPORT = os.path.join(TEMP, "wr_stats_file_probe_report.txt")

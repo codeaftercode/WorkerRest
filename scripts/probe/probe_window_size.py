@@ -13,7 +13,7 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
 PROBE = os.path.join(HERE, "probe_window_size.js")
 TEMP = os.environ.get("TEMP", ROOT)

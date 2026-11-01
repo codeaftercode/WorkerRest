@@ -28,7 +28,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
+ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
 TEMP = os.environ.get("TEMP", ROOT)
 # 普通 GUI 产物带 `-H windowsgui`（没有控制台，stdout 拿不到），所以单独构建一个
 # **去掉该标记**、其余参数一致的探针产物。它在 build/bin 下，属 .gitignore 范围。

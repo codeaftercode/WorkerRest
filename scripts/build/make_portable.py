@@ -59,7 +59,7 @@ import zipfile
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
+ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
 
 # 同目录的 version.py（版本号只认 git tag）—— 显式加 sys.path，便于任意 cwd 下运行
 if HERE not in sys.path:

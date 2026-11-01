@@ -27,7 +27,7 @@ import urllib.request
 from datetime import date, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)
+ROOT = os.path.dirname(os.path.dirname(HERE))
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
 PROBE = os.path.join(HERE, "crossday_probe.js")
 TEMP = os.environ.get("TEMP", ROOT)

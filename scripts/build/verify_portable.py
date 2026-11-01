@@ -36,7 +36,7 @@ import sys
 import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
+ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
 
 # 同目录的 version.py（release 子目录名里带 tag，按 tag 拼路径最准）
 if HERE not in sys.path:
@@ -324,7 +324,7 @@ def main():
     if check(os.path.isfile(cleaner), "随包清除开机自启动项脚本在", cleaner):
         with open(cleaner, "rb") as f:
             ship_raw = f.read()
-        with open(os.path.join(ROOT, "scripts", CLEANER_NAME), "rb") as f:
+        with open(os.path.join(ROOT, "scripts", "build", CLEANER_NAME), "rb") as f:
             repo_raw = f.read()
         check(ship_raw == repo_raw, "随包清启动项脚本 == 仓库脚本（逐字节）", "")
         facts = autostart_facts()
