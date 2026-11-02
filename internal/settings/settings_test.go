@@ -53,15 +53,16 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 			"long":  map[string]any{"items": []any{map[string]any{"text": "没有 id"}}},
 		},
 	}
-	configKeyCreated, presetSeeded, _, _ := normalizeLoad(raw)
-	if !configKeyCreated {
-		t.Fatal("老配置没有固定键，应当补生成")
-	}
+	presetSeeded, _, _, legacyDropped := normalizeLoad(raw)
 	if !presetSeeded {
 		t.Fatal("老配置没有 seeded 标记，应当种入预置条目")
 	}
-	if got := raw["installId"].(string); got == "" {
-		t.Fatal("固定键应已写入")
+	if !legacyDropped {
+		t.Fatal("老配置里有 workTime / strict / level 这类已删除功能的残留键，应当报告已清理")
+	}
+	// 机器标识机制已删除：加载路径不许再生成任何标识，老配置里残留的键也必须摘掉
+	if _, ok := raw["installId"]; ok {
+		t.Fatal("配置里不该再有机器标识键（二维码不再带 id）")
 	}
 
 	assertAbsent(t, raw, "screens", "idlePause", "workTime")
@@ -193,9 +194,12 @@ func TestNormalizeLoadIsIdempotent(t *testing.T) {
 	if err := json.Unmarshal(first, &feed); err != nil {
 		t.Fatal(err)
 	}
-	configKeyCreated, presetSeeded, idsRenumbered, _ := normalizeLoad(feed)
-	if configKeyCreated || presetSeeded {
-		t.Error("已归一化的配置再跑一次不该再补固定键 / 种条目")
+	presetSeeded, idsRenumbered, _, legacyDropped := normalizeLoad(feed)
+	if presetSeeded {
+		t.Error("已归一化的配置再跑一次不该再种条目")
+	}
+	if legacyDropped {
+		t.Error("已归一化的配置再跑一次不该再清残留键（否则每次启动都写盘）")
 	}
 	if idsRenumbered {
 		t.Error("已归一化的配置再跑一次不该再给条目重新编号")
@@ -231,7 +235,7 @@ func TestPruneSuitePresets(t *testing.T) {
 			},
 		},
 	}
-	if _, _, _, pruned := normalizeLoad(raw); !pruned {
+	if _, _, pruned, _ := normalizeLoad(raw); !pruned {
 		t.Fatal("带综合办公套件预设的配置应报告「摘除了条目」")
 	}
 	var got []string
@@ -242,7 +246,7 @@ func TestPruneSuitePresets(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("摘除结果不对：得到 %v，期望 %v", got, want)
 	}
-	if _, _, _, again := normalizeLoad(raw); again {
+	if _, _, again, _ := normalizeLoad(raw); again {
 		t.Error("已摘过的配置再跑一次不该再报告摘除（会每次启动都回写）")
 	}
 }
@@ -284,7 +288,7 @@ func TestSaveFirstRunPortableFirst(t *testing.T) {
 		}
 	}()
 
-	s := &Settings{raw: map[string]any{"installId": "x"}, path: ""}
+	s := &Settings{raw: map[string]any{"appName": "x"}, path: ""}
 	if err := s.Save(); err != nil {
 		t.Fatalf("Save 失败：%v", err)
 	}
@@ -524,14 +528,17 @@ func TestAppearanceHideOnShareDefault(t *testing.T) {
 	}
 }
 
-// TestEmbeddedDefaultMatchesFile 内嵌的出厂默认必须与仓库根的 default_settings.json 一致。
+// TestEmbeddedDefaultMatchesFile 内嵌的出厂默认必须与本包的 default_settings.json 逐项一致。
 //
-// 两份默认值分别喂给两条路径：`//go:embed` 的这份是「恢复默认设置」的数据源；
-// 仓库根的这份被 make_portable.py 复制成便携包的 config/settings.json（新装首跑读它）。
-// 一旦分叉，用户首装看到的值与点「恢复默认」后的值就不一样，而且界面上完全看不出来。
-// go:embed 取的是编译那一刻的快照，这条用例把快照钉在工作区文件上。
+// 全仓只有一份出厂默认：internal/settings/default_settings.json。它同时是
+// `//go:embed` 的数据源（「恢复默认设置」用）和 make_portable.py 复制成便携包
+// config/settings.json 的那份（新装首跑读它）。两份若分叉，用户首装看到的值与点
+// 「恢复默认」后的值就不一样，界面上完全看不出来。
+//
+// go:embed 取的是编译那一刻的快照，这条用例把快照钉回磁盘文件上：改了 json 没重编译、
+// 或者 .gitattributes 把文件换行改掉导致 embed 字节变化，都会在这里立刻红。
 func TestEmbeddedDefaultMatchesFile(t *testing.T) {
-	disk, err := os.ReadFile("../../default_settings.json")
+	disk, err := os.ReadFile("default_settings.json")
 	if err != nil {
 		t.Fatalf("读 default_settings.json 失败: %v", err)
 	}
@@ -555,11 +562,11 @@ func TestEmbeddedDefaultMatchesFile(t *testing.T) {
 // 异常，只有用户发现出场的人不是自己要的那个。这里的名字比对走 resolveRoleDir，口径与
 // 运行时一致（读 meta.json 的 name，EqualFold）。
 //
-// 存在性**不写死具体专员**：内置专员用户可以删，删掉后本用例只检查「非空 + 名字属于内置
-// 清单」并跳过磁盘比对，避免误报红。真正不能破的是「出厂必须给出一个确定的固定人选」——
-// 留空就等于把选择权交给目录排序，不同机器上可能出场不同的人。
+// 存在性**不写死具体是谁**（换人只改 default_settings.json，不用改用例），但「这一个
+// 必须真的在仓库里」是硬的：出厂素材是随包分发的，发出去的包里缺了这个目录，首装就
+// 静默换成别人。用户运行期自己删专员是另一回事，与仓库里该有什么无关。
 func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
-	raw, err := os.ReadFile("../../default_settings.json")
+	raw, err := os.ReadFile("default_settings.json")
 	if err != nil {
 		t.Fatalf("读 default_settings.json 失败: %v", err)
 	}
@@ -587,7 +594,17 @@ func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
 	if !builtin {
 		t.Fatalf("出厂固定专员 %q 不在 defaultRoleOrder 里：写错了名字，或者它不是内置专员", fixed)
 	}
-	if _, ok := role.ResolveRoleDir("../../supervisors", fixed); !ok {
-		t.Logf("磁盘上没有专员 %q（内置专员可被用户删除），本轮跳过 meta.json 名字比对", fixed)
+	// 仓库自带的出厂素材里必须真有这个人。ResolveRoleDir 是按 meta.json 的 name
+	// 匹配的（不是目录名），所以「找得到」本身就等于「目录名与 meta 名字没打架」。
+	// 找不到就红：fixedRole 指向不存在的专员时，首装会静默回退到列表第一个，
+	// 用户看到的人与 default_settings.json 写的那位不一致 —— 这种降级没有任何报错。
+	//
+	// 路径是 ../../assets/supervisors（本包在 internal/settings/ 下）。这里曾经写成
+	// ../../supervisors —— 资产挪进 assets/ 后它恒为空，用例于是每次都走「跳过」分支
+	// 假装通过，等于这条牙齿整年没咬过人。
+	dir, ok := role.ResolveRoleDir("../../assets/supervisors", fixed)
+	if !ok {
+		t.Fatalf("出厂固定专员 %q 在 assets/supervisors 里找不到（目录被删了，或 meta.json 的 name 不叫这个）", fixed)
 	}
+	t.Logf("出厂固定专员 %s → %s", fixed, dir)
 }

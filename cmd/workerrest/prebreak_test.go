@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
 	"workerrest/internal/scheduler"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -88,11 +89,11 @@ func TestPreBreakSuffixDedup(t *testing.T) {
 		{"提醒", "提醒时间到", " 秒显示提醒"},
 	}
 	for _, c := range cases {
-		if got := preBreakTitle(c.name); got != c.title {
-			t.Errorf("preBreakTitle(%q) = %q，期望 %q", c.name, got, c.title)
+		if got := plan.PreBreakTitle(c.name); got != c.title {
+			t.Errorf("plan.PreBreakTitle(%q) = %q，期望 %q", c.name, got, c.title)
 		}
-		if got := preBreakCountdownTail(c.name); got != c.tail {
-			t.Errorf("preBreakCountdownTail(%q) = %q，期望 %q", c.name, got, c.tail)
+		if got := plan.PreBreakCountdownTail(c.name); got != c.tail {
+			t.Errorf("plan.PreBreakCountdownTail(%q) = %q，期望 %q", c.name, got, c.tail)
 		}
 	}
 }

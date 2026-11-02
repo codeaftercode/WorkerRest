@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/url"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -61,10 +62,10 @@ type PreBreakInfo struct {
 const builtinPreBreakTitleShort = "您已连续工作较长时间，建议您短休息"
 const builtinPreBreakTitleLong = "您已连续工作较长时间，建议您长休息"
 
-// builtinPreBreakTail 内置版的倒计时后缀；自定义提醒那套见 preBreakCountdownTail
+// builtinPreBreakTail 内置版的倒计时后缀；自定义提醒那套见 plan.PreBreakCountdownTail
 const builtinPreBreakTail = " 秒进入休息"
 
-// 标题与倒计时后缀的纯函数 preBreakTitle / preBreakCountdownTail 在计划层迁移时就搬进了
+// 标题与倒计时后缀的纯函数 plan.PreBreakTitle / plan.PreBreakCountdownTail 在计划层迁移时就搬进了
 // breakplan.go（对应 历史源码/types.ts 的同名函数），这里直接复用，不再重复定义。
 
 // preBreakInfoOfType 按休息身份算弹窗内容。kind 是内置身份（short / long）时走内置版式，
@@ -86,7 +87,7 @@ func (a *App) preBreakInfoOfType(kind string) PreBreakInfo {
 		return PreBreakInfo{Custom: false, Title: title, CountdownTail: builtinPreBreakTail, PostponeMin: pm, BgColor: bg}
 	}
 	name := a.CfgSnapshot().BreakNameByID(kind)
-	return PreBreakInfo{Custom: true, Title: preBreakTitle(name), CountdownTail: preBreakCountdownTail(name), PostponeMin: pm, BgColor: bg}
+	return PreBreakInfo{Custom: true, Title: plan.PreBreakTitle(name), CountdownTail: plan.PreBreakCountdownTail(name), PostponeMin: pm, BgColor: bg}
 }
 
 // preBreakInfoOf 当前计划里那一条的内容（调度器没起来时按短休息算）
@@ -369,7 +370,7 @@ func (a *App) preBreakAct(action string) error {
 		case "breakNow":
 			a.mu.Lock()
 			a.takeoutPostponed = nil
-			a.takeoutFired[occurrenceKey("takeout", at)] = true
+			a.takeoutFired[plan.OccurrenceKey("takeout", at)] = true
 			a.mu.Unlock()
 			a.closePreBreakWindow()
 			// occurrence 用预通知的目标时刻：提前通知跨午夜时是次日那一格
@@ -384,7 +385,7 @@ func (a *App) preBreakAct(action string) error {
 			if a.takeoutPostponed != nil {
 				prevCount = a.takeoutPostponed.Count
 			}
-			a.takeoutFired[occurrenceKey("takeout", at)] = true
+			a.takeoutFired[plan.OccurrenceKey("takeout", at)] = true
 			a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: nowMs() + int64(mins)*60000, Count: prevCount + 1}
 			a.mu.Unlock()
 			a.closePreBreakWindow()
@@ -393,7 +394,7 @@ func (a *App) preBreakAct(action string) error {
 		case "skip":
 			a.mu.Lock()
 			a.takeoutPostponed = nil
-			a.takeoutFired[occurrenceKey("takeout", at)] = true
+			a.takeoutFired[plan.OccurrenceKey("takeout", at)] = true
 			a.mu.Unlock()
 			a.closePreBreakWindow()
 			a.refreshStateAfterTakeout()

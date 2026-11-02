@@ -91,7 +91,7 @@ func TestBuildTakeoutInfo(t *testing.T) {
 
 // 「可推迟」为 0：会话快照 PostponeMin=0（渲染层据此隐藏「推迟」按钮）
 func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
-	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]},"installId":"dev-1234"}`
+	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]}}`
 	a := newTakeoutApp(t, cfg)
 	info := a.buildTakeoutInfo(model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
 	if info == nil {
@@ -127,7 +127,7 @@ func TestTakeoutPostponeMinClamp(t *testing.T) {
 	}
 }
 
-// 外卖提醒窗口始终展示优惠券：redPacketData 必有且地址指向本机专属领取地址
+// 外卖提醒窗口始终展示优惠券：redPacketData 必有且地址是不带本机标识的固定领取页
 func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":[]},"installId":"dev-1234"}`
 	a := newTakeoutApp(t, cfg)
@@ -135,11 +135,16 @@ func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
 	if info.RedPacketData == nil {
 		t.Fatal("外卖提醒窗口应始终展示外卖优惠券（redPacketData 不应为 nil）")
 	}
-	// 地址 = 固定 base + id=配置固定键 + t=毫秒时间戳（每次弹窗动态生成）
-	wantPrefix := "https://www.goodgoodlive.com/cps/index.html?id=dev-1234&t="
+	// 地址 = 固定 base + t=毫秒时间戳（每次弹窗动态生成）。
+	// 配置里即使残留 installId（老配置 / 手改文件）也不许出现在地址里 —— 二维码不带
+	// 任何本机标识，扫码只是一次普通领券。
+	wantPrefix := "https://www.goodgoodlive.com/cps/index.html?t="
 	url := info.RedPacketData.URL
 	if !strings.HasPrefix(url, wantPrefix) {
-		t.Fatalf("红包地址应含固定键与时间戳参数，得到 %q", url)
+		t.Fatalf("红包地址应为固定领取页 + 时间戳，得到 %q", url)
+	}
+	if strings.Contains(url, "id=") || strings.Contains(url, "dev-1234") {
+		t.Fatalf("红包地址不许带本机标识，得到 %q", url)
 	}
 	tsStr := strings.TrimPrefix(url, wantPrefix)
 	ts, err := strconv.ParseInt(tsStr, 10, 64)
@@ -404,7 +409,7 @@ func TestRaiseStateBookkeeping(t *testing.T) {
 // futureSlot 造一个「原定时刻在现在之后约 2 小时」的外卖条目，避免测试跑在槽位已过的时刻
 // （真实预通知只会在原定时刻之前弹出，preTargetAt 一定是未来时刻，这里复刻该前提）。
 //
-// ⚠️ TimeSlot 只存 hour/minute，slotAlertAt 一律按**当天**解释：20:00 之后再 +2h 会跨到
+// ⚠️ TimeSlot 只存 hour/minute，plan.SlotAlertAt 一律按**当天**解释：20:00 之后再 +2h 会跨到
 // 明天，时分落回 0 点附近，按今天算就成了「已经过去 22 小时」的时刻 —— 于是剩余被钳成 0、
 // 今日时间线也不展开，测试在晚上必红（2026-10-25 22:05 踩到）。跨天时改取「现在 → 今天
 // 23:59」的中点，保证时分仍属今天且在未来。
@@ -438,7 +443,7 @@ func TestTakeoutPreNotifyState(t *testing.T) {
 	if st["paused"] != false {
 		t.Fatalf("外卖预通知不应暂停计时，得到 %v", st["paused"])
 	}
-	at := slotAlertAt(slot, 0, nowMs())
+	at := plan.SlotAlertAt(slot, 0, nowMs())
 	remain, _ := st["remainMs"].(int64)
 	want := at - nowMs()
 	if want < 0 {
@@ -464,8 +469,8 @@ func TestTakeoutPreNotifyBreakNow(t *testing.T) {
 	if a.takeoutCurrent == nil {
 		t.Fatal("立即提醒应弹真窗（takeoutCurrent 非空）")
 	}
-	at := slotAlertAt(slot, 0, nowMs())
-	if !a.takeoutFired[occurrenceKey("takeout", at)] {
+	at := plan.SlotAlertAt(slot, 0, nowMs())
+	if !a.takeoutFired[plan.OccurrenceKey("takeout", at)] {
 		t.Fatal("立即提醒应消费该次 occurrence，避免原定时刻重复弹")
 	}
 }
@@ -481,8 +486,8 @@ func TestTakeoutPreNotifySkip(t *testing.T) {
 	if err := a.preBreakAct("skip"); err != nil {
 		t.Fatalf("跳过提醒不应报错：%v", err)
 	}
-	at := slotAlertAt(slot, 0, nowMs())
-	if !a.takeoutFired[occurrenceKey("takeout", at)] {
+	at := plan.SlotAlertAt(slot, 0, nowMs())
+	if !a.takeoutFired[plan.OccurrenceKey("takeout", at)] {
 		t.Fatal("跳过提醒应消费该次 occurrence")
 	}
 	if a.takeoutCurrent != nil {
@@ -501,8 +506,8 @@ func TestTakeoutPreNotifyPostpone(t *testing.T) {
 	if err := a.preBreakAct("postpone"); err != nil {
 		t.Fatalf("推迟提醒不应报错：%v", err)
 	}
-	at := slotAlertAt(slot, 0, nowMs())
-	if !a.takeoutFired[occurrenceKey("takeout", at)] {
+	at := plan.SlotAlertAt(slot, 0, nowMs())
+	if !a.takeoutFired[plan.OccurrenceKey("takeout", at)] {
 		t.Fatal("推迟提醒应消费原 occurrence")
 	}
 	if a.takeoutPostponed == nil {
@@ -520,13 +525,13 @@ func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
 	a := newTakeoutApp(t, cfg)
 	a.sched = nil
 	s := a.CfgSnapshot()
-	wantAt := slotAlertAt(slot, 0, nowMs())
+	wantAt := plan.SlotAlertAt(slot, 0, nowMs())
 	if wantAt <= nowMs() {
 		// 23:59 之后构造不出「今天、且在未来」的槽位（TimeSlot 只有时分），今日时间线
 		// 本来就不展开已过去的条目 —— 这是产品语义，不是缺陷，跳过而不是误报。
 		t.Skip("当前时刻已到 23:59，无法构造今天的未来外卖槽位")
 	}
-	tl := todayTimeline(s, nowMs(), plan.TimelineOptions{TakeoutFired: map[string]bool{}})
+	tl := plan.TodayTimeline(s, nowMs(), plan.TimelineOptions{TakeoutFired: map[string]bool{}})
 	found := false
 	for _, it := range tl {
 		if it.Type == "takeout" {
@@ -540,8 +545,8 @@ func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
 		t.Fatal("时间线应包含外卖条目")
 	}
 	// 该 occurrence 被消费后，时间线应隐藏它
-	tl2 := todayTimeline(s, nowMs(), plan.TimelineOptions{
-		TakeoutFired: map[string]bool{occurrenceKey("takeout", wantAt): true},
+	tl2 := plan.TodayTimeline(s, nowMs(), plan.TimelineOptions{
+		TakeoutFired: map[string]bool{plan.OccurrenceKey("takeout", wantAt): true},
 	})
 	for _, it := range tl2 {
 		if it.Type == "takeout" && it.At == wantAt {

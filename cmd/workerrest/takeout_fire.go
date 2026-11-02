@@ -70,7 +70,7 @@ func (a *App) checkTakeoutReminders() {
 	if len(a.takeoutFired) > 32 {
 		cut := now - 3*86_400_000
 		for k := range a.takeoutFired {
-			if occurrenceKeyAt(k) < cut {
+			if plan.OccurrenceKeyAt(k) < cut {
 				delete(a.takeoutFired, k)
 			}
 		}
@@ -141,9 +141,9 @@ func (a *App) checkTakeoutReminders() {
 		}
 		// ② 真窗：now 命中条目「原定分钟」（leadMs=0）才弹——保持原来的「按分钟匹配」语义，
 		//    不补弹过去错过的分钟；按 occurrence 去重，避免同一分钟重复弹。
-		if isTimeSlotDue(slot, now, 0) {
-			at := slotAlertAt(slot, 0, now) // 原定时刻（当天，用于 occurrence 去重键）
-			key := occurrenceKey("takeout", at)
+		if plan.IsTimeSlotDue(slot, now, 0) {
+			at := plan.SlotAlertAt(slot, 0, now) // 原定时刻（当天，用于 occurrence 去重键）
+			key := plan.OccurrenceKey("takeout", at)
 			if a.takeoutFired[key] {
 				continue
 			}
@@ -155,9 +155,9 @@ func (a *App) checkTakeoutReminders() {
 		//    窗口随后保持显示，直到原定时刻真窗弹出或用户动作。
 		//    at 必须按 now+提前量 折算：提前量把「进入提前区间」推到前一天时（23:50 提
 		//    次日 00:10），occurrence 仍归次日 —— 用 now 当天算会与当天同条目的旧键相撞。
-		if leadSec > 0 && isTimeSlotDue(slot, now, leadMs) {
-			at := slotOccurrenceAt(slot, leadMs, now)
-			key := occurrenceKey("takeout", at)
+		if leadSec > 0 && plan.IsTimeSlotDue(slot, now, leadMs) {
+			at := plan.SlotOccurrenceAt(slot, leadMs, now)
+			key := plan.OccurrenceKey("takeout", at)
 			if a.takeoutPreFired[key] {
 				continue
 			}
@@ -200,8 +200,8 @@ func (a *App) postponeTakeoutWhilePaused(cfg *settings.Settings, hasPP bool) boo
 		}
 		// 本分钟到点的其它条目并进这一次推迟（外卖窗口只有一扇，标题也不区分时刻）
 		for _, slot := range cfg.TakeoutSlots() {
-			if isTimeSlotDue(slot, now, 0) {
-				a.takeoutFired[occurrenceKey("takeout", slotAlertAt(slot, 0, now))] = true
+			if plan.IsTimeSlotDue(slot, now, 0) {
+				a.takeoutFired[plan.OccurrenceKey("takeout", plan.SlotAlertAt(slot, 0, now))] = true
 			}
 		}
 		a.mu.Unlock()
@@ -223,10 +223,10 @@ func (a *App) postponeTakeoutWhilePaused(cfg *settings.Settings, hasPP bool) boo
 			// 交给下一跳走「已有计划」分支
 			break
 		}
-		if !isTimeSlotDue(slot, now, 0) {
+		if !plan.IsTimeSlotDue(slot, now, 0) {
 			continue
 		}
-		key := occurrenceKey("takeout", slotAlertAt(slot, 0, now))
+		key := plan.OccurrenceKey("takeout", plan.SlotAlertAt(slot, 0, now))
 		if a.takeoutFired[key] {
 			continue
 		}
@@ -262,10 +262,10 @@ func (a *App) skipTakeoutWhilePaused(cfg *settings.Settings) {
 		ppFired = true
 	}
 	for _, slot := range cfg.TakeoutSlots() {
-		if !isTimeSlotDue(slot, now, 0) {
+		if !plan.IsTimeSlotDue(slot, now, 0) {
 			continue
 		}
-		key := occurrenceKey("takeout", slotAlertAt(slot, 0, now))
+		key := plan.OccurrenceKey("takeout", plan.SlotAlertAt(slot, 0, now))
 		if a.takeoutFired[key] {
 			continue
 		}
@@ -293,12 +293,12 @@ func (a *App) skipTakeoutWhilePaused(cfg *settings.Settings) {
 
 // showTakeoutPreNotify 在外卖「原定时刻−提前量」弹出提前通知小窗（复用休息的提前提示窗，
 // 但走外卖 owner：标题=提醒名、倒计时指向 targetAt（原定时刻或推迟后的到点时刻）、
-// 三按钮 立即提醒/推迟提醒/跳过提醒）。targetAt=0 时按原定时刻（slotAlertAt）推算。
+// 三按钮 立即提醒/推迟提醒/跳过提醒）。targetAt=0 时按原定时刻（plan.SlotAlertAt）推算。
 // 提前量=0 时不该被调用（checkTakeoutReminders 已把这条支滤掉）。
 func (a *App) showTakeoutPreNotify(slot model.TimeSlot, targetAt int64) {
 	cfg := a.CfgSnapshot()
 	if targetAt == 0 {
-		targetAt = slotAlertAt(slot, 0, nowMs()) // 原定时刻（当天）
+		targetAt = plan.SlotAlertAt(slot, 0, nowMs()) // 原定时刻（当天）
 	}
 	info := PreBreakInfo{
 		Owner:         "takeout",

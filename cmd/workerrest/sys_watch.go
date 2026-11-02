@@ -8,6 +8,7 @@ import (
 
 	"workerrest/internal/autostart"
 	"workerrest/internal/idle"
+	"workerrest/internal/plan"
 	"workerrest/internal/scheduler"
 	"workerrest/internal/windnd"
 	"workerrest/internal/winproc"
@@ -17,7 +18,7 @@ import (
 // 「暂停提醒 / 恢复提醒」，与 历史源码/main.ts 的 startIdleWatcher / startDndWatcher /
 // startAppPauseWatcher 逐条对齐。
 //
-// 判定逻辑本身抽在别处（decideIdleStep / GetDndStatus / matchAppPause），这里只负责
+// 判定逻辑本身抽在别处（decideIdleStep / GetDndStatus / plan.MatchAppPause），这里只负责
 // 「多久看一次」与「看到之后对调度器做什么」。三个 tick 函数都是 App 的方法而不是内联
 // 在 goroutine 里，就是为了让单测能直接推进一步，不必等真实的 1/3/4 秒。
 
@@ -187,7 +188,7 @@ func (a *App) appPauseWatchTick() {
 	r := winproc.ListProcessNames()
 	hit, matched := false, []string(nil)
 	if r.Supported {
-		hit, matched = matchAppPause(cfg.AppPauseCfg(), r.Names)
+		hit, matched = plan.MatchAppPause(cfg.AppPauseCfg(), r.Names)
 	}
 	if hit && a.isAppPauseIgnored() {
 		// 忽略会话中：应用还在跑就按兵不动（原因早已摘掉，也不该再加回去）

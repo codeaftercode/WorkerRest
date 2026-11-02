@@ -1,5 +1,9 @@
 # ---- 构建产物 ----
-build/
+# build/ 本身要入库：build/windows/ 放 Wails 平台资源（VERSIONINFO 源、应用清单）。
+# 只忽略真正的产物与临时报告。
+build/bin/
+build/a11y_audit.json
+build/verify_trim.txt
 release/
 *.exe
 
@@ -14,7 +18,7 @@ __pycache__/
 .workbuddy/
 
 # ---- 运行时数据（便携运行会落在 exe 旁，不入库）----
-# 注意：模块根的 sounds/ 是内置提示音**源文件**（打包预置用），要入库；
+# 注意：assets/sounds/ 是内置提示音**源文件**（打包预置用），要入库；
 # 运行时的用户音频副本在 config/sounds/，被上面的 config/ 覆盖。
 config/
 data/
@@ -28,7 +32,7 @@ stats.json
 *~
 
 # ---- 运营素材（网站 / 推广用，不随软件分发）----
-promo/
+docs/promo/
 
 # ---- 编辑器与系统 ----
 .vscode/

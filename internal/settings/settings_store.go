@@ -169,65 +169,57 @@ func seedPresetEntries(raw map[string]any) bool {
 	return changed
 }
 
-// ensureConfigKey 配置固定键：首次运行生成一枚并持久化，之后读回原值、永不改变。
-// 返回本次是否**新生成**了它（决定要不要落盘）。
-func ensureConfigKey(raw map[string]any) bool {
-	if s, ok := raw["installId"].(string); ok && strings.TrimSpace(s) != "" {
-		return false
-	}
-	raw["installId"] = jsonx.NewRandomID()
-	return true
-}
-
 // normalizeLoad 加载路径的归一化，**顺序逐条对应 config.ts 的 loadSettingsFrom**。
 //
-// 返回值刻意与 上一版的 LoadedSettings 对齐：只有「补生成了配置固定键」「种入了预置条目」
-// 「提醒条目重编号」以及「摘掉了早期误种的应用暂停条目」这几件事需要立刻落盘。
-// 其余归一化结果（旧键清理 / 越界夹紧）**不主动回写** —— 每次启动都改写用户配置会把键序
-// 和格式一起动掉，而且在「验证脚本误指真实配置」时会留下副作用；这些清理结果会在用户
-// 下一次保存时一并落盘。
-func normalizeLoad(raw map[string]any) (configKeyCreated, presetSeeded, idsRenumbered, appsPruned bool) {
-	// ① 配置固定键（首次运行 / 老配置升级补一枚）
-	configKeyCreated = ensureConfigKey(raw)
-	// ② 旧键清理与迁移（必须在归一化之前：迁移写出来的值才是最终值）
-	cleanLegacyKeys(raw)
-	// ③ 休息触发方式与固定时刻表
+// 返回值只有四件事需要立刻落盘：「种入了预置条目」「提醒内容条目 id 被收敛成序号」
+// 「摘掉了早期误种的应用暂停条目」「清掉了已删除功能的残留键（含老版本写过的机器标识）」。
+// 其余归一化结果（越界夹紧）**不主动回写** —— 每次启动都改写用户配置会把键序和格式一起
+// 动掉，而且在「验证脚本误指真实配置」时会留下副作用；这些夹紧结果会在用户下一次保存时
+// 一并落盘。
+func normalizeLoad(raw map[string]any) (presetSeeded, idsRenumbered, appsPruned, legacyDropped bool) {
+	// ① 旧键清理与迁移（必须在归一化之前：迁移写出来的值才是最终值）
+	legacyDropped = cleanLegacyKeys(raw)
+	// ② 休息触发方式与固定时刻表
 	raw["short"] = normalizeBreakConfigOf(mapOf(raw["short"]))
 	raw["long"] = normalizeBreakConfigOf(mapOf(raw["long"]))
-	// ④ 声音
+	// ③ 声音
 	normalizeSound(raw)
-	// ⑤ 自定义提醒
+	// ④ 自定义提醒
 	idsRenumbered = normalizeCustomBreaks(raw)
-	// ⑥ 外卖提醒
+	// ⑤ 外卖提醒
 	raw["takeout"] = normalizeTakeout(raw)
-	// ⑦ 指定应用运行时暂停：归一化 → 摘掉早期误种的综合办公套件 → 首次种入内置会议软件
+	// ⑥ 指定应用运行时暂停：归一化 → 摘掉早期误种的综合办公套件 → 首次种入内置会议软件
 	raw["appPause"], appsPruned = pruneSuitePresets(normalizeAppPause(raw))
 	if raw["appPause"].(map[string]any)["seeded"] != true {
 		raw["appPause"] = seedAppPause(raw["appPause"].(map[string]any))
 	}
-	// ⑧ 开关类字段（含旧的「休息窗口显示位置」下拉框迁移）
+	// ⑦ 开关类字段（含旧的「休息窗口显示位置」下拉框迁移）
 	normalizeToggles(raw)
-	// ⑧·5 设置窗口尺寸（window 块，老配置没有就按出厂默认补一块）
+	// ⑦·5 设置窗口尺寸（window 块，老配置没有就按出厂默认补一块）
 	normalizeWindow(raw)
-	// ⑨ 提醒内容（含旧 messages 键迁移）
+	// ⑧ 提醒内容（含旧 messages 键迁移）
 	idsRenumbered = normalizeReminderMessages(raw) || idsRenumbered
-	// ⑩ 督休专员
+	// ⑨ 督休专员
 	normalizeSupervisorMessages(raw)
-	// ⑪ 预置提醒内容条目（幂等）
+	// ⑩ 预置提醒内容条目（幂等）
 	presetSeeded = seedPresetEntries(raw)
-	return configKeyCreated, presetSeeded, idsRenumbered, appsPruned
+	return presetSeeded, idsRenumbered, appsPruned, legacyDropped
 }
 
 // NormalizeLoad 加载路径的归一化（跨包导出，供 main 的恢复默认复用：
-// 恢复默认后要立刻补固定键、种入预置条目，与启动管线一致）。
+// 恢复默认后要立刻种入预置条目、与启动管线完全一致）。
 func NormalizeLoad(raw map[string]any) {
 	normalizeLoad(raw)
 }
 
 // normalizeForSave 设置页保存 / 导入外来配置后要跑的归一化。
-// 与加载路径的差别：**不做**旧键清理与首次种子（那些是一次性迁移，加载时已经做过），
-// 顺序对应 main.ts 的 settings:save / settings:import。
+// 与加载路径的差别：不做旧键迁移与首次种子（那些是一次性动作，加载时已经做过），
+// 唯一的例外是机器标识键的兜底删除（见函数体）；顺序对应 main.ts 的 settings:save /
+// settings:import。
 func normalizeForSave(raw map[string]any) {
+	// 机器标识机制已删除（二维码不再带 id）：保存路径也兜底摘掉，保证任何一次落盘
+	// 都不会把它写回 settings.json —— 加载路径的同类清理在 cleanLegacyKeys 里
+	delete(raw, "installId")
 	normalizeReminderMessages(raw)
 	normalizeSupervisorMessages(raw)
 	raw["short"] = normalizeBreakConfigOf(mapOf(raw["short"]))
@@ -291,26 +283,27 @@ func loadSettings(resourcesRoot string) *Settings {
 		if !ok || merged == nil {
 			continue
 		}
-		configKeyCreated, presetSeeded, idsRenumbered, appsPruned := normalizeLoad(merged)
+		presetSeeded, idsRenumbered, appsPruned, legacyDropped := normalizeLoad(merged)
 		s := &Settings{raw: merged, path: p}
-		// 三种情况回写：补生成配置固定键、种入预置条目、提醒内容条目 id 被收敛成序号
-		// （后者是一次性的格式统一，收敛完即为定值，不会每次启动都写盘）
-		if configKeyCreated || presetSeeded || idsRenumbered || appsPruned {
+		// 四种情况回写：种入预置条目、提醒内容条目 id 被收敛成序号（一次性格式统一，
+		// 收敛完即为定值，不会每次启动都写盘）、摘除早期误种的套件预设、清掉已删除功能的
+		// 残留键（不落盘的话残留键会一直躺在 settings.json 里，导入导出也会带走）
+		if presetSeeded || idsRenumbered || appsPruned || legacyDropped {
 			if err := s.Save(); err != nil {
 				log.Printf("[settings] 初始化结果落盘失败: %v", err)
 			} else {
-				log.Printf("[settings] 已回写初始化结果 %s（补固定键=%v 种入预置=%v 条目重编号=%v 摘除套件预设=%v）",
-					p, configKeyCreated, presetSeeded, idsRenumbered, appsPruned)
+				log.Printf("[settings] 已回写初始化结果 %s（种入预置=%v 条目重编号=%v 摘除套件预设=%v 清理残留键=%v）",
+					p, presetSeeded, idsRenumbered, appsPruned, legacyDropped)
 			}
 		}
 		return s
 	}
-	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（补固定键、
-	// 种入预置条目），并落盘 —— 与 上一版的 firstRun 分支一致
+	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（种入预置条目），
+	// 并落盘 —— 与 上一版的 firstRun 分支一致
 	fresh := defaultSettingsMap()
-	configKeyCreated, presetSeeded, idsRenumbered, appsPruned := normalizeLoad(fresh)
+	presetSeeded, idsRenumbered, appsPruned, legacyDropped := normalizeLoad(fresh)
 	s := &Settings{raw: fresh, path: ""}
-	if configKeyCreated || presetSeeded || idsRenumbered || appsPruned {
+	if presetSeeded || idsRenumbered || appsPruned || legacyDropped {
 		if err := s.Save(); err != nil {
 			log.Printf("[settings] 首次运行落盘失败: %v", err)
 		}

@@ -1,3 +1,9 @@
+// Package update 是「检查更新」的纯逻辑层：版本号比较、更新清单的信任校验
+// （只认 https、必带 sha256、超限拒绝）、以及自动检查的退避节奏。
+//
+// 不含下载与解包 —— 那是 cmd 层的 update_download.go（要写文件、要换 exe）。
+// 本包的所有判断都遵守 fail closed：清单缺字段、格式不对、来源不是 https，一律当作
+// 「没有可用更新」，绝不「先装上再说」。
 package update
 
 import (

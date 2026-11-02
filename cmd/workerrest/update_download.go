@@ -12,7 +12,9 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"workerrest/internal/jsonx"
 	"workerrest/internal/platform"
+	"workerrest/internal/settings"
 	"workerrest/internal/update"
 	"workerrest/internal/urltls"
 )
@@ -55,7 +57,7 @@ func (a *App) StartUpdate() map[string]any {
 	}
 	latest, _ := st["latest"].(string)
 	date, _ := st["date"].(string)
-	changes := anySliceToStrings(st["changes"])
+	changes := jsonx.AnySliceToStrings(st["changes"])
 
 	exePath, err := os.Executable()
 	if err != nil {
@@ -87,7 +89,7 @@ func (a *App) StartUpdate() map[string]any {
 	}
 
 	// 增量合并配置（顶层键：本地已有不覆盖，本地无则新增），随后落盘
-	if err := mergeConfigFromDir(updateDir, a.cfg.Raw()); err != nil {
+	if err := settings.MergeConfigFromDir(updateDir, a.cfg.Raw()); err != nil {
 		log.Printf("[update] 合并配置跳过（%v），仅替换程序", err)
 	}
 	if err := a.cfg.Save(); err != nil {
@@ -201,7 +203,7 @@ func statusURLs(st map[string]any) []string {
 	case []string:
 		return append([]string(nil), v...)
 	case []any:
-		return anySliceToStrings(v)
+		return jsonx.AnySliceToStrings(v)
 	}
 	return nil
 }
@@ -352,63 +354,6 @@ func findNewExe(dir string) string {
 		return nil
 	})
 	return fallback
-}
-
-// mergeConfigFromDir 遍历目录及其子目录下所有 json 文件，把每个文件的顶层键按
-// 「本地无则新增、本地有则不改」合并进 raw（与用户需求的配置项增量合并同义）。
-// 单文件大小也设上限：配置补丁正常只有几 KB，超过 1 MiB 的「配置」只会是畸形包。
-func mergeConfigFromDir(dir string, raw map[string]any) error {
-	return filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-		if err != nil || d.IsDir() {
-			return nil
-		}
-		if !strings.HasSuffix(strings.ToLower(d.Name()), ".json") {
-			return nil
-		}
-		if info, err := d.Info(); err == nil && info.Size() > 1<<20 {
-			log.Printf("[update] 跳过过大的配置文件 %s（%d 字节）", path, info.Size())
-			return nil
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		var patch map[string]any
-		if err := json.Unmarshal(data, &patch); err != nil {
-			log.Printf("[update] 跳过无法解析的配置文件 %s: %v", path, err)
-			return nil
-		}
-		for k, v := range patch {
-			if _, exists := raw[k]; !exists {
-				raw[k] = v
-			}
-		}
-		return nil
-	})
-}
-
-// stringSliceToAny []string → []any
-func stringSliceToAny(s []string) []any {
-	out := make([]any, 0, len(s))
-	for _, v := range s {
-		out = append(out, v)
-	}
-	return out
-}
-
-// anySliceToStrings 把 any 数组里的字符串取出来（容错非字符串项）
-func anySliceToStrings(v any) []string {
-	arr, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	out := make([]string, 0, len(arr))
-	for _, it := range arr {
-		if s, ok := it.(string); ok {
-			out = append(out, s)
-		}
-	}
-	return out
 }
 
 // runSelfUpdate 由 `--self-update <pending>` 触发：等旧 exe 解锁 → 改名备份 →

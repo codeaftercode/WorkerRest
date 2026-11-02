@@ -164,7 +164,6 @@ def build_default_settings():
         "takeout": {"enabled": False, "leadSec": 10, "postponeMin": 2, "pauseAction": "postpone", "slots": []},
         "autostart": False,
         "startMinimized": False,
-        "installId": "",
         "checkUpdateOnStart": False,
         "sites": ["https://www.goodgoodlive.com/worker-rest/version.json"],
     }
@@ -430,9 +429,8 @@ def test_reset_settings():
               "恢复后 appName 回退默认", settings.get("appName"))
         check(settings.get("short", {}).get("intervalMs") == 600000,
               "恢复后 intervalMs 回退默认 600000", settings.get("short", {}).get("intervalMs"))
-        # installId 保留
-        check(isinstance(settings.get("installId"), str) and settings.get("installId") != "",
-              "恢复后 installId 保留（非空）", repr(settings.get("installId")))
+        # 设备标识机制已删除：恢复默认后配置里也不许出现该键
+        check("installId" not in settings, "恢复后配置里没有设备标识键", "")
     finally:
         stop_server(proc)
     shutil.rmtree(iso, ignore_errors=True)

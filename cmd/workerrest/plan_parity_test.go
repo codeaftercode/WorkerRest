@@ -60,9 +60,9 @@ func planAsAny(p model.PlannedBreak, ok bool) any {
 
 func describePlanAny(p model.PlannedBreak, ok bool) string {
 	if !ok {
-		return describePlan(nil)
+		return plan.DescribePlan(nil)
 	}
-	return describePlan(&p)
+	return plan.DescribePlan(&p)
 }
 
 // TestDumpPlanForParity 在 WR_PLAN_REF / WR_PLAN_DUMP 都设了的时候导出 Go 侧结果
@@ -94,10 +94,10 @@ func TestDumpPlanForParity(t *testing.T) {
 		s := settings.New(sc.Settings, "")
 		skip := setOfStrings(sc.Skip)
 
-		lines := schedulerLines(s, sc.Now, sc.SS, skip, nil)
-		next, ok := planNextBreak(s, sc.Now, sc.SS, skip, nil)
-		split := planNextBreakSplit(s, sc.Now, sc.SS, skip, nil)
-		fx := fixedNextMap(s, sc.Now, skip)
+		lines := plan.SchedulerLines(s, sc.Now, sc.SS, skip, nil)
+		next, ok := plan.PlanNextBreak(s, sc.Now, sc.SS, skip, nil)
+		split := plan.PlanNextBreakSplit(s, sc.Now, sc.SS, skip, nil)
+		fx := plan.FixedNextMap(s, sc.Now, skip)
 		// 与 main.ts 的 stateForRenderer 同口径：shifts 用 fixedNext（参考侧覆盖过就用它的）、
 		// 挂起线用 lines（参考侧额外塞进来的残留线也一并接上）。
 		shifts := fx
@@ -108,7 +108,7 @@ func TestDumpPlanForParity(t *testing.T) {
 		if len(sc.Opts.ExtraLines) > 0 {
 			cdLines = append(append([]model.PlannedBreak{}, lines...), sc.Opts.ExtraLines...)
 		}
-		tl := todayTimeline(s, sc.Now, plan.TimelineOptions{
+		tl := plan.TodayTimeline(s, sc.Now, plan.TimelineOptions{
 			Skip:             skip,
 			Shifts:           shifts,
 			CountdownLines:   cdLines,
@@ -121,12 +121,12 @@ func TestDumpPlanForParity(t *testing.T) {
 		res = append(res, scenarioOut{
 			Name: sc.Name,
 			Expect: map[string]any{
-				"plan":         planAsAny(next, ok),
-				"lines":        lines,
-				"split":        split,
-				"fixedNext":    fx,
-				"describePlan": describePlanAny(next, ok),
-				"timeline":     tl,
+				"plan":              planAsAny(next, ok),
+				"lines":             lines,
+				"split":             split,
+				"fixedNext":         fx,
+				"plan.DescribePlan": describePlanAny(next, ok),
+				"timeline":          tl,
 			},
 		})
 	}

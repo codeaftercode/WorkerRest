@@ -15,7 +15,7 @@ const { chromium } = require('playwright-core');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const DIST = path.join(ROOT, 'cmd', 'workerrest', 'frontend', 'dist');
+const DIST = path.join(ROOT, 'cmd', 'workerrest', 'web', 'dist');
 
 let failed = 0;
 function check(ok, label, detail) {
@@ -38,7 +38,7 @@ function check(ok, label, detail) {
 const fs = require('fs');
 const SHIM_SRC = fs.readFileSync(path.join(DIST, 'shim.js'), 'utf8');
 const DEFAULT_SETTINGS = JSON.stringify(
-  JSON.parse(fs.readFileSync(path.join(ROOT, 'default_settings.json'), 'utf8')),
+  JSON.parse(fs.readFileSync(path.join(ROOT, 'internal', 'settings', 'default_settings.json'), 'utf8')),
 );
 // 内联桩：Call.ByName 对 GetSettings 返回出厂配置、ListRoles 返回空数组、
 // BuiltinMsgDefaults 返回「三类提醒的空种子」（空 kinds，避免硬编码会过时的文案），

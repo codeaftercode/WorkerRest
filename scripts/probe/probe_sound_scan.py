@@ -13,7 +13,7 @@
 用法：python scripts/probe_sound_scan.py [--port 29752] [--keep]
 退出码 0 = 全部通过。
 
-前置：go build -tags server -o build/bin/chibingren_server.exe .（脚本不重建二进制）
+前置：go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest（脚本不重建二进制）
 """
 
 import argparse
@@ -131,7 +131,7 @@ def main():
     args = ap.parse_args()
 
     if not os.path.isfile(EXE):
-        print("找不到 %s —— 先 go build -tags server -o build/bin/chibingren_server.exe ." % EXE)
+        print("找不到 %s —— 先 go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest" % EXE)
         return 2
 
     iso = os.path.join(TEMP, "wr_sound_scan_probe")
@@ -141,7 +141,7 @@ def main():
 
     # 出厂配置 + 一条「文件根本不存在」的条目。seeded=True 关掉首次种入内置 4 条，
     # 否则列表会被预置项污染，断言就分不清「用户条目」和「补进来的内置音」。
-    cfg = read_json(os.path.join(ROOT, "default_settings.json"))
+    cfg = read_json(os.path.join(ROOT, "internal", "settings", "default_settings.json"))
     cfg.setdefault("sound", {})
     cfg["sound"]["seeded"] = True
     cfg["sound"]["mode"] = "single"
@@ -157,7 +157,7 @@ def main():
     snd = os.path.join(iso, "sounds")
     os.makedirs(snd, exist_ok=True)
     for n in ("short_start.wav", "short_end.wav", "long_start.wav", "long_end.wav"):
-        src = os.path.join(ROOT, "sounds", n)
+        src = os.path.join(ROOT, "assets", "sounds", n)
         if os.path.isfile(src):
             shutil.copy2(src, os.path.join(snd, n))
     with open(os.path.join(snd, "my-alarm.mp3"), "wb") as f:

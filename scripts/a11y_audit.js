@@ -1,4 +1,4 @@
-// 发布前可访问性审计（只读）：用系统 Edge 打开 frontend/dist 的静态 DOM，
+// 发布前可访问性审计（只读）：用系统 Edge 打开 web/dist 的静态 DOM，
 // 统计交互控件的可访问名、label 关联、img alt、tab 序、焦点可见性线索。
 // JS 全部阻断，只看 HTML 静态语义 —— 与「页面脚本未执行时」的语义等价。
 //
@@ -26,7 +26,7 @@ const PAGES = ['settings.html', 'break.html', 'takeout.html', 'prebreak.html'];
   for (const f of PAGES) {
     const page = await browser.newPage({ viewport: { width: 913, height: 857 } });
     await page.route('**/*.js', (r) => r.abort());
-    const url = 'file:///' + path.resolve(ROOT, 'cmd/workerrest/frontend/dist', f).replace(/\\/g, '/');
+    const url = 'file:///' + path.resolve(ROOT, 'cmd/workerrest/web/dist', f).replace(/\\/g, '/');
     await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
     out[f] = await page.evaluate(() => {
       // 注意用 textContent 而不是 innerText：`<details>` 收起时其内容的 innerText 是空串，

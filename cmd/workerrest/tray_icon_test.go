@@ -12,7 +12,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/w32"
 )
 
-// 图片资产统一放在 frontend/dist 下（由 main.go 的 //go:embed all:frontend/dist 打进 exe），
+// 图片资产统一放在 web/dist 下（由 main.go 的 //go:embed all:web/dist 打进 exe），
 // 仓库根不再有 assets/ 目录。全项目只有一个图标文件 icon.png，三处共用：
 // 标题栏 <img class="tb-icon">、系统托盘（trayIcon）、exe 文件图标（构建期生成 syso）。
 //
@@ -30,7 +30,7 @@ import (
 // TestTrayIconIsEmbeddedPNG 托盘图标必须是能从 embed 读到的 PNG。
 func TestTrayIconIsEmbeddedPNG(t *testing.T) {
 	if len(trayIcon) == 0 {
-		t.Fatal("trayIcon 为空：frontend/dist/icon.png 没被 //go:embed all:frontend/dist 打进来")
+		t.Fatal("trayIcon 为空：web/dist/icon.png 没被 //go:embed all:web/dist 打进来")
 	}
 	if !bytes.HasPrefix(trayIcon, []byte("\x89PNG\r\n\x1a\n")) {
 		t.Fatalf("trayIcon 不是 PNG（头 % x）：Wails 只认 PNG 与 ICO，别塞别的格式", trayIcon[:8])
@@ -54,7 +54,7 @@ func TestFrontendDistImagesNonEmpty(t *testing.T) {
 	imgExt := map[string]bool{".png": true, ".ico": true, ".webp": true, ".jpg": true, ".jpeg": true, ".gif": true}
 	foundIcon := false
 	count := 0
-	err := fs.WalkDir(assets, "frontend/dist", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(assets, "web/dist", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -79,9 +79,9 @@ func TestFrontendDistImagesNonEmpty(t *testing.T) {
 		t.Fatalf("遍历 embed 的前端资源失败: %v", err)
 	}
 	if count == 0 {
-		t.Fatal("frontend/dist 下没有任何位图资产，图片很可能被整体删掉了")
+		t.Fatal("web/dist 下没有任何位图资产，图片很可能被整体删掉了")
 	}
 	if !foundIcon {
-		t.Fatal("frontend/dist/icon.png 不存在：标题栏、托盘、exe 图标都依赖它")
+		t.Fatal("web/dist/icon.png 不存在：标题栏、托盘、exe 图标都依赖它")
 	}
 }

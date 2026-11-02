@@ -1,3 +1,7 @@
+// Package sound 是提示音的纯逻辑：从配置里挑本次该放哪一首（单曲循环 / 随机 / 顺序），
+// 以及用户音频文件与内置音的文件命名规则。
+//
+// 不含播放 —— 真正解码与输出在 cmd 层的 sound_host.go（依赖 Wails 的音频通道）。
 package sound
 
 import (

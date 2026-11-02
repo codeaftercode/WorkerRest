@@ -225,7 +225,7 @@ func TestMergeConfigAdditive(t *testing.T) {
 	}
 
 	raw := map[string]any{"oldKey": "local", "keep": 1}
-	if err := mergeConfigFromDir(dir, raw); err != nil {
+	if err := settings.MergeConfigFromDir(dir, raw); err != nil {
 		t.Fatalf("mergeConfigFromDir 报错: %v", err)
 	}
 	if raw["oldKey"] != "local" {

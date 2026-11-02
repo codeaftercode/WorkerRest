@@ -22,7 +22,7 @@ import (
 )
 
 // Go + Wails v3 的后端。前端复用 上一版 renderer 的产物，只通过 shim.js 把
-// window.api 映射到这里的绑定方法（见 frontend/dist/shim.js 与 contract.go）。
+// window.api 映射到这里的绑定方法（见 web/dist/shim.js 与 contract.go）。
 //
 // 多窗口是选 Wails v3（而非 v2）的原因：本项目核心交互就是多个无边框透明窗口
 // （每屏一个提醒窗口 + 外卖窗口 + 提前提示窗口 + 设置窗口），v2 只有单窗口。
@@ -162,11 +162,11 @@ func NewApp(app *application.App) *App {
 		idle:            idle.NewIdleState(),
 		activeTab:       "general",
 	}
-	a.rolesRoot = filepath.Join(a.resourcesRoot(), "supervisors")
+	a.rolesRoot = a.assetDir("supervisors")
 	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
 	settings.SetResourcesRootHint(a.resourcesRoot)
-	// 内置提示音随包目录：<resourcesRoot>/sounds（打包态 exe 旁、开发态模块根）
-	sound.SetBuiltinDirFn(func() string { return filepath.Join(a.resourcesRoot(), "sounds") })
+	// 内置提示音随包目录：打包态 <exe>/sounds，开发态 <模块根>/assets/sounds
+	sound.SetBuiltinDirFn(func() string { return a.assetDir("sounds") })
 	a.cfg = settings.Load(a.resourcesRoot())
 	return a
 }
@@ -312,8 +312,9 @@ func max0(v int64) int64 {
 
 // ---------- 路径 ----------
 
-// resourcesRoot 定位随包数据目录（supervisors/ 等）：打包态取 exe 旁，开发态回退到模块根。
-// supervisors/ 随 Go 工程一起分发（在模块根下），不再复用上层 上一版工程的数据。
+// resourcesRoot 定位随包数据目录（config/ 等）：打包态取 exe 旁，开发态回退到模块根。
+// 随包的静态资源（supervisors/、sounds/）另走 assetDir —— 它们在仓库里收在 assets/ 下，
+// 在便携包里仍与 exe 平铺。
 func (a *App) resourcesRoot() string {
 	exe, err := os.Executable()
 	if err != nil || isDevBuild(exe) {
@@ -360,9 +361,40 @@ func nearestModuleRoot(dir string) string {
 	return ""
 }
 
+// assetDir 定位一个随包的静态资源目录（supervisors / sounds）。
+//
+// 两套布局都要认：
+//   - 便携包：与 exe 平铺（<exe>/supervisors、<exe>/sounds）—— 这是产品交付形状，
+//     用户往 exe 旁的 sounds/ 丢音频就能被体检流程发现，所以不能被仓库布局顶掉；
+//   - 开发态：仓库里统一收在 assets/ 下（<模块根>/assets/supervisors）。
+//
+// 优先平铺：只有当平铺目录不存在时才回退到 assets/。两者都不存在时返回平铺路径，
+// 调用方按「空目录」处理（会走「没有可用专员 / 没有内置提示音」的分支）。
+func (a *App) assetDir(name string) string {
+	root := a.resourcesRoot()
+	flat := filepath.Join(root, name)
+	if st, err := os.Stat(flat); err == nil && st.IsDir() {
+		return flat
+	}
+	nested := filepath.Join(root, "assets", name)
+	if st, err := os.Stat(nested); err == nil && st.IsDir() {
+		return nested
+	}
+	return flat
+}
+
+// hasSupervisorsDir 判断某个目录是不是「随包数据根」：便携包看平铺的 supervisors/，
+// 仓库里看 assets/supervisors/。用来区分「exe 旁的安装目录」与「构建输出目录」。
 func hasSupervisorsDir(dir string) bool {
-	st, err := os.Stat(filepath.Join(dir, "supervisors"))
-	return err == nil && st.IsDir()
+	for _, p := range []string{
+		filepath.Join(dir, "supervisors"),
+		filepath.Join(dir, "assets", "supervisors"),
+	} {
+		if st, err := os.Stat(p); err == nil && st.IsDir() {
+			return true
+		}
+	}
+	return false
 }
 
 func isDevBuild(exe string) bool {

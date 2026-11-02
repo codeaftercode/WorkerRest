@@ -104,7 +104,6 @@
   },
   "autostart": false,
   "startMinimized": false,
-  "installId": "",
   "checkUpdateOnStart": true,
   "sites": ["https://www.goodgoodlive.com/worker-rest/version.json"]
 }

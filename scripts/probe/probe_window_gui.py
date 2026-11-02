@@ -125,7 +125,7 @@ def main():
     if os.environ.get("WR_NO_BUILD") != "1":
         print("构建 GUI 产物（带控制台，便于看日志）…")
         b = subprocess.run(
-            ["go", "build", "-o", EXE, "-ldflags", "-s -w", "."],
+            ["go", "build", "-o", EXE, "-ldflags", "-s -w", "./cmd/workerrest"],
             cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         if b.returncode != 0:
@@ -135,7 +135,7 @@ def main():
     shutil.rmtree(ISO, ignore_errors=True)
     os.makedirs(ISO, exist_ok=True)
     cfg_path = os.path.join(ISO, "settings.json")
-    with open(os.path.join(ROOT, "default_settings.json"), "r", encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "internal", "settings", "default_settings.json"), "r", encoding="utf-8") as f:
         defaults = json.load(f)
     with open(cfg_path, "w", encoding="utf-8") as f:
         json.dump(defaults, f, ensure_ascii=False, indent=2)

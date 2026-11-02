@@ -6,7 +6,7 @@
 替换早期只嵌图标、没有 VERSIONINFO 也没有应用清单的 `rsrc` 方案（审计 域2-4）。
 
 三类资源：
-  - RT_GROUP_ICON / RT_ICON —— exe 文件图标（多尺寸，从 frontend/dist/icon.png 现算）
+  - RT_GROUP_ICON / RT_ICON —— exe 文件图标（多尺寸，从 web/dist/icon.png 现算）
   - RT_VERSION(16) —— 文件/产品版本、公司、描述等（资源管理器「属性 → 详细信息」可见）
   - RT_MANIFEST(24) —— 应用清单：longPathAware（Win10 1607+ 支持 >260 字符路径）
     与 supportedOS（让系统正确识别新系统，避免兼容模式误判）
@@ -50,10 +50,10 @@ MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（含 embed
 sys.path.insert(0, HERE)
 import version as version_mod  # noqa: E402
 
-ICON_SRC = os.path.join(MAIN_DIR, "frontend", "dist", "icon.png")
+ICON_SRC = os.path.join(MAIN_DIR, "web", "dist", "icon.png")
 SYSO_OUT = os.path.join(MAIN_DIR, "rsrc_windows_amd64.syso")
-VERSIONINFO_JSON = os.path.join(MAIN_DIR, "versioninfo.json")
-MANIFEST_SRC = os.path.join(MAIN_DIR, "app.manifest")
+VERSIONINFO_JSON = os.path.join(ROOT, "build", "windows", "versioninfo.json")
+MANIFEST_SRC = os.path.join(ROOT, "build", "windows", "app.manifest")
 
 # 图标多尺寸（与早期 rsrc 方案的 sizes=[16,24,32,48,64,128,256] 一致）
 ICO_SIZES = [16, 24, 32, 48, 64, 128, 256]

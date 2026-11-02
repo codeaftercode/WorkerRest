@@ -1,3 +1,8 @@
+// Package windnd 判断「现在该不该让提醒窗弹出来」：系统勿扰模式、全屏独占应用
+// （游戏、放映）都算不应打扰。
+//
+// 判据来自 Windows 的 SHQueryUserNotificationState；非 Windows 平台走 _other 桩，
+// 恒返回「可以打扰」，保证跨平台编译与测试。
 package windnd
 
 import "fmt"

@@ -5,6 +5,7 @@ import (
 	"time"
 	"workerrest/internal/logx"
 	"workerrest/internal/model"
+	"workerrest/internal/plan"
 
 	"workerrest/internal/platform"
 )
@@ -174,7 +175,7 @@ func (a *App) PreviewTakeout(win string) string {
 	}
 	cfg := a.CfgSnapshot()
 	slot := model.TimeSlot{ID: "preview", Hour: time.Now().Hour(), Minute: time.Now().Minute(), Enabled: true}
-	if hit, ok := nextSlotAt(cfg.TakeoutSlots(), nowMs()); ok {
+	if hit, ok := plan.NextSlotAt(cfg.TakeoutSlots(), nowMs()); ok {
 		slot = hit.Slot
 	}
 	a.showTakeoutWindows(slot, true, 0)

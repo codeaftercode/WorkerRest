@@ -1,0 +1,8 @@
+{
+  "name": "workerrest-probe-tools",
+  "private": true,
+  "description": "验证脚本的 Node 依赖（仅开发期用，非产品依赖）：Playwright 驱动系统 Edge 加载 web/dist 页面做 DOM 断言。装法与用法见本目录 README.md。",
+  "devDependencies": {
+    "playwright": "^1.64.0"
+  }
+}

@@ -1,3 +1,11 @@
+// Package settings 是配置域：整份 map[string]any 的读写、deepMerge、类型归一、落盘。
+//
+// 设计要点：配置永远当作一整份 JSON 对象处理（不做逐字段强类型 struct 映射），读取时
+// 通过一组带兜底的方法取值 —— 键缺失、类型被手改坏、老版本残留键都不会让程序崩，只会
+// 回落到出厂默认。出厂默认内嵌在本包的 default_settings.json（全仓唯一源）。
+//
+// 写入策略：先写 .tmp 再 Rename，避免写一半断电留下半个 JSON。本包不持有 App 状态，
+// 也不决定「改动什么时候生效」——那是 cmd 层的事。
 package settings
 
 import (

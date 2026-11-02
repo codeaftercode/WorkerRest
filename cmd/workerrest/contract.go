@@ -5,7 +5,7 @@ import (
 	"sort"
 )
 
-// 前端调用契约：frontend/dist/shim.js 会按名字调用的绑定方法。
+// 前端调用契约：web/dist/shim.js 会按名字调用的绑定方法。
 //
 // 为什么单独列一份：Wails v3 的前端调用是「按全限定名调用」
 // （`Call.ByName("main.App.<方法名>", ...)`，见 shim.js），方法一旦改名，
@@ -15,7 +15,7 @@ import (
 //   2. wiredCalls 里的方法在 *App 上都存在；
 //   3. wiredCalls 与 shim.js 里真正 `call("<名>")` 的集合完全一致（双向）。
 //
-// 新增前端调用的绑定方法时，务必同步这个列表（以及 frontend/dist/shim.js）。
+// 新增前端调用的绑定方法时，务必同步这个列表（以及 web/dist/shim.js）。
 
 // wiredCalls 已接通的绑定：前端真的会调、Go 侧有实现。
 // 「已接通」= 名字与签名对得上、调用不会断；所有方法都已是真实现（含文件选择框 /

@@ -20,27 +20,44 @@ import (
 // 不解析具体是哪一行：有的循环（scheduler.loop / hotkeys.run / watchLoop）在函数
 // 内部包，外部调用点看不出，逐行匹配只会制造误报。宽松口径同样能拦住
 // 「新文件 + 新 goroutine + 零兜底」这个真问题。
+//
+// 扫描范围是 cmd/ + internal/ 的**全部**生产文件，不是本包目录。曾经这里只
+// filepath.Glob("*.go")，源码下沉到 internal/ 之后，stats 那两条后台循环就整片
+// 移出了视野 —— 断言还在跑、还绿，只是不再看守新家。
 func TestBackgroundGoroutinesAreGuarded(t *testing.T) {
 	start := regexp.MustCompile(`(?m)^\s*go\s+\S`)
-	files, err := filepath.Glob("*.go")
-	if err != nil {
-		t.Fatalf("列目录失败：%v", err)
+	root := repoRoot(t)
+	var files []string
+	for _, sub := range []string{"cmd", "internal"} {
+		err := filepath.WalkDir(filepath.Join(root, sub), func(p string, d os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if !d.IsDir() && strings.HasSuffix(p, ".go") && !strings.HasSuffix(p, "_test.go") {
+				files = append(files, p)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatalf("遍历 %s 失败：%v", sub, err)
+		}
 	}
 	checked := 0
-	for _, f := range files {
-		if strings.HasSuffix(f, "_test.go") {
-			continue
-		}
-		src, err := os.ReadFile(f)
+	for _, p := range files {
+		src, err := os.ReadFile(p)
 		if err != nil {
-			t.Fatalf("读 %s 失败：%v", f, err)
+			t.Fatalf("读 %s 失败：%v", p, err)
 		}
 		if !start.Match(src) {
 			continue
 		}
+		rel, relErr := filepath.Rel(root, p)
+		if relErr != nil {
+			rel = p
+		}
 		checked++
 		if !strings.Contains(string(src), "GuardRun") {
-			t.Errorf("%s 起了后台 goroutine 却没有 panic 兜底：把循环体包进 logx.GuardRun（见 internal/logx/recoverguard.go）", f)
+			t.Errorf("%s 起了后台 goroutine 却没有 panic 兜底：把循环体包进 logx.GuardRun（见 internal/logx/recoverguard.go）", rel)
 		}
 	}
 	if checked < 5 {

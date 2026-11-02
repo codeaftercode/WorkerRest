@@ -25,6 +25,11 @@ SetWindowDisplayAffinity，而本项目的提醒窗口是半透明无边框窗�
 用屏幕 DC 的 BitBlt 抓图（不依赖 GDI+ / PIL）：这是截图类工具与「共享窗口」预览
 最常走的一条路径，也会尊重 WDA 亲和性。
 
+前置预检（2026-11 加）：跑之前先抓一块桌面，判断「到底有没有画面可抓」。远程会话、
+锁屏、部分虚拟显卡下 BitBlt 会拿到一整块黑图，这时对照组必然数不到品红 —— 没有
+预检的话，探针会把「我看不见屏幕」报成「捕获保护没生效」，结论正好反了。预检不过
+直接返回退出码 3（= 无法测量），与「失败」区分开。
+
 隔离：WR_SETTINGS_PATH 指向 %TEMP% 的副本，绝不碰用户真实配置。
 用法：python scripts/probe_capture_guard.py [--keep] [--no-build]
 """
@@ -175,6 +180,29 @@ def magenta_ratio(data, w, h):
     return hit / total if total else 0.0
 
 
+def desktop_lit_ratio():
+    """抓一块桌面，返回「非黑像素占比」—— 判断这台机器到底有没有画面可抓。
+
+    远程会话 / 锁屏 / 部分虚拟显卡下 BitBlt 会返回整块黑图（实测过：mean=0、
+    非黑 0.0%，而 qwinsta 还显示 Console）。这种环境下「窗口没被抓到」与「屏幕
+    本身就看不见」无法区分，必须先把结论降级成「无法测量」，否则会把环境限制
+    报成产品缺陷。
+    """
+    vx, vy, vw, vh = virtual_screen()
+    w, h = max(1, min(vw, 480)), max(1, min(vh, 360))
+    data = grab(vx, vy, w, h)
+    step = 7
+    lit = total = 0
+    for row in range(0, h, step):
+        base = row * w * 4
+        for col in range(0, w, step):
+            i = base + col * 4
+            total += 1
+            if data[i] > 16 or data[i + 1] > 16 or data[i + 2] > 16:
+                lit += 1
+    return (lit / total) if total else 0.0
+
+
 def find_window(title, timeout=30.0):
     """按标题找可见窗口，返回 (hwnd, rect)。"""
     found = []
@@ -230,7 +258,7 @@ def build():
     print("构建 GUI 产物…")
     env = dict(os.environ)
     env.setdefault("GOCACHE", os.path.join(os.environ.get("LOCALAPPDATA", TEMP), "go-build"))
-    b = subprocess.run(["go", "build", "-o", EXE, "-ldflags", "-s -w", "."],
+    b = subprocess.run(["go", "build", "-o", EXE, "-ldflags", "-s -w", "./cmd/workerrest"],
                        cwd=ROOT, capture_output=True, text=True,
                        encoding="utf-8", errors="replace", env=env)
     if b.returncode != 0:
@@ -239,7 +267,7 @@ def build():
 
 
 def make_cfg(hide_on_share, scene="short"):
-    with open(os.path.join(ROOT, "default_settings.json"), "r", encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "internal", "settings", "default_settings.json"), "r", encoding="utf-8") as f:
         cfg = json.load(f)
     # 先全关：一次只放一类提醒出来，窗口矩形里不会混进别的窗口，抓图才有意义
     off = {"enabled": False, "mode": "countdown", "intervalMs": 1800000,
@@ -442,6 +470,20 @@ def main():
 
     lines = []
     print("共享屏幕时隐藏：真机捕获验证")
+
+    # 预检：屏幕抓不到东西就别往下跑 —— 否则对照组必然「失败」，把环境限制写成缺陷
+    try:
+        lit = desktop_lit_ratio()
+    except Exception as e:
+        lit = 0.0
+        print("  桌面预检抓图异常：%r" % (e,))
+    print("  桌面预检：非黑像素 %.1f%%" % (lit * 100))
+    if lit < 0.02:
+        print()
+        print("结论：本机无法测量（桌面截屏整块是黑的，非黑像素 %.1f%%）。" % (lit * 100))
+        print("      BitBlt 抓不到画面时，「窗口被隐藏」与「屏幕本身看不见」无法区分，")
+        print("      因此本项既不算通过也不算失败。请在有人值守的交互式桌面上重跑。")
+        return 3
 
     # 对照组只跑短休息：它证明「抓图链路能看见提醒窗口」，一类就够
     ok1, why1, d1 = run_case(False, "short")

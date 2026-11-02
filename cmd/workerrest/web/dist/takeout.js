@@ -2567,8 +2567,20 @@
         if (!wpx || !hpx) break;
         l = Math.max(RT_EDGE, rightPx - wpx);
         // 题名矩形 → 剖面列区间；数「该区间内比题名底更靠上的不透明像素」
-        const cx0 = Math.max(0, Math.floor(((l - imgLeft) / drawW) * pf.w));
-        const cx1 = Math.min(pf.w - 1, Math.ceil(((rightPx - imgLeft) / drawW) * pf.w));
+        // ⚠️ minY 是按**原图列序**量的（canvas 直接 drawImage，没有翻转），而
+        // imgLeft/drawW 是**显示方向**的映射。立绘水平翻转时（flip），屏幕 x 增大
+        // = 原图列减小，列区间必须镜像 —— 漏掉这一步就去查了图片的另半边：牌面
+        // 明明落在人物左侧的空白里，判据却在右侧对称位置数到一堆像素，于是「每列
+        // 都算遮挡」（实测魔法师 hit=34，正好等于区间列数 34；字号被一路压到 15px
+        // 下限，而实拍牌面底下是纯背景）。bandX 早就按 flip 取过头部左缘，这里
+        // 是同一件事的另一半，漏了就成了两套坐标系混用。
+        let cx0 = Math.max(0, Math.floor(((l - imgLeft) / drawW) * pf.w));
+        let cx1 = Math.min(pf.w - 1, Math.ceil(((rightPx - imgLeft) / drawW) * pf.w));
+        if (flip) {
+          const mirrored = pf.w - 1 - cx1;
+          cx1 = pf.w - 1 - cx0;
+          cx0 = Math.max(0, mirrored);
+        }
         const cy = ((visTop + hpx - imgTop) / drawH) * pf.h;
         hit = 0;
         for (let x = cx0; x <= cx1; x++) {

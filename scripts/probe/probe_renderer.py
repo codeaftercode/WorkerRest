@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""渲染层探针驱动：把真实的 frontend/dist 页面指向无头服务，在浏览器里跑一遍
+"""渲染层探针驱动：把真实的 web/dist 页面指向无头服务，在浏览器里跑一遍
 完整的「shim.js → Go 绑定 → 渲染层」链路，并断言 DOM 与截图。
 
 与 smoke_server.py 的分工：
@@ -10,7 +10,7 @@
     只有这一层看得见。
 
 前置：先构建无头服务（python 会自动构建）
-    go build -tags server -o build/bin/chibingren_server.exe .
+    go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest
 用法：python scripts/probe_renderer.py [--port 29732] [--keep]
 """
 
@@ -29,7 +29,7 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
 EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
-DIST = os.path.join(ROOT, "cmd", "workerrest", "frontend", "dist")
+DIST = os.path.join(ROOT, "cmd", "workerrest", "web", "dist")
 # 印泥变体档数：与 scripts/make_seal_ink.py 的 VARIANTS、两份 JS 的 SEAL_VARIANTS 一致。
 # 这里只断言「挑中的那一档在 1~N 之间且文件存在」——不断言具体是几号（那是随机的）。
 SEAL_VARIANTS = 6
@@ -38,6 +38,8 @@ SEAL_VARIANTS = 6
 def role_dir(root, name):
     """在 supervisors/ 下按专员名反查目录（目录名是名字的投影，可能被清洗过）。"""
     sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):  # 仓库布局：随包资源收在 assets/ 下
+        sup = os.path.join(root, "assets", "supervisors")
     if not os.path.isdir(sup):
         return None
     for dn in os.listdir(sup):
@@ -60,7 +62,7 @@ TEMP = os.environ.get("TEMP", ROOT)
 OUT = os.path.join(TEMP, "wr_go_probe")
 REPORT = os.path.join(TEMP, "wr_go_probe_report.txt")
 LOG = os.path.join(TEMP, "wr_go_probe_server.log")
-# 隔离副本：探针也绝不能碰用户的真实配置（加载路径会回写固定键 / 预置条目）
+# 隔离副本：探针也绝不能碰用户的真实配置（加载路径会补种预置条目并回写）
 ISO = os.path.join(TEMP, "wr_probe_iso")
 
 
@@ -70,8 +72,7 @@ BUILTIN_ROLE_ORDER = [
     "秦始皇", "神秘黑客", "中尉军官", "熊猫侠客",
     "医生", "经济学家", "法官", "体能教练",
     "毒舌损友", "野蛮女友", "霸道总裁", "温柔学姐",
-    "眼镜主管", "飞行员", "画家", "魔法师",
-    "战士",
+    "眼镜主管", "画家", "魔法师",
 ]
 
 
@@ -91,6 +92,8 @@ def scan_role_names(root):
     断言会必然误报红。这里从磁盘现算，删一个少一个都不误报。
     """
     sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):  # 仓库布局：随包资源收在 assets/ 下
+        sup = os.path.join(root, "assets", "supervisors")
     recs = []
     if os.path.isdir(sup):
         for dn in sorted(os.listdir(sup)):
@@ -218,20 +221,23 @@ def main():
     ap.add_argument("--keep", action="store_true")
     args = ap.parse_args()
 
-    # Playwright 驱动系统 Edge：node 走 PATH，playwright 在项目根的 node_modules。
+    # Playwright 驱动系统 Edge：node 走 PATH，playwright 装在 scripts/node_modules
+    #（历史位置是仓库根，两处都认）。
     node_cmd = shutil.which("node")
     if not node_cmd:
         print("找不到 node（渲染层探针改用 Playwright 驱动 Edge，需要 node 环境）")
         return 2
-    playwright_mod = os.path.join(ROOT, "node_modules", "playwright")
-    if not os.path.isdir(playwright_mod):
+    playwright_mod = next((os.path.join(d, "playwright") for d in
+                          (os.path.join(ROOT, "scripts", "node_modules"), os.path.join(ROOT, "node_modules"))
+                          if os.path.isdir(os.path.join(d, "playwright"))), "")
+    if not playwright_mod:
         print("找不到 playwright（先在本目录 npm install）")
         return 2
 
     # 构建无头服务（保证探针跑的是当前源码）
     print("构建无头服务…")
     b = subprocess.run(
-        ["go", "build", "-tags", "server", "-o", os.path.join("build", "bin", "chibingren_server.exe"), "-ldflags", "-s -w", "."],
+        ["go", "build", "-tags", "server", "-o", os.path.join("build", "bin", "chibingren_server.exe"), "-ldflags", "-s -w", "./cmd/workerrest"],
         cwd=ROOT, capture_output=True, text=True,
         encoding="utf-8", errors="replace",
     )
@@ -451,8 +457,13 @@ def main():
               "督休专员台词面板渲染出条目（ListRoles 真的下发了 messages）",
               "items=%s empty=%s" % (stg.get("supMsgItems"), stg.get("supMsgEmpty")))
         panel_role = stg.get("supMsgRole")
-        if fixed_role_name:
-            check(panel_role == fixed_role_name, "台词面板标题 == 配置固定的督休专员名",
+        # 「提醒内容」面板标题 = 设置页当前正在编辑的那位，**不是** fixedRole：
+        # 固定模式下初始编辑对象按 fixedRole 选，两者必然相等；随机/顺序模式下按
+        # 「第一个已勾选」选（见 settings.js 的 ensureSupEditKey），fixedRole 只是个
+        # 遗留值（2026-11-02 用户切模式后 fixedRole 停在「神秘黑客」、面板显示「秦始皇」
+        # 曾把这里判红）。所以只有固定模式才卡死等于 fixedRole。
+        if sel_mode == "fixed" and fixed_role_name:
+            check(panel_role == fixed_role_name, "台词面板标题 == 固定模式下的 fixedRole",
                   "%s vs %s" % (panel_role, fixed_role_name))
         else:
             check(panel_role in role_names, "台词面板标题是磁盘上某个督休专员名", panel_role)
@@ -1497,7 +1508,7 @@ def main():
 
         # ---- 禁缩放守卫（提醒窗口 / 预览窗口）----
         # 2026-10-25 用户报障：触屏两指捏合会把窗口内容放大缩小。三个页面都引了
-        # frontend/dist/nozoom.js（touch-action 去 pinch-zoom + 拦 Ctrl 滚轮/键盘），
+        # web/dist/nozoom.js（touch-action 去 pinch-zoom + 拦 Ctrl 滚轮/键盘），
         # Go 侧另有 --disable-pinch（浏览器进程级，无头探针验不到，只能在真机看）。
         # 这里锁住「守卫装上了、入口都堵住、普通滚轮没被误伤」这三件事。
         nz = m.get("nozoom") or {}

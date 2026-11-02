@@ -11,7 +11,7 @@
   · MIT / BSD-3 的义务是「随二进制分发时复现版权声明与许可全文」。手抄的清单一旦
     依赖升级就过期，而**过期比没有更糟**（声明与实物不符，等于虚假声明）。
   · 所以清单从**构建事实**推导：Go 模块取 `go list -deps`（与 `go version -m` 读出的
-    内嵌依赖一致），Go 标准库取 $GOROOT，前端内联库取 frontend/dist 产物里的库。
+    内嵌依赖一致），Go 标准库取 $GOROOT，前端内联库取 web/dist 产物里的库。
   · `--check` 重新生成并与已提交的文件逐字节比较；打包脚本会在打包前跑它，
     依赖一升版本就立刻失败，而不是悄悄发出去。
 
@@ -34,7 +34,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（含 embed 资源）
 OUT = os.path.join(MAIN_DIR, "THIRD-PARTY-NOTICES.txt")
 VENDOR = os.path.join(HERE, "notices")
-BUNDLE = os.path.join(MAIN_DIR, "frontend", "dist", "takeout.js")
+BUNDLE = os.path.join(MAIN_DIR, "web", "dist", "takeout.js")
 
 # 前端内联第三方库。fingerprint 是产物里必须出现的标识串：库被换掉/删掉时这里立刻红，
 # 免得清单继续声明一个已经不在产物里的库（或漏掉新内联进来的库）。
@@ -190,7 +190,7 @@ def build():
         if v["fingerprint"].lower() not in bundle:
             raise SystemExit(
                 "前端产物里找不到 %s 的标识（%r）—— 清单可能已过期，请核对 "
-                "frontend/dist/takeout.js 里内联了哪些库" % (v["name"], v["fingerprint"]))
+                "web/dist/takeout.js 里内联了哪些库" % (v["name"], v["fingerprint"]))
 
     modcache = go(go_bin, "env", "GOMODCACHE").strip()
     goroot = go(go_bin, "env", "GOROOT").strip()

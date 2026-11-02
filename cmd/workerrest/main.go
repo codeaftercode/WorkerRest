@@ -1,3 +1,9 @@
+// Command workerrest 是「吃饼人也敢休息？」（WorkerRest）的桌面入口。
+//
+// 本包只承担两件必须留在 main 里的事：一是把业务能力注册成 Wails 服务（绑定方法要被
+// 反射成 main.App.xxx，Wails 只认 main 包，所以签名层搬不走），二是创建窗口 / 托盘
+// 并跑事件循环。能脱离界面推理的逻辑都在 workerrest/internal 下：计划、调度、配置、
+// 统计、专员资产；平台差异在 internal/platform 等 _windows/_other 成对的包里收口。
 package main
 
 import (
@@ -15,17 +21,20 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 前端资源：frontend/dist 由渲染层构建流程产出（HTML/CSS/JS），shim.js 把
+// 前端资源：web/dist 由渲染层构建流程产出（HTML/CSS/JS），shim.js 把
 // window.api 适配到 Go 绑定，使 上一版 renderer 在不改业务代码的前提下直接复用。
 //
 // 图片也统一放这里，只有一份 256×256 的 icon.png 通吃三处：设置窗口标题栏
 // （<img class="tb-icon">）、系统托盘（下面的 trayIcon）、exe 文件图标（构建期由它
-// 生成 rsrc_windows_amd64.syso，见 README「打包」）。不再有 assets/ 目录。
+// 生成 rsrc_windows_amd64.syso，见 README「打包」）。
 //
-//go:embed all:frontend/dist
+// 注意别和模块根的 assets/ 搞混：那是「随包分发、但不进 exe」的素材（督休专员立绘、
+// 内置提示音），由打包脚本复制到 exe 旁；这里这份才是编进二进制的渲染层。
+//
+//go:embed all:web/dist
 var assets embed.FS
 
-// trayIcon 是系统托盘图标：从上面这份前端资源里取（frontend/dist/icon.png）。
+// trayIcon 是系统托盘图标：从上面这份前端资源里取（web/dist/icon.png）。
 // 用 PNG 而不是 ICO 是刻意的 —— Wails v3 的 SetIcon 走 w32.CreateSmallHIconFromImage，
 // 该函数 PNG/ICO 都接受（见 wails/v3/pkg/w32/icon.go 的 iconResourceData），系统再按
 // SM_CXSMICON 缩放到托盘尺寸；一份 256 的 PNG 就同时够标题栏（20px）、托盘（16~24px）
@@ -35,7 +44,7 @@ var assets embed.FS
 var trayIcon = loadTrayIcon()
 
 func loadTrayIcon() []byte {
-	b, err := assets.ReadFile("frontend/dist/icon.png")
+	b, err := assets.ReadFile("web/dist/icon.png")
 	if err != nil {
 		log.Printf("[tray] 读取托盘图标失败: %v", err)
 		return nil
@@ -139,7 +148,7 @@ func main() {
 			// 而 IsPinchZoomEnabled 默认 true 且 Wails v3 没有暴露这个开关，只能用
 			// Chromium 开关堵。⚠️ 浏览器参数是**按环境（整进程）**生效的，没法只对某个
 			// 窗口关，所以对所有窗口一起关 —— 这个 App 里没有任何窗口需要捏合缩放。
-			// 页面侧另有 frontend/dist/nozoom.js 做同目的的兜底（touch-action + 拦
+			// 页面侧另有 web/dist/nozoom.js 做同目的的兜底（touch-action + 拦
 			// Ctrl+滚轮），两层叠加。
 			// --disable-direct-composition：**「共享屏幕时隐藏提醒窗口」的前提**。
 			// Chromium 默认走 DirectComposition 把画面交给 DWM 合成：像素属于渲染进程的

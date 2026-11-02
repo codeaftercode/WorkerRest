@@ -1,3 +1,8 @@
+// Package role 管理督休专员这份「软件资产」：目录扫描、名字查重、立绘与磁贴预览图、
+// 导入导出、顺序维护。专员的身份是目录名 + meta.json 里的 name，没有内部 id。
+//
+// 本包只处理磁盘上的文件与元信息，不涉及配置读写（那是 internal/settings）与界面渲染
+// （缩略图字节由 cmd 层的 role_thumb.js 生成）。
 package role
 
 import (
@@ -59,10 +64,8 @@ var DefaultRoleOrder = []string{
 	"霸道总裁",
 	"温柔学姐",
 	"眼镜主管",
-	"飞行员",
 	"画家",
 	"魔法师",
-	"战士",
 }
 
 // IsImageName 图片文件名合法性（与 supervisor.ts 的 isImageName 同口径）：

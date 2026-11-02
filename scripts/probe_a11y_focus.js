@@ -14,7 +14,7 @@ const { chromium } = require('playwright-core');
 const path = require('path');
 
 const ROOT = path.resolve(__dirname, '..');
-const DIST = path.join(ROOT, 'cmd', 'workerrest', 'frontend', 'dist');
+const DIST = path.join(ROOT, 'cmd', 'workerrest', 'web', 'dist');
 
 const MODALS = [
   'batch-modal',

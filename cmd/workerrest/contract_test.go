@@ -29,7 +29,7 @@ import (
 func TestBindingFQNPrefix(t *testing.T) {
 	if bindingFQN != "main.App." {
 		t.Fatalf("绑定前缀被改成了 %q，必须是 \"main.App.\"（main 包在构建产物里的 PkgPath 就是 main）\n"+
-			"要同步修改 rewrite-go/contract.go 与 rewrite-go/frontend/dist/shim.js", bindingFQN)
+			"要同步修改 rewrite-go/contract.go 与 rewrite-go/web/dist/shim.js", bindingFQN)
 	}
 	if want := "." + reflect.TypeOf(App{}).Name() + "."; !strings.HasSuffix(bindingFQN, want) {
 		t.Fatalf("前缀 %q 的类型名部分与 *App 不一致（应为 ...%s）", bindingFQN, want)
@@ -50,7 +50,7 @@ func TestContractMethodsExistOnApp(t *testing.T) {
 //
 // 同时校验前缀字面量一致，避免改了 Go 侧忘了改 JS。
 func TestShimMatchesContract(t *testing.T) {
-	const shimPath = "frontend/dist/shim.js"
+	const shimPath = "web/dist/shim.js"
 	src, err := os.ReadFile(shimPath)
 	if err != nil {
 		t.Fatalf("读不到 %s: %v（测试须在 rewrite-go/ 包目录下运行）", shimPath, err)

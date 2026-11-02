@@ -29,7 +29,7 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 	}
 
 	root := repoRoot(t)
-	entries, err := os.ReadDir(filepath.Join(root, "supervisors"))
+	entries, err := os.ReadDir(filepath.Join(root, "assets", "supervisors"))
 	if err != nil {
 		t.Fatalf("读不到 supervisors/：%v", err)
 	}
@@ -38,7 +38,7 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 		if !e.IsDir() {
 			continue
 		}
-		path := filepath.Join(root, "supervisors", e.Name(), "meta.json")
+		path := filepath.Join(root, "assets", "supervisors", e.Name(), "meta.json")
 		raw, err := os.ReadFile(path)
 		if err != nil {
 			continue // 素材目录（没有 meta.json）本来就该跳过
@@ -62,7 +62,7 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 
 	// 前端三处 fallback 常量：读不到 geom 时按它显示，跟 Go 侧劈叉就会「换台机器
 	// 立绘突然小一圈」。这四处是同一组数字的手工副本，只能靠测试钉住。
-	dist := filepath.Join(root, "cmd", "workerrest", "frontend", "dist")
+	dist := filepath.Join(root, "cmd", "workerrest", "web", "dist")
 	for _, c := range []struct{ file, decl string }{
 		{"settings.js", "SUP_GEOM_DEFAULT"},
 		{"break.js", "GEOM_FALLBACK"},
@@ -99,7 +99,7 @@ func TestImportedRoleUsesDefaultGeom(t *testing.T) {
 	if err := os.WriteFile(src, []byte("fake-png-bytes"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	rolesRoot := filepath.Join(root, "supervisors")
+	rolesRoot := filepath.Join(root, "assets", "supervisors")
 	if err := os.MkdirAll(rolesRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}

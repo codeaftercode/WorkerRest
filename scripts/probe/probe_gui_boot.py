@@ -11,7 +11,7 @@
     （日志里会刷 `webview2: process failed`），但**主进程的启动链路、日志、系统能力探测
     完全不受影响**，断言就只打在这一层。
 
-隔离：`WR_SETTINGS_PATH` 指向 `%TEMP%` 里的真实配置副本（加载路径会回写固定键 /
+隔离：`WR_SETTINGS_PATH` 指向 `%TEMP%` 里的真实配置副本（加载路径会补种预置条目并回写 /
 预置条目）；启动路径本来就不碰注册表（只有用户改「开机自启动」时才写）。
 
 用法：python scripts/probe_gui_boot.py [--seconds 12] [--keep-exe]
@@ -74,7 +74,7 @@ def build(exe):
     env = dict(os.environ)
     env.pop("ELECTRON_RUN_AS_NODE", None)
     r = subprocess.run(
-        ["go", "build", "-o", os.path.relpath(exe, ROOT), "-ldflags", "-s -w", "."],
+        ["go", "build", "-o", os.path.relpath(exe, ROOT), "-ldflags", "-s -w", "./cmd/workerrest"],
         cwd=ROOT, env=env, capture_output=True,
     )
     return r.returncode, (r.stderr or b"").decode("utf-8", "replace")[:400]
@@ -102,7 +102,7 @@ def main():
     elif not os.path.exists(iso):
         # 本机还没有真实配置（新落点 config/settings.json 尚未生成）：拿出厂默认打底，
         # 探针在任何机器上都要能自给自足地验提前提示窗与提示音链路
-        default_cfg = os.path.join(ROOT, "default_settings.json")
+        default_cfg = os.path.join(ROOT, "internal", "settings", "default_settings.json")
         if os.path.exists(default_cfg):
             shutil.copyfile(default_cfg, iso)
     # 观察窗口内要让两件事都真的发生：
@@ -159,6 +159,12 @@ def main():
     check("无头模式：不启动空闲" not in text,
           "GUI 构建**不是**无头分支（三条监视都应启动）", "")
     check("[plan]" in text, "计划摘要落日志（调度器真的起来了）", "")
+    # 快捷键注册：hotkeys.go 只在**失败**时打 [hotkey] 行（无法识别 / 被别的程序占用），
+    # 所以「日志里没有 [hotkey]」就是四个默认快捷键都拿到了。这是缺席式判据，
+    # 只能证明「没失败」，不能证明「按下真的触发」—— 后者要真机按键注入，见验收报告。
+    hk_fail = [ln for ln in text.splitlines() if "[hotkey]" in ln]
+    check(not hk_fail, "四个默认快捷键注册无失败（日志里没有 [hotkey] 行）",
+          hk_fail[:2])
     # 提前提示窗：无头冒烟结构性看不见的那块 —— GUI 下「真的建窗」只有这里验得到
     check("[prebreak] 即将休息" in text,
           "进入提前提示区间（调度器 → onPreNotify 这条链路在 GUI 下通了）", "")

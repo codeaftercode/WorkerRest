@@ -9,7 +9,7 @@
 
     POST /wails/runtime
     {"object":0,"method":0,
-     "args":{"call-id":"<id>","methodName":"workerrest.App.<方法>","args":[...]}}
+     "args":{"call-id":"<id>","methodName":"main.App.<方法>","args":[...]}}
 
 断言分三层：
   1. 静态资源可服务（/、/break.html、/wails/runtime.js）；
@@ -40,7 +40,7 @@ EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
 TEMP = os.environ.get("TEMP", ROOT)
 REPORT = os.path.join(TEMP, "wr_go_smoke_report.txt")
 LOG = os.path.join(TEMP, "wr_go_smoke_server.log")
-# 隔离副本目录：绝不让冒烟碰用户的真实配置（Go 侧首次运行 / 补 installId 时会落盘）
+# 隔离副本目录：绝不让冒烟碰用户的真实配置（Go 侧首次运行 / 补种预置条目时会落盘）
 ISO = os.path.join(TEMP, "wr_smoke_iso")
 
 # Windows 控制台默认不是 UTF-8：断言标签里有中文，先固定 stdout 编码，
@@ -57,8 +57,7 @@ BUILTIN_ROLE_ORDER = [
     "秦始皇", "神秘黑客", "中尉军官", "熊猫侠客",
     "医生", "经济学家", "法官", "体能教练",
     "毒舌损友", "野蛮女友", "霸道总裁", "温柔学姐",
-    "眼镜主管", "飞行员", "画家", "魔法师",
-    "战士",
+    "眼镜主管", "画家", "魔法师",
 ]
 
 
@@ -78,6 +77,8 @@ def scan_role_names(root):
     断言会必然误报红。这里从磁盘现算，删一个少一个都不误报。
     """
     sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):  # 仓库布局：随包资源收在 assets/ 下
+        sup = os.path.join(root, "assets", "supervisors")
     recs = []
     if os.path.isdir(sup):
         for dn in sorted(os.listdir(sup)):
@@ -120,6 +121,8 @@ def expected_order(disk_keys, saved_order):
 def role_dir(root, name):
     """在 supervisors/ 下按专员名反查目录（目录名是名字的投影，可能被清洗过）。"""
     sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):  # 仓库布局：随包资源收在 assets/ 下
+        sup = os.path.join(root, "assets", "supervisors")
     if not os.path.isdir(sup):
         return None
     for dn in os.listdir(sup):
@@ -168,7 +171,7 @@ def free_port(preferred):
         return s.getsockname()[1]
 
 
-def http(method, url, body=None, headers=None, timeout=15):
+def _http_once(method, url, body=None, headers=None, timeout=15):
     req = urllib.request.Request(url, data=body, method=method)
     for k, v in (headers or {}).items():
         req.add_header(k, v)
@@ -179,6 +182,27 @@ def http(method, url, body=None, headers=None, timeout=15):
         return e.code, e.read().decode("utf-8", "replace")
     except Exception as e:  # 连接被拒 / 超时
         return 0, repr(e)
+
+
+# 环境噪声的重试名单：Windows 在突发请求下会偶发
+#   · 10048 WSAEADDRINUSE —— 客户端临时端口抖动；
+#   · 10055 WSAENOBUFS    —— 套接字缓冲区/队列耗尽（并发 + 大量 TIME_WAIT 时会撞上）；
+#   · 502 upstream connect failed —— Wails server 模式的反向代理连不上自己，同一原因。
+# 这几种都发生在「请求还没进到方法体」之前，重试安全，不重试就会把噪声报成产品缺陷。
+_TRANSIENT = ("10048", "10055", "timed out", "upstream connect failed")
+
+
+def http(method, url, body=None, headers=None, timeout=15, attempts=6):
+    last = (0, "")
+    for attempt in range(attempts):
+        st, raw = _http_once(method, url, body=body, headers=headers, timeout=timeout)
+        if st != 0 and "upstream connect failed" not in str(raw):
+            return st, raw
+        last = (st, raw)
+        if not any(k in str(raw) for k in _TRANSIENT):
+            return last
+        time.sleep(0.08 * (attempt + 1))
+    return last
 
 
 def call(base, name, args, window=""):
@@ -489,6 +513,9 @@ def main():
             disk = read_json(iso_settings) if os.path.exists(iso_settings) else {}
             disk_order = (disk.get("supervisor") or {}).get("order") or []
             check(disk_order == rev, "配置文件里 supervisor.order 已落盘", disk_order[:3])
+            # 设备标识机制已整体删除：软件不再生成、不再下发、也不再存储任何设备标识
+            check("installId" not in (gs or {}), "GetSettings 不下发设备标识键", "")
+            check("installId" not in disk, "落盘配置里没有设备标识键", "")
             # 复原：清空 order → 回到内置清单顺序（别把改动留给后面的用例）
             call(base, "SaveSettings", [{"supervisor": {"order": []}}])
             st, roles3 = call(base, "ListRoles", [])
@@ -1005,12 +1032,15 @@ def main():
             check(isinstance(tk.get("appearance"), dict)
                   and "color" in tk.get("appearance", {}),
                   "会话带外观（含颜色）", tk.get("appearance"))
-            # 外卖提醒窗口始终展示优惠券：redPacketData 必有且指向本机专属领取地址
+            # 外卖提醒窗口始终展示优惠券：redPacketData 必有且指向固定领取页，不带任何设备标识
             check(isinstance(tk.get("redPacketData"), dict),
                   "外卖会话始终带外卖优惠券（redPacketData 为对象）", tk.get("redPacketData"))
             rd = tk.get("redPacketData") or {}
-            check(str(rd.get("url") or "").startswith("https://www.goodgoodlive.com/cps/index.html?id="),
-                  "红包地址指向本机专属领取地址（含 installId）", rd.get("url"))
+            rd_url = str(rd.get("url") or "")
+            check(rd_url.startswith("https://www.goodgoodlive.com/cps/index.html?t="),
+                  "红包地址指向固定领取页（查询串只有 t）", rd_url)
+            check(rd_url.split("?t=", 1)[-1].isdigit(), "红包地址的 t 是毫秒时间戳", rd_url)
+            check("id=" not in rd_url, "红包地址不带任何设备标识", rd_url)
         # 动作：预览态点「不点了」→ 只关会话，不记真实统计（预览不算次数）
         st, _ = call(base, "TakeoutAction", ["takeout", "skip"], window="takeout")
         check(st == 200, "TakeoutAction(skip) 可调用", "status=%s" % st)

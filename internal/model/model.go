@@ -1,8 +1,14 @@
+// Package model 是全仓共享的数据结构层：会话/状态、计划项、时间槽、配置树里的
+// 结构体都是这里的类型。字段名与 JSON 形状必须与渲染层（web/dist 的 JS）一致，
+// 改一个键名等于改前端契约。
+//
+// 本包零依赖（不 import 任何 internal 包），是依赖图的最底层；任何需要「一个类型」
+// 的地方都可以引它，它不引任何人。
 package model
 
 // 会话与状态的数据结构：字段名/JSON 形状必须与现有渲染层（renderer/break.ts、
 // takeout.ts、supervisorStage.ts）期望的结构**逐字对齐**——渲染层代码原样复用，
-// 只把 window.api 的实现从 上一版 IPC 换成 Wails 绑定（见 frontend/dist/shim.js）。
+// 只把 window.api 的实现从 上一版 IPC 换成 Wails 绑定（见 web/dist/shim.js）。
 
 // TimeSlot 一条固定时刻：时刻 + 重复周期（1=周一 … 7=周日）
 type TimeSlot struct {
@@ -94,7 +100,7 @@ type TakeoutInfo struct {
 	RedPacketData *TakeoutRedPacket `json:"redPacketData"`
 }
 
-// TakeoutRedPacket 红包二维码地址（外卖提醒窗口始终展示，指向本机专属领取地址）
+// TakeoutRedPacket 红包二维码地址（外卖提醒窗口始终展示，指向固定领取页，不含本机标识）
 type TakeoutRedPacket struct {
 	URL string `json:"url"`
 }

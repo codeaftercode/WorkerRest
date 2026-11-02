@@ -23,6 +23,10 @@
 
 ## 运行
 
+> 常用命令已收进 `Taskfile.yml`：`task --list` 看全部，`task dev` / `task build` /
+> `task test` / `task package` / `task verify` 覆盖日常几件事（需要
+> `go install github.com/go-task/task/v3/cmd/task@latest`）。下面保留等价的手敲写法。
+
 ```powershell
 # 开发运行（GUI，直接启动设置窗口）
 go run ./cmd/workerrest
@@ -38,9 +42,9 @@ go build -trimpath -tags server -o build/bin/chibingren_server.exe -ldflags "-s 
 （panic 栈、运行时符号），等于把构建机的目录结构和用户名一起发出去。加了之后路径统一
 变成 `workerrest/cmd/workerrest/xxx.go`。`scripts/build/verify_portable.py` 有一条断言专门扫这个泄漏。
 
-产物 `rest.exe` 约 13.9 MB（Go 1.27.3 + Wails v3.0.0 下实测 13,949,440 字节），已含
-embed 的前端资源与图标；四个内置提示音不再 embed 进二进制，打包时随包放在 `sounds/`
-目录，开发态是模块根的 `sounds/`。
+产物 `rest.exe` 约 14 MB（Go 1.27.3 + Wails v3.0.0 下实测 14,670,848 字节），已含
+embed 的前端资源与图标；四个内置提示音不再 embed 进二进制，打包时随包放在 exe 旁的
+`sounds/` 目录，开发态读仓库里的 `assets/sounds/`。
 
 ## 打包
 
@@ -56,11 +60,12 @@ python scripts/build/verify_portable.py
 
 | 文件 | 用途 |
 |---|---|
-| `WorkerRest-portable.zip` | 便携目录 zip（含约 4.5 MB 督休专员立绘），解压即用 |
+| `WorkerRest-portable.zip` | 便携目录 zip（含约 2.4 MB 督休专员立绘），解压即用 |
 | `WorkerRest-portable/` | 同名散装目录 |
 | `rest.zip` | 只含 `rest.exe` 的自动更新包（最大压缩，软件下载的就是它） |
 | `version.json` | 自动更新清单（version / date / url / sites / changes / sha256 / size） |
 | `THIRD-PARTY-NOTICES.txt` | 开源鸣谢清单（同一份也内嵌在 exe 里，见「开源鸣谢」一节） |
+| `LICENSE` | 本项目的 MIT 许可正文（见「许可证」一节） |
 | `清除开机自启动项.bat` | 删目录前清掉注册表里的开机自启动项（便携版没有卸载器） |
 
 同一版本的四种产物都落在 `release/WorkerRest-<tag>/` 里；目录名与压缩包名**不带版本号**，
@@ -69,15 +74,19 @@ python scripts/build/verify_portable.py
 - **版本号只认 git tag**（`v主.次.修订`，如 `v0.9.0`）：打包要求**当前提交上有 tag**，
   没 tag 直接停止并提示先打 tag（同时显示最近一次 tag）。`app.go` 的 `appVersion`
   只是 `dev` 占位符，真实版本由 `-ldflags "-X main.appVersion=<tag 去掉 v>"` 注入。
+- **工作树必须干净**：`git status --porcelain` 有输出就停止（列出最多 12 项）。tag 指的是
+  提交，工作树里的未提交改动不在那个 tag 里 —— 那种包能打出来、测试也全绿，但「发布包 =
+  源码」的审计链断了。只是排查构建问题时才用 `--allow-dirty`，且该产物不可交付。
 - `python scripts/build/version.py` 显示最近一次 tag 的版本号（`--bare` 去掉 `v`）。
-- **出厂默认只有一份源文件** `default_settings.json`：`//go:embed` 进 exe 的是它（「恢复默认
-  设置」用的就是这份），便携包的 `config/settings.json` 也是它（新装首跑读这份）。两份必须
-  一致，否则「首装看到的值」与「点恢复默认后的值」会不同。打包时 `make_portable.py` 先让
-  exe 用 `--dump-default-settings <文件>` 把内嵌那份吐出来、与仓库文件逐项比对，不一致直接
-  停止（`--no-build` 用上一轮 exe 时最容易踩），再用导出的内容写进便携包；发布后
+- **出厂默认全仓只有一份** `internal/settings/default_settings.json`：它既是 `//go:embed`
+  进 exe 的那份（「恢复默认设置」用的就是它），也是便携包 `config/settings.json` 的来源
+  （新装首跑读这份）。仓库根不再放副本——以前那两份靠单测和打包脚本对齐，改了 json 忘了
+  同步另一份是最容易踩的坑。打包时 `make_portable.py` 先让 exe 用
+  `--dump-default-settings <文件>` 把内嵌那份吐出来、与这份源文件逐项比对，不一致直接停止
+  （`--no-build` 用上一轮 exe 时最容易踩），再用导出的内容写进便携包；发布后
   `verify_portable.py` 用包里的 exe 再复核一次。单测 `TestEmbeddedDefaultMatchesFile`
-  另钉住「编译时快照 == 工作区文件」。
-- **出厂默认 = 作者当时在用的那套配置**（2026-10-29 定）：`default_settings.json` 的每一项
+  另钉住「编译时快照 == 磁盘文件」。
+- **出厂默认 = 作者当时在用的那套配置**（2026-10-29 定）：`internal/settings/default_settings.json` 的每一项
   都按当天的 `config/settings.json` 取值，所以点「恢复默认设置」得到的就是他日常在用的状态。
   三类东西不在此列：**声音**（`sound.music` 与内置音由 `normalizeSound` 种入，文件在 `sounds/`）、
   **督休专员**（`supervisors/` 目录 + 各 `meta.json`，`supervisor` 段仍按出厂 random 口径）、
@@ -85,12 +94,12 @@ python scripts/build/verify_portable.py
   （`AppearanceCfg` 的透明度 / 宽高百分比 / 全屏、`FullScreenPause`）、操作手册里的默认值文案。
 - **`ResetSettings` 会跑一遍 `normalizeLoad`**：只把出厂 JSON 写下去的话，恢复默认后提醒内容
   面板、指定应用列表、提示音列表都是空的，要重启一次才种入；跑完之后立刻就是出厂那套值
-  （配置里那枚固定键仍保留，`settings.backup.json` 仍先备份）。
+  （`settings.backup.json` 仍先备份）。
 - **exe 的 Windows 资源（图标 + VERSIONINFO + MANIFEST）来自仓库根的 `rsrc_windows_amd64.syso`**
   （随源码入库）：`go build` 会自动链接同包目录下的 `*_windows_amd64.syso`，所以
   `make_portable.py` 与 ldflags 都不用改。三类资源由 `goversioninfo` 一个工具生成：
   - **RT_GROUP_ICON / RT_ICON** —— exe 文件图标（16~256 七档，源是全项目唯一那份
-    `frontend/dist/icon.png`）
+    `web/dist/icon.png`）
   - **RT_VERSION(16)** —— 文件/产品版本、公司、描述（资源管理器「属性 → 详细信息」可见）；
     版本号取「当前提交的 tag，无 tag 则最近 tag」（与 ldflags 注入的 `appVersion` 同源）
   - **RT_MANIFEST(24)** —— 应用清单，声明 `longPathAware`（Win10 1607+ 长路径）与
@@ -98,7 +107,7 @@ python scripts/build/verify_portable.py
     `SetProcessDpiAwarenessContext(PER_MONITOR_V2)`，清单里再写会冲突
   重新生成（**改了图标 / 改了清单**之后；打新 tag **不必**重新生成，见下）：
   ```bash
-  python scripts/build/gen_windows_res.py          # 重新生成 syso（同时落盘 versioninfo.json / app.manifest）
+  python scripts/build/gen_windows_res.py          # 重新生成 syso（同时把 versioninfo.json / app.manifest 落到 build/windows/）
   python scripts/build/gen_windows_res.py --check  # 核对当前 syso 的图标/清单内容是否与源码一致（打包门禁里会跑）
   ```
   校验方式：`python scripts/build/verify_windows_res.py <exe>` 解析 PE 断言三类资源齐全；
@@ -180,13 +189,17 @@ python scripts/build/verify_portable.py
 ## 测试与验证
 
 ```powershell
-go test -tags server ./...         # 单元测试（295 用例）：契约 / shim 一致性 / 归一化 / 状态机 /
+go test -tags server ./...         # 单元测试（365 个测试函数）：契约 / shim 一致性 / 归一化 / 状态机 /
                                    # 系统能力 / 提示音 / 统计 / 督休专员迁移与命名唯一 / 外卖 / 更新 / 睡眠检测
-python scripts/smoke_server.py     # 绑定层无头冒烟：179 项断言
-python scripts/probe/probe_renderer.py   # 渲染层探针：297 项断言 + 截图（需先 npm install）
+python scripts/smoke_server.py     # 绑定层无头冒烟：181 项断言
+python scripts/probe/probe_renderer.py   # 渲染层探针：479 项断言 + 截图（需先在 scripts/ 下 npm install）
+python scripts/probe/probe_settings_ui.py # 设置页三层探针：171 项（六 tab 全控件 / 十个对话框交互 / 写入链路）
+python scripts/probe/probe_bindings_full.py  # 绑定全集：134 项（契约里每个绑定都真调一次）
+python scripts/probe/probe_config_matrix.py  # 配置矩阵：69 项（多值配置 + 启动态矩阵）
+python scripts/probe/probe_edge_cases.py     # 异常边界：33 项（缺资源 / 只读 / 并发 / 超长 / 落点异常）
 node   scripts/a11y_audit.js         # 可访问性静态审计：无名控件 / 活区 / 对话框语义，写 build/a11y_audit.json
 node   scripts/probe_a11y_focus.js # 对话框焦点管理行为探针：101 项（进得去 / Tab 跑不出 / 关后回得来）
-python scripts/probe/probe_gui_boot.py   # GUI 启动探针：16 项断言（系统能力 / 提前提示窗 / 提示音宿主）
+python scripts/probe/probe_gui_boot.py   # GUI 启动探针：17 项断言（系统能力 / 提前提示窗 / 提示音宿主）
 python scripts/probe/probe_crossday.py   # 跨天探针：11 项（报表默认范围必须现算，不能沿用昨天的）
 python scripts/probe/probe_stats_file.py # 统计文件自愈探针：19 项（首跑自建 data/ / 损坏改名备份 / 弹窗说明 / Ack 清空）
 python scripts/probe/probe_sound_scan.py # 提示音目录体检探针：27 项（新音频原地登记 / 死条目删除 / 重启不重复提示）
@@ -196,9 +209,12 @@ python scripts/probe/probe_window_size.py   # 尺寸**测量**（不是断言）
 python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次按出厂尺寸 / 拖拽记录 / 重启沿用 / 关掉开关回默认）
 ```
 
+> 上面这些脚本不要求按顺序跑，但改过 `web/dist` 后必须重建 `build/bin/chibingren_server.exe`
+> 再跑：前端是 `//go:embed` 编进 exe 的，用旧 exe 跑等于在测旧前端。
+
 - **单测必须带 `-tags server`**：不带时「提前提示窗」用例会因 `a.app == nil` panic（无头形态
   没有原生窗口），这是既有约束，不是回归。
-- `tray_icon_test.go` 钉住图片资产这一层：托盘图标（`frontend/dist/icon.png`，唯一那份图标）
+- `tray_icon_test.go` 钉住图片资产这一层：托盘图标（`web/dist/icon.png`，唯一那份图标）
   必须能从 embed 读到、是合法 PNG，并且**真的走一遍 Wails 的转换链** `w32.CreateSmallHIconFromImage`
   拿到非零 HICON —— 格式不被接受时托盘只是静默变空白图标，不跑测试发现不了；另外检查 dist 下
   每张位图非空（图片个数不写死，增删图片不该让测试变红）。
@@ -210,7 +226,7 @@ python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次�
   看行为（打开聚焦、Tab 循环、关闭归还）。对话框开关一律只改 `class="hidden"`，焦点由
   `settings.js` 顶部的 MutationObserver 统一接管 —— **不要**在各调用点再手写 `focus()`。
 - `make_portable.py` 组装前会核对 **exe 比源码新**：`--no-build` 复用上一轮产物时，只要改过
-  任何非测试 `*.go` 或任一 `//go:embed` 资源（`frontend/dist/**` 等）就会被拒（rc=1），
+  任何非测试 `*.go` 或任一 `//go:embed` 资源（`web/dist/**` 等）就会被拒（rc=1），
   信息里直接列出比 exe 新的文件。这是 `build/bin` 里放旧 exe 也不至于发错包的兜底。
 
 ## 目录结构
@@ -220,31 +236,56 @@ python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次�
     *.go                  后端源码（App 窗口/会话 + 调度器/计划 + 统计 + 系统能力 + 各窗口）
     main.go               入口：注册服务 + 主窗口（= 设置窗口）
     contract.go           前端绑定「契约表」：wiredCalls 列表 + 启动自检
-    frontend/dist/        渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）+ 全部图片资产：
+    web/dist/             渲染层产物（已固化；shim.js 把 window.api 适配到 Go 绑定）+ 全部图片资产：
                           icon.png **全项目唯一图标**（标题栏 20px / 托盘 / exe 图标源三处共用）、
                           sitting_risk.webp 关于页横幅 —— 整个目录 go:embed 进 exe，运行时只认这里
     rsrc_windows_amd64.syso exe 的 Windows 资源（RT_GROUP_ICON/RT_ICON + RT_VERSION + RT_MANIFEST，
                           由 scripts/build/gen_windows_res.py 用 goversioninfo 生成，随源码入库）
-    versioninfo.json      VERSIONINFO 的源配置（gen_windows_res.py 生成，与 syso 同源留档）
-    app.manifest          应用清单源（longPathAware + supportedOS，gen_windows_res.py 生成）
     THIRD-PARTY-NOTICES.txt 开源鸣谢清单（gen_notices.py 生成，go:embed 进 exe + 随包分发）
-  internal/               可复用的底层能力（零 App 依赖，独立子包）：
-    winproc/              系统进程枚举（Toolhelp32）
-    windnd/               系统勿扰 / 全屏独占检测（SHQueryUserNotificationState）
-    winpower/             系统睡眠检测（GetTickCount64 跳变）
-  docs/                   设计 / 审计 / 测试报告（含 manual/ 操作手册）
-  supervisors/            内置督休专员模板（17 个专员，立绘均为 webp，约 4.5 MB，随包分发；子目录用专员名称命名，meta.json 里只有名字（名字即身份，没有内部 id）；无 meta.json 的目录只作素材、不进包）
-  sounds/                 内置提示音源文件（四个 wav，打包时预置进便携包）
-  default_settings.json   出厂默认配置（打包预置，与 internal/settings 的 go:embed 副本逐字一致）
-  scripts/                验证与打包脚本
+  build/                  构建资源与产物：
+    windows/              Wails 约定的平台资源目录：VERSIONINFO 源配置 + 应用清单
+                          （gen_windows_res.py 生成留档，与 cmd/workerrest/*.syso 同源）
+    bin/                  构建产物（rest.exe / chibingren_server.exe，不入库）
+  internal/               领域逻辑 + 平台能力（全部零 App 依赖，可独立测试）：
+    model/                共享数据结构（零依赖，全仓最底层）
+    settings/             配置域：整份 map + 深合并 + 归一 + 落盘
+      default_settings.json  出厂默认配置（**全仓唯一源**：既是 //go:embed 的数据源，
+                          也是便携包 config/settings.json 的来源，没有仓库根副本）
+    plan/                 休息计划纯函数（下一次休息 / 固定时刻 / 今日时间线）
+    scheduler/            调度状态机（tick / 暂停 / 跳过 / 推迟 / 提前提示）
+    stats/                使用统计与报表（连续记录、离开判定）
+    role/                 督休专员资产（扫描 / 命名 / 导入 / 预览图）
+    sound/                提示音选曲与文件命名（不含播放）
+    update/               版本比较 + 清单信任校验 + 自动检查节奏
+    urltls/               更新链路 HTTPS 校验（重定向逐跳）
+    jsonx/ logx/          JSON 小工具；日志落点与后台 goroutine panic 兜底
+    platform/ autostart/ hotkey/ idle/ notifier/ windnd/ winpower/ winproc/
+                          Windows 平台能力，每个包都是 _windows.go + _other.go 桩
+  assets/                 随包静态资源（不进 exe；打包时复制到 exe 旁，开发态直接从这儿读）：
+    supervisors/          内置督休专员模板（15 个专员，立绘与缩略图均为 webp，约 2.4 MB，随包分发；子目录用专员名称命名，meta.json 里只有名字（名字即身份，没有内部 id）；无 meta.json 的目录只作素材、不进包）
+    sounds/               内置提示音源文件（四个 wav，打包时预置进便携包）
+  scripts/                构建 / 探针 / 验证脚本（逐项索引见 scripts/README.md）
+  LICENSE                 项目 MIT 许可正文（打包时拷到便携包根目录）
+  Taskfile.yml            常用命令入口（task build / test / package / verify / a11y）
+  docs/                   设计 / 审计 / 测试报告；docs/promo/ 是运营素材（不入库、不随包）
+  config/ data/           开发态运行时落点（首次运行自动生成，已 gitignore）：
+                          配置文件与统计。便携包里它们就是 exe 旁的用户数据目录 ——
+                          「数据与程序同目录」是便携语义的一部分，所以不进源码库也不进安装包
 ```
 
-核心模块一览：`breakplan.go`（计划层）、`scheduler.go`（调度器状态机）、`stats.go`（使用统计）、
-`sound.go`（提示音）、`prebreak.go`（提前提示窗）、`takeout.go`（外卖提醒）、
-`sys_*.go`（空闲 / 自启动检测）、`filedialog.go`（原生文件对话框）、
-`window_size.go`（设置窗口的默认 / 最小 / 记住上次尺寸）、`update.go`（检查更新）、
-`migrate_roles.go`（旧配置督休专员迁移）。系统探测类底层能力已拆到 `internal/`：
-`winproc`（进程枚举）、`windnd`（勿扰 / 全屏）、`winpower`（睡眠检测）。
+`cmd/workerrest/` 只剩「必须跟 main 包绑在一起」的东西（Wails 绑定方法要能被反射成
+`main.App.xxx`）：`app*.go`（生命周期与会话）、`bindings_*.go`（设置页 / 专员 / 提示音 /
+统计的绑定）、`prebreak.go`、`takeout*.go`（自绘提醒窗）、`window_size.go`（尺寸记忆）、
+`update*.go`（下载与自替换）、`sys_*.go`（空闲 / 勿扰 / 自启动的 tick 与注册表写入）。
+能脱离界面推理的逻辑都在 `internal/`：计划 → `plan`、状态机 → `scheduler`、配置 →
+`settings`、统计 → `stats`、专员资产 → `role`，改这些不必懂 Wails。
+
+**为什么前端产物是 `cmd/workerrest/web/dist` 而不是根目录的 `frontend/`**：Wails v3 模板把
+`frontend/` 放在工程根，是因为它的 `main.go` 也在根、`//go:embed frontend/dist` 够得着。
+本项目按 Go 的标准布局把 main 包放进了 `cmd/workerrest/`，而 **`//go:embed` 只能嵌包目录
+以内的文件**，够不到根目录的 `frontend/`。所以产物跟着 main 包走，命名用 `web/`（这里没有
+前端源码工程，只有固化的 dist，叫 frontend 反而误导）。`build/` 的用法则与 Wails 一致：
+`build/<os>/` 放平台资源，产物在 `build/bin/`。
 
 ## 数据与配置落点
 
@@ -256,7 +297,7 @@ python scripts/probe/probe_window_gui.py    # 真窗口尺寸：9 项（首次�
   「N 个提示音的文件已不在」可一键**从配置删除**（只删条目，不动任何文件）。启动时只记录、
   不擅自改配置；点「暂不处理」本次运行不再问，下次启动重新扫。
 - 打包交付的便携目录**自带**两件套：`sounds/`（四个内置提示音）、`config/settings.json`
-  （出厂默认，首跑补上固定键）——首跑直接在预置文件上继续写。
+  （出厂默认，首跑补种预置条目）——首跑直接在预置文件上继续写。
 - **`data/` 与 `stats.json` 不进安装包**（统计是用户数据，不属于发行物）：
   - 首跑：`data/` 目录与空的 `data/stats.json` 由程序自动创建（见 `stats.go` 的 `Load`）；
   - 损坏：文件**读不出来**时不动它、只从空表开始用；**格式错误（解析失败 / 不是 JSON 对象）**
@@ -289,7 +330,7 @@ python scripts/build/gen_notices.py --check   # 只校验：与当前构建不�
 ```
 
 - 收录口径 = **实际参与构建**的组件：Go 模块取自 `go list -deps`（与 `go version -m`
-  读出的内嵌依赖一致）、Go 标准库与运行时、以及内联进 `frontend/dist` 产物的库
+  读出的内嵌依赖一致）、Go 标准库与运行时、以及内联进 `web/dist` 产物的库
   （`qrcode` / `dijkstrajs`）。未被链接的 `go.sum` 条目不在其列。
 - 同一份文件两个去处：`//go:embed` 进 exe（`notices.go`），并由打包脚本放到便携包根目录。
   只把声明编译进机器码、却没有读取入口，等于没有复现 —— 所以设置页「关于 → 软件信息 →
@@ -299,7 +340,24 @@ python scripts/build/gen_notices.py --check   # 只校验：与当前构建不�
   `TestNoticesCoversLinkedModules` 用 `go list -deps` 两个方向核对（不缺、也不多声明）。
 - 升级前端内联库时，把 npm 包里的许可原文放回 `scripts/build/notices/`，并同步 `gen_notices.py`
   的 `FRONTEND`（含产物指纹串）：指纹在 bundle 里找不到会直接报错，防止清单悄悄过期。
-- 这份文件只声明**第三方**组件；本仓库自己的代码没有单独的 `LICENSE` 文件。
+- 这份文件只声明**第三方**组件；本项目自己的许可见下一节。
+
+## 许可证
+
+本项目以 **MIT** 发布，正文见仓库根 [`LICENSE`](LICENSE)。它可以自由使用、修改、再分发
+（含商业用途），需要保留版权声明与许可全文；软件按「现状」提供，不含任何担保。
+
+- **分发物必须带上正文**：`make_portable.py` 把 `LICENSE` 拷到便携包根目录，`verify_zip`
+  与 `verify_portable.py` 各有一道「包里有没有、与仓库那份是否逐字节相同」的断言。
+- **第三方声明另有一份**：`THIRD-PARTY-NOTICES.txt`（见上一节）声明的是别人给我的授权，
+  `LICENSE` 声明的是我给别人的授权，两者不是可以互相替代的东西。
+- **随包素材**：`assets/` 下的督休专员立绘、提示音、图标与手册同属本项目产出，随 MIT 一并授权。
+  如果以后引入外部素材，务必在那份素材旁留下来源与授权记录 —— 第三方素材不会因为放在这个
+  仓库里就自动变成 MIT。
+- **WebView2 不随包**：软件运行时用的是系统里的 WebView2 运行时（微软的组件，受微软自己的
+  许可约束），本项目只检测不打包，因此不影响本项目的 MIT 授权。
+- **自动更新包不含正文**：`rest.zip` 只替换 `rest.exe`（首次分发物是含 `LICENSE` 的便携包），
+  所以许可证正文跟着便携包走，而不是塞进每一次增量更新里。
 
 ## 后台 goroutine 的 panic 兜底
 

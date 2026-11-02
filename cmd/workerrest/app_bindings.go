@@ -370,6 +370,12 @@ func (a *App) ListRoles() []role.Role {
 	if cfg := a.CfgSnapshot(); cfg != nil {
 		roles = role.ApplyRoleOrder(roles, cfg.SupervisorCfg().Order)
 	}
+	// 空目录（便携包被删了 assets/supervisors、或首次运行素材还没落地）时 ScanRoles
+	// 返回 nil，JSON 序列化成 null；前端是 `for (const r of ROLES)`，拿到 null 会直接
+	// 抛 TypeError 让整个立绘库白屏。这里统一给空数组，让「没有专员」是一种正常状态。
+	if roles == nil {
+		return []role.Role{}
+	}
 	return roles
 }
 

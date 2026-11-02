@@ -704,9 +704,28 @@
       box.focus();
     }
   }
+  // 「打开者」必须在打开的那一刻就知道是谁 —— 不能等 MutationObserver 回调再看
+  // document.activeElement：有些对话框在显示自己的同一段同步代码里就把焦点挪进去了
+  // （调色弹窗 `$("cp-done").focus()`、鸣谢正文）,等回调跑起来时活动元素已经在框内，
+  // 于是 opener 记成 null，关掉之后焦点掉到页面第一个控件上（实测掉到「开机自启动」
+  // 勾选框），键盘用户当场迷路。这里用 focusin 持续记「最后一个在框外拿到焦点的元素」，
+  // 打开时若活动元素已在框内就退到它 —— 与打开顺序无关。
+  let lastOutsideFocus = null;
+  document.addEventListener("focusin", (e) => {
+    const t = e.target;
+    if (!(t instanceof HTMLElement)) return;
+    if (t.closest(".modal")) return;
+    lastOutsideFocus = t;
+  }, true);
   function onModalOpened(m) {
     const active = document.activeElement;
-    if (!(active instanceof HTMLElement) || !m.contains(active)) modalOpener = active;
+    if (active instanceof HTMLElement && !m.contains(active)) {
+      modalOpener = active;
+    } else if (lastOutsideFocus && lastOutsideFocus.isConnected) {
+      modalOpener = lastOutsideFocus;
+    } else {
+      modalOpener = null;
+    }
     focusIntoModal(m);
     // 内容可能是异步填进去的（鸣谢正文要等 api 回来）：下一帧再补一次
     requestAnimationFrame(() => {
@@ -772,6 +791,29 @@
       e.preventDefault();
       first.focus();
     }
+  }, true);
+  // Esc 关闭对话框：十个 .modal 里五个自己带 keydown（confirm/prompt/notices/color/
+  // app-pick），另外五个（批量新增、统计损坏提示、提示音体检、更新提示、更新完成）
+  // 只能点按钮关 —— 键盘用户按 Esc 毫无反应，与「Esc 取消」的通用预期不符。
+  // 这里统一兜底，且只兜「自己没有 Esc 处理」的那五个：点一下它自己的关闭按钮，
+  // 走原来那条关闭逻辑（不把关闭语义抄成第二份实现，避免两处将来走岔）。
+  const ESC_DISMISS = {
+    "batch-modal": "msg-batch-cancel",
+    "stats-modal": "st-ok",
+    "snd-scan-modal": "ss-close",
+    "update-modal": "up-later",
+    "updated-modal": "upd-ok",
+  };
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    const m = openModalEl();
+    if (!m) return;
+    const btnId = ESC_DISMISS[m.id];
+    if (!btnId) return; // 自己有 Esc 处理的，交给它
+    const btn = $(btnId);
+    if (!btn) return;
+    e.preventDefault();
+    btn.click();
   }, true);
   // 统计文件损坏：Go 侧已把原文件改名成 stats_<日期_时间>.json 备份，并重建空表
   //（见 stats.go 的 Load）。必须让用户知道——否则历史统计「凭空归零」，看起来像软件
@@ -1125,18 +1167,20 @@
       btn.classList.toggle("active", btn.dataset.name === supEditName);
     }
   }
+  // 勾选态的唯一入口：只有磁贴上那个单选框/复选框会调它（user 2026-11-02：点立绘不许改勾选）。
+  // 改完只同步选择指示，不整块重排磁贴 —— 重排会把刚点上来的键盘焦点丢掉。
   function selectRole(key) {
     const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     supEditName = key;
     if (S.supervisor.selection === "fixed") {
-      // 固定显示：点选即把该立绘设为固定项（单选框语义：同时取消其它选中）
+      // 固定显示：单选框语义 —— 选中即设为固定项；再点已选中那枚不产生变化（单选框不能取消）
       if (S.supervisor.fixedRole !== key) {
         S.supervisor.fixedRole = key;
         autoSave();
       }
     } else {
-      // 随机 / 顺序显示：点选即切换该立绘的勾选态（复选框语义）
+      // 随机 / 顺序显示：复选框语义
       role.enabled = !role.enabled;
       persistRole(key);
       autoSave();
@@ -1144,7 +1188,29 @@
     fillSupervisorImageName();
     fillGeomControls(normalizeSupGeom(geomOf(supEditName)));
     void refreshSupervisorPreview();
-    void renderRoleGallery();
+    syncRoleSelUI();
+  }
+  // 点立绘磁贴：只换「正在编辑的专员」（预览面板 / 尺寸 / 台词跟着切），不动勾选态。
+  // 勾选与编辑对象是两件事：我想看看某人的立绘，不等于我要把他勾上。
+  function focusRole(key) {
+    if (!ROLES.some((r) => r.name === key)) return;
+    if (supEditName === key) return;
+    supEditName = key;
+    fillSupervisorImageName();
+    fillGeomControls(normalizeSupGeom(geomOf(supEditName)));
+    void refreshSupervisorPreview();
+  }
+  // 勾选态变化后只改选择指示（含 aria-checked），磁贴 DOM 保持不动
+  function syncRoleSelUI() {
+    const fixedMode = S.supervisor.selection === "fixed";
+    for (const el of document.querySelectorAll("#sup-gallery .role-item")) {
+      const role = ROLES.find((r) => r.name === el.dataset.name);
+      const sel = el.querySelector(".role-sel");
+      if (!role || !sel) continue;
+      const on = fixedMode ? role.name === S.supervisor.fixedRole : role.enabled;
+      sel.classList.toggle("on", on);
+      sel.setAttribute("aria-checked", on ? "true" : "false");
+    }
   }
   async function renameRole(key) {
     const role = ROLES.find((r) => r.name === key);
@@ -1547,12 +1613,12 @@
     box.innerHTML = "";
     const fixedMode = S.supervisor.selection === "fixed";
     for (const r of ROLES) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      // 未勾选不改磁贴样式，仅复选框呈未选态
-      btn.className = "role-item";
-      btn.dataset.name = r.name;
-      btn.draggable = true;
+      // 磁贴用 div 不用 button：里面要放一个可聚焦的选择控件，交互元素不能嵌在 button 里。
+      // 磁贴只负责「切换正在编辑的专员」，勾选/取消勾选一律落到下面那个 sel 上。
+      const tile = document.createElement("div");
+      tile.className = "role-item";
+      tile.dataset.name = r.name;
+      tile.draggable = true;
       const img = document.createElement("img");
       if (r.thumb) img.src = r.thumb;
       img.alt = r.name;
@@ -1560,50 +1626,67 @@
       const hint = document.createElement("span");
       hint.className = "role-hint";
       hint.textContent = "\u53F3\u952E\u64CD\u4F5C";
-      // 选择指示：固定模式=单选框（按 fixedRole 名字），随机/顺序=复选框（按 enabled）
+      // 选择指示：固定模式=单选框（按 fixedRole 名字），随机/顺序=复选框（按 enabled）。
+      // 它是这份列表里唯一能改勾选的地方，所以带自己的 click / keydown 与 ARIA 状态。
       const sel = document.createElement("span");
+      const on = fixedMode ? r.name === S.supervisor.fixedRole : r.enabled;
       sel.className = "role-sel " + (fixedMode ? "role-radio" : "role-check");
-      sel.classList.toggle("on", fixedMode ? r.name === S.supervisor.fixedRole : r.enabled);
+      sel.classList.toggle("on", on);
+      sel.setAttribute("role", fixedMode ? "radio" : "checkbox");
+      sel.setAttribute("aria-checked", on ? "true" : "false");
+      sel.setAttribute("aria-label", (fixedMode ? "\u56FA\u5B9A\u663E\u793A\uFF1A" : "\u53C2\u4E0E\u8F6E\u6362\uFF1A") + r.name);
+      sel.tabIndex = 0;
+      sel.addEventListener("click", (e) => {
+        // 别冒泡到磁贴：那一下是「切换编辑对象」，不是「再勾一次」
+        e.stopPropagation();
+        selectRole(r.name);
+      });
+      sel.addEventListener("keydown", (e) => {
+        if (e.key !== " " && e.key !== "Enter") return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectRole(r.name);
+      });
       const cap = document.createElement("span");
       cap.className = "role-cap";
       cap.textContent = r.name;
       const capRow = document.createElement("span");
       capRow.className = "role-cap-row";
       capRow.append(sel, cap);
-      btn.append(img, hint, capRow);
-      btn.addEventListener("click", () => {
-        // 拖完浏览器可能补一个 click（此时磁贴已经重排），那不是用户想选的专员
+      tile.append(img, hint, capRow);
+      tile.addEventListener("click", () => {
+        // 拖完浏览器可能补一个 click（此时磁贴已经重排），那不是用户想看的人
         if (supDragEndAt && Date.now() - supDragEndAt < 400) {
           supDragEndAt = 0;
           return;
         }
-        selectRole(r.name);
+        focusRole(r.name);
       });
-      btn.addEventListener("contextmenu", (e) => {
+      tile.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
         openRoleMenu(r.name, e.clientX, e.clientY);
       });
-      btn.addEventListener("dragstart", (e) => {
+      tile.addEventListener("dragstart", (e) => {
         supDragName = r.name;
         supDragFrom = ROLES.findIndex((x) => x.name === r.name);
         supDropIndex = supDragFrom;
-        btn.classList.add("dragging");
+        tile.classList.add("dragging");
         box.classList.add("sorting");
         if (e.dataTransfer) {
           e.dataTransfer.setData("text/plain", r.name);
           e.dataTransfer.effectAllowed = "move";
         }
       });
-      btn.addEventListener("dragend", () => {
-        btn.classList.remove("dragging");
+      tile.addEventListener("dragend", () => {
+        tile.classList.remove("dragging");
         box.classList.remove("sorting");
         supDragName = null;
         supDragFrom = -1;
         supDragEndAt = Date.now();
         clearRoleDropHint();
       });
-      box.appendChild(btn);
+      box.appendChild(tile);
     }
     const add = document.createElement("button");
     add.type = "button";
@@ -1666,7 +1749,7 @@
     };
   }
   // 预览面板的名字牌与真实提醒窗口同款：每次重绘随机换一枚「章」（牌底 + 碎点同下标），
-  // 并避开上一次。档数与 frontend/dist 里的 seal-ink-1..6.svg、两份提醒页 JS 的
+  // 并避开上一次。档数与 web/dist 里的 seal-ink-1..6.svg、两份提醒页 JS 的
   // SEAL_VARIANTS 一致 —— 改档数要一起改（探针会红）。
   var PREVIEW_SEAL_VARIANTS = 6;
   var previewLastSeal = 0;

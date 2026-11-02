@@ -1,5 +1,5 @@
 /**
- * 渲染层探针（Playwright 驱动系统 Edge 当浏览器用）：把真实的 frontend/dist 页面
+ * 渲染层探针（Playwright 驱动系统 Edge 当浏览器用）：把真实的 web/dist 页面
  * 指向无头服务（-tags server 构建的 chibingren_server.exe），验证
  *
  *   真实的 shim.js（动态 import /wails/runtime.js + Call.ByName）
@@ -1172,7 +1172,7 @@ const PROBE_STATS = `(async function () {
   };
 })()`;
 const NOZOOM_PROBE = `(function () {
-  // 禁缩放守卫（frontend/dist/nozoom.js）：提醒 / 预览窗口不许手势或滚轮缩放。
+  // 禁缩放守卫（web/dist/nozoom.js）：提醒 / 预览窗口不许手势或滚轮缩放。
   // 这里验三件事：脚本装上了（window.__WR_NOZOOM）、touch-action 里去掉了
   // pinch-zoom、各类缩放入口都被拦下但普通滚轮没被拦死（活动上报还指着它）。
   var out = {
@@ -1422,7 +1422,7 @@ async function run() {
   const sErr = [];
   const set = await open(browser, BASE + "/settings.html", 1000, 760, {
     transparent: false, frame: false, onConsole: sErr,
-    preload: path.join(__dirname, "probe_preload.js"),
+    preload: path.join(__dirname, "..", "probe_preload.js"),
   });
   metrics.settings = await set.evaluate(PROBE_SETTINGS);
   metrics.settings.consoleErrors = sErr;
@@ -1718,7 +1718,7 @@ async function run() {
   metrics.preBreak.consoleErrors = pbErr;
   await shot(pre, "prebreak");
   console.log("[probe] preBreak:", JSON.stringify(metrics.preBreak));
-  // 禁缩放守卫（提醒窗口 / 预览窗口通用，见 frontend/dist/nozoom.js）
+  // 禁缩放守卫（提醒窗口 / 预览窗口通用，见 web/dist/nozoom.js）
   metrics.nozoom = {};
   metrics.nozoom.prebreak = await pre.evaluate(NOZOOM_PROBE);
   console.log("[probe] nozoom/prebreak:", JSON.stringify(metrics.nozoom.prebreak));

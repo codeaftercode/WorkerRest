@@ -5,7 +5,7 @@
 验证的核心语义（README「数据与配置落点」里 Go 版的约定）：
   数据与程序同目录 —— 配置/统计/音频都在 exe 旁的 config/ 与 data/，绝不碰 %APPDATA%。
   打包交付的便携目录自带预置两件套（sounds/ + config/settings.json），首跑直接在预置
-  文件上继续写（installId 补生成并回写）。**data/ 与 stats.json 不进包**（统计是用户
+  文件上继续写（补种提醒内容条目 / 指定应用 / 提示音，并把结果回写）。**data/ 与 stats.json 不进包**（统计是用户
   数据，更新时不能被安装包覆盖）：首跑由 stats.go 的 Load 自己建出 data/stats.json。
 
 做法：
@@ -16,7 +16,7 @@
      - 进程活着、日志无 panic；
      - 预置两件套随包完整（sounds/ 四个 wav、config/settings.json）；
      - 发布包里**没有** data/ 与 stats.json（统计文件由首跑自行创建）；
-     - 首跑把 installId 补写进了 exe 旁的 config/settings.json（在预置文件上继续写）；
+     - 首跑把补种的预置条目写进了 exe 旁的 config/settings.json（在预置文件上继续写）；
      - 首跑自动创建了 exe 旁的 data/stats.json，且内容是合法空表；
      - 隔离 APPDATA 里没有落下任何 WorkerRest 相关文件（没往 APPDATA 写）。
 
@@ -93,6 +93,8 @@ checks = 0
 def find_role_meta(root: str, name: str):
     """在 supervisors/ 下按专员名反查 meta.json（目录名是名字的投影，可能被清洗过）。"""
     sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):  # 仓库布局：随包资源收在 assets/ 下
+        sup = os.path.join(root, "assets", "supervisors")
     if not os.path.isdir(sup):
         return None
     for dn in os.listdir(sup):
@@ -108,6 +110,30 @@ def find_role_meta(root: str, name: str):
         if nm == name:
             return p
     return None
+
+
+UUID_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
+
+
+def find_uuid_like(node, out=None):
+    """递归找出配置里任何 UUID 形态的字符串。
+
+    机器标识机制已整体删除，配置文件里不该再出现这种形态的值；这里用形态匹配而不是
+    只查某个键名，防止以后又冒出一个存储位置（键名换了但形态没换）。
+    """
+    if out is None:
+        out = []
+    if isinstance(node, dict):
+        for k, v in node.items():
+            if isinstance(k, str) and UUID_RE.match(k):
+                out.append(k)
+            find_uuid_like(v, out)
+    elif isinstance(node, list):
+        for v in node:
+            find_uuid_like(v, out)
+    elif isinstance(node, str) and UUID_RE.match(node.strip()):
+        out.append(node)
+    return out
 
 
 def check(ok, label, detail=""):
@@ -156,11 +182,13 @@ def main():
     env["APPDATA"] = iso_appdata
 
     alive = False
+    alive_rc = None  # 观察期结束那一刻的退出码（None = 还活着）；必须在 terminate 之前取
     with open(LOG, "w", encoding="utf-8", errors="replace") as logf:
         proc = subprocess.Popen([exe], cwd=iso, env=env, stdout=logf, stderr=subprocess.STDOUT)
         try:
             time.sleep(max(3, args.seconds))
-            alive = proc.poll() is None
+            alive_rc = proc.poll()
+            alive = alive_rc is None
         finally:
             if proc.poll() is None:
                 proc.terminate()
@@ -177,7 +205,9 @@ def main():
     print(body)
 
     # 1. 进程活着、无 panic
-    check(alive, "便携版进程观察期内一直活着", "rc=%s" % proc.poll())
+    # 附注用 alive_rc 而不是 proc.poll()：后者在 terminate 之后取，永远是非 0，
+    # 读报告的人会以为「进程明明退出了却判活着」。
+    check(alive, "便携版进程观察期内一直活着", "rc=%s" % alive_rc)
     check("panic" not in text.lower(), "日志里没有 panic", "")
 
     # 2. 预置三件套随包完整
@@ -201,6 +231,20 @@ def main():
     else:
         check(False, "开源鸣谢清单随包存在",
               notices_ship if not os.path.isfile(notices_ship) else notices_repo)
+    # 项目自己的 MIT 许可证：同样要随包，且与仓库那份逐字节相同。
+    # 与鸣谢清单方向相反（那份声明第三方，这份声明本项目），两者缺一都不算合规分发。
+    lic_ship = os.path.join(iso, "LICENSE")
+    lic_repo = os.path.join(ROOT, "LICENSE")
+    if os.path.isfile(lic_ship) and os.path.isfile(lic_repo):
+        with open(lic_ship, "rb") as f:
+            ship_hash = hashlib.sha256(f.read()).hexdigest()
+        with open(lic_repo, "rb") as f:
+            repo_hash = hashlib.sha256(f.read()).hexdigest()
+        check(ship_hash == repo_hash, "随包 LICENSE == 仓库 LICENSE（sha256）",
+              "%s vs %s" % (ship_hash[:12], repo_hash[:12]))
+    else:
+        check(False, "项目 LICENSE 随包存在",
+              lic_ship if not os.path.isfile(lic_ship) else lic_repo)
     # 首跑自建的空表（不再是「预置文件」）：Load 见文件缺失就建目录 + 写空表
     runtime_stats = os.path.join(iso, "data", "stats.json")
     check(os.path.isfile(runtime_stats), "首跑自动创建 data/stats.json", runtime_stats)
@@ -212,13 +256,24 @@ def main():
         except Exception as e:  # noqa: BLE001
             check(False, "自建统计表可解析", repr(e))
 
-    # 3. 首跑在预置配置上继续写（installId 补生成并回写）
+    # 3. 首跑在预置配置上继续写：出厂那份没有 seeded 标记也没有条目，首跑补种后必须落盘
     cfg_side = os.path.join(iso, "config", "settings.json")
     check(os.path.isfile(cfg_side), "settings.json 落在 exe 旁（数据与程序同目录）", cfg_side)
     if os.path.isfile(cfg_side):
         try:
             data = json.load(open(cfg_side, encoding="utf-8"))
-            check("installId" in data and data.get("installId"), "首次运行的 installId 已写入落点配置", "")
+            rm = data.get("reminderMessages") or {}
+            kinds = ("short", "long", "takeout")
+            missing = [k for k in kinds
+                       if not (rm.get(k) or {}).get("seeded")
+                       or not (rm.get(k) or {}).get("items")]
+            check(not missing, "首跑把补种的提醒内容条目回写进了落点配置",
+                  "缺 %s" % ",".join(missing) if missing else "")
+            # 机器标识机制已删除：落点配置里不许出现该键（手改或老配置也会在加载时被摘掉）
+            check("installId" not in data, "落点配置不含任何机器标识键", "")
+            ids = find_uuid_like(data)
+            check(not ids, "配置里没有任何 UUID 形态的串（软件不再生成设备标识）",
+                  "命中 %s" % ids[:2])
         except Exception as e:  # noqa: BLE001
             check(False, "落点配置可解析", repr(e))
 

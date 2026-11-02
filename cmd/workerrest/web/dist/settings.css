@@ -600,13 +600,21 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .role-item .role-radio { border-radius: 50%; }
 .role-item .role-check { border-radius: 4px; }
 .role-item .role-sel.on { border-color: var(--accent); background: var(--accent); }
+/* 单选框/复选框是磁贴里唯一的勾选入口（点立绘磁贴只切换编辑对象、不改勾选）：
+   手型光标、悬停描边、键盘焦点环都要有，否则键盘用户看不出这个 15px 的小方块能按 */
+.role-item .role-sel { cursor: pointer; }
+.role-item .role-sel:hover { border-color: var(--accent); }
+.role-item .role-sel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .role-item .role-radio.on::after {
   content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #fff;
 }
+/* 对勾用「形状」画（clip-path），不用 border 拼 L 形：L 形的墨迹天生偏向盒子的
+   右下角，rotate 45° 之后左右留白不可能对称（左边一大块空白、右边贴着边框）。
+   inset:0 才是内框（2px 边框已经占掉外圈，绝对定位的参照系是 padding box），
+   形状左右各留 6% ≈ 0.7px，上下对称，看起来才是正的。 */
 .role-item .role-check.on::after {
-  content: ""; position: absolute; left: 4px; top: 1px;
-  width: 4px; height: 8px; border: solid #fff; border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  content: ""; position: absolute; inset: 0; background: #fff;
+  clip-path: polygon(6% 35%, 40% 69%, 94% 17%, 94% 35%, 40% 83%, 6% 49%);
 }
 .role-cap-row { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; }
 .role-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

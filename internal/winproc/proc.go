@@ -1,3 +1,7 @@
+// Package winproc 枚举当前运行的进程名（Toolhelp32），供「打开即暂停」的客户端识别
+// （腾讯会议 / Teams / Zoom / Webex）。
+//
+// 非 Windows 平台走 _other 桩，返回空列表 —— 调用方必须能接受「认不出任何进程」。
 package winproc
 
 // 系统进程枚举 —— 历史源码/appProcess.ts 的 Go 版。

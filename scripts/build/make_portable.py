@@ -19,7 +19,8 @@
   - 预置两件套（运行数据随包分发，首跑直接在预置文件上继续写）：
       sounds/               四个内置提示音（源文件在模块根 sounds/，不再 embed 进二进制）
       config/settings.json  出厂默认配置（与 go:embed 的 default_settings.json 同一
-                            份文件，天然零漂移；固定键是空串，首跑自动补生成并回写）
+                            份文件，天然零漂移；里面没有 seeded 标记与条目，
+                            首跑由 Go 侧补种并回写）
   - **不预置 data/ 与 stats.json**：用户的统计数据不属于安装包。首跑由 stats.go 的
     Load 自己建 data/stats.json（见其四情形说明）；文件损坏时也会改名备份再重建。
   - 运行时残留（exe 同目录跑过一次后留下的 config/data/sounds 等）组装前一律清掉。
@@ -28,6 +29,7 @@
   - 当前提交没有 tag → 直接停止打包，提示先打 tag，并显示最近一次 tag 供参考；
   - 有 tag → 用它作为本次构建版本：exe 内注入去掉 v 的版本号（ldflags），
     产物文件名用该版本号，version.json 里写完整 tag。
+  - 工作树有未提交改动 → 停止：编出来的是磁盘上的代码，而 tag 指的是另一个快照。
   app.go 的 appVersion 只是 "dev" 占位符，不是版本来源。
 
 version.json 的 changes：上一个 tag 到当前 tag 之间的提交标题，按时间顺序（旧→新）
@@ -37,9 +39,12 @@ version.json 的 sha256 / size：**由本脚本从刚生成的 rest.zip 现算**
 客户端只认「哈希对得上」的包（对不上就丢弃、换镜像、全失败则拒绝更新），
 所以这两个字段缺失时打包直接失败 —— 没有哈希的清单等于没有更新通道。
 
-用法：python scripts/make_portable.py [--no-build] [--out DIR]
-  --no-build   跳过 go build，直接用 build/bin/rest.exe 组装（已构建过时用）
-  --out DIR    交付根目录（默认 release/；产物落在其下 WorkerRest-<tag>/ 里）
+用法：python scripts/make_portable.py [--no-build] [--out DIR] [--allow-dirty]
+  --no-build    跳过 go build，直接用 build/bin/rest.exe 组装（已构建过时用）
+  --out DIR     交付根目录（默认 release/；产物落在其下 WorkerRest-<tag>/ 里）
+  --allow-dirty 允许在未提交的工作树上打包：**只用于排查构建问题**。默认脏树即停 ——
+                tag 指的是提交，工作树里的未提交改动不在那个 tag 里，打出来的包与
+                「发布包 = 源码」这条审计链对不上。
 
 退出码 0 = 打包成功且便携 zip / 更新包 zip / version.json 全部校验通过；
        2 = 当前提交没有版本 tag（未开始构建）；
@@ -67,9 +72,11 @@ if HERE not in sys.path:
     sys.path.insert(0, HERE)
 import version as gitver  # noqa: E402
 
-ROLES_SRC = os.path.join(ROOT, "supervisors")  # 督休专员目录随 Go 工程一起（模块根下）
-SOUNDS_SRC = os.path.join(ROOT, "sounds")  # 内置提示音源文件（打包预置进便携包）
-DEFAULT_SETTINGS_SRC = os.path.join(ROOT, "default_settings.json")  # 出厂默认（go:embed 同一份）
+ROLES_SRC = os.path.join(ROOT, "assets", "supervisors")  # 内置专员模板（仓库里收在 assets/ 下）
+SOUNDS_SRC = os.path.join(ROOT, "assets", "sounds")  # 内置提示音源文件（打包预置进便携包）
+# 出厂默认的唯一源文件：internal/settings/default_settings.json 就是 //go:embed 嵌进 exe 的那份，
+# 打包时再复制成便携包的 config/settings.json。全仓只此一份，不再有「根目录副本要跟着同步」的坑。
+DEFAULT_SETTINGS_SRC = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 EXE_NAME = "rest.exe"
 EXE_SRC = os.path.join(ROOT, "build", "bin", EXE_NAME)
 TEMP = os.environ.get("TEMP", ROOT)
@@ -82,6 +89,20 @@ RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json", "logs"]
 # （b）随便携包放在根目录。只发 exe 的用户靠内嵌 + 关于页入口，收整包的用户直接能读。
 NOTICES_NAME = "THIRD-PARTY-NOTICES.txt"
 NOTICES_SRC = os.path.join(MAIN_DIR, NOTICES_NAME)
+
+# 项目自己的许可证：和鸣谢清单是两个方向 —— 清单是「我用了别人的什么」，
+# LICENSE 是「别人可以拿这个项目做什么」。MIT 要求分发时随附版权声明与许可正文，
+# 收整包的用户没有仓库，所以必须随包带一份（源在仓库根，逐字节拷过去）。
+LICENSE_NAME = "LICENSE"
+LICENSE_SRC = os.path.join(ROOT, LICENSE_NAME)
+# MIT 正文的四段关键条款（授权 / 保留声明 / 免责 / 责任限制）。只校验存在与关键词，
+# 不逐字比对正文 —— 换行、版权人、年份都可能被改，那几处不属于「完整性」。
+LICENSE_REQUIRED = [
+    "Permission is hereby granted, free of charge",
+    "The above copyright notice and this permission notice shall be included",
+    'THE SOFTWARE IS PROVIDED "AS IS"',
+    "IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE",
+]
 
 # 清除开机自启动项脚本：便携版没有安装器（删文件夹就算卸载），但用户勾过「开机自启动」
 # 就往注册表里写过一项，删了文件夹之后它指向一个不存在的 exe，任务管理器「启动」页里
@@ -246,6 +267,11 @@ def assemble(dest: str, version: str) -> bool:
     # 开源鸣谢清单：与内嵌进 exe 的那份逐字节相同（打包前已 --check 过）
     if os.path.isfile(NOTICES_SRC):
         shutil.copy2(NOTICES_SRC, os.path.join(dest, NOTICES_NAME))
+    # 项目许可证：MIT 的「随附声明」义务靠这份文件履行，缺了就不是合规分发
+    if not os.path.isfile(LICENSE_SRC):
+        print(f"[make-portable] FAIL: 仓库根缺 {LICENSE_NAME}（项目许可证）")
+        return False
+    shutil.copy2(LICENSE_SRC, os.path.join(dest, LICENSE_NAME))
     # 清除开机自启动项脚本：便携版没有卸载器，用户删文件夹前用它把注册表里那一项清掉
     if os.path.isfile(CLEANER_SRC):
         shutil.copy2(CLEANER_SRC, os.path.join(dest, CLEANER_NAME))
@@ -258,7 +284,7 @@ def assemble(dest: str, version: str) -> bool:
         elif os.path.exists(p):
             os.remove(p)
     # 预置两件套：sounds/（内置提示音）、config/settings.json（出厂默认）。
-    # 首跑直接在预置文件上继续写（固定键由 Go 侧补生成并回写）。
+    # 首跑直接在预置文件上继续写（补种提醒内容条目 / 指定应用 / 提示音后回写）。
     # data/ 与 stats.json **不进包**：统计是用户数据，首跑由 stats.go 的 Load 自己建
     # （缺就建空表、坏就改名备份后重建），更新时也不会被安装包覆盖或删除。
     shutil.copytree(SOUNDS_SRC, os.path.join(dest, "sounds"))
@@ -318,6 +344,8 @@ def verify_zip(zip_path: str, top: str) -> bool:
     # 开源鸣谢清单必须在根目录：它是 MIT / BSD-3「随分发复现」义务的载体之一，
     # 内嵌进 exe 的那份用户未必看得到，包里这份是「打开就能读」的最短路径
     has_notices = f"{top}/{NOTICES_NAME}" in names
+    # 项目自己的 MIT 许可证同样必须在根目录：鸣谢清单声明第三方，LICENSE 声明本项目
+    has_license = f"{top}/{LICENSE_NAME}" in names
     # 清启动项脚本：便携版「卸载」只剩这一处残留，脚本丢了用户就只能自己手改注册表
     has_cleaner = f"{top}/{CLEANER_NAME}" in names
     # 统计是用户数据：安装包与更新包里**必须没有** data/（首跑自动创建，见 stats.go Load）
@@ -328,17 +356,19 @@ def verify_zip(zip_path: str, top: str) -> bool:
     escaped = [n for n in names if not n.startswith(top + "/") or "\\" in n]
     ok = (
         test is None and has_exe and has_roles and has_role_meta
-        and n_sounds == 4 and has_cfg and has_notices and has_cleaner
+        and n_sounds == 4 and has_cfg and has_notices and has_license and has_cleaner
         and no_data and not escaped
     )
     print(
         f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} supervisors={has_roles}"
         f" role_meta={has_role_meta} img={n_roles} sounds={n_sounds} cfg={has_cfg}"
-        f" notices={has_notices} cleaner={has_cleaner} no_data={no_data}"
+        f" notices={has_notices} license={has_license} cleaner={has_cleaner} no_data={no_data}"
         f" escaped={len(escaped)} crc={test is None}"
     )
     if not has_notices:
         print(f"[make-portable] FAIL: 包里缺 {top}/{NOTICES_NAME}（开源鸣谢清单）")
+    if not has_license:
+        print(f"[make-portable] FAIL: 包里缺 {top}/{LICENSE_NAME}（项目 MIT 许可证）")
     if not has_cleaner:
         print(f"[make-portable] FAIL: 包里缺 {top}/{CLEANER_NAME}（清除开机自启动项脚本）")
     if data_entries:
@@ -463,6 +493,8 @@ def md5(p: str) -> str:
 def find_role_meta(root: str, name: str):
     """在 supervisors/ 下按专员名反查 meta.json（目录名是名字的投影，可能被清洗过）。"""
     sup = os.path.join(root, "supervisors")
+    if not os.path.isdir(sup):  # 仓库布局：随包资源收在 assets/ 下
+        sup = os.path.join(root, "assets", "supervisors")
     if not os.path.isdir(sup):
         return None
     for dn in os.listdir(sup):
@@ -504,7 +536,7 @@ def check_default_sites() -> str:
 
 # ---- 「恢复默认设置」的内嵌默认 vs 随包预置配置 ----
 # 两条路径吃的是两份可能不同的东西：exe 内嵌的 default_settings.json（go:embed，恢复默认
-# 的数据源）与便携包里的 config/settings.json（新装首跑读它，由本脚本从仓库根复制）。
+# 的数据源）与便携包里的 config/settings.json（新装首跑读它，由本脚本从 internal/settings 复制）。
 # 正常流程（每次 go build 后再组装）两者天然同源，但 `--no-build` 用上一轮 exe 时就会分叉：
 # 包里是新值、点「恢复默认」回旧值，界面上完全看不出来。所以组装前必须让 exe 自己吐出来核对。
 _DUMP_CACHE = {}
@@ -562,7 +594,7 @@ def diff_defaults(a, b, limit: int = 8) -> str:
 
 
 def check_embedded_defaults(exe: str) -> str:
-    """exe 内嵌的出厂默认必须与仓库根 default_settings.json 语义一致，返回空串表示通过。"""
+    """exe 内嵌的出厂默认必须与 internal/settings/default_settings.json 语义一致，返回空串表示通过。"""
     try:
         mine = json.loads(dump_embedded_defaults(exe).decode("utf-8"))
     except (RuntimeError, ValueError, UnicodeDecodeError) as e:  # noqa: BLE001
@@ -831,10 +863,68 @@ def check_cleaner() -> str:
     return ""
 
 
+def check_license() -> str:
+    """项目许可证：必须是 MIT 正文、带版权行，且许可全文完整（返回空串表示通过）。
+
+    只查「文件在不在」不够 —— 一份被截断、或者只有一句「MIT」的 LICENSE 同样能让
+    打包成功，而 MIT 的有效性依赖正文逐条保留（授权 + 声明保留义务 + 免责声明）。
+    """
+    if not os.path.isfile(LICENSE_SRC):
+        return f"仓库根缺 {LICENSE_NAME}：MIT 分发必须随附许可正文"
+    text = open(LICENSE_SRC, encoding="utf-8", errors="replace").read()
+    if not text.strip():
+        return f"{LICENSE_NAME} 是空文件"
+    # 折叠空白后再找条款：MIT 正文的断行位置各不相同（比如责任限制那句常在
+    # AUTHORS 与 COPYRIGHT 之间换行），按行找会漏，按「连续空白当空格」找才稳。
+    flat = " ".join(text.split())
+    missing = [s for s in LICENSE_REQUIRED if s not in flat]
+    if missing:
+        return f"{LICENSE_NAME} 不像完整 MIT 正文，缺：{missing}"
+    if "Copyright (c)" not in text:
+        return f"{LICENSE_NAME} 缺版权行（Copyright (c) <年份> <权利人>）"
+    print(f"[make-portable] {LICENSE_NAME} ok（MIT，{len(text)} 字节）")
+    return ""
+
+
+def check_worktree_clean() -> str:
+    """工作树必须与 tag 指向的那个提交完全一致，返回空串表示通过。
+
+    版本号的语义是「这个 tag 里的代码」。工作树带着未提交改动时，`go build` 编进去的是
+    磁盘上的东西，而 tag 指的是另一个快照 —— 包能打出来、测试也全绿，但「发布包 = 源码」
+    这条审计链就断了：用户/审计方按 tag 检出对不上二进制的行为。
+
+    这个坑很隐蔽：改动通常是「顺手没提交」的几个文件，打包时不会有任何异常提示。
+    所以在这里硬停。真要在脏树上试打包（排查构建问题），显式加 --allow-dirty，别默认放行。
+
+    只认 git status（含未跟踪文件）：.gitignore 里的 build/bin、release/ 等不算脏，
+    所以打过一次包不会自己把自己拦住。
+    """
+    try:
+        # core.quotepath=false：不这样，中文路径会变成 "\344\270\255..." 八进制转义，
+        # 提示信息对人就没用了
+        r = subprocess.run(["git", "-c", "core.quotepath=false", "status", "--porcelain"],
+                           cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    except OSError as e:
+        return f"跑不了 git（{e}）：无法确认工作树与 tag 一致"
+    if r.returncode != 0:
+        return "git status 失败：" + r.stdout.decode("utf-8", "replace").strip()
+    out = r.stdout.decode("utf-8", "replace").strip()
+    if not out:
+        return ""
+    lines = out.splitlines()
+    shown = "\n".join("    " + ln for ln in lines[:12])
+    more = "" if len(lines) <= 12 else f"\n    ……另有 {len(lines) - 12} 项"
+    return ("工作树不干净：%d 项未提交改动。tag 指的是提交，工作树里的改动不在这个 tag 里，"
+            "打出来的包会与 tag 对不上。\n    先 commit（或 stash）再打包；"
+            "只是排查构建问题时才用 --allow-dirty：\n%s%s" % (len(lines), shown, more))
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="Go 版便携目录打包")
     ap.add_argument("--no-build", action="store_true", help="跳过 go build，直接用已有 exe")
     ap.add_argument("--out", default="", help="交付根目录（默认 release/，其下再建 WorkerRest-<tag>/）")
+    ap.add_argument("--allow-dirty", action="store_true",
+                    help="允许在未提交的工作树上打包（仅供排查构建问题，交付禁用）")
     args = ap.parse_args()
 
     out_dir = os.path.abspath(args.out) if args.out else DEFAULT_OUT
@@ -865,6 +955,16 @@ def main() -> int:
         print(f"[make-portable] changes 取 {prev}..{tag}")
     else:
         print("[make-portable] 没有更早的 tag：version.json 的 changes 留空")
+
+    # 0b. 工作树必须就是 tag 指向的那份代码（脏树打出来的包与 tag 对不上）
+    if args.allow_dirty:
+        print("[make-portable] 警告：--allow-dirty 已放行，产物与 tag 可能不一致（不可交付）")
+    else:
+        why = check_worktree_clean()
+        if why:
+            print("[make-portable] FAIL: " + why)
+            return 1
+        print("[make-portable] 工作树干净（== tag 指向的提交）")
 
     # 1. 构建 exe 之前先核对许可清单（它要被编进 exe，过期就必须在这里停）
     why = check_notices()
@@ -916,10 +1016,18 @@ def main() -> int:
         print("[make-portable] FAIL: " + why)
         return 1
 
+    # 1f. 项目许可证：随包分发要随附 MIT 正文，缺了/残了就不许出包
+    why = check_license()
+    if why:
+        print("[make-portable] FAIL: " + why)
+        return 1
+
     # 2. 组装（在系统临时目录做，避免 release/ 历史产物被锁）
     stage_parent = os.path.join(TEMP, "wr-portable-build")
     dest = os.path.join(stage_parent, PORTABLE_DIR_NAME)
-    assemble(dest, version)
+    if not assemble(dest, version):
+        print("[make-portable] FAIL: 组装便携目录失败")
+        return 1
 
     # 3. 结构核验
     checks = [
@@ -928,6 +1036,7 @@ def main() -> int:
         ("预置 sounds/", os.path.join(dest, "sounds", "short_start.wav")),
         ("预置 config/settings.json", os.path.join(dest, "config", "settings.json")),
         ("开源鸣谢清单", os.path.join(dest, NOTICES_NAME)),
+        ("项目许可证（MIT）", os.path.join(dest, LICENSE_NAME)),
         ("清除开机自启动项脚本", os.path.join(dest, CLEANER_NAME)),
     ]
     ok = True

@@ -80,14 +80,18 @@ def main():
     if not node_cmd:
         print("找不到 node")
         return 2
-    if not os.path.isdir(os.path.join(ROOT, "node_modules", "playwright")):
+    # Playwright 装在 scripts/node_modules（历史位置是仓库根，两处都认）
+    pw_dir = next((d for d in (os.path.join(ROOT, "scripts", "node_modules"),
+                               os.path.join(ROOT, "node_modules"))
+                   if os.path.isdir(os.path.join(d, "playwright"))), "")
+    if not pw_dir:
         print("找不到 playwright")
         return 2
 
     if os.environ.get("WR_NO_BUILD") != "1":
         print("构建无头服务…")
         b = subprocess.run(
-            ["go", "build", "-tags", "server", "-o", EXE, "-ldflags", "-s -w", "."],
+            ["go", "build", "-tags", "server", "-o", EXE, "-ldflags", "-s -w", "./cmd/workerrest"],
             cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         if b.returncode != 0:
@@ -102,7 +106,7 @@ def main():
     shutil.rmtree(ISO, ignore_errors=True)
     os.makedirs(ISO, exist_ok=True)
     iso_settings = os.path.join(ISO, "settings.json")
-    with open(os.path.join(ROOT, "default_settings.json"), "r", encoding="utf-8") as f:
+    with open(os.path.join(ROOT, "internal", "settings", "default_settings.json"), "r", encoding="utf-8") as f:
         defaults = json.load(f)
     with open(iso_settings, "w", encoding="utf-8") as f:
         json.dump(defaults, f, ensure_ascii=False, indent=2)

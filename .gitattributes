@@ -15,6 +15,10 @@
 THIRD-PARTY-NOTICES.txt -text
 scripts/build/notices/*.txt -text
 
+# 项目许可证同样固定 LF：它是「一字不改」的对外文件，谁在哪台机器上 clone 都应该拿到
+# 同一串字节（打包时原样拷进便携包，不该随平台的换行策略漂移）。
+LICENSE -text
+
 # 批处理脚本是 GBK + CRLF：cmd 按 OEM 代码页 936 读文件，换个换行或编码就满屏乱码。
 # 关掉一切换行转换（-text），谁 clone 到哪种系统上拿到的都是同一串字节。
 *.bat -text

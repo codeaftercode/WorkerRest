@@ -1,3 +1,8 @@
+// Package urltls 是更新链路的 URL 安全校验：只放行 https（回环地址除外），重定向的
+// 每一跳都重新校验。
+//
+// 单独成包是因为它被两处共用：internal/update 校验清单地址，internal/settings 校验
+// 内置的更新站点配置。口径只写一遍，避免两处各判一套。
 package urltls
 
 import (

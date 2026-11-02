@@ -10,7 +10,7 @@ const fs = require("fs");
 const BASE = process.env.WR_BASE || "http://127.0.0.1:29731";
 const OUT = process.env.WR_OUT || path.join(process.env.TEMP || ".", "wr_about_shots");
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
-const PRELOAD = path.join(__dirname, "probe_preload.js");
+const PRELOAD = path.join(__dirname, "..", "probe_preload.js");
 
 async function open(browser, url, w, h, o) {
   const opts = o || {};

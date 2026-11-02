@@ -98,15 +98,14 @@ func (a *App) buildTakeoutInfo(slot model.TimeSlot, preview bool, postponedCount
 	// 推迟线是推迟后的到点时刻）；不传则按「当天该时刻」—— 与历史口径一致。
 	atMs := atOverride
 	if atMs <= 0 {
-		atMs = slotAlertAt(slot, 0, now.UnixMilli())
+		atMs = plan.SlotAlertAt(slot, 0, now.UnixMilli())
 	}
-	// 红包二维码指向本机专属领取地址：id 取配置里那枚固定键（每台机器一枚，首次运行生成），
-	// 服务端（www.goodgoodlive.com）按 id 区分来源。只要显示外卖提醒窗口就必须展示优惠券，
-	// 因此这里无条件带上地址（不再有开关）。
-	// t = 毫秒时间戳：每次弹窗都重新生成地址，供服务端做时效判断 / 缓存刷新，
-	// 与 id 一起追加在查询串上（id 保留）。
-	redData := &model.TakeoutRedPacket{URL: "https://www.goodgoodlive.com/cps/index.html?id=" +
-		cfg.Str("", "installId") + "&t=" + strconv.FormatInt(now.UnixMilli(), 10)}
+	// 外卖优惠券二维码：指向固定的领取页，不带任何本机标识 —— 每台机器生成的都是同一个
+	// 地址，扫码领券与「这台电脑是谁」无关。只要显示外卖提醒窗口就必须展示优惠券，因此
+	// 这里无条件带上地址（不再有开关）。
+	// t = 毫秒时间戳：每次弹窗都重新生成地址，供服务端做时效判断 / 缓存刷新。
+	redData := &model.TakeoutRedPacket{URL: "https://www.goodgoodlive.com/cps/index.html?t=" +
+		strconv.FormatInt(now.UnixMilli(), 10)}
 	info := &model.TakeoutInfo{
 		ID:             takeoutID(),
 		At:             atMs,
@@ -115,7 +114,7 @@ func (a *App) buildTakeoutInfo(slot model.TimeSlot, preview bool, postponedCount
 		Slot:           slot,
 		FiredAt:        now.UnixMilli(),
 		Preview:        preview,
-		Meal:           takeoutMealLabel(slot.Hour),
+		Meal:           plan.TakeoutMealLabel(slot.Hour),
 		LeadSec:        cfg.TakeoutLeadSec(),
 		PostponeMin:    cfg.TakeoutPostponeMin(),
 		PostponedCount: postponedCount,

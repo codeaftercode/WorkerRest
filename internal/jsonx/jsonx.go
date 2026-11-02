@@ -93,6 +93,31 @@ func AnySlice(v any) []any {
 	return nil
 }
 
+// StringSliceToAny 把 []string 转成 []any（写进 JSON 树之前的形状转换）。
+func StringSliceToAny(s []string) []any {
+	out := make([]any, 0, len(s))
+	for _, v := range s {
+		out = append(out, v)
+	}
+	return out
+}
+
+// AnySliceToStrings 把 any 数组里的字符串取出来，保持原顺序；非字符串项跳过，
+// 传入的不是数组时返回 nil（配置从 JSON 恢复会退化成 []any，两种形状都遇到过）。
+func AnySliceToStrings(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, it := range arr {
+		if s, ok := it.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // NewRandomID 生成一枚 v4 形态的随机唯一串（与前端自带的同类生成器同形）。
 func NewRandomID() string {
 	var b [16]byte

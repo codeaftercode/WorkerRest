@@ -12,7 +12,7 @@
 用法：python scripts/probe_stats_file.py [--port 29751] [--keep]
 退出码 0 = 全部通过。
 
-前置：go build -tags server -o build/bin/chibingren_server.exe .（脚本不重建二进制）
+前置：go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest（脚本不重建二进制）
 """
 
 import argparse
@@ -131,14 +131,14 @@ def main():
     args = ap.parse_args()
 
     if not os.path.isfile(EXE):
-        print("找不到 %s —— 先 go build -tags server -o build/bin/chibingren_server.exe ." % EXE)
+        print("找不到 %s —— 先 go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest" % EXE)
         return 2
 
     iso = os.path.join(TEMP, "wr_stats_file_probe")
     shutil.rmtree(iso, ignore_errors=True)
     os.makedirs(os.path.join(iso, "config"), exist_ok=True)
     # 出厂配置：优先用仓库里那份（与打包写进 config/settings.json 的同源）
-    factory = os.path.join(ROOT, "default_settings.json")
+    factory = os.path.join(ROOT, "internal", "settings", "default_settings.json")
     shutil.copy2(factory, os.path.join(iso, "config", "settings.json"))
     # exe 必须**拷进 iso** 再跑：直接跑 build/bin/ 里的那份会被判成开发态
     #（resourcesRoot 向上找 go.mod），落点会跑回仓库根，探针就测不到便携落点了。

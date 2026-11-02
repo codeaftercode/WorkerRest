@@ -17,7 +17,7 @@ import (
 // 会变成「文件在那儿、软件永远不读」的隐形坑。
 func TestRepoSupervisorsUseMetaName(t *testing.T) {
 	root := repoRoot(t)
-	sup := filepath.Join(root, "supervisors")
+	sup := filepath.Join(root, "assets", "supervisors")
 	entries, err := os.ReadDir(sup)
 	if err != nil {
 		t.Fatalf("读不到 supervisors/：%v", err)
@@ -75,7 +75,7 @@ func TestLegacyRoleJSONIsIgnored(t *testing.T) {
 // 没有台词，日志也不报错，只能靠肉眼发现。
 func TestRepoSupFixedIDResolves(t *testing.T) {
 	root := repoRoot(t)
-	sup := filepath.Join(root, "supervisors")
+	sup := filepath.Join(root, "assets", "supervisors")
 	entries, err := os.ReadDir(sup)
 	if err != nil {
 		t.Fatalf("读不到 supervisors/：%v", err)
@@ -126,7 +126,7 @@ func TestCreateRoleDirWritesMetaName(t *testing.T) {
 	if err := os.WriteFile(src, []byte("fake-png"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	rolesRoot := filepath.Join(root, "supervisors")
+	rolesRoot := filepath.Join(root, "assets", "supervisors")
 	if err := os.MkdirAll(rolesRoot, 0o755); err != nil {
 		t.Fatal(err)
 	}

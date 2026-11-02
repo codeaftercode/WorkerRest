@@ -1,13 +1,13 @@
 // 批量重做督休专员的磁贴预览图（supervisors/<专员>/preview.webp）。
 //
-// 调的是**运行时同一个函数**：把 frontend/dist/role_thumb.js 注入页面，再由
+// 调的是**运行时同一个函数**：把 web/dist/role_thumb.js 注入页面，再由
 // window.WRRoleThumb.buildFromDataURL 生成 —— 保证「脚本批量生成的」与「用户在设置页
 // 导入/换图时生成的」逐像素同源，不会出现两套裁切/尺寸口径。
 //
 // 用法：
 //   node scripts/rebuild_role_previews.js            # 全量重做
 //   node scripts/rebuild_role_previews.js --check    # 只报告，不写盘
-//   node scripts/rebuild_role_previews.js 秦始皇 战士  # 指定专员
+//   node scripts/rebuild_role_previews.js 秦始皇 画家  # 指定专员
 //
 // 注意：会覆盖 preview.*（旧扩展名的文件一并删除），并修正 meta.json 里的 preview 字段；
 // 立绘（figure.*）与其它字段一律不动。
@@ -17,8 +17,8 @@ const path = require("path");
 const { chromium } = require("playwright");
 
 const ROOT = path.resolve(__dirname, "..");
-const SUP = path.join(ROOT, "supervisors");
-const THUMB_JS = path.join(ROOT, "cmd", "workerrest", "frontend", "dist", "role_thumb.js");
+const SUP = path.join(ROOT, "assets", "supervisors");
+const THUMB_JS = path.join(ROOT, "cmd", "workerrest", "web", "dist", "role_thumb.js");
 const MIME = {
   ".webp": "image/webp",
   ".png": "image/png",

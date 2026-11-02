@@ -191,7 +191,7 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 // NormalizeTakeout 归一化整份外卖配置（跨包导出，供测试与 main 包复用）。
 func NormalizeTakeout(raw map[string]any) map[string]any { return normalizeTakeout(raw) }
 
-// appPausePreset 内置的常用视频会议软件（与 frontend/dist/settings.js 的 APP_PAUSE_PRESETS 逐字一致）。
+// appPausePreset 内置的常用视频会议软件（与 web/dist/settings.js 的 APP_PAUSE_PRESETS 逐字一致）。
 //
 // **只收「打开它基本就是在开会」的客户端**。飞书 / 钉钉 / 企业微信 / WeLink 刻意不入列：
 // 它们当然也能开会，但日常更多是看消息、批流程、写文档，拿「进程在不在」判断「正在开会」
@@ -414,11 +414,19 @@ func normalizeWindow(raw map[string]any) {
 // NormalizeWindow 归一化「设置窗口尺寸」块（跨包导出，供测试复用）。
 func NormalizeWindow(raw map[string]any) { normalizeWindow(raw) }
 
-// cleanLegacyKeys 清理已删除功能残留在配置里的旧键。
+// cleanLegacyKeys 清理已删除功能残留在配置里的旧键，返回是否真的删掉了东西
+// （调用方据此决定要不要立刻回写，让磁盘与内存一致）。
 //
 // deepMerge 只补默认值、不删旧键，用户升级上来的配置里还留着这些块 —— 不清理就会
 // 一直躺在 settings.json 里（也会被设置页的「导入导出」带走）。
-func cleanLegacyKeys(raw map[string]any) {
+func cleanLegacyKeys(raw map[string]any) bool {
+	changed := false
+	// 老版本在配置里存过一枚「机器标识」（外卖红包链接的 ?id= 参数用它）。该机制已整体
+	// 删除：二维码不再带 id，软件也不该在任何地方留一个设备标识。这里兜底把残留键摘掉。
+	if _, ok := raw["installId"]; ok {
+		delete(raw, "installId")
+		changed = true
+	}
 	// appearance.opacity 是「不透明度」语义（0.92=接近实底），与 UI 的「透明度」相反：
 	// 换算 transparency = 1 - opacity 保持视觉不变，之后删掉旧键
 	if ap, ok := raw["appearance"].(map[string]any); ok {
@@ -428,8 +436,11 @@ func cleanLegacyKeys(raw map[string]any) {
 			}
 		}
 		// 清理可能残留的旧键（如迁移中途混写的配置）
-		if _, ok := ap["transparency"].(float64); ok {
-			delete(ap, "opacity")
+		if _, has := ap["opacity"]; has {
+			if _, ok := ap["transparency"].(float64); ok {
+				delete(ap, "opacity")
+				changed = true
+			}
 		}
 	}
 	// 「禁止跳过」功能已删除：清掉 short/long 里残留的 strict
@@ -437,6 +448,7 @@ func cleanLegacyKeys(raw map[string]any) {
 		if m, ok := raw[kind].(map[string]any); ok {
 			if _, ok := m["strict"]; ok {
 				delete(m, "strict")
+				changed = true
 			}
 		}
 	}
@@ -444,6 +456,7 @@ func cleanLegacyKeys(raw map[string]any) {
 	if sup, ok := raw["supervisor"].(map[string]any); ok {
 		if _, ok := sup["level"]; ok {
 			delete(sup, "level")
+			changed = true
 		}
 	}
 	// 提示音统一：旧的四种音效字段（shortStart/shortEnd/longStart/longEnd）合并成单一 sound
@@ -455,6 +468,7 @@ func cleanLegacyKeys(raw map[string]any) {
 			}
 		}
 		if anyLegacy {
+			changed = true
 			if v, ok := snd["shortStart"].(string); ok {
 				snd["sound"] = v
 			}
@@ -466,7 +480,9 @@ func cleanLegacyKeys(raw map[string]any) {
 	// 「工作时段」功能已整体删除
 	if _, ok := raw["workTime"]; ok {
 		delete(raw, "workTime")
+		changed = true
 	}
+	return changed
 }
 
 // normalizeRoleOrder 归一化候选专员顺序：只保留非空字符串项并去重。

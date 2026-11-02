@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"workerrest/internal/jsonx"
 	"workerrest/internal/update"
 )
 
@@ -194,7 +195,7 @@ func (a *App) PendingUpdate() map[string]any {
 	return map[string]any{
 		"version":         p.Version,
 		"date":            p.Date,
-		"changes":         stringSliceToAny(p.Changes),
+		"changes":         jsonx.StringSliceToAny(p.Changes),
 		"settingsVisible": p.SettingsVisible,
 		"activeTab":       p.ActiveTab,
 	}

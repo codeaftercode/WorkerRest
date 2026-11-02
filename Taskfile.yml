@@ -1,0 +1,124 @@
+version: "3"
+
+# 项目统一入口（go-task）。
+#   安装：go install github.com/go-task/task/v3/cmd/task@latest
+#   用法：task --list
+# 没装也能干活：每条任务的命令都写在下面对应的 cmds 里，README 的
+# 「运行 / 打包 / 测试与验证」三节保留了等价的手敲写法。
+# 这里不做任何「包装逻辑」，只是把散在 scripts/ 各处的命令收进一张表。
+
+vars:
+  BIN: build/bin
+
+tasks:
+  default:
+    desc: 列出所有任务
+    silent: true
+    cmds:
+      - task --list-all
+
+  # ---------- 代码质量 ----------
+
+  fmt:
+    desc: 格式检查（gofmt 只报不改；有输出即不通过）
+    cmds:
+      - gofmt -l cmd internal
+
+  vet:
+    desc: 静态检查
+    cmds:
+      - go vet -tags server ./...
+
+  test:
+    desc: 全量单测（必须带 server tag，否则 nil panic 用例会误红）
+    cmds:
+      - go test -count=1 -tags server ./...
+
+  check:
+    desc: 提交前自检 = 格式 + 静态 + 单测
+    deps: [fmt, vet, test]
+
+  # ---------- 构建 ----------
+
+  dev:
+    desc: 开发态直接启动（GUI，无产物）
+    cmds:
+      - go run ./cmd/workerrest
+
+  build:
+    desc: 构建 GUI 产物 build/bin/rest.exe
+    cmds:
+      - go build -trimpath -o {{.BIN}}/rest.exe -ldflags "-H windowsgui -s -w" ./cmd/workerrest
+
+  build:server:
+    desc: 构建无头产物（探针/冒烟用，没有原生窗口）
+    cmds:
+      - go build -trimpath -tags server -o {{.BIN}}/chibingren_server.exe -ldflags "-s -w" ./cmd/workerrest
+
+  # ---------- 资源生成 ----------
+
+  resources:
+    desc: 校验 Windows 资源与开源鸣谢清单是否与生成器一致（改了图标/依赖后跑 --write）
+    cmds:
+      - python scripts/build/gen_windows_res.py --check
+      - python scripts/build/gen_notices.py --check
+
+  # ---------- 发布 ----------
+
+  package:
+    desc: 便携包完整打包（要求当前提交上有 tag，且工作树干净）
+    cmds:
+      - python scripts/build/make_portable.py
+
+  package:nobuild:
+    desc: 用上一轮 exe 打包（exe 比源码旧会直接失败）
+    cmds:
+      - python scripts/build/make_portable.py --no-build
+
+  verify:
+    desc: 便携包在隔离环境首跑（落点、预置件、不外溢）
+    cmds:
+      - python scripts/build/verify_portable.py
+
+  # ---------- 验证 ----------
+
+  smoke:
+    desc: 无头冒烟：前端 → Go 绑定链路
+    cmds:
+      - python scripts/smoke_server.py
+
+  a11y:
+    desc: 可访问性两条线（静态语义审计 + 焦点行为探针，需先在 scripts/ 装 Node 依赖）
+    cmds:
+      - node scripts/a11y_audit.js
+      - node scripts/probe_a11y_focus.js
+
+  probe:renderer:
+    desc: 渲染层探针（无头服务 + Playwright）
+    cmds:
+      - python scripts/probe/probe_renderer.py
+
+  probe:window:
+    desc: 设置窗口尺寸端到端（真窗口）
+    cmds:
+      - python scripts/probe/probe_window_gui.py
+
+  probe:ui:
+    desc: 设置页 UI 全扫描（六 tab 控件 + 十弹窗语义契约 + 弹窗交互 + 写入链路）
+    cmds:
+      - python scripts/probe/probe_settings_ui.py
+
+  probe:bindings:
+    desc: 绑定级全覆盖（52 个前端绑定逐个真调 + 行为断言）
+    cmds:
+      - python scripts/probe/probe_bindings_full.py
+
+  probe:matrix:
+    desc: 配置矩阵（每个多值配置项逐个取值 + 启动态验证）
+    cmds:
+      - python scripts/probe/probe_config_matrix.py
+
+  probe:edge:
+    desc: 异常与边界（缺资源 / 只读 / 并发 / 超长 / 超大 / 落点异常）
+    cmds:
+      - python scripts/probe/probe_edge_cases.py

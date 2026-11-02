@@ -136,7 +136,7 @@ func TestBuiltinSoundsPresent(t *testing.T) {
 func TestBuiltinSoundSourceFilesOnDisk(t *testing.T) {
 	root := repoRoot(t)
 	for _, b := range settings.BuiltinSounds() {
-		st, err := os.Stat(filepath.Join(root, "sounds", filepath.Base(b.File)))
+		st, err := os.Stat(filepath.Join(root, "assets", "sounds", filepath.Base(b.File)))
 		if err != nil || !st.Mode().IsRegular() || st.Size() == 0 {
 			t.Errorf("源文件缺失或为空：%s/%s", "sounds", b.File)
 		}

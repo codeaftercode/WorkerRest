@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""印泥墨块 SVG 生成器（生成 frontend/dist/seal-ink-N.svg + seal-specks-N.svg）
+"""印泥墨块 SVG 生成器（生成 web/dist/seal-ink-N.svg + seal-specks-N.svg）
 
 对照参考图（朱红印泥「端午节」）后确定的几条：
   1) 内部要「实」：不做大面积飞白，只有极淡纸纹 + 边沿零星小孔
@@ -267,7 +267,7 @@ def main():
     if len(sys.argv) > 1:
         count = int(sys.argv[1])
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    out_dir = os.path.join(root, "cmd", "workerrest", "frontend", "dist")
+    out_dir = os.path.join(root, "cmd", "workerrest", "web", "dist")
     total = 0
     for i in range(1, count + 1):
         params = variant_params(i)
