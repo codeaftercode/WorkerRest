@@ -56,6 +56,16 @@ python scripts/build/make_portable.py
 python scripts/build/verify_portable.py
 ```
 
+> **Python 必须是 3.9+**。脚本用了类型注解与 f-string，Python 2.7 会在第一个 `def ... -> str`
+> 处报 `SyntaxError`（看起来像脚本写坏了，其实是解释器选错）。本机 PATH 上的 `python`
+> 可能是别的开发工具自带的 2.7 —— 那种情况下直接双击 `scripts/build/打包.bat`：它按
+> 「固定 Python 3.11 → `py -3` → `python`」的顺序挑解释器，选完还会校验版本，不对就报错
+> 退出，不会跑到一半才莫名其妙失败。命令行里也可以显式指定：
+>
+> ```powershell
+> D:\MyPrograms\Python\Python311\python.exe scripts/build/make_portable.py
+> ```
+
 产出（`release/WorkerRest-<tag>/`，tag 形如 `v0.9.1`）：
 
 | 文件 | 用途 |

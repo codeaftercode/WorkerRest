@@ -4,27 +4,48 @@ setlocal EnableExtensions
 title 打包 WorkerRest
 
 rem ---------------------------------------------------------------------------
-rem 一键打包脚本：双击即可执行，无需在 VSCode 里选 Python 环境。
-rem 硬编码系统标准 Python 3.11 解释器，绕开 VSCode 解释器选择/缓存问题。
+rem 一键打包：双击即可执行，不用在 VSCode 里挑解释器。
+rem 解释器选择顺序：固定路径的 Python 3.11 → py -3 启动器 → PATH 上的 python。
+rem 选完一律校验 >= 3.9：本机 PATH 上的 python 可能是别的开发工具自带的 2.7，
+rem 那种解释器会在第一个类型注解处报 SyntaxError，看起来像脚本本身坏了。
 rem ---------------------------------------------------------------------------
 
-set "PY=D:\MyPrograms\Python\Python311\python.exe"
+set "DEFAULT_PY=D:\MyPrograms\Python\Python311\python.exe"
+set PY_CMD="%DEFAULT_PY%"
+set PY_ARG=
 
-if not exist "%PY%" (
-    echo [错误] 找不到 Python：%PY%
-    echo 请确认 D:\MyPrograms\Python\Python311\python.exe 存在。
+if exist "%DEFAULT_PY%" goto have_py
+
+set PY_CMD=py
+set PY_ARG=-3
+where py >nul 2>nul
+if not errorlevel 1 goto have_py
+
+set PY_CMD=python
+set PY_ARG=
+
+:have_py
+%PY_CMD% %PY_ARG% -c "import sys;raise SystemExit(0 if sys.version_info>=(3,9) else 1)" >nul 2>nul
+if errorlevel 1 (
+    echo [错误] 需要 Python 3.9 或更高版本，当前解释器不可用：
+    echo        %PY_CMD% %PY_ARG%
+    %PY_CMD% %PY_ARG% -V
+    echo        把 DEFAULT_PY 改成可用的 Python 路径，或把它加进 PATH。
     pause
     exit /b 1
 )
 
-rem 切到脚本所在目录（scripts/ 的上一级，即项目根）
-cd /d "%~dp0.."
+for /f "delims=" %%v in ('%PY_CMD% %PY_ARG% -V 2^>^&1') do set "PYVER=%%v"
 
-echo [打包] 使用 Python: %PY%
+rem 切到项目根：本文件在 scripts\build\ 下，往上两级才是仓库根
+cd /d "%~dp0..\.."
+
+echo [打包] 使用 Python: %PY_CMD% %PY_ARG%  ^(%PYVER%^)
 echo [打包] 工作目录: %CD%
 echo.
 
-"%PY%" scripts\make_portable.py %*
+rem 用 %~dp0 拼脚本路径：不依赖当前目录，脚本再搬家也不会失效
+%PY_CMD% %PY_ARG% "%~dp0make_portable.py" %*
 set "RC=%ERRORLEVEL%"
 
 echo.

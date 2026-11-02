@@ -39,7 +39,9 @@ version.json 的 sha256 / size：**由本脚本从刚生成的 rest.zip 现算**
 客户端只认「哈希对得上」的包（对不上就丢弃、换镜像、全失败则拒绝更新），
 所以这两个字段缺失时打包直接失败 —— 没有哈希的清单等于没有更新通道。
 
-用法：python scripts/make_portable.py [--no-build] [--out DIR] [--allow-dirty]
+用法：python scripts/build/make_portable.py [--no-build] [--out DIR] [--allow-dirty]
+       双击 scripts/build/打包.bat 是同一件事（它会自己挑一个 3.9+ 的解释器，
+       并校验版本 —— PATH 上的 python 未必是 3.x）。
   --no-build    跳过 go build，直接用 build/bin/rest.exe 组装（已构建过时用）
   --out DIR     交付根目录（默认 release/；产物落在其下 WorkerRest-<tag>/ 里）
   --allow-dirty 允许在未提交的工作树上打包：**只用于排查构建问题**。默认脏树即停 ——
