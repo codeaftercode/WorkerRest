@@ -670,7 +670,7 @@ def main():
             check(st5.get("phase") in ("idle", "pre", "break"), "重置后 phase 仍合法", st5.get("phase"))
 
         # ---- 5. 系统能力：空闲 / 勿扰 / 进程 / 自启动 ----
-        # 无头模式下**不启动**会改调度器状态的三条监视（冒烟机始终空闲，会把调度器
+        # 无头模式下**不启动**会改调度器状态的四条监视（冒烟机始终空闲，会把调度器
         # 随机挂起、把上面那些确定性断言搞成掷骰子），但探测本身是照常做的 ——
         # 所以这里验的是「几个系统调用真的通了、字段形状对」，不是「暂停链路跑起来了」
         # （暂停链路由 sys_test.go 用假宿主 + 真进程名驱动）。
@@ -694,6 +694,14 @@ def main():
             check(isinstance(fs, dict) and isinstance(fs.get("supported"), bool)
                   and isinstance(fs.get("active"), bool) and bool(fs.get("detail")),
                   "全屏独占探测返回 {supported, active, detail}", fs)
+
+            cast = probe.get("cast") or {}
+            check(isinstance(cast, dict) and isinstance(cast.get("supported"), bool)
+                  and isinstance(cast.get("active"), bool) and bool(cast.get("detail")),
+                  "投屏探测返回 {supported, active, mirror, wireless, detail}", cast)
+            # 判据互斥性：active 必须由某条判据撑起来，否则就是「凭空空转」
+            check(not cast.get("active") or bool(cast.get("mirror") or cast.get("wireless")),
+                  "判定投屏时 mirror / wireless 至少一条为真", cast)
 
             procs = probe.get("processes") or {}
             check(isinstance(procs, dict) and procs.get("supported") is True,
@@ -1082,6 +1090,20 @@ def main():
         st, ex = call(base, "ExportThirdPartyNotices", [], window="settings")
         check(st == 200 and isinstance(ex, dict) and ex.get("canceled") is False and ex.get("error"),
               "ExportThirdPartyNotices 无头返回 {canceled:false, error}", ex)
+        # 项目许可条款：同样 //go:embed 在 exe 里（license.go）。便携目录不再散放 LICENSE，
+        # 所以「关于页 → 许可条款」与这个绑定是用户读条款的唯一入口 —— 断了就等于没授权。
+        st, lic = call(base, "GetProjectLicense", [], window="settings")
+        lic_text = lic if isinstance(lic, str) else ""
+        lic_ok = (lic_text.startswith("MIT License")
+                  and "Copyright (c)" in lic_text
+                  and "Permission is hereby granted, free of charge" in lic_text
+                  and 'THE SOFTWARE IS PROVIDED "AS IS"' in lic_text)
+        check(st == 200 and lic_ok,
+              "GetProjectLicense 返回内嵌的 MIT 正文（标题 + 版权行 + 授权 + 免责）",
+              "%d 字符" % len(lic_text))
+        st, lex = call(base, "ExportProjectLicense", [], window="settings")
+        check(st == 200 and isinstance(lex, dict) and lex.get("canceled") is False and lex.get("error"),
+              "ExportProjectLicense 无头返回 {canceled:false, error}", lex)
 
         # ---- 收尾：关窗清会话 ----
         st, _ = call(base, "CloseWindow", ["break"], window="break")
@@ -1103,7 +1125,7 @@ def main():
         check("[scheduler] 开始休息" in logtext, "日志记录了调度器真实开始过一次休息", "")
         # 系统能力探测结果落日志（排查「自启动没生效 / 空闲不暂停」时第一眼要看的就是它）
         check("[sys]" in logtext, "启动日志里有系统能力摘要（[sys] 行）", "")
-        check("无头模式：不启动空闲 / 勿扰 / 应用占用监视" in logtext,
+        check("无头模式：不启动空闲 / 勿扰 / 投屏 / 应用占用监视" in logtext,
               "无头模式明确跳过了会改状态的监视", "")
         # 提前提示窗口：无头下不建窗，但「进入了提前区间」与「按预期跳过建窗」都要留痕
         check("[prebreak] 即将休息" in logtext,

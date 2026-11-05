@@ -37,7 +37,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
-MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（含 embed 资源）
+MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（内嵌资源与 exe 同目录）
 
 # 同目录的 version.py（release 子目录名里带 tag，按 tag 拼路径最准）
 if HERE not in sys.path:
@@ -216,35 +216,12 @@ def main():
     check(n_wav == 4, "预置 sounds/ 有四个内置提示音", "wav=%d" % n_wav)
     preset_cfg = os.path.join(iso, "config", "settings.json")
     check(os.path.isfile(preset_cfg), "预置 config/settings.json 随包存在", preset_cfg)
-    # 开源鸣谢清单：随包一份，且与仓库里那份**逐字节相同**。
-    # 内嵌进 exe 的是同一份文件，所以这一条同时钉住「声明与分发物一致」：
-    # 包里被别处替换/漏更新都会红。
-    notices_ship = os.path.join(iso, "THIRD-PARTY-NOTICES.txt")
-    notices_repo = os.path.join(MAIN_DIR, "THIRD-PARTY-NOTICES.txt")
-    if os.path.isfile(notices_ship) and os.path.isfile(notices_repo):
-        with open(notices_ship, "rb") as f:
-            ship_hash = hashlib.sha256(f.read()).hexdigest()
-        with open(notices_repo, "rb") as f:
-            repo_hash = hashlib.sha256(f.read()).hexdigest()
-        check(ship_hash == repo_hash, "随包开源鸣谢清单 == 仓库清单（sha256）",
-              "%s vs %s" % (ship_hash[:12], repo_hash[:12]))
-    else:
-        check(False, "开源鸣谢清单随包存在",
-              notices_ship if not os.path.isfile(notices_ship) else notices_repo)
-    # 项目自己的 MIT 许可证：同样要随包，且与仓库那份逐字节相同。
-    # 与鸣谢清单方向相反（那份声明第三方，这份声明本项目），两者缺一都不算合规分发。
-    lic_ship = os.path.join(iso, "LICENSE")
-    lic_repo = os.path.join(ROOT, "LICENSE")
-    if os.path.isfile(lic_ship) and os.path.isfile(lic_repo):
-        with open(lic_ship, "rb") as f:
-            ship_hash = hashlib.sha256(f.read()).hexdigest()
-        with open(lic_repo, "rb") as f:
-            repo_hash = hashlib.sha256(f.read()).hexdigest()
-        check(ship_hash == repo_hash, "随包 LICENSE == 仓库 LICENSE（sha256）",
-              "%s vs %s" % (ship_hash[:12], repo_hash[:12]))
-    else:
-        check(False, "项目 LICENSE 随包存在",
-              lic_ship if not os.path.isfile(lic_ship) else lic_repo)
+    # 许可文本：两份都内嵌进 exe（notices.go / license.go），便携目录里**不该**有同名文件。
+    # 目录里那份从首装那天起就不再变（更新包 rest.zip 只换 exe），留着只会让人读到过期快照。
+    # 反向断言比「存在」更值钱：以后谁把拷贝逻辑加回来，这条会立刻红。
+    stray = [n for n in ("THIRD-PARTY-NOTICES.txt", "LICENSE")
+             if os.path.exists(os.path.join(iso, n))]
+    check(not stray, "许可文本不散放在目录里（已内嵌进 exe）", "stray=%s" % stray)
     # 首跑自建的空表（不再是「预置文件」）：Load 见文件缺失就建目录 + 写空表
     runtime_stats = os.path.join(iso, "data", "stats.json")
     check(os.path.isfile(runtime_stats), "首跑自动创建 data/stats.json", runtime_stats)

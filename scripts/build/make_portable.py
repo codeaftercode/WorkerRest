@@ -87,16 +87,19 @@ TEMP = os.environ.get("TEMP", ROOT)
 # （logs/ 是 2026-10 起 logging.go 默认写的 <exe>/logs/app.log，不属于安装包内容）
 RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json", "logs"]
 
-# 开源鸣谢清单：同一份文件有两个去处 ——（a）被 //go:embed 嵌进 exe（见 notices.go），
-# （b）随便携包放在根目录。只发 exe 的用户靠内嵌 + 关于页入口，收整包的用户直接能读。
+# 开源鸣谢清单与项目许可证：两者都**只**内嵌进 exe（notices.go / license.go），
+# 不再随便携包散放。理由是分发形态决定的：更新包 rest.zip 只换 exe，目录里那份文件
+# 从首装那天起就再也不会变 —— 与其发一份「一致地过期」的快照，不如只留 exe 里那份，
+# 它跟着版本走。用户要文件就点关于页的「另存为」，那是这两段文本唯一的出口。
 NOTICES_NAME = "THIRD-PARTY-NOTICES.txt"
-NOTICES_SRC = os.path.join(MAIN_DIR, NOTICES_NAME)
 
 # 项目自己的许可证：和鸣谢清单是两个方向 —— 清单是「我用了别人的什么」，
-# LICENSE 是「别人可以拿这个项目做什么」。MIT 要求分发时随附版权声明与许可正文，
-# 收整包的用户没有仓库，所以必须随包带一份（源在仓库根，逐字节拷过去）。
+# LICENSE 是「别人可以拿这个项目做什么」。真源在仓库根（GitHub/Gitee 认这个位置），
+# go:embed 不能跨目录引用 ../../LICENSE，所以 cmd/workerrest/ 下放了一份逐字节副本，
+# 打包前在这里比对两者 —— 改了许可证忘了刷新副本，出包就停。
 LICENSE_NAME = "LICENSE"
 LICENSE_SRC = os.path.join(ROOT, LICENSE_NAME)
+LICENSE_EMBED_SRC = os.path.join(MAIN_DIR, LICENSE_NAME)
 # MIT 正文的四段关键条款（授权 / 保留声明 / 免责 / 责任限制）。只校验存在与关键词，
 # 不逐字比对正文 —— 换行、版权人、年份都可能被改，那几处不属于「完整性」。
 LICENSE_REQUIRED = [
@@ -266,14 +269,8 @@ def assemble(dest: str, version: str) -> bool:
         shutil.rmtree(dest, ignore_errors=True)
     os.makedirs(dest, exist_ok=True)
     shutil.copy2(EXE_SRC, os.path.join(dest, EXE_NAME))
-    # 开源鸣谢清单：与内嵌进 exe 的那份逐字节相同（打包前已 --check 过）
-    if os.path.isfile(NOTICES_SRC):
-        shutil.copy2(NOTICES_SRC, os.path.join(dest, NOTICES_NAME))
-    # 项目许可证：MIT 的「随附声明」义务靠这份文件履行，缺了就不是合规分发
-    if not os.path.isfile(LICENSE_SRC):
-        print(f"[make-portable] FAIL: 仓库根缺 {LICENSE_NAME}（项目许可证）")
-        return False
-    shutil.copy2(LICENSE_SRC, os.path.join(dest, LICENSE_NAME))
+    # 开源鸣谢清单与项目许可证不拷：两者都内嵌在 exe 里（notices.go / license.go），
+    # 关于页有两个入口可读、可另存为。散放副本只会变成首装那天的过期快照。
     # 清除开机自启动项脚本：便携版没有卸载器，用户删文件夹前用它把注册表里那一项清掉
     if os.path.isfile(CLEANER_SRC):
         shutil.copy2(CLEANER_SRC, os.path.join(dest, CLEANER_NAME))
@@ -343,11 +340,11 @@ def verify_zip(zip_path: str, top: str) -> bool:
     # 预置三件套：四个内置提示音 + 出厂默认配置 + 空统计表
     n_sounds = sum(1 for n in names if n.startswith(f"{top}/sounds/") and n.endswith(".wav"))
     has_cfg = f"{top}/config/settings.json" in names
-    # 开源鸣谢清单必须在根目录：它是 MIT / BSD-3「随分发复现」义务的载体之一，
-    # 内嵌进 exe 的那份用户未必看得到，包里这份是「打开就能读」的最短路径
-    has_notices = f"{top}/{NOTICES_NAME}" in names
-    # 项目自己的 MIT 许可证同样必须在根目录：鸣谢清单声明第三方，LICENSE 声明本项目
-    has_license = f"{top}/{LICENSE_NAME}" in names
+    # 许可文本两份都**不该**在包里：鸣谢清单与 MIT 正文都内嵌进 exe（notices.go /
+    # license.go），关于页各有入口可读可导出。目录里再出现同名文件，就是一份从首装那天
+    # 起不再更新的快照 —— 用户分不清哪份是当前版本，比没有更糟。
+    stray_license = [n for n in names
+                     if n in (f"{top}/{NOTICES_NAME}", f"{top}/{LICENSE_NAME}")]
     # 清启动项脚本：便携版「卸载」只剩这一处残留，脚本丢了用户就只能自己手改注册表
     has_cleaner = f"{top}/{CLEANER_NAME}" in names
     # 统计是用户数据：安装包与更新包里**必须没有** data/（首跑自动创建，见 stats.go Load）
@@ -358,19 +355,17 @@ def verify_zip(zip_path: str, top: str) -> bool:
     escaped = [n for n in names if not n.startswith(top + "/") or "\\" in n]
     ok = (
         test is None and has_exe and has_roles and has_role_meta
-        and n_sounds == 4 and has_cfg and has_notices and has_license and has_cleaner
-        and no_data and not escaped
+        and n_sounds == 4 and has_cfg and has_cleaner
+        and no_data and not stray_license and not escaped
     )
     print(
         f"[make-portable] zip 校验: entries={len(names)} exe={has_exe} supervisors={has_roles}"
         f" role_meta={has_role_meta} img={n_roles} sounds={n_sounds} cfg={has_cfg}"
-        f" notices={has_notices} license={has_license} cleaner={has_cleaner} no_data={no_data}"
+        f" cleaner={has_cleaner} no_data={no_data} stray_license={len(stray_license)}"
         f" escaped={len(escaped)} crc={test is None}"
     )
-    if not has_notices:
-        print(f"[make-portable] FAIL: 包里缺 {top}/{NOTICES_NAME}（开源鸣谢清单）")
-    if not has_license:
-        print(f"[make-portable] FAIL: 包里缺 {top}/{LICENSE_NAME}（项目 MIT 许可证）")
+    if stray_license:
+        print(f"[make-portable] FAIL: 包里不该有许可文本（已内嵌进 exe）: {stray_license}")
     if not has_cleaner:
         print(f"[make-portable] FAIL: 包里缺 {top}/{CLEANER_NAME}（清除开机自启动项脚本）")
     if data_entries:
@@ -872,7 +867,7 @@ def check_license() -> str:
     打包成功，而 MIT 的有效性依赖正文逐条保留（授权 + 声明保留义务 + 免责声明）。
     """
     if not os.path.isfile(LICENSE_SRC):
-        return f"仓库根缺 {LICENSE_NAME}：MIT 分发必须随附许可正文"
+        return f"仓库根缺 {LICENSE_NAME}：项目许可的正文没了"
     text = open(LICENSE_SRC, encoding="utf-8", errors="replace").read()
     if not text.strip():
         return f"{LICENSE_NAME} 是空文件"
@@ -884,7 +879,18 @@ def check_license() -> str:
         return f"{LICENSE_NAME} 不像完整 MIT 正文，缺：{missing}"
     if "Copyright (c)" not in text:
         return f"{LICENSE_NAME} 缺版权行（Copyright (c) <年份> <权利人>）"
-    print(f"[make-portable] {LICENSE_NAME} ok（MIT，{len(text)} 字节）")
+    # 内嵌源必须与仓库根逐字节相同：go:embed 不能引用 ../../LICENSE，cmd/workerrest/
+    # 下那份副本才是真正编进 exe 的字节。副本漂移时，用户从关于页看到的是旧正文 ——
+    # 界面上看不出来，测试与打包才发现，所以两边都钉（license_test.go 是另一道）。
+    if not os.path.isfile(LICENSE_EMBED_SRC):
+        return f"缺内嵌源 {os.path.relpath(LICENSE_EMBED_SRC, ROOT)}（go:embed 只能用同目录文件）"
+    root_bytes = open(LICENSE_SRC, "rb").read()
+    embed_bytes = open(LICENSE_EMBED_SRC, "rb").read()
+    if root_bytes != embed_bytes:
+        return (f"内嵌的 {LICENSE_NAME} 与仓库根不一致（{len(embed_bytes)} vs {len(root_bytes)} 字节）："
+                f"改完许可证要同步副本 cp {LICENSE_NAME} "
+                f"{os.path.relpath(LICENSE_EMBED_SRC, ROOT)}")
+    print(f"[make-portable] {LICENSE_NAME} ok（MIT，{len(text)} 字节，内嵌副本一致）")
     return ""
 
 
@@ -1018,7 +1024,7 @@ def main() -> int:
         print("[make-portable] FAIL: " + why)
         return 1
 
-    # 1f. 项目许可证：随包分发要随附 MIT 正文，缺了/残了就不许出包
+    # 1f. 项目许可证：正文要完整，且内嵌副本必须与仓库根逐字节相同（用户只看得到内嵌那份）
     why = check_license()
     if why:
         print("[make-portable] FAIL: " + why)
@@ -1037,8 +1043,6 @@ def main() -> int:
         ("督休专员目录", find_role_meta(dest, "眼镜主管")),
         ("预置 sounds/", os.path.join(dest, "sounds", "short_start.wav")),
         ("预置 config/settings.json", os.path.join(dest, "config", "settings.json")),
-        ("开源鸣谢清单", os.path.join(dest, NOTICES_NAME)),
-        ("项目许可证（MIT）", os.path.join(dest, LICENSE_NAME)),
         ("清除开机自启动项脚本", os.path.join(dest, CLEANER_NAME)),
     ]
     ok = True
