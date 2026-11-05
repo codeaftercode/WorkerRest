@@ -137,7 +137,7 @@ def base_settings():
         "appearance": {"color": "#4f7cff", "transparency": 0.05, "blur": True,
                        "fullscreen": False, "alwaysOnTop": True, "widthPct": 95,
                        "heightPct": 95, "hideOnShare": True},
-        "allScreens": True,
+        "displayIds": [],
         "window": {"width": 874, "height": 857, "rememberSize": False,
                    "lastWidth": 0, "lastHeight": 0},
         "sound": {"enabled": False, "volume": 0.6, "sound": "short_start.wav", "custom": "",

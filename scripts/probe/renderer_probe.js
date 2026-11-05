@@ -71,8 +71,19 @@ async function newPage(browser, w, h, o) {
     );
   }
   if (o.onConsole) {
+    // SupActivity 是「用户在任意窗口动了键鼠」的心跳上报（fire-and-forget，调用方不读结果）。
+    // 页面对它没有失败分支，界面也不因此少任何东西；但页面正在关闭、或 server 模式下
+    // HTTP 连接被并发挤掉时，这次 fetch 会被浏览器中止（TypeError: Failed to fetch），
+    // shim 会如实 console.error 一行 —— 于是「页面无控制台错误」这条断言变成 1/3 概率的假红
+    // （实测 3 轮里红 1 轮，红的那轮报的就是这一条）。
+    //
+    // 只放过这一条，判据钉死到「方法名 + TypeError: Failed to fetch」：
+    // 绑定真丢了（比如方法不存在）、或它抛的是别的错，照旧上报。
+    // 「SupActivity 这个绑定在不在」由契约自检（57 个方法）与绑定级探针兜底，不靠这条断言。
+    const BENIGN_IPC_ABORT =
+      /\[shim\] 绑定调用失败 main\.App\.SupActivity: TypeError: Failed to fetch/;
     page.on("console", (msg) => {
-      if (msg.type() === "error") {
+      if (msg.type() === "error" && !BENIGN_IPC_ABORT.test(msg.text())) {
         o.onConsole.push(msg.text());
       }
     });
@@ -463,7 +474,7 @@ const PROBE_SETTINGS = `(function () {
     // 关于页「软件信息」卡：一行「版本」（版本号 | 发布时间）+ 一行「开源鸣谢」（运行环境行已移除）
     dVersion: txt('d-version-val'),
     dBuildTime: txt('d-build-time'),
-    // 运行环境行已从关于页移除：此字段用于断言它确实不再存在（应为 null）
+    // 关于页「许可条款 | 开源鸣谢」行尾的运行环境指纹（Go / Wails 版本）
     dRuntime: txt('d-runtime'),
     navCount: cnt('#nav .nav-item'),
     tabCount: cnt('#content .tab'),
@@ -514,7 +525,11 @@ const PROBE_SETTINGS = `(function () {
     apWidthPct: val('ap-widthPct'),
     apHeightPct: val('ap-heightPct'),
     apFullscreen: chk('ap-fullscreen'),
-    apAllScreens: chk('ap-allScreens'),
+    // 「显示的屏幕」自绘多选下拉：值挂在宿主 dataset.value（JSON 数组），没有原生 .value
+    apDisplayIds: (function () {
+      var el = document.getElementById('ap-displays');
+      return el ? el.dataset.value : null;
+    })(),
     apHideOnShare: chk('ap-hideOnShare'),
     sndVolume: val('snd-volume'),
     sndMode: val('snd-mode'),

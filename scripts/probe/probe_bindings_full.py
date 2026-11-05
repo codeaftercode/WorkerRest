@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""绑定级全覆盖探针：契约表里 52 个前端绑定，逐个真调一次并断言行为。
+"""绑定级全覆盖探针：契约表里全部前端绑定，逐个真调一次并断言行为。
 
 与既有脚本的分工：
   - smoke_server.py：证明「绑定按名能解析、主链路（休息/统计/专员）走得通」；
@@ -167,7 +167,7 @@ def default_settings():
         "appearance": {"color": "#4f7cff", "transparency": 0.05, "blur": True,
                        "fullscreen": False, "alwaysOnTop": True, "widthPct": 95,
                        "heightPct": 95, "hideOnShare": True},
-        "allScreens": True,
+        "displayIds": [],
         "window": {"width": 874, "height": 857, "rememberSize": False,
                    "lastWidth": 0, "lastHeight": 0},
         "sound": {"enabled": False, "volume": 0.6, "sound": "short_start.wav", "custom": "",
@@ -292,6 +292,10 @@ def main():
         check(isinstance(notices, str) and len(notices) > 2000,
               "GetThirdPartyNotices 返回非空长文本", len(notices) if isinstance(notices, str) else "")
 
+        lic = call_ok(base, "GetProjectLicense", [])
+        check(isinstance(lic, str) and len(lic) > 800 and lic.startswith("MIT License"),
+              "GetProjectLicense 返回内嵌的 MIT 正文", len(lic) if isinstance(lic, str) else "")
+
         # WindowMaximized：零覆盖项之一（无头下无窗口，应稳定返回 false 而不是崩）
         maxed = call_ok(base, "WindowMaximized", [])
         check(maxed is False, "WindowMaximized 无头下返回 false", repr(maxed))
@@ -347,6 +351,16 @@ def main():
               str(tcur)[:60])
         pstate = call_ok(base, "PreBreakState", [])
         check(isinstance(pstate, dict), "PreBreakState 返回对象", type(pstate).__name__)
+
+        # 自动暂停期间的「已暂停多久」小窗（见 pause_notice.go）。两个动作都要在
+        # 「没有窗口 / 没有暂停」时也是安全的：Dismiss 直接真调（关窗是空操作），
+        # Resume 走 schedPauseToggle（会改状态），所以只探测它是否注册。
+        pdst, pdres, pdtext, pdunknown = invoke(base, "PauseNoticeDismiss", [])
+        check(pdst == 200 and not pdunknown, "PauseNoticeDismiss 无窗时安全返回（关窗是空操作）",
+              "status=%s %s" % (pdst, pdtext[:120]))
+        pst, pres, ptext, punknown = invoke(base, "PauseNoticeResume", ["bogus-extra-arg"], "")
+        check(not punknown, "PauseNoticeResume 已注册（用错误参数探测，不真的恢复）",
+              "status=%s %s" % (pst, ptext[:120]))
 
         # ---------- 配置读写 ----------
         print("\n[配置] 保存 / 忽略版本 / 恢复默认")
@@ -435,6 +449,9 @@ def main():
         exp2 = call_ok(base, "ExportThirdPartyNotices", [])
         check(isinstance(exp2, dict) and ("error" in exp2 or "canceled" in exp2),
               "ExportThirdPartyNotices 无头下返回 {error|canceled}", str(exp2)[:100])
+        exp3 = call_ok(base, "ExportProjectLicense", [])
+        check(isinstance(exp3, dict) and ("error" in exp3 or "canceled" in exp3),
+              "ExportProjectLicense 无头下返回 {error|canceled}", str(exp3)[:100])
         d1 = call_ok(base, "DeleteMusicSound", ["不存在.wav"])
         check(d1 is False, "DeleteMusicSound(不存在) 返回 false", repr(d1))
 

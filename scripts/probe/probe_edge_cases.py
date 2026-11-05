@@ -127,7 +127,7 @@ def base_settings():
         "appearance": {"color": "#4f7cff", "transparency": 0.05, "blur": True,
                        "fullscreen": False, "alwaysOnTop": True, "widthPct": 95,
                        "heightPct": 95, "hideOnShare": True},
-        "allScreens": True,
+        "displayIds": [],
         "window": {"width": 874, "height": 857, "rememberSize": False,
                    "lastWidth": 0, "lastHeight": 0},
         "sound": {"enabled": False, "volume": 0.6, "sound": "short_start.wav", "custom": "",
@@ -379,13 +379,17 @@ def case_dir_instead_of_file():
 
 
 def case_legacy_identifier():
-    """老版本写进配置的设备标识：加载时必须摘掉，并且**真的从磁盘删掉**。
+    """配置里出现「旧版本才有的键」时的口径：**不做旧键迁移**（2026-11-04 用户拍板）。
+
+    软件未发布过，不存在真的老版本配置；`cleanLegacyKeys` 已整段删除，设备标识也已从
+    代码里彻底移除（不生成、不存储、不下发）。所以这里钉的是三条「不」：
+    带着陌生键照样启动、软件不把它当回事、也不擅自改写用户文件。
 
     做法刻意分两轮：第一轮让服务把配置「跑熟」（补齐 seeded 标记并回写），第二轮才塞
-    一个标识键进去再起 —— 否则第一轮本来就因为补种而回写，测不出「是不是标识触发的
-    落盘」，等于把两件事混成一条断言。
+    一个陌生键进去再起 —— 否则第一轮本来就因为补种而回写，测不出「是不是这个键触发
+    的落盘」，等于把两件事混成一条断言。
     """
-    print("\n[7] 残留设备标识的清除")
+    print("\n[7] 旧版本残留键：不迁移、不崩、不改写")
     tmp = tempfile.mkdtemp(prefix="wr_edge_ident_")
     cfgp = os.path.join(tmp, "settings.json")
     old_id = "3435a519-c1d7-4d26-a82d-8267119e0001"
@@ -399,22 +403,27 @@ def case_legacy_identifier():
     check(all_seeded, "预备：第一轮已把配置跑熟（seeded 全部置位，第二轮不会再补种）",
           {k: (rm.get(k) or {}).get("seeded") for k in ("short", "long", "takeout")})
 
-    # 第二轮：塞进老版本留下的标识键
+    # 第二轮：塞进旧版本才有的键
     settled["installId"] = old_id
     with open(cfgp, "w", encoding="utf-8") as f:
         json.dump(settled, f, ensure_ascii=False, indent=2)
+    before = os.path.getmtime(cfgp)
+    time.sleep(0.05)  # 让 mtime 有可分辨的粒度（FAT/网络盘只到秒）
 
     with Server(EXE, ROOT, cfgp, free_port(29928), tmp, None) as srv:
-        check(srv.up, "带残留标识的配置不影响启动")
+        check(srv.up, "带陌生键的配置不影响启动")
         if srv.up:
+            disk = json.load(open(cfgp, encoding="utf-8"))
+            check(disk.get("installId") == old_id,
+                  "不做旧键迁移：陌生键原样留着，软件不擅自删用户文件", disk.get("installId"))
+            check(os.path.getmtime(cfgp) == before,
+                  "没有触发回写（不做迁移也就没有「清理残留键」这次落盘）", "")
+            # 其余字段照常生效：陌生键不能把整份配置带偏
             st, got = call(srv.base, "GetSettings", [])
             got = got or {}
-            check("installId" not in got, "GetSettings 不再下发设备标识", [k for k in got if k == "installId"])
-            check(old_id not in json.dumps(got), "配置内容里找不到那枚标识的原文", "")
-            disk = json.load(open(cfgp, encoding="utf-8"))
-            check("installId" not in disk, "磁盘配置里的标识已被删掉（回写生效）", [k for k in disk if k == "installId"])
-            check(old_id not in json.dumps(disk), "磁盘配置里找不到那枚标识的原文", "")
-            check("清理残留键=true" in srv.log(), "日志记下了「清理残留键」这次回写", "")
+            check(got.get("longEveryNShort") == disk.get("longEveryNShort"),
+                  "陌生键不影响其它字段的读取", [got.get("longEveryNShort"), disk.get("longEveryNShort")])
+            check("panic" not in srv.log().lower(), "全程无 panic")
     shutil.rmtree(tmp, ignore_errors=True)
 
 

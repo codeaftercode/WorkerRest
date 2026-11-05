@@ -309,8 +309,13 @@ def make_cfg(hide_on_share, scene="short"):
     cfg["idlePauseMin"] = 0
     cfg["dndPause"] = False
     cfg["fullscreenPause"] = False
+    # 投屏检测读的是显示拓扑：跑探针的机器如果正好在复制模式（= 正在镜像），
+    # 调度器会一启动就「暂停（投屏）」，后面所有「到点必弹」的断言都会踩空，
+    # 而失败信息指向的是投屏、跟被测的捕获保护毫无关系。两条判据都必须显式关掉。
+    cfg["castWirelessPause"] = False
+    cfg["castMirrorPause"] = False
     cfg["startMinimized"] = True
-    cfg["allScreens"] = False
+    cfg["displayIds"] = []
     cfg["sound"] = dict(cfg.get("sound") or {}, enabled=False)
     cfg["supervisor"] = dict(cfg.get("supervisor") or {}, enabled=False)
     ap = dict(cfg.get("appearance") or {})
