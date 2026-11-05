@@ -24,21 +24,23 @@ func testSettings(t *testing.T, js string) *settings.Settings {
 
 // testHost 记录型宿主：只实现调度器真正会调的那几个口子，不碰窗口 / 托盘 / Wails。
 type testHost struct {
-	cfg       *settings.Settings
-	states    int
-	pre       []string
-	pauses    int
-	breaks    []string
-	closed    int
-	postpones []string
-	skips     []string
-	pp        *model.TakeoutPostponed
+	cfg        *settings.Settings
+	states     int
+	pre        []string
+	pauses     int
+	autoPauses int
+	breaks     []string
+	closed     int
+	postpones  []string
+	skips      []string
+	pp         *model.TakeoutPostponed
 }
 
 func (h *testHost) CfgSnapshot() *settings.Settings                   { return h.cfg }
 func (h *testHost) OnSchedulerState()                                 { h.states++ }
 func (h *testHost) OnPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
 func (h *testHost) OnPaused()                                         { h.pauses++ }
+func (h *testHost) OnAutoPause()                                      { h.autoPauses++ }
 func (h *testHost) ClosePreBreak()                                    {}
 func (h *testHost) CloseBreakWindows()                                { h.closed++ }
 func (h *testHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }

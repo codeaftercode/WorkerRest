@@ -37,7 +37,7 @@ func TestTrayTexts(t *testing.T) {
 		tip, status, action, pause := trayTexts(model.SchedulerState{
 			Phase: "idle", NextType: "short", NextName: plan.ShortBreakName,
 			NextAt: now + 10*60_000,
-		})
+		}, false)
 		if want := "约 10 分钟后短休息"; tip != want {
 			t.Errorf("tooltip = %q，期望 %q", tip, want)
 		}
@@ -50,7 +50,7 @@ func TestTrayTexts(t *testing.T) {
 	})
 
 	t.Run("没有下一次", func(t *testing.T) {
-		tip, status, action, pause := trayTexts(model.SchedulerState{Phase: "idle", NextAt: 0})
+		tip, status, action, pause := trayTexts(model.SchedulerState{Phase: "idle", NextAt: 0}, false)
 		if tip != "未安排休息" || status != "状态：未安排休息" {
 			t.Errorf("tooltip = %q / 状态行 = %q", tip, status)
 		}
@@ -62,7 +62,7 @@ func TestTrayTexts(t *testing.T) {
 	t.Run("休息中：秒级剩余", func(t *testing.T) {
 		tip, status, action, pause := trayTexts(model.SchedulerState{
 			Phase: "break", NextName: plan.ShortBreakName, BreakEndsAt: now + 30_000,
-		})
+		}, false)
 		if want := "休息中，剩余 30 秒"; tip != want {
 			t.Errorf("tooltip = %q，期望 %q", tip, want)
 		}
@@ -75,8 +75,9 @@ func TestTrayTexts(t *testing.T) {
 		tip, status, action, pause := trayTexts(model.SchedulerState{
 			Paused: true, Phase: "idle", NextName: plan.ShortBreakName,
 			NextAt: now + 60_000, PauseReasons: []string{"manual"},
-		})
-		if want := "已暂停：手动暂停"; tip != want {
+			PausedAt: now - 42*60_000,
+		}, false)
+		if want := "已暂停 42 分钟：手动暂停"; tip != want {
 			t.Errorf("tooltip = %q，期望 %q", tip, want)
 		}
 		if status != "状态：已暂停" {

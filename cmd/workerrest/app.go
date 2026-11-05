@@ -114,20 +114,60 @@ type App struct {
 	supWatch     supWatchInfo
 	supWatchStop chan struct{}
 
-	// 系统能力（见 sys_*.go）：空闲状态机 + 三条监视链路的停止信号与「上一跳状态」。
-	// idleAway / dndActiveLogged / fsActiveLogged / appPauseHitLogged 只被各自的
-	// goroutine 读写，提成字段是为了让单测能直接调 tick 函数；它们的值不影响任何跨链路判定。
-	// appPauseIgnored 例外：监视 goroutine 与「手动恢复」的 UI 线程都会碰，走 appPauseMu。
-	idle              *idle.IdleState
-	sysStop           chan struct{}
-	idleAway          bool
-	dndActiveLogged   bool
-	fsActiveLogged    bool
-	appPauseHitLogged bool
-	// appPauseIgnored 「指定应用临时忽略」会话：自动暂停后用户手动点「恢复休息」时置位，
-	// 监视器不再因目标应用重新暂停；目标应用全部退出或用户手动暂停时解除。
-	appPauseIgnored bool
-	appPauseMu      sync.Mutex
+	// 系统能力（见 sys_*.go）：空闲状态机 + 四条监视链路的停止信号与「上一跳状态」。
+	// idleAway / dndActiveLogged / fsActiveLogged / castMirrorLogged / castWirelessLogged /
+	// appPauseHitLogged 只被各自的 goroutine 读写，提成字段是为了让单测能直接调 tick 函数；
+	// 它们的值不影响任何跨链路判定。
+	// autoPauseIgnored 例外：监视 goroutine 与「手动恢复」的 UI 线程都会碰，走 autoPauseMu。
+	idle               *idle.IdleState
+	sysStop            chan struct{}
+	idleAway           bool
+	dndActiveLogged    bool
+	fsActiveLogged     bool
+	castMirrorLogged   bool
+	castWirelessLogged bool
+	appPauseHitLogged  bool
+	// appPauseMissStreak 「目标应用退出」的连续未命中拍数（见 appPauseExitConfirmMisses）。
+	// 探测失败不计入：读不到不等于不在跑。只被应用占用那条 goroutine 读写。
+	appPauseMissStreak int
+	// autoPauseIgnored 用户点「恢复休息」时正在生效的那几条自动原因（键 = 原因名）。
+	// 该原因的条件消除前，监视器不再因它暂停；条件消失时从表里删掉，下次达成照常触发。
+	// 手动暂停会清空整张表（用户要的是「回到常规判定」）。监视 goroutine 与 UI 线程共用，
+	// 走 autoPauseMu。
+	autoPauseIgnored map[string]bool
+	// autoReasonActive 每条自动原因「条件此刻是否仍成立」，由监视链路（applyAutoPause /
+	// appPauseWatchTick）每跳登记。与 autoPauseIgnored 共用 autoPauseMu。
+	//
+	// 为什么需要另开一张表：条件消失后暂停**不一定会结束**（投屏 / 全屏 / 勿扰按策略
+	// 保留暂停，等用户手动恢复），此时原因仍在 PauseReasons 里但条件已经没了。
+	// 用户这时点「恢复休息」，不该为它记忽略 —— 记了下一场会议就不会再自动暂停。
+	// 未登记的键按 true 处理（保守方向：宁可记忽略，别把用户点过恢复这件事丢掉）。
+	autoReasonActive map[string]bool
+	autoPauseMu      sync.Mutex
+
+	// 自动暂停期间的「已暂停多久」提示（见 pause_notice.go）：
+	// pauseNoticePausedAt 这一段暂停的开始时刻（段标识：换段即从零计），
+	// pauseNoticeShownAt 本段暂停里上一次弹出的时刻（0 = 还没弹过），
+	// pauseNoticeSuppressed 上一拍是否因投屏 / 全屏 / 勿扰被压制 —— 用来识别压制解除那一刻。
+	// 三者只由 pauseNoticeTick 与「恢复」路径读写，走 pauseNoticeMu；
+	// 建窗 / 关窗另走 pauseNoticeWinMu（与退出清理的 TryLock 相配，见 ServiceShutdown）。
+	pauseNoticePausedAt   int64
+	pauseNoticeShownAt    int64
+	pauseNoticeSuppressed bool
+	pauseNoticeMu         sync.Mutex
+	pauseNoticeWinMu      sync.Mutex
+
+	// 定时手动暂停的「到期了但被什么挡住」（见 pause_expiry.go）：
+	// 只给托盘文案读，不参与判定 —— 判据每拍现算，这里只是快照。
+	pauseHold   []string
+	pauseHoldMu sync.Mutex
+
+	// 托盘「暂停一段时间」子菜单的四档与「取消定时」项（见 tray.go）：
+	// 暂停中要把标签从「暂停 30 分钟」改成「改到 30 分钟后结束」，「取消定时」只在
+	// 定时暂停时出现。trayTimedKey 记录上一次落过的形态，避免每秒重写原生菜单。
+	trayTimed       []*application.MenuItem
+	trayTimedCancel *application.MenuItem
+	trayTimedKey    string
 
 	// 全局快捷键（见 hotkeys.go）：server 模式为 nil。
 	hotkeys *HotkeyManager
@@ -254,13 +294,18 @@ func (a *App) ServiceShutdown() error {
 	// 但只要退出流程被拖慢（WebView2 卸载、自更新替换 exe），那扇窗就会在屏幕上
 	// 多停一会儿，用户只能等。一律静默：退出不是「提醒结束」，不该响一声。
 	a.closeTakeoutWindowsOpt(true)
-	a.closeBreakWindowsOpt(true)
+	a.closeBreakWindowsOpt(true, false)
 	// 提前提示窗用 TryLock：退出可能发生在主线程，而建窗路径可能在等主线程处理
 	// InvokeSync —— 硬等这把锁会让「等主线程」和「主线程等锁」互相卡死（退出挂住）。
 	// 抢不到就跳过：进程马上结束，那一扇窗会随进程一起消失。
 	if a.preBreakMu.TryLock() {
 		a.closePreBreakWindowLocked()
 		a.preBreakMu.Unlock()
+	}
+	// 暂停提示小窗同理用 TryLock：它本来只活 7.5 秒，抢不到锁就随进程一起消失
+	if a.pauseNoticeWinMu.TryLock() {
+		a.closePauseNoticeWindowLocked()
+		a.pauseNoticeWinMu.Unlock()
 	}
 	a.stopSystemWatchers()
 	a.stopTrayRefresh()

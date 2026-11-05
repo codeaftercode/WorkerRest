@@ -33,6 +33,7 @@ var wiredCalls = []string{
 	"GetState",
 	"WindowMaximized",
 	"QuitApp",
+	"ListDisplays",
 
 	// ---- 设置读写 ----
 	"GetSettings",
@@ -62,6 +63,10 @@ var wiredCalls = []string{
 	// 开源鸣谢：关于页入口读清单、另存为导出一份（见 notices.go）
 	"GetThirdPartyNotices",
 	"ExportThirdPartyNotices",
+	// 项目许可条款：同一行的另一个入口（见 license.go）——便携目录不再散放 LICENSE，
+	// 这两个绑定就是条款的唯一出口
+	"GetProjectLicense",
+	"ExportProjectLicense",
 
 	// ---- 窗口 / 自更新重启恢复 ----
 	"ShowSettingsWindow",
@@ -92,6 +97,10 @@ var wiredCalls = []string{
 	// ---- 提前提示窗口（右下角小窗，见 prebreak.go） ----
 	"PreBreakState",
 	"PreBreakAction",
+
+	// ---- 自动暂停期间的「已暂停多久」提示（见 pause_notice.go） ----
+	"PauseNoticeResume",
+	"PauseNoticeDismiss",
 
 	// ---- 外卖窗口（见 takeout.go） ----
 	"TakeoutCurrent",

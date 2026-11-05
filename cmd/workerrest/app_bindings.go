@@ -7,9 +7,11 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"workerrest/internal/display"
 	"workerrest/internal/model"
 	"workerrest/internal/plan"
 	"workerrest/internal/role"
+	"workerrest/internal/scheduler"
 )
 
 // settingsWindow 取设置窗口（按名字查，避免跨 tick 持有已销毁的窗口引用 ——
@@ -21,6 +23,18 @@ func (a *App) settingsWindow() application.Window {
 		return nil
 	}
 	return w
+}
+
+// ListDisplays 枚举当前接入的显示器，给设置页「显示的屏幕」多选下拉用。
+//
+// 主屏排在最前。枚举失败（远程会话、无桌面会话、非 Windows）返回空数组而不是 error：
+// 前端拿到空列表时显示「未检测到显示器」并退回旧行为，不值得为此弹错误框。
+func (a *App) ListDisplays() []display.Info {
+	list, err := display.List()
+	if err != nil {
+		return []display.Info{}
+	}
+	return list
 }
 
 // ShowSettingsWindow 打开（或唤起）设置窗口。窗口在 main.go 里随应用创建，
@@ -67,7 +81,7 @@ func (a *App) CloseWindow(win string) {
 	if win == "break" {
 		// 预览点任意处关闭（真实休息的结束由调度器 finishBreak 走 closeBreakWindows）：
 		// 收尾走同一条路径，只是不出声。预览会话的 info.Preview 会让统计那一段自动跳过。
-		a.closeBreakWindowsOpt(true)
+		a.closeBreakWindowsOpt(true, false)
 		return
 	}
 	a.mu.Lock()
@@ -179,41 +193,41 @@ func (a *App) schedSkip() {
 
 // schedPauseToggle 托盘 / 提示窗 / 快捷键共用的手动「暂停休息 ↔ 恢复休息」。
 //
-// 自动暂停（应用占用）生效时点「恢复休息」有个特殊语义：不是去摘一个不存在的 manual
-// 原因（那会原地 no-op，按钮像坏了），而是**临时忽略目标应用**——立即恢复，且监视器
-// 不再因这些应用重新暂停，直到应用全部退出（忽略随退出解除）或用户再次手动暂停
-// （忽略作废，回到常规判定）。下次该应用再运行时照常自动暂停。
+// 自动暂停生效时点「恢复休息」有个特殊语义：不是去摘一个不存在的 manual 原因
+// （那会原地 no-op，按钮像坏了），而是把**当时正在生效的自动原因**全部记为
+// 「已手动恢复」并逐个摘掉——立即恢复，且这些原因的条件没消失前不会挂回来；
+// 条件消失后忽略自动解除，下次达成照常暂停。恢复之后才成立的别的原因不受影响，
+// 它们该暂停还是暂停（每条原因一格，互不牵连）。
+//
+// 反过来，用户点「暂停休息」时作废所有忽略，回到常规自动判定。
 func (a *App) schedPauseToggle() {
 	if a.sched == nil {
 		return
 	}
-	if a.sched.HasPauseReason(pauseReasonAppPause) {
-		a.setAppPauseIgnored(true)
-		a.sched.Resume(pauseReasonAppPause)
+	if auto := a.activeAutoPauseReasons(); len(auto) > 0 {
+		a.ignoreAutoPause(auto)
+		for _, r := range auto {
+			a.sched.Resume(r)
+		}
 		// 若还叠着手动暂停，一并摘掉：用户点的是「恢复休息」，就该恢复到底
-		a.sched.Resume("manual")
-		log.Printf("[appPause] 用户手动恢复：临时忽略目标应用，直到退出或手动暂停")
+		a.sched.Resume(scheduler.PauseReasonManual)
+		// 「已暂停多久」小窗随恢复一起收：它说的那件事已经结束了，留在屏幕上会误导
+		a.closePauseNoticeWindow()
+		log.Printf("[autoPause] 用户手动恢复：忽略 %s（条件消失前不再因它们暂停）",
+			strings.Join(auto, "、"))
 		return
 	}
 	if !a.sched.IsPaused() {
-		// 手动暂停：作废可能残留的忽略会话，回到常规自动暂停判定
-		a.setAppPauseIgnored(false)
+		// 手动暂停：作废可能残留的忽略，回到常规自动暂停判定
+		a.resetAutoPauseIgnored()
+	} else {
+		// 从这里往下是「恢复」那一支：暂停结束，「已暂停多久」小窗一并收掉。
+		// 放在 PauseToggle 之前——恢复会触发 emitState，窗口晚一步收会闪一下
+		a.closePauseNoticeWindow()
 	}
 	a.sched.PauseToggle()
 }
 
-// setAppPauseIgnored / isAppPauseIgnored 忽略会话标志（监视 goroutine 与 UI 线程共用）
-func (a *App) setAppPauseIgnored(v bool) {
-	a.appPauseMu.Lock()
-	a.appPauseIgnored = v
-	a.appPauseMu.Unlock()
-}
-
-func (a *App) isAppPauseIgnored() bool {
-	a.appPauseMu.Lock()
-	defer a.appPauseMu.Unlock()
-	return a.appPauseIgnored
-}
 func (a *App) schedResetCycle() {
 	if a.sched != nil {
 		a.sched.ResetCycle()
@@ -229,7 +243,7 @@ func (a *App) schedEndBreak() {
 	// 绝不把无主窗口留给用户。正常路径上 finishBreak 已经关过窗，这步是空操作。
 	if a.sched.StateCopy().Phase != "break" && a.hasBreakWindows() {
 		log.Printf("[action] endBreak 无效（调度器不在休息阶段），直接收掉残留的休息窗口")
-		a.closeBreakWindowsOpt(true)
+		a.closeBreakWindowsOpt(true, false)
 	}
 }
 
@@ -409,7 +423,7 @@ func pauseReasonText(reason string) string {
 	switch reason {
 	case "idle":
 		return "系统空闲"
-	case "manual":
+	case scheduler.PauseReasonManual:
 		return "手动暂停"
 	default:
 		return reason

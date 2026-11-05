@@ -201,3 +201,49 @@ func TestTakeoutPausedDefaultPostpone(t *testing.T) {
 		t.Fatalf("推迟后的时刻应约为 now+15 分钟，得到 %d ms", d)
 	}
 }
+
+// 自动暂停：即使外卖配了「正常提醒」，到点也不弹窗、按跳过记账 ——
+// 自动暂停不看用户给外卖配的「暂停休息时」，那是给手动暂停用的。
+func TestTakeoutAutoPauseSkipsEvenWithRemind(t *testing.T) {
+	cfg := takeoutDueNowCfg(`,"pauseAction":"remind"`)
+	a := newTakeoutApp(t, cfg)
+	s, _ := newTestSched(t, cfg)
+	s.Pause(pauseReasonDnd) // 勿扰 = 自动原因
+	a.sched = s
+
+	a.checkTakeoutReminders()
+	if a.takeoutCurrent != nil {
+		t.Fatal("自动暂停期间不应弹外卖提醒窗口（配置是「正常提醒」也不行）")
+	}
+	if a.preInfo.Owner == "takeout" {
+		t.Fatal("自动暂停期间不应弹外卖提前提示小窗")
+	}
+	if got := a.statsStore().Today().TakeoutSkipped; got != 1 {
+		t.Fatalf("自动暂停期间到点应记 1 次跳过，得到 %d", got)
+	}
+	// 同一分钟内再跑一跳：不重复记账
+	a.checkTakeoutReminders()
+	if got := a.statsStore().Today().TakeoutSkipped; got != 1 {
+		t.Fatalf("同一 occurrence 不应重复记账，得到 %d", got)
+	}
+}
+
+// 进入自动暂停时 App 侧清场：待机的「推迟线」直接作废并记一次跳过
+// （恢复后不补弹），外卖预通知窗也一并收掉。
+func TestOnAutoPauseDiscardsTakeoutPostponed(t *testing.T) {
+	a := newTakeoutApp(t, takeoutCfg)
+	a.preInfo = PreBreakInfo{Owner: "takeout", Title: "该点外卖啦"}
+	a.takeoutPostponed = &model.TakeoutPostponed{DueAt: nowMs() + 60_000, Count: 1}
+
+	a.OnAutoPause()
+
+	if a.takeoutPostponed != nil {
+		t.Fatal("自动暂停后推迟线应作废（恢复后不补弹）")
+	}
+	if got := a.statsStore().Today().TakeoutSkipped; got != 1 {
+		t.Fatalf("作废的推迟线应记 1 次跳过，得到 %d", got)
+	}
+	if a.preInfo.Owner == "takeout" {
+		t.Fatal("外卖预通知的 owner 应被清掉（窗口由 closePreBreakWindow 关）")
+	}
+}

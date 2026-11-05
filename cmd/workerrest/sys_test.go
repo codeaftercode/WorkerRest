@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"workerrest/internal/idle"
 	"workerrest/internal/scheduler"
@@ -28,12 +29,19 @@ import (
 // newWatchApp 造一个「配置 + 调度器 + 空闲状态机」的最小 App（不碰窗口与 Wails）
 func newWatchApp(t *testing.T, cfgJSON string) (*App, *scheduler.Scheduler) {
 	t.Helper()
+	a, s, _ := newWatchAppWithHost(t, cfgJSON)
+	return a, s
+}
+
+// newWatchAppWithHost 同上，另把记录型宿主一并交出来（要看 OnPreNotify 之类的回调时用）
+func newWatchAppWithHost(t *testing.T, cfgJSON string) (*App, *scheduler.Scheduler, *testHost) {
+	t.Helper()
 	// 统计落点钉进临时目录：idleWatchTick 会走 BeginAway / EndAway，后者会标脏并在 2 秒后
 	// 落盘 —— 不隔离的话测试会去建目录、写用户真实的 stats.json
 	t.Setenv("WR_STATS_PATH", filepath.Join(t.TempDir(), "stats.json"))
 	s, host := newTestSched(t, cfgJSON)
 	s.ResetCycle()
-	return &App{cfg: host.cfg, sched: s, idle: idle.NewIdleState()}, s
+	return &App{cfg: host.cfg, sched: s, idle: idle.NewIdleState()}, s, host
 }
 
 func TestIdleWatchPausesThenResumesAndReanchors(t *testing.T) {
@@ -181,13 +189,18 @@ func TestAppPauseWatchAutoResumesWhenProcessExits(t *testing.T) {
 		t.Fatalf("目标应用运行时应自动暂停，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
 	}
 
-	// 进程退出（条目关掉 = hit=false）→ 下一跳必须自动恢复，无需任何手动操作
+	// 进程退出（条目关掉 = hit=false）：第一拍不认账（应用可能正在重启，见
+	// appPauseExitConfirmMisses），第二拍仍没命中才自动恢复。整段不需要任何手动操作。
 	a.mu.Lock()
 	a.cfg = testSettings(t, appPauseCfg(t, false))
 	a.mu.Unlock()
 	a.appPauseWatchTick()
+	if st := s.StateCopy(); !st.Paused {
+		t.Fatalf("退出要连续两拍才认：第一拍应保持暂停，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+	a.appPauseWatchTick()
 	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
-		t.Fatalf("目标应用退出后应自动恢复，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+		t.Fatalf("连续两拍都没命中应自动恢复，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
 	}
 }
 
@@ -205,7 +218,7 @@ func TestAppPauseManualResumeIgnoresUntilExitOrManualPause(t *testing.T) {
 	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
 		t.Fatalf("手动恢复应立即生效，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
 	}
-	if !a.isAppPauseIgnored() {
+	if !a.isAutoPauseIgnored(pauseReasonAppPause) {
 		t.Fatal("手动恢复后应进入忽略会话")
 	}
 
@@ -221,7 +234,7 @@ func TestAppPauseManualResumeIgnoresUntilExitOrManualPause(t *testing.T) {
 	if st := s.StateCopy(); !st.Paused {
 		t.Fatal("手动暂停应生效")
 	}
-	if a.isAppPauseIgnored() {
+	if a.isAutoPauseIgnored(pauseReasonAppPause) {
 		t.Fatal("手动暂停应作废忽略会话")
 	}
 	a.appPauseWatchTick()
@@ -236,13 +249,18 @@ func TestAppPauseManualResumeIgnoresUntilExitOrManualPause(t *testing.T) {
 		t.Fatalf("应彻底恢复，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
 	}
 
-	// ⑥ 应用退出 → 忽略解除；应用再次运行 → 照常自动暂停（下个会话）
+	// ⑥ 应用退出 → 忽略解除（与自动恢复同一条迟滞：连续两拍没命中才算退出）；
+	// 应用再次运行 → 照常自动暂停（下个会话）
 	a.mu.Lock()
 	a.cfg = testSettings(t, appPauseCfg(t, false))
 	a.mu.Unlock()
 	a.appPauseWatchTick()
-	if a.isAppPauseIgnored() {
-		t.Fatal("应用退出后忽略应解除")
+	if !a.isAutoPauseIgnored(pauseReasonAppPause) {
+		t.Fatal("退出要连续两拍才认：第一拍不该解除忽略（应用可能正在重启）")
+	}
+	a.appPauseWatchTick()
+	if a.isAutoPauseIgnored(pauseReasonAppPause) {
+		t.Fatal("连续两拍都没命中，忽略应解除")
 	}
 	a.mu.Lock()
 	a.cfg = testSettings(t, appPauseCfg(t, true))
@@ -308,14 +326,30 @@ func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 		t.Fatalf("重复判活跃不该叠加暂停原因，得到 %v", st.PauseReasons)
 	}
 
-	// ④ 退出：原因摘掉、恢复，且只摘自己那条
+	// ④ 退出全屏：按策略**保持暂停** —— 退出全屏不等于会议结束，恢复交给用户手动点
 	a.applyAutoPause(false, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
 	st = s.StateCopy()
-	if st.Paused || len(st.PauseReasons) != 0 {
-		t.Fatalf("退出后应恢复提醒，得到 paused=%v %v", st.Paused, st.PauseReasons)
+	if !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonFullScr {
+		t.Fatalf("退出全屏应保持暂停等用户恢复，得到 paused=%v %v", st.Paused, st.PauseReasons)
 	}
-	if a.fsActiveLogged {
-		t.Fatal("退出后「已记录」标记应清零")
+	if a.isAutoReasonActive(pauseReasonFullScr) {
+		t.Fatal("条件已消失，autoReasonActive 应登记为 false")
+	}
+	if !a.fsActiveLogged {
+		t.Fatal("暂停仍在家，标记不该清零（否则下一跳又报一次「暂停提醒」）")
+	}
+	if !a.allAutoReasonsCleared() {
+		t.Fatal("挂着的自动原因条件都消失了，托盘该提示「可以恢复了」")
+	}
+
+	// ⑤ 用户点「恢复休息」：这时才真的结束，且**不为已消解的这条记忽略** ——
+	// 记了下一场会议就不会再自动暂停，那比误弹一次糟得多
+	a.schedPauseToggle()
+	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("手动恢复后应结束暂停，得到 %v", st.PauseReasons)
+	}
+	if a.isAutoPauseIgnored(pauseReasonFullScr) {
+		t.Fatal("条件已消解的原因不该记忽略，否则下次进全屏不再自动暂停")
 	}
 }
 
@@ -331,9 +365,10 @@ func TestAutostartTargetSkipsDevBuild(t *testing.T) {
 
 // ---------- 真机系统调用 ----------
 
-// 两个开关的默认值：勿扰、全屏独占都默认开。
+// 自动暂停开关的默认值：勿扰、全屏独占、无线投放、复制模式都默认开。
 // 全屏独占原本默认关（新增能力不替用户决定），2026-10-29 用户要求「以当前配置为出厂默认」
 // 后改为开 —— 出厂默认与代码兜底必须同值，否则老配置（缺键走兜底）与新装表现不一致。
+// 投屏（2026-11-03 新增，同日拆成无线 / 复制两个）沿用同一个口径：出厂即勾选，代码兜底同为 true。
 func TestAutoPauseFlagDefaults(t *testing.T) {
 	s := settings.New(map[string]any{}, "")
 	if !s.DndPause() {
@@ -342,8 +377,381 @@ func TestAutoPauseFlagDefaults(t *testing.T) {
 	if !s.FullScreenPause() {
 		t.Fatal("fullscreenPause 缺省应为 true（与 default_settings.json 同值）")
 	}
-	s = settings.New(map[string]any{"dndPause": false, "fullscreenPause": false}, "")
-	if s.DndPause() || s.FullScreenPause() {
-		t.Fatalf("配置值未生效：dnd=%v fullscreen=%v", s.DndPause(), s.FullScreenPause())
+	if !s.CastWirelessPause() {
+		t.Fatal("castWirelessPause 缺省应为 true（与 default_settings.json 同值）")
+	}
+	if !s.CastMirrorPause() {
+		t.Fatal("castMirrorPause 缺省应为 true（与 default_settings.json 同值）")
+	}
+	s = settings.New(map[string]any{
+		"dndPause": false, "fullscreenPause": false,
+		"castWirelessPause": false, "castMirrorPause": false,
+	}, "")
+	if s.DndPause() || s.FullScreenPause() || s.CastWirelessPause() || s.CastMirrorPause() {
+		t.Fatalf("配置值未生效：dnd=%v fullscreen=%v wireless=%v mirror=%v",
+			s.DndPause(), s.FullScreenPause(), s.CastWirelessPause(), s.CastMirrorPause())
+	}
+}
+
+// 「信不信某条判据」本身是纯逻辑，用构造的探测结果钉住四种命中形态 × 四种开关组合。
+// 真机测试只能验证「不该暂停时确实没暂停」，验证不到「该暂停时真暂停了」——
+// 那取决于跑测试的机器当下接了几块屏，在单屏机器上永远走不到命中分支。
+//
+// 拆成两条原因之后，矩阵要断言的是「各自是否命中」，不再是合成的一个布尔：
+// 合成布尔时代「两条都命中、只开复制」与「只有复制」返回的是同一个 true，看不出区别。
+func TestCastPauseWantedMatrix(t *testing.T) {
+	states := []struct {
+		name string
+		st   windnd.CastStatus
+	}{
+		{"都没命中", windnd.CastStatus{Supported: true}},
+		{"只有镜像", windnd.CastStatus{Supported: true, Mirror: true, Active: true}},
+		{"只有无线", windnd.CastStatus{Supported: true, Wireless: true, Active: true}},
+		{"两条都命中", windnd.CastStatus{Supported: true, Mirror: true, Wireless: true, Active: true}},
+	}
+	// 每行的四列对应开关组合 {都关} {只开镜像} {只开无线} {都开}，值是 (镜像, 无线)
+	want := map[string][4][2]bool{
+		"都没命中":  {{false, false}, {false, false}, {false, false}, {false, false}},
+		"只有镜像":  {{false, false}, {true, false}, {false, false}, {true, false}},
+		"只有无线":  {{false, false}, {false, false}, {false, true}, {false, true}},
+		"两条都命中": {{false, false}, {true, false}, {false, true}, {true, true}},
+	}
+	combos := [4][2]bool{{false, false}, {true, false}, {false, true}, {true, true}}
+	for _, s := range states {
+		for i, c := range combos {
+			gotMirror, gotWireless := castWant(s.st, c[0], c[1])
+			if w := want[s.name][i]; gotMirror != w[0] || gotWireless != w[1] {
+				t.Fatalf("%s / 复制=%v 无线=%v：得到 (%v,%v)，应为 %v",
+					s.name, c[0], c[1], gotMirror, gotWireless, w)
+			}
+		}
+	}
+}
+
+// 投屏支路：两条判据各受自己的开关管，开哪条信哪条，且各自成为一条独立原因。
+//
+// 不写死「本机一定在投屏」：以 GetCastStatus() 当预期，任何机器上都成立。
+// 四种开关组合逐个过，才真正证明「拆开了」—— 只测全开和全关的话，
+// 两个开关在代码里串成一个 AND、或者共用一条原因名，都照样是绿的。
+func TestCastWatchRespectsEachSwitch(t *testing.T) {
+	live := windnd.GetCastStatus()
+	cases := []struct {
+		name         string
+		cfg          string
+		wantMirror   bool
+		wantWireless bool
+	}{
+		{"两个开关都关", `{"castWirelessPause":false,"castMirrorPause":false}`, false, false},
+		{"只开复制模式", `{"castWirelessPause":false,"castMirrorPause":true}`, live.Mirror, false},
+		{"只开无线投放", `{"castWirelessPause":true,"castMirrorPause":false}`, false, live.Wireless},
+		{"两个都开", `{"castWirelessPause":true,"castMirrorPause":true}`, live.Mirror, live.Wireless},
+	}
+	for _, c := range cases {
+		a, s := newWatchApp(t, shortCountdown)
+		a.mu.Lock()
+		a.cfg = testSettings(t, c.cfg)
+		a.mu.Unlock()
+		// 连打两跳：不该因为每跳都 Pause 一次而叠出重复原因
+		a.castWatchTick()
+		a.castWatchTick()
+		st := s.StateCopy()
+		gotMirror, gotWireless := false, false
+		for _, r := range st.PauseReasons {
+			switch r {
+			case pauseReasonCastMirror:
+				gotMirror = true
+			case pauseReasonCastWireless:
+				gotWireless = true
+			}
+		}
+		if gotMirror != c.wantMirror || gotWireless != c.wantWireless {
+			t.Fatalf("%s：应为 复制=%v 无线=%v，得到 %v（本机探测 mirror=%v wireless=%v %s）",
+				c.name, c.wantMirror, c.wantWireless, st.PauseReasons, live.Mirror, live.Wireless, live.Detail)
+		}
+		wantLen := 0
+		for _, v := range []bool{c.wantMirror, c.wantWireless} {
+			if v {
+				wantLen++
+			}
+		}
+		if len(st.PauseReasons) != wantLen {
+			t.Fatalf("%s：暂停原因数应为 %d，得到 %v", c.name, wantLen, st.PauseReasons)
+		}
+		if gotMirror != a.castMirrorLogged || gotWireless != a.castWirelessLogged {
+			t.Fatalf("%s：「已记录」标记应与暂停状态一致（mirror=%v/%v wireless=%v/%v）",
+				c.name, a.castMirrorLogged, gotMirror, a.castWirelessLogged, gotWireless)
+		}
+	}
+	t.Logf("本机投屏探测：active=%v mirror=%v wireless=%v（%s）",
+		live.Active, live.Mirror, live.Wireless, live.Detail)
+}
+
+// 六条自动原因共用的「恢复休息」语义（本表覆盖其中五条；「应用占用」走自己的
+// appPauseWatchTick，由 TestAppPauseWatch* 一组单独覆盖）：
+//
+//	因某原因暂停 → 点恢复休息 → 条件还在也不再因它暂停 → 条件消失后解除 → 再次达成照常暂停。
+//
+// 另外两条不变式：被忽略的原因不影响其他原因暂停；用户主动暂停会作废所有忽略。
+func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
+	const idleThresholdMs = 6 * 60_000 // 默认 idlePauseMin=5
+
+	cases := []struct {
+		name   string
+		reason string
+		other  string                // 用来验证「其他原因照常生效」的另一条原因
+		on     func(a *App, on bool) // 条件成立 / 消失各推一跳
+	}{
+		{
+			name: "勿扰", reason: pauseReasonDnd, other: pauseReasonFullScr,
+			on: func(a *App, on bool) {
+				a.applyAutoPause(on, pauseReasonDnd, &a.dndActiveLogged, "", "")
+			},
+		},
+		{
+			name: "全屏独占", reason: pauseReasonFullScr, other: pauseReasonDnd,
+			on: func(a *App, on bool) {
+				a.applyAutoPause(on, pauseReasonFullScr, &a.fsActiveLogged, "", "")
+			},
+		},
+		{
+			name: "复制模式", reason: pauseReasonCastMirror, other: pauseReasonCastWireless,
+			on: func(a *App, on bool) {
+				a.applyAutoPause(on, pauseReasonCastMirror, &a.castMirrorLogged, "", "")
+			},
+		},
+		{
+			name: "无线投放", reason: pauseReasonCastWireless, other: pauseReasonCastMirror,
+			on: func(a *App, on bool) {
+				a.applyAutoPause(on, pauseReasonCastWireless, &a.castWirelessLogged, "", "")
+			},
+		},
+		{
+			name: "系统空闲", reason: scheduler.PauseReasonIdle, other: pauseReasonDnd,
+			on: func(a *App, on bool) {
+				if on {
+					a.idle.ForceIdle(idleThresholdMs)
+				} else {
+					a.idle.ForceIdle(0) // 有输入 = 人回来了
+				}
+				a.idleAway = a.idleWatchTick(a.idleAway)
+			},
+		},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			a, s := newWatchApp(t, shortCountdown)
+			hasReason := func(r string) bool {
+				for _, x := range s.StateCopy().PauseReasons {
+					if x == r {
+						return true
+					}
+				}
+				return false
+			}
+
+			// ① 条件成立 → 因该原因暂停
+			c.on(a, true)
+			if !s.IsPaused() || !hasReason(c.reason) {
+				t.Fatalf("前置：应因「%s」暂停，得到 %v", c.reason, s.StateCopy().PauseReasons)
+			}
+
+			// ② 用户点「恢复休息」→ 立即恢复
+			a.schedPauseToggle()
+			if s.IsPaused() || len(s.StateCopy().PauseReasons) != 0 {
+				t.Fatalf("点恢复休息应立即生效，得到 %v", s.StateCopy().PauseReasons)
+			}
+			if !a.isAutoPauseIgnored(c.reason) {
+				t.Fatalf("恢复后应把「%s」记为已手动恢复", c.reason)
+			}
+
+			// ③ 条件仍在：连推两跳也不再挂回来
+			c.on(a, true)
+			c.on(a, true)
+			if s.IsPaused() || hasReason(c.reason) {
+				t.Fatalf("忽略期间条件仍成立，不该重新暂停，得到 %v", s.StateCopy().PauseReasons)
+			}
+
+			// ④ 别的原因照常生效（恢复的是「当时那几条」，不是一刀切静音）
+			a.applyAutoPause(true, c.other, new(bool), "", "")
+			if !hasReason(c.other) {
+				t.Fatalf("「%s」被忽略时，「%s」仍应照常暂停，得到 %v",
+					c.reason, c.other, s.StateCopy().PauseReasons)
+			}
+			a.applyAutoPause(false, c.other, new(bool), "", "")
+			// 条件消失后怎么收场，取决于该原因的策略（autoResumeOnClear）：
+			// 空闲与应用占用自动恢复；勿扰 / 全屏 / 两条投屏保留暂停，等用户手动点。
+			if autoResumeOnClear(c.other) {
+				if s.IsPaused() {
+					t.Fatalf("「%s」条件消失后应自动恢复，得到 %v", c.other, s.StateCopy().PauseReasons)
+				}
+			} else {
+				if !hasReason(c.other) {
+					t.Fatalf("「%s」条件消失后应保持暂停（等用户手动恢复），得到 %v",
+						c.other, s.StateCopy().PauseReasons)
+				}
+				a.schedPauseToggle()
+				if s.IsPaused() {
+					t.Fatalf("手动恢复「%s」后应结束暂停，得到 %v", c.other, s.StateCopy().PauseReasons)
+				}
+			}
+
+			// ⑤ 条件消失 → 忽略解除（下次达成照常触发）
+			c.on(a, false)
+			if a.isAutoPauseIgnored(c.reason) {
+				t.Fatalf("「%s」的条件已消失，忽略应解除", c.reason)
+			}
+
+			// ⑥ 再次达成 → 重新暂停
+			c.on(a, true)
+			if !hasReason(c.reason) {
+				t.Fatalf("条件再次达成应重新暂停，得到 %v", s.StateCopy().PauseReasons)
+			}
+		})
+	}
+}
+
+// 用户主动「暂停休息」清空所有忽略：他明确要求回到常规判定，之后各原因该暂停就暂停。
+func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
+	a, s := newWatchApp(t, shortCountdown)
+
+	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, "", "")
+	a.schedPauseToggle() // 恢复 + 忽略勿扰
+	if !a.isAutoPauseIgnored(pauseReasonDnd) {
+		t.Fatal("前置：恢复后应处于忽略状态")
+	}
+
+	// 此刻既没暂停也没自动原因 → 这里是「手动暂停」
+	a.schedPauseToggle()
+	if !s.IsPaused() {
+		t.Fatal("应进入手动暂停")
+	}
+	if a.isAutoPauseIgnored(pauseReasonDnd) {
+		t.Fatal("手动暂停应作废忽略，回到常规自动判定")
+	}
+
+	// 勿扰条件仍成立：下一跳照常叠加
+	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, "", "")
+	found := false
+	for _, r := range s.StateCopy().PauseReasons {
+		if r == pauseReasonDnd {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("忽略作废后勿扰应照常生效，得到 %v", s.StateCopy().PauseReasons)
+	}
+}
+
+// 「离开恰好从提前提示区间里开始」时，回来不该先弹一个提示窗再被重锚收掉。
+//
+// 时序：倒计时剩 2.9 秒时弹出提前提示窗 → 用户此刻离开 → 5 分钟后回来。
+// 恢复会把 NextAt 按暂停时长整体平移（仍在原来的提前区间内），于是旧实现会调一次
+// OnPreNotify 弹出提示窗，紧接着 ReanchorCountdown 把 NextAt 推到「现在 + 整个间隔」
+// 又把窗收掉 —— 用户看到右下角闪一下。空闲链路改用 ResumeQuiet 后不再弹。
+//
+// 对照组故意直接调公开的 Resume（= 旧实现那一条），证明差别来自这一次调用，
+// 而不是「这个场景本身弹不出来」。
+func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
+	// 4 秒一次短休息、提前 3 秒提示：提前区间 = [t0+1s, t0+4s]
+	const tight = `{"short":{"enabled":true,"mode":"countdown","intervalMs":4000,"durationMs":2000,` +
+		`"notifyBeforeMs":3000,"postponeMs":60000,"slots":[]}}`
+
+	a, s, host := newWatchAppWithHost(t, tight)
+	// 对照组与实验组共用一个时间轴，只睡一次（对照组的 App 本身用不上，只要调度器与宿主）
+	_, sOld, hostOld := newWatchAppWithHost(t, tight)
+
+	// 让「现在」落进提前区间
+	time.Sleep(1100 * time.Millisecond)
+
+	// 实验组：走真实空闲链路
+	a.idle.ForceIdle(6 * 60_000)
+	a.idleAway = a.idleWatchTick(false)
+	a.idle.ForceIdle(0)
+	a.idleAway = a.idleWatchTick(a.idleAway)
+
+	// 对照组：手动暂停（恢复时按剩余时间平移、仍落在提前区间 → 弹一次提示窗），
+	// 紧接着重锚把它收掉 —— 这正是自动暂停统一重锚之前的行为，用来证明「闪一下」
+	// 这个场景确实构造得出来，实验组的 0 次不是场景没搭成。
+	// 2026-11-05 起自动原因（含空闲）在 resume 内部就会重锚，无法再用 idle 复刻旧路径。
+	sOld.Pause(scheduler.PauseReasonManual)
+	sOld.Resume(scheduler.PauseReasonManual)
+	sOld.ReanchorCountdown()
+
+	if len(hostOld.pre) != 1 {
+		t.Fatalf("对照组不成立：手动暂停恢复后应弹一次提示窗，得到 %v（场景没构造出来）", hostOld.pre)
+	}
+	if sOld.PreBreakWanted() {
+		t.Fatal("对照组不成立：重锚后提示窗应已不该在场")
+	}
+	if len(host.pre) != 0 {
+		t.Fatalf("空闲回来不该弹提前提示窗（会被重锚立刻收掉），得到 %v", host.pre)
+	}
+	if s.PreBreakWanted() {
+		t.Fatal("重锚后提示窗不该在场")
+	}
+	if s.IsPaused() {
+		t.Fatalf("回来应已恢复，得到 reasons=%v", s.StateCopy().PauseReasons)
+	}
+	// 重锚仍要发生：内置倒计时从「现在」重新计时（4 秒），不是残留的 2.9 秒
+	if remain := s.RemainingMs(); remain < 3500 || remain > 4200 {
+		t.Fatalf("回来应把内置倒计时重锚到满间隔，得到剩余 %d ms", remain)
+	}
+}
+
+// 固定时刻线不会重锚，所以空闲回来时必须照常把提前提示窗弹回来 ——
+// 静默恢复会把「这次提醒的提前提示」永久吞掉（休息仍准点弹，但少了提前那一下）。
+// 与上一条配对：同一处代码，倒计时线要静默、固定线不能静默。
+func TestIdleReturnKeepsPreWindowForFixedLine(t *testing.T) {
+	// 下一个整分钟触发、提前 3 分钟提示 → 现在必然已在提前区间内
+	next := time.Now().Add(time.Minute)
+	cfg := `{"short":{"enabled":true,"mode":"fixed","durationMs":20000,"notifyBeforeMs":180000,` +
+		`"postponeMs":60000,"slots":[{"hour":` + itoa(next.Hour()) + `,"minute":` + itoa(next.Minute()) +
+		`,"enabled":true}]}}`
+
+	a, s, host := newWatchAppWithHost(t, cfg)
+	if s.CountdownReanchorable() {
+		t.Fatalf("前置：固定时刻线不该被判成可重锚（nextSource=%v）", s.StateCopy().NextSource)
+	}
+
+	a.idle.ForceIdle(6 * 60_000)
+	a.idleAway = a.idleWatchTick(false)
+	if !s.IsPaused() {
+		t.Fatal("前置：应已因空闲暂停")
+	}
+
+	a.idle.ForceIdle(0)
+	a.idleAway = a.idleWatchTick(a.idleAway)
+	if s.IsPaused() {
+		t.Fatalf("回来应已恢复，得到 %v", s.StateCopy().PauseReasons)
+	}
+	if len(host.pre) != 1 {
+		t.Fatalf("固定时刻线不会重锚，提前提示窗必须弹回来，得到 %v", host.pre)
+	}
+	if !s.PreBreakWanted() {
+		t.Fatal("提前提示窗应在场（还没重锚，仍在提前区间内）")
+	}
+}
+
+// C：忙碌型自动暂停期间统计仍记「工作」。
+//
+// 统计的三态只看两件事：休息窗在不在场（statsIsBreak）、连续无输入有没有超阈值
+// （statsIsIdle）。自动暂停不改这两条 —— 开会 / 投屏 / 全屏时人还在电脑前，这段
+// 该记工作；只有真正没人碰键鼠超过阈值才记离开，与暂停原因无关。
+func TestBusyAutoPauseCountsAsWork(t *testing.T) {
+	a, s := newWatchApp(t, shortCountdown)
+	s.Pause(pauseReasonDnd)
+
+	if a.statsIsBreak() {
+		t.Fatal("自动暂停已收掉休息窗，不该记休息")
+	}
+	if a.statsIsIdle() {
+		t.Fatal("人还在用电脑（勿扰 / 投屏 / 全屏），不该记离开")
+	}
+
+	// 真正离开（无输入超过阈值）才翻成离开 —— 哪怕暂停原因还挂着
+	a.idle.ForceIdle(10 * 60_000)
+	if !a.statsIsIdle() {
+		t.Fatal("连续无输入超过阈值应记离开")
 	}
 }
