@@ -70,44 +70,10 @@ func normalizeSupervisorMessages(raw map[string]any) {
 // NormalizeSupervisorMessages 督休专员配置归一化（跨包导出，供测试复用）。
 func NormalizeSupervisorMessages(raw map[string]any) { normalizeSupervisorMessages(raw) }
 
-// normalizeReminderMessages 提醒内容迁移 + 归一化（对应 config.ts 的同名函数）：
-// 旧版是全局一套 messages，现在短 / 长 / 外卖各自独立一套。旧条目统一归短休息，
-// 显示方式沿用旧 mode，随后删掉旧键。每套配置**重建**成 order / fixedId / seeded / items。
+// normalizeReminderMessages 提醒内容归一化（对应 config.ts 的同名函数）：
+// 短 / 长 / 外卖各自一套，每套**重建**成 order / fixedId / seeded / items。
 func normalizeReminderMessages(raw map[string]any) bool {
 	renumbered := false
-	if legacy, ok := raw["messages"].(map[string]any); ok {
-		items := []any{}
-		for _, it := range jsonx.AnySlice(legacy["items"]) {
-			m, ok := it.(map[string]any)
-			if !ok {
-				continue
-			}
-			text, ok := m["text"].(string)
-			if !ok || strings.TrimSpace(text) == "" {
-				continue
-			}
-			id := ""
-			if s, ok := m["id"].(string); ok && s != "" {
-				id = s
-			}
-			if id == "" {
-				id = jsonx.NewRandomID()
-			}
-			items = append(items, map[string]any{
-				"id": id, "text": text, "enabled": m["enabled"] != false,
-			})
-		}
-		order := "random"
-		if s, _ := legacy["mode"].(string); s == "sequence" {
-			order = "sequence"
-		}
-		raw["reminderMessages"] = map[string]any{
-			"short":   map[string]any{"order": order, "items": items},
-			"long":    map[string]any{"order": order, "items": []any{}},
-			"takeout": map[string]any{"order": order, "items": []any{}},
-		}
-		delete(raw, "messages")
-	}
 	rm, ok := raw["reminderMessages"].(map[string]any)
 	if !ok {
 		def, _ := deepCopyValue(defaultSettingsMap()["reminderMessages"]).(map[string]any)
@@ -171,39 +137,39 @@ func seedPresetEntries(raw map[string]any) bool {
 
 // normalizeLoad 加载路径的归一化，**顺序逐条对应 config.ts 的 loadSettingsFrom**。
 //
-// 返回值只有四件事需要立刻落盘：「种入了预置条目」「提醒内容条目 id 被收敛成序号」
-// 「摘掉了早期误种的应用暂停条目」「清掉了已删除功能的残留键（含老版本写过的机器标识）」。
-// 其余归一化结果（越界夹紧）**不主动回写** —— 每次启动都改写用户配置会把键序和格式一起
-// 动掉，而且在「验证脚本误指真实配置」时会留下副作用；这些夹紧结果会在用户下一次保存时
-// 一并落盘。
-func normalizeLoad(raw map[string]any) (presetSeeded, idsRenumbered, appsPruned, legacyDropped bool) {
-	// ① 旧键清理与迁移（必须在归一化之前：迁移写出来的值才是最终值）
-	legacyDropped = cleanLegacyKeys(raw)
-	// ② 休息触发方式与固定时刻表
+// 返回值只有三件事需要立刻落盘：「种入了预置条目」「提醒内容条目 id 被收敛成序号」
+// 「出厂空的 displayIds 被补成主屏 ID」。其余归一化结果（越界夹紧）**不主动回写** ——
+// 每次启动都改写用户配置会把键序和格式一起动掉，而且在「验证脚本误指真实配置」时会留下
+// 副作用；这些夹紧结果会在用户下一次保存时一并落盘。
+func normalizeLoad(raw map[string]any) (presetSeeded, idsRenumbered, displayFilled bool) {
+	// ① 休息触发方式与固定时刻表
 	raw["short"] = normalizeBreakConfigOf(mapOf(raw["short"]))
 	raw["long"] = normalizeBreakConfigOf(mapOf(raw["long"]))
-	// ③ 声音
+	// ② 声音
 	normalizeSound(raw)
-	// ④ 自定义提醒
+	// ③ 自定义提醒
 	idsRenumbered = normalizeCustomBreaks(raw)
-	// ⑤ 外卖提醒
+	// ④ 外卖提醒
 	raw["takeout"] = normalizeTakeout(raw)
-	// ⑥ 指定应用运行时暂停：归一化 → 摘掉早期误种的综合办公套件 → 首次种入内置会议软件
-	raw["appPause"], appsPruned = pruneSuitePresets(normalizeAppPause(raw))
+	// ⑤ 指定应用运行时暂停：归一化 → 首次种入内置会议软件
+	raw["appPause"] = normalizeAppPause(raw)
 	if raw["appPause"].(map[string]any)["seeded"] != true {
 		raw["appPause"] = seedAppPause(raw["appPause"].(map[string]any))
 	}
-	// ⑦ 开关类字段（含旧的「休息窗口显示位置」下拉框迁移）
+	// ⑥ 开关类字段
 	normalizeToggles(raw)
-	// ⑦·5 设置窗口尺寸（window 块，老配置没有就按出厂默认补一块）
+	// ⑥·1 出厂 displayIds 是空的：枚举一次，把主屏 ID 记进配置（首次启动就落盘，
+	// 之后用户看到的是「主屏已勾」；枚举不可用时保持空，运行时兜底主屏）
+	displayFilled = fillPrimaryDisplayID(raw)
+	// ⑦ 设置窗口尺寸（window 块，缺就按出厂默认补一块）
 	normalizeWindow(raw)
-	// ⑧ 提醒内容（含旧 messages 键迁移）
+	// ⑧ 提醒内容
 	idsRenumbered = normalizeReminderMessages(raw) || idsRenumbered
 	// ⑨ 督休专员
 	normalizeSupervisorMessages(raw)
 	// ⑩ 预置提醒内容条目（幂等）
 	presetSeeded = seedPresetEntries(raw)
-	return presetSeeded, idsRenumbered, appsPruned, legacyDropped
+	return presetSeeded, idsRenumbered, displayFilled
 }
 
 // NormalizeLoad 加载路径的归一化（跨包导出，供 main 的恢复默认复用：
@@ -213,13 +179,9 @@ func NormalizeLoad(raw map[string]any) {
 }
 
 // normalizeForSave 设置页保存 / 导入外来配置后要跑的归一化。
-// 与加载路径的差别：不做旧键迁移与首次种子（那些是一次性动作，加载时已经做过），
-// 唯一的例外是机器标识键的兜底删除（见函数体）；顺序对应 main.ts 的 settings:save /
-// settings:import。
+// 与加载路径的差别：不做首次种子（那是一次性动作，加载时已经做过）；
+// 顺序对应 main.ts 的 settings:save / settings:import。
 func normalizeForSave(raw map[string]any) {
-	// 机器标识机制已删除（二维码不再带 id）：保存路径也兜底摘掉，保证任何一次落盘
-	// 都不会把它写回 settings.json —— 加载路径的同类清理在 cleanLegacyKeys 里
-	delete(raw, "installId")
 	normalizeReminderMessages(raw)
 	normalizeSupervisorMessages(raw)
 	raw["short"] = normalizeBreakConfigOf(mapOf(raw["short"]))
@@ -283,17 +245,17 @@ func loadSettings(resourcesRoot string) *Settings {
 		if !ok || merged == nil {
 			continue
 		}
-		presetSeeded, idsRenumbered, appsPruned, legacyDropped := normalizeLoad(merged)
+		presetSeeded, idsRenumbered, displayFilled := normalizeLoad(merged)
 		s := &Settings{raw: merged, path: p}
-		// 四种情况回写：种入预置条目、提醒内容条目 id 被收敛成序号（一次性格式统一，
-		// 收敛完即为定值，不会每次启动都写盘）、摘除早期误种的套件预设、清掉已删除功能的
-		// 残留键（不落盘的话残留键会一直躺在 settings.json 里，导入导出也会带走）
-		if presetSeeded || idsRenumbered || appsPruned || legacyDropped {
+		// 三种情况回写：种入预置条目、提醒内容条目 id 被收敛成序号（一次性格式统一，
+		// 收敛完即为定值，不会每次启动都写盘）、出厂空的 displayIds 补成主屏 ID
+		// （让配置文件与界面勾选一致）
+		if presetSeeded || idsRenumbered || displayFilled {
 			if err := s.Save(); err != nil {
 				log.Printf("[settings] 初始化结果落盘失败: %v", err)
 			} else {
-				log.Printf("[settings] 已回写初始化结果 %s（种入预置=%v 条目重编号=%v 摘除套件预设=%v 清理残留键=%v）",
-					p, presetSeeded, idsRenumbered, appsPruned, legacyDropped)
+				log.Printf("[settings] 已回写初始化结果 %s（种入预置=%v 条目重编号=%v 补主屏 ID=%v）",
+					p, presetSeeded, idsRenumbered, displayFilled)
 			}
 		}
 		return s
@@ -301,9 +263,9 @@ func loadSettings(resourcesRoot string) *Settings {
 	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（种入预置条目），
 	// 并落盘 —— 与 上一版的 firstRun 分支一致
 	fresh := defaultSettingsMap()
-	presetSeeded, idsRenumbered, appsPruned, legacyDropped := normalizeLoad(fresh)
+	presetSeeded, idsRenumbered, displayFilled := normalizeLoad(fresh)
 	s := &Settings{raw: fresh, path: ""}
-	if presetSeeded || idsRenumbered || appsPruned || legacyDropped {
+	if presetSeeded || idsRenumbered || displayFilled {
 		if err := s.Save(); err != nil {
 			log.Printf("[settings] 首次运行落盘失败: %v", err)
 		}

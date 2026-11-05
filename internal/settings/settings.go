@@ -469,8 +469,26 @@ func (s *Settings) TakeoutSlots() []model.TimeSlot {
 	return normalizeTimeSlots(s.lookup("takeout", "slots"))
 }
 
-// AllScreens 「在所有屏幕显示」开关（休息窗口与外卖窗口共用同一多屏策略）
-func (s *Settings) AllScreens() bool { return s.Flag(true, "allScreens") }
+// DisplayIDs 提醒窗口要显示在哪几块屏上（休息窗口与外卖窗口共用同一策略）。
+//
+// 语义见 internal/display 的 Resolve：**空数组 = 还没挑过屏**，运行时兜底主屏
+// （绝不是「所有屏」）；非空时就是 display.Info.ID 的具体字符串。
+// 出厂配置就是空数组，首次启动时由 fillPrimaryDisplayID 枚举一遍、把主屏的稳定 ID
+// 写进配置，用户打开设置页看到的就是「主屏已勾」。这里只做「取出来 + 去空」，
+// 真正的解析（含拔屏兜底）在 display 包。
+func (s *Settings) DisplayIDs() []string {
+	arr, ok := s.lookup("displayIds").([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, it := range arr {
+		if str, ok := it.(string); ok && str != "" {
+			out = append(out, str)
+		}
+	}
+	return out
+}
 
 // StartMinimized 启动时最小化到托盘（不显示设置窗口，托盘图标在，点一下就出来）
 func (s *Settings) StartMinimized() bool { return s.Flag(false, "startMinimized") }

@@ -23,6 +23,8 @@
   "idlePauseMin": 5,
   "dndPause": true,
   "fullscreenPause": true,
+  "castWirelessPause": true,
+  "castMirrorPause": true,
   "appPause": {
     "enabled": true,
     "seeded": false,
@@ -39,7 +41,7 @@
     "heightPct": 95,
     "hideOnShare": true
   },
-  "allScreens": true,
+  "displayIds": [],
   "window": {
     "width": 874,
     "height": 857,

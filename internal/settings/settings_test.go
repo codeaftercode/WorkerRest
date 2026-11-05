@@ -8,41 +8,35 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"workerrest/internal/display"
 	"workerrest/internal/jsonx"
 	"workerrest/internal/role"
 )
 
 // 归一化的快速回归。
 //
-// 为什么还需要它（已经有 scripts/verify_settings_parity.py 与上一版 对拍）：
-// 那个对拍要起 node + 无头服务，跑一轮十几秒；这里是纯函数、毫秒级，`go test` 顺手就跑了。
-// 两边分工：**这里拦住「规则写错了」**（老配置迁移、越界夹紧、种子条目），
-// **对拍拦住「与上一版 不一致」**（包括这里没想到的规则）。
-// 真实的老配置样本见 verify_settings_parity.py 的 legacy_fixture / rich_fixture。
+// 钉的是「规则写错了」：类型不对的开关回退默认、越界数值夹紧、非法枚举回落缺省值、
+// 非对象条目剔除、种子条目幂等。
+//
+// 这里刻意只放**当前格式**的配置：软件还没发布，不存在需要迁移的旧版本文件，
+// 归一化只负责把「手改坏了 / 导入带了脏值」的配置收口。
 
-func TestNormalizeLoadLegacyMigration(t *testing.T) {
+func TestNormalizeLoadCoercesBadValues(t *testing.T) {
 	raw := map[string]any{
-		"appName":        "  老  配置  ",
-		"screens":        "main", // 旧键：休息窗口显示位置
-		"idlePause":      true,   // 旧键：空闲暂停开关（功能已删）
-		"startMinimized": "yes",  // 非布尔
+		"appName":        "  这次不改  ",
+		"startMinimized": "yes", // 非布尔
 		"short": map[string]any{
-			"mode":   "bogus",
-			"strict": true,
+			"mode": "bogus",
 			"slots": []any{
 				map[string]any{"hour": 99.0, "minute": 99.0, "repeat": "weekly", "days": []any{}},
 				map[string]any{"hour": -5.0, "minute": "30"},
 				"不是对象",
 			},
 		},
-		"appearance": map[string]any{"opacity": 0.92, "widthPct": 0.0},
-		"supervisor": map[string]any{"level": 3.0, "selection": "bogus"},
-		"sound": map[string]any{
-			"mode": "bogus", "shortStart": "old_start.wav", "longEnd": "old_end.wav",
-		},
-		"takeout":  map[string]any{"leadSec": 999.0, "postponeMin": 999.0},
-		"appPause": nil,
-		"workTime": map[string]any{"start": "09:00"},
+		"supervisor": map[string]any{"selection": "bogus"},
+		"sound":      map[string]any{"mode": "bogus"},
+		"takeout":    map[string]any{"leadSec": 999.0, "postponeMin": 999.0},
+		"appPause":   nil,
 		"customBreaks": []any{
 			map[string]any{"id": "short", "name": "  喝水  ", "config": map[string]any{"durationMs": 0.0}},
 			map[string]any{"id": "standup"},
@@ -53,36 +47,31 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 			"long":  map[string]any{"items": []any{map[string]any{"text": "没有 id"}}},
 		},
 	}
-	presetSeeded, _, _, legacyDropped := normalizeLoad(raw)
+	presetSeeded, _, _ := normalizeLoad(raw)
 	if !presetSeeded {
-		t.Fatal("老配置没有 seeded 标记，应当种入预置条目")
-	}
-	if !legacyDropped {
-		t.Fatal("老配置里有 workTime / strict / level 这类已删除功能的残留键，应当报告已清理")
-	}
-	// 机器标识机制已删除：加载路径不许再生成任何标识，老配置里残留的键也必须摘掉
-	if _, ok := raw["installId"]; ok {
-		t.Fatal("配置里不该再有机器标识键（二维码不再带 id）")
-	}
-
-	assertAbsent(t, raw, "screens", "idlePause", "workTime")
-
-	// 旧键 screens=main ⇒ allScreens=false；startMinimized 非布尔 ⇒ false
-	if raw["allScreens"] != false {
-		t.Errorf("screens=main 应迁移成 allScreens=false，得到 %v", raw["allScreens"])
+		t.Fatal("没有 seeded 标记时应种入预置条目")
 	}
 	if raw["startMinimized"] != false {
 		t.Errorf("非布尔的 startMinimized 应回退 false，得到 %v", raw["startMinimized"])
 	}
 
-	// appName 归一化**不发生在加载路径**（上一版 也不做），原样保留
-	if got := raw["appName"]; got != "  老  配置  " {
+	// appName 归一化**不发生在加载路径**，原样保留
+	if got := raw["appName"]; got != "  这次不改  " {
 		t.Errorf("加载路径不应改写 appName，得到 %q", got)
 	}
 
-	// short：mode 归一到 countdown、strict 清掉、时刻表夹紧
+	// displayIds：出厂空数组 ⇒ 加载时补成主屏 ID；枚举不可用时保持空，运行时 Resolve 兜底
+	ids, _ := raw["displayIds"].([]any)
+	if list, err := display.List(); err == nil && len(list) > 0 {
+		if want := primaryIDOf(list); len(ids) != 1 || ids[0] != want {
+			t.Errorf("空 displayIds 应补成主屏 [%q]，得到 %v", want, ids)
+		}
+	} else if len(ids) != 0 {
+		t.Errorf("枚举不可用时应保持空数组，得到 %v", ids)
+	}
+
+	// short：mode 归一到 countdown、时刻表夹紧
 	short := raw["short"].(map[string]any)
-	assertAbsent(t, short, "strict")
 	if short["mode"] != "countdown" {
 		t.Errorf("非法 mode 应回退 countdown，得到 %v", short["mode"])
 	}
@@ -102,13 +91,8 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 		t.Errorf("负数小时应夹到 0、字符串分钟应解析成 30，得到 %v:%v", s1["hour"], s1["minute"])
 	}
 
-	// appearance：opacity 换算成 transparency（默认已有 transparency ⇒ 只删旧键）
-	ap := raw["appearance"].(map[string]any)
-	assertAbsent(t, ap, "opacity")
-
-	// supervisor：level 清掉、selection 归一到 random（缺省口径）、gaze 恒 true
+	// supervisor：selection 归一到 random（缺省口径）、gaze 恒 true
 	sup := raw["supervisor"].(map[string]any)
-	assertAbsent(t, sup, "level")
 	if sup["selection"] != "random" {
 		t.Errorf("非法 selection 应回退 random，得到 %v", sup["selection"])
 	}
@@ -116,9 +100,8 @@ func TestNormalizeLoadLegacyMigration(t *testing.T) {
 		t.Errorf("视线跟随应恒为 true，得到 %v", sup["gaze"])
 	}
 
-	// sound：旧键合并进 sound 并删除；mode 归一；预置音乐种入
+	// sound：mode 归一；预置音乐种入
 	snd := raw["sound"].(map[string]any)
-	assertAbsent(t, snd, "shortStart", "longEnd")
 	if snd["mode"] != "single" {
 		t.Errorf("非法 mode 应回退 single，得到 %v", snd["mode"])
 	}
@@ -194,12 +177,9 @@ func TestNormalizeLoadIsIdempotent(t *testing.T) {
 	if err := json.Unmarshal(first, &feed); err != nil {
 		t.Fatal(err)
 	}
-	presetSeeded, idsRenumbered, _, legacyDropped := normalizeLoad(feed)
+	presetSeeded, idsRenumbered, _ := normalizeLoad(feed)
 	if presetSeeded {
 		t.Error("已归一化的配置再跑一次不该再种条目")
-	}
-	if legacyDropped {
-		t.Error("已归一化的配置再跑一次不该再清残留键（否则每次启动都写盘）")
 	}
 	if idsRenumbered {
 		t.Error("已归一化的配置再跑一次不该再给条目重新编号")
@@ -207,47 +187,6 @@ func TestNormalizeLoadIsIdempotent(t *testing.T) {
 	second, _ := json.Marshal(feed)
 	if string(first) != string(second) {
 		t.Errorf("归一化不收敛（第二次仍改动了配置）\n第一次: %s\n第二次: %s", first, second)
-	}
-}
-
-// TestPruneSuitePresets 早期版本把钉钉 / 企业微信 / 飞书 / WeLink 当成会议软件种进了
-// 「应用暂停」清单，现在只留以会议为主的客户端。这条用例钉两件事：
-//  1. 只摘「软件自己种的」条目（id 恰好是 preset-<小写 exe> 且 exe 原样）；用户手工
-//     添加的、改过进程名的，一律保留 —— 那是用户的决定，不是历史包袱；
-//  2. 摘完幂等：第二次归一化不再报告「有改动」，否则每次启动都会回写配置。
-func TestPruneSuitePresets(t *testing.T) {
-	item := func(id, exe, name string) map[string]any {
-		return map[string]any{"id": id, "exe": exe, "name": name, "enabled": true}
-	}
-	raw := map[string]any{
-		"appPause": map[string]any{
-			"enabled": true,
-			"seeded":  true,
-			// 顺序照真实配置：用户自己的条目在前，种子追加在末尾（normalizeAppPause 按进程名去重，
-			// 保前面的）。公司自己搭的钉钉也走 DingTalk.exe，绝不能因为同名被一起摘掉。
-			"items": []any{
-				item("app-7f3a", "DingTalk.exe", "公司的钉钉"),
-				item("preset-dingtalk.exe", "DingTalk.exe", "钉钉"),
-				item("preset-wxwork.exe", "WXWork.exe", "企业微信"),
-				item("preset-feishu.exe", "Feishu.exe", "飞书"),
-				item("preset-welink.exe", "WeLink.exe", "华为云 WeLink"),
-				item("preset-zoom.exe", "Zoom.exe", "Zoom"), // 会议客户端：留
-			},
-		},
-	}
-	if _, _, pruned, _ := normalizeLoad(raw); !pruned {
-		t.Fatal("带综合办公套件预设的配置应报告「摘除了条目」")
-	}
-	var got []string
-	for _, it := range raw["appPause"].(map[string]any)["items"].([]any) {
-		got = append(got, it.(map[string]any)["id"].(string))
-	}
-	want := []string{"app-7f3a", "preset-zoom.exe"}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("摘除结果不对：得到 %v，期望 %v", got, want)
-	}
-	if _, _, again, _ := normalizeLoad(raw); again {
-		t.Error("已摘过的配置再跑一次不该再报告摘除（会每次启动都回写）")
 	}
 }
 
@@ -298,15 +237,6 @@ func TestSaveFirstRunPortableFirst(t *testing.T) {
 	}
 	if _, err := os.Stat(want); err != nil {
 		t.Fatalf("便携落点文件没写出来：%v", err)
-	}
-}
-
-func assertAbsent(t *testing.T, m map[string]any, keys ...string) {
-	t.Helper()
-	for _, k := range keys {
-		if _, ok := m[k]; ok {
-			t.Errorf("旧键 %q 应被清理，实际还在：%v", k, m[k])
-		}
 	}
 }
 
@@ -607,4 +537,66 @@ func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
 		t.Fatalf("出厂固定专员 %q 在 assets/supervisors 里找不到（目录被删了，或 meta.json 的 name 不叫这个）", fixed)
 	}
 	t.Logf("出厂固定专员 %s → %s", fixed, dir)
+}
+
+// primaryIDOf 是纯函数，先把它钉住：没有主屏标记时要退回第一块，绝不返回空。
+func TestPrimaryIDOf(t *testing.T) {
+	list := []display.Info{{ID: ""}, {ID: "b", IsPrimary: true}}
+	if got := primaryIDOf(list); got != "b" {
+		t.Fatalf("应取主屏 ID b，得到 %q", got)
+	}
+	// 个别虚拟显示驱动一块都不标主屏 → 退回第一块有 ID 的
+	if got := primaryIDOf([]display.Info{{ID: "x"}, {ID: "y"}}); got != "x" {
+		t.Fatalf("没有主屏标记时应退回第一块 x，得到 %q", got)
+	}
+	if got := primaryIDOf(nil); got != "" {
+		t.Fatalf("空列表应返回空串，得到 %q", got)
+	}
+}
+
+// 出厂 displayIds 是空数组：加载时枚举一次、补成主屏的稳定 ID，并回报 changed 让磁盘回写。
+// 枚举不可用（远程会话 / 无桌面）时保持空数组 —— 运行时 display.Resolve 仍兜底主屏，
+// 下次启动再补，不会把一台看不见屏的机器写成猜出来的值。
+func TestFillPrimaryDisplayID(t *testing.T) {
+	list, err := display.List()
+	if err != nil || len(list) == 0 {
+		t.Skipf("本机枚举不可用（%v），空配置补齐只能真机验", err)
+	}
+	want := primaryIDOf(list)
+	if want == "" {
+		t.Fatal("枚举成功却拿不到任何显示器 ID")
+	}
+
+	raw := map[string]any{"displayIds": []any{}}
+	if !fillPrimaryDisplayID(raw) {
+		t.Fatal("空 displayIds 应当被补齐，并回报 changed 让磁盘回写")
+	}
+	got := raw["displayIds"].([]any)
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("应补成主屏 [%q]，得到 %v", want, got)
+	}
+	// 幂等：第二次不许再改、也不许再回报 changed（否则每次启动都写一遍盘）
+	if fillPrimaryDisplayID(raw) {
+		t.Fatal("已有 displayIds 时不该再回报 changed")
+	}
+
+	// 用户手选的屏一律不动（哪怕它此刻已拔掉）
+	keep := map[string]any{"displayIds": []any{"DEL0000#0&0&0&UID0"}}
+	if fillPrimaryDisplayID(keep) {
+		t.Fatal("用户选过的屏不该被自动改写")
+	}
+	if got := keep["displayIds"].([]any); len(got) != 1 || got[0] != "DEL0000#0&0&0&UID0" {
+		t.Fatalf("displayIds 被改动了：%v", got)
+	}
+}
+
+// 出厂配置本身必须是空数组（这是「首次启动才去探测」的前提），且加载后必须变成具体 ID。
+func TestDefaultDisplayIDsEmptyThenFilled(t *testing.T) {
+	var def map[string]any
+	if err := json.Unmarshal([]byte(DefaultSettingsJSON()), &def); err != nil {
+		t.Fatal(err)
+	}
+	if ids, ok := def["displayIds"].([]any); !ok || len(ids) != 0 {
+		t.Fatalf("出厂 displayIds 必须是空数组，得到 %v", def["displayIds"])
+	}
 }
