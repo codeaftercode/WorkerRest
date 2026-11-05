@@ -34,17 +34,25 @@
 | 脚本 | 作用 |
 |---|---|
 | `probe_renderer.py` + `renderer_probe.js` | 渲染层探针：真实页面指向无头服务，跑 DOM 断言 |
-| `probe_settings_ui.py` + `settings_ui_probe.js` / `settings_modals_probe.js` / `settings_flow_probe.js` | 设置页三层覆盖：① 全扫描——六个 tab 的全部可见控件（数量基线 / 可访问名 / 横向溢出）+ 十个弹窗的语义契约 + 关键控件与 settings 的绑定一致性；② 弹窗交互——真点击打开、焦点进框、Esc 关闭、焦点归位、Tab 陷阱、点遮罩关闭；③ 写入链路——快捷键录入（合法/裸键/重复键）、音量与播放方式、主题切换、外卖数值归一、恢复默认的取消不改配置 |
+| `probe_settings_ui.py` + `settings_ui_probe.js` / `settings_modals_probe.js` / `settings_flow_probe.js` / `settings_options_probe.js` | 设置页四层覆盖：① 全扫描——六个 tab 的全部可见控件（数量基线 / 可访问名 / 横向溢出）+ 十个弹窗的语义契约 + 关键控件与 settings 的绑定一致性；② 弹窗交互——真点击打开、焦点进框、Esc 关闭、焦点归位、Tab 陷阱、点遮罩关闭；③ 写入链路——快捷键录入（合法/裸键/重复键）、音量与播放方式、主题切换、外卖数值归一、恢复默认的取消不改配置；④ **控件接线矩阵**——逐个控件「操作 → 配置必须有变化 → 操作回去 → 逐字还原」，抓死控件与接错键（36 个控件，接线表逐条打印） |
 | `probe_bindings_full.py` | 绑定级全覆盖：契约表里 52 个绑定逐个真调，断言返回结构、落盘效果、拒绝分支与「探针能发现绑定丢失」的元测试 |
 | `probe_config_matrix.py` | 配置矩阵：每个多值配置项（mode / selection / order / pauseAction / 音量为 0 与越界 / 时刻表越界 / sites 过滤 …）逐个取值，再验启动态（nextAt / nextSource / nextType / timeline 类型序列） |
 | `probe_edge_cases.py` | 异常与边界：打包态缺资源、配置只读、20 路并发保存、emoji 与 300 字标题、100 条时刻表、落点被占成目录 |
-| `probe_window_gui.py` | 真窗口：初始尺寸、拖拽记录、二次启动沿用 |
+| `probe_window_gui.py` | 真窗口：初始尺寸、拖拽记录、二次启动沿用、**客户区 = 网页视口 = 配置尺寸**（DPI 折 DIP 后逐像素比） |
 | `probe_window_size.py` + `probe_window_size.js` | 测量最小可用宽度与关于页不滚动的高度 |
+| `probe_dpi_layout.py` + `probe_dpi_layout.js` | 系统缩放（DPI）对布局的影响：同一视口换 5 档设备像素比（布局必须逐像素一致）+ 25 种「分辨率 × 缩放」组合下按 `fitSizeInWorkArea` 复算窗口尺寸、量每页溢出与横向裁切（窗口不得高于工作区） |
 | `probe_sound_scan.py` | 提示音目录体检：新增音频询问导入、死条目询问删除 |
 | `probe_stats_file.py` | 统计文件自愈：首跑自建、损坏改名备份后重建 |
 | `probe_crossday.py` + `crossday_probe.js` | 跨零点：统计报表跟着翻页 |
 | `probe_capture_guard.py` | 共享屏幕时的捕获保护（窗底染品红 + 像素占比判据） |
 | `probe_gui_boot.py` | 带控制台的 GUI 产物启动 12 秒，读日志确认启动链路 |
+| `probe_pause_cycle.py` + `pause_cycle_probe.js` | 暂停 / 恢复端到端：真页面点按钮 → 真绑定 → 真调度器（状态翻转 / nextAt 冻结与平移 / 暂停中到点不弹 / 恢复后照常弹 / 反复切换不留脏状态） |
+| `probe_pause_autopause.py` | 自动暂停（应用占用）端到端：真 GUI 产物 + 真实进程占用（`ping.exe`）触发 → 收全部提醒窗 → 暂停期不弹 → 进程退出自动恢复并重锚 |
+| `probe_static_audit.py` | 静态资产审计（52 项，不用浏览器，秒级）：7 个页面的资源在不在、脚本集合与 HTML 逐字一致、无内联脚本（CSP `default-src 'self'` 会静默拦）、id 不重复、`node --check` 全部脚本、CSS `url()` 与 JS 引用的 id 都存在 |
+| `probe_pages_sweep.py` + `pages_sweep_probe.js` | 7 页面全谱健康扫描（80 项）：每页同一组不变量——页面 200 / 零 JS 报错 / **零失败请求**（含子资源 404 与被中止）/ `lang` / `title` / 无横向溢出 / `<img>` 真的解码 / 样式表真的生效 / 壳元素在且可见 + 页面专属契约（`index` 要真数据、`prebreak` 要倒计时在跳） |
+| `probe_pause_page.py` + `pause_page_probe.js` | 暂停提示小窗（`pause.html`）：300×76 尺寸、文案不压按钮、可访问名、页面上不出现「休息」二字、点「恢复」调 `pauseNoticeResume`、Esc 只关不恢复、超长文案省略号截断 |
+| `probe_windows_e2e.py` | 提醒窗口端到端（16 项，三段各起一次真进程）：A 短休息全流程（提前 20 s 弹预通知 → 到点弹休息窗 → 20 s 后自己关，且日志算的尺寸位置与真实窗口逐像素一致）；B 外卖（预通知 → 原定时刻主窗 → `fullscreen` 铺满工作区）；C 全局热键（`SendInput` 发 `Ctrl+Alt+Shift+F24` → 0.4 s 弹出休息窗） |
+| `probe_tray_e2e.py` | 托盘端到端（6 项）：找到 Wails 给托盘建的消息专属窗口，投递它自己注册的回调（`WM_USER+1`）——单击唤出被 `startMinimized` 藏起来的设置窗口、右键弹出 `#32768` 菜单；顺带验单实例哨兵窗口在 |
 
 ## verify/
 
