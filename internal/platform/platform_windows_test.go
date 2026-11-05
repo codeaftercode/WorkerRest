@@ -87,3 +87,29 @@ func TestProbeWebView2NeverContradictsInstallDir(t *testing.T) {
 		t.Fatal("Found=true 时必须带版本号")
 	}
 }
+
+// WebView2 缺失时的兜底：给用户的下载短链必须是官方 https 地址（写错就是让用户
+// 下到一个不存在或不可信的东西）。
+func TestWebView2DownloadURLIsOfficialHTTPS(t *testing.T) {
+	u := WebView2DownloadURL()
+	if !strings.HasPrefix(u, "https://") {
+		t.Fatalf("必须是 https，得到 %q", u)
+	}
+	if !strings.Contains(u, "go.microsoft.com") {
+		t.Fatalf("应指向微软官方域，得到 %q", u)
+	}
+}
+
+// 自更新拉起子进程时不能闪黑框：两个标志缺一个都会闪。
+func TestHiddenSysProcAttrHidesWindow(t *testing.T) {
+	a := HiddenSysProcAttr()
+	if a == nil {
+		t.Fatal("Windows 下不该返回 nil")
+	}
+	if !a.HideWindow {
+		t.Fatal("HideWindow 必须为 true")
+	}
+	if a.CreationFlags&0x00000200 == 0 {
+		t.Fatalf("CREATE_NO_WINDOW 必须置位，得到 %#x", a.CreationFlags)
+	}
+}

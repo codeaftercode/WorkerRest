@@ -73,6 +73,13 @@ func (a *App) autoUpdateLoop() {
 		action := update.Tick(&st, today, now,
 			a.idle != nil && a.idle.IsActive(), a.schedPaused(), done, autoUpdateRand)
 		if action == update.ActCheck {
+			// 到点与真正联网之间隔着最多一个轮询间隔（2 秒），暂停可能恰好在这期间开始。
+			// 再判一次：暂停期间不发任何网络请求 —— 这是「暂停」这个词的承诺。
+			if a.schedPaused() {
+				st.SkipDay()
+				log.Printf("[update] 暂停中，今天的自动检查跳过（等明天的排期）")
+				continue
+			}
 			// 网络请求 + JSON 解析 + 落盘，是这条循环里唯一有实质 panic 风险的部分。
 			// 被 panic 打断时不能立刻重试（一秒内连炸三次就会触发熔断），退到下一轮排期。
 			if !logx.GuardRunOK("update.check", func() { a.runAutoUpdateCheck(today) }) {
@@ -86,8 +93,14 @@ func (a *App) autoUpdateLoop() {
 	}
 }
 
-// schedPaused 当前是否处于「暂停休息」状态（手动暂停 / 勿扰 / 指定应用占用 / 空闲
-// 自动暂停都算）。此时不去检查更新，等 30 分钟内的随机时刻再试。
+// schedPaused 当前是否处于「暂停休息」状态（手动暂停 / 定时暂停 / 勿扰 / 全屏 / 投屏 /
+// 指定应用占用 / 空闲 自动暂停都算）。
+//
+// 暂停期间**不自动检查更新**：`update.Tick` 到点遇到暂停就当天作废（`SkipDay`），
+// 错过就错过，明天那份排期还在，不差这一天两天。
+//
+// 手动入口一概不拦：用户亲手点的「检查更新」照常联网，点「立即更新」照常执行并重启。
+// 暂停约束的是软件自己发起的动作，不是用户当下的决定。
 func (a *App) schedPaused() bool {
 	return a.sched != nil && a.sched.IsPaused()
 }

@@ -3,6 +3,7 @@ package update
 import (
 	"reflect"
 	"testing"
+	"time"
 )
 
 // 版本比较纯函数回归：IsNewerVersion / ParseVersion 逐条对应 main.ts 的
@@ -72,5 +73,18 @@ func TestSameVersion(t *testing.T) {
 		if got := SameVersion(c.a, c.b); got != c.want {
 			t.Errorf("SameVersion(%q, %q) = %v，期望 %v", c.a, c.b, got, c.want)
 		}
+	}
+}
+
+// TodayStr 是「当天是否已检查更新」的去重键：格式必须与 settings 里存的日期逐字一致
+// （YYYY-MM-DD，本地时区），否则每天会重复检查一次、或者再也不检查。
+func TestTodayStrMatchesLocalDate(t *testing.T) {
+	got := TodayStr()
+	want := time.Now().Format("2006-01-02")
+	if got != want {
+		t.Fatalf("得到 %q，期望 %q", got, want)
+	}
+	if len(got) != 10 || got[4] != '-' || got[7] != '-' {
+		t.Fatalf("格式应为 YYYY-MM-DD，得到 %q", got)
 	}
 }

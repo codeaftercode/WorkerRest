@@ -38,6 +38,9 @@ func (a *App) StartUpdate() map[string]any {
 	if serverMode {
 		return map[string]any{"status": "error", "message": "无头模式不支持自动更新"}
 	}
+	// 这里**不**判暂停：暂停只拦软件自己发起的「自动检查更新」，不拦用户亲手点的
+	// 「立即更新」。区别在于谁在做决定 —— 自动检查是软件替用户做主，暂停期间不该
+	// 越过用户；而此刻用户就坐在机器前、亲手按下了这个按钮，重启是他自己的选择。
 	// 取最近一次检查结果（CheckUpdate 必须已跑过，且确实发现新版本）
 	a.mu.Lock()
 	st := a.updateStatus

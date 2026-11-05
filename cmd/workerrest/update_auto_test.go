@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -25,11 +26,10 @@ func fixedRand(d time.Duration) func(time.Duration) time.Duration {
 
 // TestAutoUpdateRandWithinWindow 随机时长必须落在 [0, max) 内。
 func TestAutoUpdateRandWithinWindow(t *testing.T) {
-	for _, max := range []time.Duration{update.AutoCheckWindow, update.AutoCheckRetry} {
-		for i := 0; i < 200; i++ {
-			if d := autoUpdateRand(max); d < 0 || d >= max {
-				t.Fatalf("随机时长 %v 超出 [0,%v)", d, max)
-			}
+	max := update.AutoCheckWindow
+	for i := 0; i < 200; i++ {
+		if d := autoUpdateRand(max); d < 0 || d >= max {
+			t.Fatalf("随机时长 %v 超出 [0,%v)", d, max)
 		}
 	}
 	if d := autoUpdateRand(0); d != 0 {
@@ -178,7 +178,7 @@ func driveAutoUpdate(from, to time.Time, step time.Duration,
 }
 
 // TestAutoUpdateTickSimulatedDay 用 1 分钟步长模拟一整天，验证：
-// 非暂停时检查点落在「首次活动后 3 小时内」；暂停时按 30 分钟窗反复重试；
+// 非暂停时检查点落在「首次活动后 3 小时内」；到点正在暂停则当天整天作废；
 // 一整天都没等到非暂停 → 当天不查，第二天照常按自己的首次活动起算。
 //
 // 注意 tol：状态机是「到点后的第一拍才动手」，而这里步长是 1 分钟，所以真正落点最多
@@ -200,15 +200,12 @@ func TestAutoUpdateTickSimulatedDay(t *testing.T) {
 		t.Fatalf("检查时刻 %v 未落在 09:00 之后的 3 小时窗内", checks[0])
 	}
 
-	// 2) 09:00 起有操作，但一直暂停到 13:00 → 恢复后的 30 分钟内才查
+	// 2) 09:00 起有操作，但一直暂停到 13:00 → 当天一次都不查（错过就错过，明天再说）
 	checks = driveAutoUpdate(hm(9, 0), hm(24, 0), step,
 		func(time.Time) bool { return true },
 		func(now time.Time) bool { return now.Before(hm(13, 0)) })
-	if len(checks) != 1 {
-		t.Fatalf("应恰好检查一次，实得 %d 次：%v", len(checks), checks)
-	}
-	if checks[0].Before(hm(13, 0)) || checks[0].After(hm(13, 30).Add(tol)) {
-		t.Fatalf("恢复后的检查时刻 %v 未落在 13:00~13:30 内", checks[0])
+	if len(checks) != 0 {
+		t.Fatalf("到点正在暂停应整天放弃，实得 %d 次：%v", len(checks), checks)
 	}
 
 	// 3) 第一天全程暂停（当天查不成），第二天不暂停 → 第二天照样查一次
@@ -224,6 +221,94 @@ func TestAutoUpdateTickSimulatedDay(t *testing.T) {
 	}
 	if h := checks[0].Sub(day2.Add(8 * time.Hour)); h < 0 || h > 3*time.Hour+tol {
 		t.Fatalf("第二天的检查时刻 %v 未落在 08:00 之后的 3 小时窗内", checks[0])
+	}
+}
+
+// TestAutoUpdateSkipsDayWhenPausedAtDueTime 到点那一刻正在暂停 → 当天作废：
+// 哪怕几秒后就恢复，也不再补查；第二天照常按自己的首次活动重新排期。
+// 这条钉的是「错过就错过，不差这一天两天」—— 原来的 30 分钟重试链会在暂停期间
+// 每半小时探一次，与「暂停就是别来烦我」相矛盾。
+func TestAutoUpdateSkipsDayWhenPausedAtDueTime(t *testing.T) {
+	base := time.Date(2026, 10, 23, 9, 0, 0, 0, time.Local)
+	const day = "2026-10-23"
+	var st update.State
+
+	// 首次活动只排期（固定随机 = 1 小时，便于定位到点时刻）
+	if act := update.Tick(&st, day, base, true, false, false, fixedRand(time.Hour)); act != update.ActNone {
+		t.Fatalf("首次活动只该排期，得到 %q", act)
+	}
+	if !st.ArmedAt.Equal(base.Add(time.Hour)) {
+		t.Fatalf("排期时刻应为 %v，实得 %v", base.Add(time.Hour), st.ArmedAt)
+	}
+	// 到点：正在手动暂停
+	if act := update.Tick(&st, day, base.Add(time.Hour), true, true, false, fixedRand(time.Hour)); act != update.ActNone {
+		t.Fatalf("暂停中到点不该检查，得到 %q", act)
+	}
+	if !st.Skipped {
+		t.Fatal("暂停中到点应记下「今天不查了」")
+	}
+	// 恢复之后（暂停已解除）整天推进，一次都不该再查
+	for now := base.Add(time.Hour + time.Minute); now.Before(base.Add(24 * time.Hour)); now = now.Add(time.Minute) {
+		if act := update.Tick(&st, day, now, true, false, false, fixedRand(time.Hour)); act != update.ActNone {
+			t.Fatalf("%v 恢复后不该补查", now)
+		}
+	}
+	// 第二天：状态整体重置，恢复常规排期与检查
+	next := base.AddDate(0, 0, 1)
+	const day2 = "2026-10-24"
+	update.Tick(&st, day2, next, true, false, false, fixedRand(time.Hour))
+	if st.Skipped {
+		t.Fatal("跨天后「今天不查了」应清零")
+	}
+	if act := update.Tick(&st, day2, next.Add(time.Hour), true, false, false, fixedRand(time.Hour)); act != update.ActCheck {
+		t.Fatalf("第二天应恢复正常检查，得到 %q", act)
+	}
+}
+
+// TestSkipDayStopsRestOfDay SkipDay 兜底：调度循环在真正联网前才发现自己处于暂停
+// 状态时（Tick 到点与请求之间隔着一个轮询间隔）用它作废当天。作废后即使立刻恢复、
+// 即使随机窗口取 0（到点即查），当天也不许再排期。
+func TestSkipDayStopsRestOfDay(t *testing.T) {
+	base := time.Date(2026, 10, 23, 15, 0, 0, 0, time.Local)
+	const day = "2026-10-23"
+	st := update.State{Day: day, ArmedAt: base.Add(time.Hour)}
+
+	st.SkipDay()
+	st.SkipDay() // 幂等：连着调两次不该炸
+
+	for now := base; now.Before(base.Add(9 * time.Hour)); now = now.Add(time.Minute) {
+		if act := update.Tick(&st, day, now, true, false, false, fixedRand(0)); act != update.ActNone {
+			t.Fatalf("%v 当天已作废，不该再检查（随机窗取 0 也不许）", now)
+		}
+	}
+}
+
+// TestStartUpdateNotGatedByPause 暂停只拦自动检查，不拦手动「立即更新」：用户亲手点的
+// 按钮照常执行、照常重启。区别在「谁在做决定」—— 自动检查是软件替用户做主，暂停期间
+// 不该越过用户；而点按钮的这一刻用户就在机器前。
+//
+// 读源码断言是因为 `-tags server` 下 StartUpdate 在 serverMode 那句就返回了，单测跑不到
+// 函数体（与 TestPauseNoticePageHasNoRestWording 同一手法）：只要在下载之前出现任何暂停
+// 判据，这条就红 —— 防止有人以「和自动检查保持一致」为由把它加回来。
+func TestStartUpdateNotGatedByPause(t *testing.T) {
+	src, err := os.ReadFile("update_download.go")
+	if err != nil {
+		t.Fatalf("读 update_download.go 失败: %v", err)
+	}
+	body := string(src)
+	start := strings.Index(body, "func (a *App) StartUpdate() map[string]any {")
+	if start < 0 {
+		t.Fatal("找不到 StartUpdate")
+	}
+	end := strings.Index(body[start:], "downloadPackage(")
+	if end < 0 {
+		t.Fatal("StartUpdate 里找不到下载动作，判据位置无从谈起")
+	}
+	head := body[start : start+end]
+	for _, banned := range []string{"schedPaused", "IsPaused", "updatePausedRefusal"} {
+		if strings.Contains(head, banned) {
+			t.Fatalf("StartUpdate 不该按暂停状态拦截手动更新，却出现了 %q：\n%s", banned, head)
+		}
 	}
 }
 
