@@ -80,7 +80,16 @@ func (a *App) checkTakeoutReminders() {
 	// 推迟提醒就把弹出时间往后推（推完仍暂停就再推）；跳过提醒则不弹提前提示小窗、
 	// 也不弹提醒窗口，直接按「跳过」记账（外卖报表的取消次数）。
 	// 暂停只管短 / 长休息，外卖自己按这份配置决定弹不弹。
+	//
+	// 例外：**自动暂停**（勿扰 / 投屏 / 全屏 / 应用占用 / 空闲）一律跳过，不看这份配置。
+	// 那不是用户按的暂停，是软件判定他现在不该被打断；按「照常提醒」弹出来就是打扰，
+	// 按「推迟提醒」攒到恢复后也会一次倒出来。窗口在进入自动暂停的那一刻已经收掉
+	//（见 App.OnAutoPause），这里管的是暂停期间刚到点的那些。
 	if a.sched != nil && a.sched.IsPaused() {
+		if a.sched.AutoPauseActive() {
+			a.skipTakeoutWhilePaused(cfg)
+			return
+		}
 		switch cfg.TakeoutPauseAction() {
 		case settings.PauseActionRemind:
 			// 照常提醒：继续往下走下面的四条触发线
