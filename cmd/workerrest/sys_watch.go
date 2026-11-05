@@ -41,6 +41,19 @@ const (
 	//
 	// 探测失败（Supported=false）不参与计数：读不到不等于不在跑。
 	appPauseExitConfirmMisses = 2
+
+	// autoPauseEnterConfirmTicks 「进入暂停」要连续几拍条件成立才算数（见 applyAutoPause）。
+	//
+	// 这是与 appPauseExitConfirmMisses 对称的**进入侧**去抖，专治「保持暂停」那四条
+	// （勿扰 / 全屏独占 / 复制模式 / 无线投放）的一次性尖峰：SHQueryUserNotificationState
+	// 偶发返回 QUNS_BUSY（全屏应用一帧、演示设置闪一下），QueryDisplayConfig 在拓扑重排
+	// 那几百毫秒报一次镜像。单拍命中就把提醒挂进一条「不自动恢复」的暂停，用户得自己去
+	// 托盘手动点，而且完全不知道为什么。
+	//
+	// 空闲与应用占用**不走这里**：它们条件消失就自动恢复，一次抖动最多挂 4~8 秒，无感；
+	// 且空闲本身有 idlePauseMin 阈值、应用占用有退出迟滞，尖峰已经在别处被盖住。
+	// 两条（约 6 秒）足以滤掉单次采样毛刺，又远短于提前提示窗的余量（默认提前 1 分钟）。
+	autoPauseEnterConfirmTicks = 2
 )
 
 // 暂停原因键。idle 用英文键（上一版侧就是 'idle'，types.ts 的 pauseReasonText 认它）；
@@ -311,37 +324,52 @@ func castWant(cast windnd.CastStatus, mirrorOn, wirelessOn bool) (mirror, wirele
 // 只在进入 / 退出暂停的那一次打日志：状态没变就什么都不做（3 秒一跳，不能刷屏）。
 // logged 指向 App 上该支路自己的标记字段，各支路互不影响。
 //
+// **logged 的语义是「上一跳条件是否成立」，不是「这条原因此刻还挂不挂着」。** 两者在
+// 「保持暂停」那四条上是分开的：条件消失后原因仍留在调度器里等用户手动恢复，但退出
+// 日志只能打一次。早先让它保持 true（怕下一跳重报「暂停提醒」），结果 3 秒一跳把
+// 「按策略保持暂停，等用户手动恢复」刷成上百条 —— 一次 3 秒的瞬时勿扰就把 app.log
+// 刷满、把真实现场挤进滚动淘汰里。改成跳变沿：进入打一次、退出打一次，中间沉默。
+//
 // 条件消失后走哪条路，由 autoResumeOnClear 决定：
 //   - 自动恢复（空闲 / 应用占用）：Resume，与以前一致；
 //   - 保留暂停（勿扰 / 全屏 / 投屏两条）：只清忽略、打日志，暂停原因留在调度器里，
-//     等用户手动点「恢复休息」。此时 logged 保持 true —— 这条原因带来的暂停仍然在场，
-//     下一跳不必再报一次「暂停提醒」。
+//     等用户手动点「恢复休息」；logged 照常清零，条件再次成立时重新报一次「暂停提醒」。
+//
+// **进入侧有去抖**（autoPauseEnterConfirmTicks）：条件要连续两拍成立才真正 Pause。一次
+// 3 秒的采样尖峰（全屏应用闪一帧、拓扑重排报一次镜像）不再把提醒挂进「不自动恢复」的
+// 暂停里。攒拍期间不碰 PauseReasons、不打进入日志；一旦某拍条件消失，计数清零、整段作废。
 func (a *App) applyAutoPause(active bool, reason string, logged *bool, enterMsg, exitMsg string) {
 	// 条件成立与否都登记：用户点「恢复休息」时据此判断该不该记忽略
 	a.setAutoReasonActive(reason, active)
 	if active {
 		if a.isAutoPauseIgnored(reason) {
 			// 用户已经为这个原因点过「恢复休息」：条件还成立也不再挂回去
+			a.resetAutoPauseStreak(reason)
+			return
+		}
+		if a.bumpAutoPauseStreak(reason) < autoPauseEnterConfirmTicks {
+			// 攒拍中：还没到确认阈值，这一拍不暂停、不打日志（单次尖峰到此为止）
 			return
 		}
 		a.sched.Pause(reason)
 		if !*logged {
-			*logged = true
 			log.Print(enterMsg)
 		}
+		*logged = true
 		return
 	}
+	// 条件消失：进入去抖的计数立即清零，这一段「攒到一半」的成立作废
+	a.resetAutoPauseStreak(reason)
 	wasIgnored := a.clearAutoPauseIgnored(reason)
 	keepPaused := !autoResumeOnClear(reason)
 	if *logged {
+		*logged = false
 		if wasIgnored {
-			*logged = false
 			log.Printf("[autoPause] %s 条件已消失，忽略解除（期间未再暂停）", reason)
 		} else if keepPaused {
 			// 退出全屏 / 投屏断开 / 勿扰被关掉，会议往往还在继续：不恢复，交给用户
 			log.Printf("%s；按策略保持暂停，等用户手动恢复", exitMsg)
 		} else {
-			*logged = false
 			log.Print(exitMsg)
 		}
 	}
@@ -349,6 +377,26 @@ func (a *App) applyAutoPause(active bool, reason string, logged *bool, enterMsg,
 		return
 	}
 	a.sched.Resume(reason)
+}
+
+// bumpAutoPauseStreak 递增「条件连续成立」拍数并返回当前值。与 autoReasonActive 共用锁。
+func (a *App) bumpAutoPauseStreak(reason string) int {
+	a.autoPauseMu.Lock()
+	defer a.autoPauseMu.Unlock()
+	if a.autoPauseStreak == nil {
+		a.autoPauseStreak = make(map[string]int, len(autoPauseReasons))
+	}
+	a.autoPauseStreak[reason]++
+	return a.autoPauseStreak[reason]
+}
+
+// resetAutoPauseStreak 条件消失时清零去抖计数（该段「攒到一半」的成立作废）。
+func (a *App) resetAutoPauseStreak(reason string) {
+	a.autoPauseMu.Lock()
+	defer a.autoPauseMu.Unlock()
+	if a.autoPauseStreak != nil {
+		delete(a.autoPauseStreak, reason)
+	}
 }
 
 // appPauseWatchTick 推进一次「指定应用占用」判定。

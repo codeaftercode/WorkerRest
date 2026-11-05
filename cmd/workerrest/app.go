@@ -130,6 +130,10 @@ type App struct {
 	// appPauseMissStreak 「目标应用退出」的连续未命中拍数（见 appPauseExitConfirmMisses）。
 	// 探测失败不计入：读不到不等于不在跑。只被应用占用那条 goroutine 读写。
 	appPauseMissStreak int
+	// autoPauseStreak 每条「保持暂停」原因的「条件连续成立」拍数（见 autoPauseEnterConfirmTicks）。
+	// 进入侧去抖用：单次尖峰不暂停，攒满两拍才认。键 = 原因名，只被 applyAutoPause 读写
+	// （四条支路各写自己的键），与 autoReasonActive 共用 autoPauseMu。
+	autoPauseStreak map[string]int
 	// autoPauseIgnored 用户点「恢复休息」时正在生效的那几条自动原因（键 = 原因名）。
 	// 该原因的条件消除前，监视器不再因它暂停；条件消失时从表里删掉，下次达成照常触发。
 	// 手动暂停会清空整张表（用户要的是「回到常规判定」）。监视 goroutine 与 UI 线程共用，

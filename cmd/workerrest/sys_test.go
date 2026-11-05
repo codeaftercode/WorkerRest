@@ -310,23 +310,32 @@ func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 		t.Fatal("不活跃时不该留下「已记录」标记")
 	}
 
-	// ② 活跃：暂停原因恰好是「全屏独占」，且标记置位
+	// ② 只活跃一拍：进入侧去抖，攒满两拍前不暂停、不打日志（单次采样尖峰到此为止）
+	a.applyAutoPause(true, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
+	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("单拍活跃不该暂停（去抖），得到 paused=%v %v", st.Paused, st.PauseReasons)
+	}
+	if a.fsActiveLogged {
+		t.Fatal("单拍活跃不该留下「已记录」标记")
+	}
+
+	// ③ 第二拍仍活跃：确认，暂停原因恰好是「全屏独占」，且标记置位
 	a.applyAutoPause(true, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
 	st := s.StateCopy()
 	if !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonFullScr {
-		t.Fatalf("活跃时应恰好停在「全屏独占」上，得到 paused=%v %v", st.Paused, st.PauseReasons)
+		t.Fatalf("两拍活跃应停在「全屏独占」上，得到 paused=%v %v", st.Paused, st.PauseReasons)
 	}
 	if !a.fsActiveLogged {
-		t.Fatal("活跃时该置位「已记录」标记（否则每 3 秒刷一行日志）")
+		t.Fatal("确认暂停时该置位「已记录」标记（否则每 3 秒刷一行日志）")
 	}
 
-	// ③ 仍然活跃：幂等，不能叠出第二条原因
+	// ④ 仍然活跃：幂等，不能叠出第二条原因
 	a.applyAutoPause(true, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
 	if st := s.StateCopy(); len(st.PauseReasons) != 1 {
 		t.Fatalf("重复判活跃不该叠加暂停原因，得到 %v", st.PauseReasons)
 	}
 
-	// ④ 退出全屏：按策略**保持暂停** —— 退出全屏不等于会议结束，恢复交给用户手动点
+	// ⑤ 退出全屏：按策略**保持暂停** —— 退出全屏不等于会议结束，恢复交给用户手动点
 	a.applyAutoPause(false, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
 	st = s.StateCopy()
 	if !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonFullScr {
@@ -335,14 +344,14 @@ func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 	if a.isAutoReasonActive(pauseReasonFullScr) {
 		t.Fatal("条件已消失，autoReasonActive 应登记为 false")
 	}
-	if !a.fsActiveLogged {
-		t.Fatal("暂停仍在家，标记不该清零（否则下一跳又报一次「暂停提醒」）")
+	if a.fsActiveLogged {
+		t.Fatal("标记应清零：它是「上一跳条件是否成立」，留着会让退出日志每 3 秒重打一遍")
 	}
 	if !a.allAutoReasonsCleared() {
 		t.Fatal("挂着的自动原因条件都消失了，托盘该提示「可以恢复了」")
 	}
 
-	// ⑤ 用户点「恢复休息」：这时才真的结束，且**不为已消解的这条记忽略** ——
+	// ⑥ 用户点「恢复休息」：这时才真的结束，且**不为已消解的这条记忽略** ——
 	// 记了下一场会议就不会再自动暂停，那比误弹一次糟得多
 	a.schedPauseToggle()
 	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
@@ -505,24 +514,37 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 			name: "勿扰", reason: pauseReasonDnd, other: pauseReasonFullScr,
 			on: func(a *App, on bool) {
 				a.applyAutoPause(on, pauseReasonDnd, &a.dndActiveLogged, "", "")
+				if on {
+					// 进入侧去抖：第二拍才确认
+					a.applyAutoPause(on, pauseReasonDnd, &a.dndActiveLogged, "", "")
+				}
 			},
 		},
 		{
 			name: "全屏独占", reason: pauseReasonFullScr, other: pauseReasonDnd,
 			on: func(a *App, on bool) {
 				a.applyAutoPause(on, pauseReasonFullScr, &a.fsActiveLogged, "", "")
+				if on {
+					a.applyAutoPause(on, pauseReasonFullScr, &a.fsActiveLogged, "", "")
+				}
 			},
 		},
 		{
 			name: "复制模式", reason: pauseReasonCastMirror, other: pauseReasonCastWireless,
 			on: func(a *App, on bool) {
 				a.applyAutoPause(on, pauseReasonCastMirror, &a.castMirrorLogged, "", "")
+				if on {
+					a.applyAutoPause(on, pauseReasonCastMirror, &a.castMirrorLogged, "", "")
+				}
 			},
 		},
 		{
 			name: "无线投放", reason: pauseReasonCastWireless, other: pauseReasonCastMirror,
 			on: func(a *App, on bool) {
 				a.applyAutoPause(on, pauseReasonCastWireless, &a.castWirelessLogged, "", "")
+				if on {
+					a.applyAutoPause(on, pauseReasonCastWireless, &a.castWirelessLogged, "", "")
+				}
 			},
 		},
 		{
@@ -574,6 +596,7 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 
 			// ④ 别的原因照常生效（恢复的是「当时那几条」，不是一刀切静音）
 			a.applyAutoPause(true, c.other, new(bool), "", "")
+			a.applyAutoPause(true, c.other, new(bool), "", "") // 进入侧去抖：第二拍才确认
 			if !hasReason(c.other) {
 				t.Fatalf("「%s」被忽略时，「%s」仍应照常暂停，得到 %v",
 					c.reason, c.other, s.StateCopy().PauseReasons)
@@ -616,6 +639,7 @@ func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
 
 	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, "", "")
+	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, "", "") // 进入侧去抖：第二拍
 	a.schedPauseToggle() // 恢复 + 忽略勿扰
 	if !a.isAutoPauseIgnored(pauseReasonDnd) {
 		t.Fatal("前置：恢复后应处于忽略状态")
@@ -630,7 +654,8 @@ func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
 		t.Fatal("手动暂停应作废忽略，回到常规自动判定")
 	}
 
-	// 勿扰条件仍成立：下一跳照常叠加
+	// 勿扰条件仍成立：下一跳照常叠加（去抖计数在手动恢复时被忽略表分支清零，重新攒两拍）
+	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, "", "")
 	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, "", "")
 	found := false
 	for _, r := range s.StateCopy().PauseReasons {
