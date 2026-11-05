@@ -2,6 +2,7 @@ package logx
 
 import (
 	"bytes"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -52,6 +53,27 @@ func TestAppLoggerNeverNil(t *testing.T) {
 	t.Setenv("WR_LOG_LEVEL", "debug")
 	if l := AppLogger(); l == nil {
 		t.Fatal("debug 级别下同样不许为 nil")
+	}
+}
+
+// 日志级别映射：默认 Warn（静默 Wails 框架的 Info 噪声），info / debug 各升一档。
+// 改错任何一格，要么日常日志被框架刷满，要么探针拿不到它要断言的资源请求日志。
+func TestAppLoggerLevel(t *testing.T) {
+	cases := []struct {
+		env  string
+		want slog.Level
+	}{
+		{"", slog.LevelWarn}, // 未设置 = 默认 Warn
+		{"warn", slog.LevelWarn},
+		{"info", slog.LevelInfo},
+		{"debug", slog.LevelDebug},
+		{"garbage", slog.LevelWarn}, // 非法值按默认 Warn 兜底
+	}
+	for _, c := range cases {
+		t.Setenv("WR_LOG_LEVEL", c.env)
+		if got := appLoggerLevel(); got != c.want {
+			t.Errorf("WR_LOG_LEVEL=%q 级别应为 %v，得到 %v", c.env, c.want, got)
+		}
 	}
 }
 

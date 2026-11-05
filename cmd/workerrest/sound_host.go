@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"strings"
 
+	"workerrest/internal/logx"
 	"workerrest/internal/sound"
 )
 
@@ -45,11 +46,11 @@ func (a *App) initSoundHost() {
 			HiddenOnTaskbar:                   true,
 		},
 	})
-	// 页面加载完（WebView 运行时就绪）只用来留一条日志 —— 播放**不**依赖它：
+	// 页面加载完（WebView 运行时就绪）只用来留一条 debug 日志 —— 播放**不**依赖它：
 	// webbview 未就绪时 ExecJS 会把脚本排队、等加载完再执行（Wails 自带语义），
 	// 所以自己加一道「没就绪就不发」反而会把播放整段丢掉。
 	win.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
-		log.Printf("[sound] 播放宿主就绪（sound.html 已加载）")
+		logx.Debugf("[sound] 播放宿主就绪（sound.html 已加载）")
 	})
 	win.OnWindowEvent(events.Common.WindowClosing, func(*application.WindowEvent) {
 		a.mu.Lock()

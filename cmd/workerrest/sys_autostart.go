@@ -5,6 +5,7 @@ import (
 	"os"
 
 	"workerrest/internal/autostart"
+	"workerrest/internal/logx"
 )
 
 // 开机自启动（Windows 注册表）——历史源码/autostart.ts 的 Go 版。
@@ -80,11 +81,11 @@ func (a *App) ApplyAutostart() {
 	if want {
 		dis := autostart.ApprovalDisabled()
 		if cur != nil && autostart.NormalizeCommandLine(*cur) == autostart.NormalizeCommandLine(cmdline) && dis != nil && !*dis {
-			log.Printf("[autostart] 注册表已是目标状态（存在），跳过")
+			logx.Debugf("[autostart] 注册表已是目标状态（存在），跳过")
 			return
 		}
 	} else if cur == nil {
-		log.Printf("[autostart] 注册表已是目标状态（不存在），跳过")
+		logx.Debugf("[autostart] 注册表已是目标状态（不存在），跳过")
 		return
 	}
 

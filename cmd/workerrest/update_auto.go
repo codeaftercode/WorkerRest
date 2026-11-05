@@ -26,19 +26,19 @@ var (
 // 失败不打扰用户（结果仍会推给设置页，由它显示）。
 func (a *App) startAutoUpdateCheck() {
 	if serverMode {
-		log.Printf("[update] 无头模式不检查更新")
+		logx.Debugf("[update] 无头模式不检查更新")
 		return
 	}
 	if !a.cfg.Flag(true, "checkUpdateOnStart") {
-		log.Printf("[update] 自动检查更新已关闭，跳过")
+		logx.Debugf("[update] 自动检查更新已关闭，跳过")
 		return
 	}
 	if a.idle == nil {
-		log.Printf("[update] 读不到系统空闲状态，跳过自动检查")
+		log.Printf("[update] 读不到系统空闲状态，跳过自动检查") // 探测能力缺失，是状态异常，不是旁路播报
 		return
 	}
 	if a.cfg.LastUpdateCheck() == update.TodayStr() {
-		log.Printf("[update] 今天已检查过更新，等明天再自动检查")
+		logx.Debugf("[update] 今天已检查过更新，等明天再自动检查")
 	}
 	go a.autoUpdateLoop()
 }

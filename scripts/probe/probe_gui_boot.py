@@ -132,6 +132,10 @@ def main():
     env = dict(os.environ)
     env["WR_SETTINGS_PATH"] = iso
     env.pop("ELECTRON_RUN_AS_NODE", None)
+    # 本探针断言「宿主页面真的被资源服务交付」（url=/sound.html），那行是 Wails 框架的
+    # slog.Info（`[AssetFileServerFS] Handling request`）。默认日志级别已收窄到 Warn，
+    # 这里显式顶回 info 才能拿到它。
+    env["WR_LOG_LEVEL"] = "info"
 
     alive = False
     with open(LOG, "w", encoding="utf-8", errors="replace") as logf:
