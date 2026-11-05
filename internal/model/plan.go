@@ -142,7 +142,11 @@ type SchedulerState struct {
 	Paused           bool     `json:"paused"`
 	PauseReasons     []string `json:"pauseReasons"`
 	// PausedAt 进入暂停的时刻（冻结倒计时用：暂停期间剩余时间按此锚定，不再往下掉）
-	PausedAt        int64 `json:"pausedAt"`
+	PausedAt int64 `json:"pausedAt"`
+	// PauseDeadline 定时暂停的到期时刻（0 = 无限，直到手动恢复）。
+	// 到点不一定立刻恢复：还有「投屏 / 全屏 / 勿扰 / 空闲 / 应用占用」在生效时保持暂停，
+	// 等它们消失（判定见 cmd/workerrest/pause_expiry.go）。
+	PauseDeadline   int64 `json:"pauseDeadline"`
 	ShortsSinceLong int   `json:"shortsSinceLong"`
 }
 

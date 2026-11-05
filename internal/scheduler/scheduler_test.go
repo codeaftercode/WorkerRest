@@ -33,22 +33,24 @@ func testSettings(t *testing.T, js string) *settings.Settings {
 // fakeHost 调度器宿主：只实现调度器真正会调的那几个口子，不碰窗口 / 托盘 / Wails，
 // 这样状态机可以脱离 application.App 跑单测。
 type fakeHost struct {
-	cfg       *settings.Settings
-	states    int
-	pre       []string
-	pauses    int
-	breaks    []string
-	closed    int
-	closeWin  string
-	postpones []string
-	skips     []string
-	pp        *model.TakeoutPostponed
+	cfg        *settings.Settings
+	states     int
+	pre        []string
+	pauses     int
+	autoPauses int
+	breaks     []string
+	closed     int
+	closeWin   string
+	postpones  []string
+	skips      []string
+	pp         *model.TakeoutPostponed
 }
 
 func (h *fakeHost) CfgSnapshot() *settings.Settings                   { return h.cfg }
 func (h *fakeHost) OnSchedulerState()                                 { h.states++ }
 func (h *fakeHost) OnPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
 func (h *fakeHost) OnPaused()                                         { h.pauses++ }
+func (h *fakeHost) OnAutoPause()                                      { h.autoPauses++ }
 func (h *fakeHost) ClosePreBreak()                                    {}
 func (h *fakeHost) CloseBreakWindows()                                { h.closed++ }
 func (h *fakeHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }
@@ -346,6 +348,10 @@ func TestSchedulerBreakLifecycleAndCounter(t *testing.T) {
 		t.Fatal("休息中不该提前计数")
 	}
 
+	// 隔开两毫秒再结束：同一毫秒内「开始 → 结束」时，重排算出的新倒计时时刻会与被消费的
+	// 那次撞在同一个毫秒上、被「已消费」过滤掉（下一个 tick 才恢复）。那是瞬态，不属于
+	// 本用例要验的「计数推进 → 下一跳类型」。
+	time.Sleep(2 * time.Millisecond)
 	s.EndBreak()
 	st = s.StateCopy()
 	if st.Phase != "idle" {
@@ -418,8 +424,9 @@ func TestSchedulerPauseReasonsGate(t *testing.T) {
 	if !s.StateCopy().Paused {
 		t.Fatal("pause 后应为暂停态")
 	}
-	if host.pauses != 1 {
-		t.Fatalf("暂停应通知宿主关提前提示窗，得到 %d", host.pauses)
+	// 自动原因走清场路径（收全部窗口），不是只关提前提示窗的那条
+	if host.autoPauses != 1 || host.pauses != 0 {
+		t.Fatalf("自动暂停应通知宿主清场，得到 autoPauses=%d pauses=%d", host.autoPauses, host.pauses)
 	}
 	s.Pause("idle") // 重复原因不该重复入列
 	if n := len(s.StateCopy().PauseReasons); n != 1 {

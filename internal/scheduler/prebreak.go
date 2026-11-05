@@ -4,6 +4,7 @@ import (
 	"log"
 	"workerrest/internal/model"
 	"workerrest/internal/plan"
+	"workerrest/internal/settings"
 )
 
 // ---------- 提前提示窗的在场判据 ----------
@@ -90,12 +91,46 @@ func (s *Scheduler) RefreshPlan() {
 	s.scheduleNext()
 }
 
-// reanchorCountdown 离开结束后：内置短/长**倒计时**线重新从头计时（锚到 now + intervalMs）。
+// reanchorTargetLocked 内置倒计时此刻该重锚到哪一刻（ok=false 表示这次恢复不该重锚）。
+//
+// 不重锚的四种情形即 ReanchorCountdown 的三条「刻意不动」：休息进行中、没有安排、
+// 不是倒计时线（固定时刻线 / 自定义提醒）、这条提醒已被删掉。
+// 抽出来是为了让「恢复时要不要静默」与「重锚会不会真的发生」共用同一条判据 ——
+// 两处各写一份的话，改了一处就静默漂移。
+func (s *Scheduler) reanchorTargetLocked(cfg *settings.Settings, now int64) (kind string, at, iv int64, ok bool) {
+	st := &s.state
+	if st.Phase == "break" || st.NextAt == 0 {
+		return "", 0, 0, false
+	}
+	if st.NextSource == nil || *st.NextSource != "countdown" {
+		return "", 0, 0, false
+	}
+	if isCustomBreakID(st.NextType) {
+		return "", 0, 0, false
+	}
+	bcfg, exists := cfg.BreakByID(st.NextType)
+	if !exists {
+		return "", 0, 0, false
+	}
+	return st.NextType, now + bcfg.IntervalMs, bcfg.IntervalMs, true
+}
+
+// CountdownReanchorable 现在调 ReanchorCountdown 会不会真的重锚。
+// 空闲链路的「恢复」据此决定要不要静默——静默的前提是紧接着真的会把计划推远。
+func (s *Scheduler) CountdownReanchorable() bool {
+	cfg := s.host.CfgSnapshot()
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	_, _, _, ok := s.reanchorTargetLocked(cfg, nowMs())
+	return ok
+}
+
+// ReanchorCountdown 离开结束后：内置短/长**倒计时**线重新从头计时（锚到 now + intervalMs）。
 //
 // 为什么需要：离开期间倒计时只被冻结平移，回来时看到的「还剩 X 分钟」是离开前的旧账。
 // 按需求，离开结束后内置倒计时应当从本轮开头重新计时。
 //
-// 三处刻意不动：
+// 三处刻意不动（见 reanchorTargetLocked）：
 //   - 自定义提醒（id 为 cb-…）：它们是用户按自己的节奏配的绝对安排，不该被一次离开推走；
 //   - 固定时刻线（source != countdown）：时刻是绝对的，重锚没有意义；
 //   - 长短交替计数（shortsSinceLong）：离开不是软件安排的休息，不该消费一次短休息名额。
@@ -105,33 +140,19 @@ func (s *Scheduler) ReanchorCountdown() {
 	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
-	if st.Phase == "break" || st.NextAt == 0 {
-		s.mu.Unlock()
-		return
-	}
-	if st.NextSource == nil || *st.NextSource != "countdown" {
-		s.mu.Unlock()
-		return
-	}
-	if len(st.NextType) > 3 && st.NextType[:3] == "cb-" {
-		s.mu.Unlock()
-		return
-	}
-	bcfg, ok := cfg.BreakByID(st.NextType)
+	nextType, at, iv, ok := s.reanchorTargetLocked(cfg, nowMs())
 	if !ok {
 		s.mu.Unlock()
 		return
 	}
 	oldAt := st.NextAt
-	nextType := st.NextType
-	at := nowMs() + bcfg.IntervalMs
 	if at <= oldAt {
 		s.mu.Unlock()
 		return
 	}
 	st.NextAt = at
 	// 重锚用的就是当前配置间隔：同步锚点间隔表，后续 replan 的沿用判据才成立
-	s.anchorIv[nextType] = bcfg.IntervalMs
+	s.anchorIv[nextType] = iv
 	// 回来时若还停在「休息前提示窗」阶段，拉回等待态：离开一趟回来不该立刻被催
 	st.Phase = "idle"
 	for i := range st.Lines {

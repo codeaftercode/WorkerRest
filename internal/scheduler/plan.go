@@ -94,7 +94,13 @@ func (s *Scheduler) replan() {
 	// 全局 next（nextType/nextAt）语义不变，托盘不受影响。
 	s.refreshDerivedLocked(cfg, now)
 	if len(pool) == 0 {
-		// 全部关闭、或固定模式下一刻都没配：不再安排任何休息
+		// 全部关闭、或固定模式下一刻都没配：不再安排任何休息。
+		//
+		// 类型/名字也要一起清空：留着上一轮的 NextType 会让「下次提醒是什么」与
+		// 「还有多久」自相矛盾（NextAt=0 却被问「下次是哪条」）。设置页的「推迟休息」
+		// 按钮就靠 nextType 判断显示，残留值会让一个没有下次提醒的状态也长出这个按钮。
+		st.NextType = ""
+		st.NextName = ""
 		st.NextAt = 0
 		st.NextSource = nil
 		return
