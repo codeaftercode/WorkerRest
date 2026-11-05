@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <!-- 禁缩放守卫：必须在页面脚本之前执行（外链，内联会被上面的 CSP 拦掉） -->
+  <script src="./nozoom.js"></script>
+  <title>暂停提示</title>
+  <link rel="stylesheet" href="./pause.css" />
+</head>
+<body>
+  <!-- 一句话 + 一个动作。文案由主进程经 URL 的 text 下发（见 pause_notice.go）：
+       这扇小窗可能被旁人看到，页面里一律不写业务措辞，连注释也不例外。 -->
+  <div id="card">
+    <div id="text">已暂停 1 小时</div>
+    <button id="resume" type="button">恢复</button>
+    <button id="dismiss" type="button" title="关闭提示" aria-label="关闭提示">&#215;</button>
+  </div>
+  <script src="./shim.js"></script>
+  <script src="./pause.js"></script>
+</body>
+</html>

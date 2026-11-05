@@ -1,0 +1,125 @@
+/* 自动暂停期间的「已暂停多久」小窗（见 pause_notice.go）。
+ *
+ * 版式刻意极简：一行状态 + 一个「恢复」+ 一个关闭。它每小时才出现一次、只活几秒，
+ * 不该有任何需要阅读的第二行文字 —— 出现时用户往往正在做别的事。
+ *
+ * 底色用固定的深色玻璃而不是「提醒窗口的背景色」：这扇窗不属于提醒窗口的视觉体系，
+ * 跟着用户配的主色走会在浅色配置下变成一块刺眼的彩色方块。深色浮层在深浅壁纸上
+ * 都清楚，也不会让人误以为「到点了」。
+ */
+
+:root {
+  --pn-bg: rgba(26, 30, 39, 0.93);
+  --pn-border: rgba(255, 255, 255, 0.12);
+  --pn-text: #eef1f6;
+  --pn-text-dim: rgba(238, 241, 246, 0.72);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  /* 无边框小窗：不要出现滚动条、不要能选中文字、不要文本光标 */
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+}
+
+#card {
+  box-sizing: border-box;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px 0 16px;
+  border-radius: 12px;
+  background: var(--pn-bg);
+  border: 1px solid var(--pn-border);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.32);
+  color: var(--pn-text);
+  /* 淡入 160ms；6.6 秒开始淡出、480ms 结束（主进程在 7.5 秒兜底关窗，见 pauseNoticeShowMs） */
+  animation: pn-in 160ms ease-out, pn-out 480ms ease-in 6.6s forwards;
+}
+
+#text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.2;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#resume {
+  flex: 0 0 auto;
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.26);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--pn-text);
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+#resume:hover {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+#resume:active {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+#dismiss {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pn-text-dim);
+  font-size: 16px;
+  line-height: 1;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+#dismiss:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--pn-text);
+}
+
+/* 键盘可达：无边框小窗也可能被 Tab 到，焦点必须看得见（与其余窗口同一套要求） */
+#resume:focus-visible,
+#dismiss:focus-visible {
+  outline: 2px solid rgba(140, 180, 255, 0.9);
+  outline-offset: 1px;
+}
+
+@keyframes pn-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 只淡出、不移位：移动会吸引视线，而这扇窗的退场应该是「悄悄不见」 */
+@keyframes pn-out {
+  to {
+    opacity: 0;
+  }
+}
