@@ -74,8 +74,22 @@ func ParseAccelerator(s string) (mods, vk uintptr, ok bool) {
 	if key == " " {
 		return mods, 0x20, true
 	}
+	// 多字符主键两侧的空格是排版噪声（"Ctrl + Alt + Z" 的最后一段是 " Z"）：削掉。
+	// 单字符不削 —— 空格键本身就是一个空格，已在上一步单独处理。
+	if len(key) > 1 {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return 0, 0, false
+		}
+	}
 	if len(key) == 1 {
 		c := key[0]
+		// 字母统一折成大写再判：修饰键段本来就大小写不敏感（见上面的 ToUpper），
+		// 主键不折的话「手改成 ctrl+alt+x」会静默失效 —— 录入端产出大写，
+		// 但手改配置的人没有理由知道这条约定。
+		if c >= 'a' && c <= 'z' {
+			c -= 'a' - 'A'
+		}
 		if (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') {
 			return mods, uintptr(c), true // 字母数字的 VK 码 == ASCII
 		}
