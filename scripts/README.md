@@ -78,10 +78,18 @@
 
 ## oneoff/
 
-重构期的物理搬运工具，只按行号切片/加 import 前缀，**不改变语义**，当前代码已不再需要：
+一次性脚本，按需跑，不进任何门禁。
 
+**重构期**的物理搬运工具，只按行号切片/加 import 前缀，**不改变语义**，当前代码已不再需要：
 `split_go.py`（按行号区间切分 Go 文件）、`prefix_model_types.py`（给下沉类型加 `model.` 前缀）、
 `add_model_import.py`（补 `internal/model` import）。留着是为了让 `git log` 里的重构过程可复现。
+
+**README 配图**（提醒窗口带 `WDA_EXCLUDEFROMCAPTURE`，屏抓不到，只能从页面渲染）：
+
+| 脚本 | 产物 |
+|---|---|
+| `shot_break_stage2.py` | 短休息窗**第二阶段**（督休专员凑近 + 红色告警底 + 命令台词）→ `docs/images/break-stage2.webp`；960×600，WebP q82 约 27 KB |
+| `shot_display_drop.py` | 「显示的屏幕」多选下拉的收起 / 展开态，人工核对版式用 |
 
 ## 约定
 
