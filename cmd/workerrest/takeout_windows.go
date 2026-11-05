@@ -5,28 +5,104 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/events"
 	"log"
 	"time"
+	"workerrest/internal/display"
 	"workerrest/internal/logx"
 	"workerrest/internal/model"
 )
 
 // ---------- 窗口（对应 takeoutWindow.ts + displays.ts） ----------
 
-// targetDisplays 按「在所有屏幕显示」开关选出要显示的显示器（休息窗口与外卖
-// 窗口共用同一策略）。取消勾选 ⇒ 只在主屏幕显示（Wails v3 无获取光标所在屏的 API，以主屏兜底）。
+// targetDisplays 按「提醒窗口显示在哪几块屏」选出要显示的显示器（休息窗口与外卖窗口共用）。
+//
+// 配置里存的是 display.Info.ID（EDID 设备路径压出来的稳定标识），**不是 Wails 的 Screen.ID**
+// —— 后者是 HMONITOR 句柄的十进制串，进程重启就变，写进配置等于没写。
+// 两边用**显示器矩形**（Bounds，物理像素）对齐，对不上的跳过；一块都对不上时回退主屏，
+// 不会出现「一个窗口都不弹」。
+//
+// ⚠️ 对齐必须用 Bounds，不能用 WorkArea：WorkArea 扣掉了任务栏（主屏高度 1440 → 1392），
+// 而 display.Info 是整块屏的源模式尺寸，四边永远对不上。2026-11-04 双屏真机实测：
+// 用 WorkArea 比的时候，选主屏是靠「全部失配 → 回退主屏」蒙对的，选副屏则静默落到主屏
+// —— 用户勾了副屏却永远只看到主屏弹窗，日志里一句异常都没有。
+//
+// 空配置 = 只主屏（不是所有屏）：允许「空 = 全部」等于让新接入的屏自动进入显示范围，
+// 接上投影仪的那一刻提醒就会弹到投影上。
 func (a *App) targetDisplays() []*application.Screen {
-	cfg := a.CfgSnapshot()
 	all := a.app.Screen.GetAll()
 	if len(all) == 0 {
 		return nil
 	}
-	if cfg.AllScreens() {
-		return all
+	ids := a.CfgSnapshot().DisplayIDs()
+	infos, err := display.List()
+	if err != nil || len(infos) == 0 {
+		// 枚举不可用（远程会话 / 无桌面）：按主屏处理，与 Resolve 的空配置兜底同语义
+		return a.primaryScreen(all)
 	}
-	// 光标所在屏：Wails v3 没有 getCursorScreenPoint 的等价物，用主屏兜底
+	picked := display.Resolve(ids, infos)
+	out := make([]*application.Screen, 0, len(picked))
+	seen := make(map[string]bool, len(picked)) // 按 Wails 的屏 ID 去重，见下
+	var unmatched []string
+	for _, want := range picked {
+		sc := matchScreen(all, want)
+		if sc == nil {
+			// 选中的屏在 Wails 那边找不到对应窗口（DPI 虚拟化 / 驱动报的矩形有偏差）：
+			// 记一笔，别让「勾了没生效」变成不可诊断的静默失败
+			unmatched = append(unmatched, want.Label+"("+want.ID+")")
+			continue
+		}
+		// 两块 Info 落到同一扇 Wails 屏时只建一个窗：复制模式下矩形会重合，
+		// 不去重就会在同一位置叠两个全屏窗（一个盖一个，还会闪一下）。
+		if !seen[sc.ID] {
+			seen[sc.ID] = true
+			out = append(out, sc)
+		}
+	}
+	if len(unmatched) > 0 {
+		log.Printf("[display] 选中的 %d 块屏在 Wails 侧找不到对应屏幕，已跳过：%v", len(unmatched), unmatched)
+	}
+	if len(out) == 0 {
+		// 矩形口径对不上（DPI 虚拟化、驱动改了时序）→ 至少弹一个，绝不静默什么都不显示
+		log.Printf("[display] 所有选中屏都未匹配，回退主屏（勾选=%v，枚举到 %d 块）", ids, len(infos))
+		return a.primaryScreen(all)
+	}
+	return out
+}
+
+// matchScreen 把一块 display.Info 对到 Wails 的 Screen 上。
+//
+// 一档比矩形四边全等；二档退成「中心点落在谁的矩形里」，容得下驱动报的 1~2 px 偏差。
+// 两块屏相邻时中心点离边界几百像素，二档不会认错人。
+func matchScreen(all []*application.Screen, want display.Info) *application.Screen {
+	for _, sc := range all {
+		if rectEq(sc.Bounds, want) || rectEq(sc.PhysicalBounds, want) {
+			return sc
+		}
+	}
+	cx, cy := want.X+want.Width/2, want.Y+want.Height/2
+	for _, sc := range all {
+		if containsPoint(sc.Bounds, cx, cy) || containsPoint(sc.PhysicalBounds, cx, cy) {
+			return sc
+		}
+	}
+	return nil
+}
+
+func rectEq(r application.Rect, d display.Info) bool {
+	return r.X == d.X && r.Y == d.Y && r.Width == d.Width && r.Height == d.Height
+}
+
+func containsPoint(r application.Rect, x, y int) bool {
+	return x >= r.X && x < r.X+r.Width && y >= r.Y && y < r.Y+r.Height
+}
+
+// primaryScreen 主屏兜底；Wails 拿不到主屏时退回第一块。
+func (a *App) primaryScreen(all []*application.Screen) []*application.Screen {
 	if sc := a.app.Screen.GetPrimary(); sc != nil {
 		return []*application.Screen{sc}
 	}
-	return all[:1]
+	if len(all) > 0 {
+		return all[:1]
+	}
+	return nil
 }
 
 // showTakeoutWindows 弹出外卖提醒窗口（每个目标屏各一个）。无头（server 模式）下不建窗，
@@ -69,20 +145,9 @@ func (a *App) showTakeoutWindowsAt(slot model.TimeSlot, preview bool, postponedC
 	displays := a.targetDisplays()
 	var wins []*application.WebviewWindow
 	for _, display := range displays {
-		wa := display.WorkArea
-		w := int(float64(wa.Width) * ap.WidthPct / 100)
-		h := int(float64(wa.Height) * ap.HeightPct / 100)
-		if w < 320 {
-			w = 320
-		}
-		if h < 240 {
-			h = 240
-		}
-		x, y := wa.X, wa.Y
-		if !ap.Fullscreen {
-			x = wa.X + (wa.Width-w)/2
-			y = wa.Y + (wa.Height-h)/2
-		}
+		// 与休息窗同一个函数：外观是同一份配置，只能有一种解读。
+		// （以前这里自己算，`全屏` 只挪位置不改尺寸，会留出右下角的空隙。）
+		x, y, w, h := reminderBoundsFor(display.WorkArea, ap)
 		win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Title:         "外卖提醒",
 			X:             x,

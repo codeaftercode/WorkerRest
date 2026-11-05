@@ -83,6 +83,19 @@ def dip_size(hwnd):
     return round(w * 96 / dpi), round(h * 96 / dpi), dpi
 
 
+def client_dip(hwnd):
+    """客户区尺寸折成 DIP。
+
+    这才是网页真正拿到的视口：无边框窗口靠 WM_NCCALCSIZE 把客户区撑满整个窗口，
+    所以它应当**精确等于**配置里的 Width/Height。若小了一截，说明有不可见边框吃了
+    客户区，CSS 视口就比配置窄，而「关于页恰好不出滚动条 = 857」这类实测数字会失效。
+    """
+    r = wt.RECT()
+    user32.GetClientRect(hwnd, ctypes.byref(r))
+    dpi = user32.GetDpiForWindow(hwnd) or 96
+    return (round((r.right - r.left) * 96 / dpi), round((r.bottom - r.top) * 96 / dpi), dpi)
+
+
 def wait_window(pid, timeout=25.0):
     t0 = time.time()
     while time.time() - t0 < timeout:
@@ -164,6 +177,11 @@ def main():
     w1, h1, dpi = dip_size(hwnd)
     check(abs(w1 - DW) <= TOL, "首次启动宽度 = %d DIP" % DW, "%d DIP（dpi=%d）" % (w1, dpi))
     check(abs(h1 - DH) <= TOL, "首次启动高度 = %d DIP" % DH, "%d DIP" % h1)
+    # 客户区 = 网页视口。窗口矩形带不可见拖动边框（所以上面留 ±24 容差），客户区不该带：
+    # 这一条把「CSS 视口 == 配置尺寸」钉死，整个 DPI 缩放结论都建立在它上面。
+    cw, ch, _ = client_dip(hwnd)
+    check(abs(cw - DW) <= 2, "客户区宽度 = 网页视口 = %d CSS px" % DW, "%d" % cw)
+    check(abs(ch - DH) <= 2, "客户区高度 = 网页视口 = %d CSS px" % DH, "%d" % ch)
 
     # ---------- ② 拖成 TW×TH → 落盘 ----------
     print("② 把窗口改成 %d×%d，等防抖落盘…" % (TW, TH))

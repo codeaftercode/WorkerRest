@@ -34,24 +34,76 @@ func (a *App) settingsWindowSize() (int, int) {
 // 任务栏外面去。夹不住主屏的情况（小屏笔记本）宁可矮一点让内容滚动，也不要开出一扇
 // 一开机就超出屏幕的窗口。
 func (a *App) fitSizeToScreen(width, height int) (int, int) {
-	if a.app == nil || a.app.Screen == nil {
+	waW, waH, ok := a.primaryWorkAreaDip()
+	if !ok {
 		return width, height
+	}
+	return fitSizeInWorkArea(width, height, waW, waH, settings.SettingsWindowMinWidth)
+}
+
+// primaryWorkAreaDip 主屏工作区折算成 DIP（取不到屏信息时 ok=false）。
+//
+// WorkArea 是物理像素、窗口尺寸是 DIP，两者不换算就没法比较：1.5 倍屏上 1040 物理
+// 像素的工作区只有 693 DIP，而 857 的默认高度在 DIP 里看是「放得下」的假象。
+func (a *App) primaryWorkAreaDip() (w, h int, ok bool) {
+	if a.app == nil || a.app.Screen == nil {
+		return 0, 0, false
 	}
 	s := a.app.Screen.GetPrimary()
 	if s == nil || s.WorkArea.Width <= 0 || s.WorkArea.Height <= 0 {
-		return width, height
+		return 0, 0, false
 	}
 	scale := float64(s.ScaleFactor)
 	if scale <= 0 {
 		scale = 1
 	}
-	maxW := int(float64(s.WorkArea.Width)/scale) - 16
-	maxH := int(float64(s.WorkArea.Height)/scale) - 40
-	if maxW < settings.SettingsWindowMinWidth {
-		maxW = settings.SettingsWindowMinWidth
+	return int(float64(s.WorkArea.Width) / scale), int(float64(s.WorkArea.Height) / scale), true
+}
+
+// settingsWindowMinHeight 创建 / 调整窗口时该用的最小高度。
+//
+// 常规就是设计下限 600。但主屏工作区**比它还矮**的时候（1366×768 @125% 只剩 574 DIP，
+// @150% 只剩 472），600 这个下限反而会把窗口顶到屏幕底下：底部那 26～128px 永远在任务栏
+// 后面，连滚动条都拖不到，用户没法把内容看全。这时让下限让位于屏幕 —— 窗口矮一点能滚，
+// 窗口比屏幕高是没救的。
+func (a *App) settingsWindowMinHeight() int {
+	_, waH, ok := a.primaryWorkAreaDip()
+	if !ok || waH >= settings.SettingsWindowMinHeight {
+		return settings.SettingsWindowMinHeight
 	}
-	if maxH < settings.SettingsWindowMinHeight {
-		maxH = settings.SettingsWindowMinHeight
+	// 和工作区留 40 DIP 的余量（和夹紧时同一个数），但别压到没法用的高度。
+	m := waH - 40
+	if m < settingsWindowTinyHeight {
+		m = settingsWindowTinyHeight
+	}
+	if m > waH {
+		m = waH
+	}
+	return m
+}
+
+// settingsWindowTinyHeight 极端小屏（<400 DIP 高）下的兜底：再小窗口就没法用了。
+const settingsWindowTinyHeight = 240
+
+// fitSizeInWorkArea 把窗口尺寸夹进工作区（全部是 DIP）。纯函数，单测直接验。
+//
+// 两条下限的处理**不对称**，这是刻意的：
+//   - 宽度不低于 minW：再窄字段行就横向裁切，「内容被切掉」比「窗口宽出屏幕」更难用，
+//     而且窄到 760 以下的工作区只有 200%+ 缩放的极端配置；
+//   - 高度让位给工作区：内容本来就能滚动，窗口比屏幕高才是真的看不全。
+//
+// 注意 maxH 的兜底不再是 minH —— 那正是「窗口比屏幕还高」的来源。
+func fitSizeInWorkArea(width, height, waW, waH, minW int) (int, int) {
+	maxW := waW - 16
+	maxH := waH - 40
+	if maxW < minW {
+		maxW = minW
+	}
+	if maxH < 1 {
+		maxH = waH // 工作区矮到连 40 DIP 余量都留不出：不再留边
+	}
+	if maxH < 1 {
+		maxH = 1
 	}
 	if width > maxW {
 		width = maxW
@@ -75,6 +127,9 @@ func (a *App) applySettingsWindowSize(w application.Window) {
 	if curW == width && curH == height {
 		return
 	}
+	// 最小尺寸跟着当前屏走：换到更矮的屏（或用户改了缩放）之后，旧的 MinHeight
+	// 会把窗口底部顶到屏幕外，连 SetSize 都会被系统按 min 顶回去。
+	w.SetMinSize(settings.SettingsWindowMinWidth, a.settingsWindowMinHeight())
 	w.SetSize(width, height)
 	// 换了尺寸就回到屏幕中央：否则窗口以左上角为锚点单向长出去，缩小再放大时
 	// 很容易一半跑到屏幕外，用户只能先最大化再还原把它捞回来。

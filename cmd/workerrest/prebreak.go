@@ -146,6 +146,18 @@ func preBreakBounds(wa application.Rect, custom bool) (x, y, w, h int) {
 	return
 }
 
+// preBreakScreen 提前提示窗落在哪块屏：跟「提醒窗口显示在哪几块屏」走，取第一块。
+//
+// 为什么是「第一块」而不是「每块都弹」：这个窗口用固定 Name 建（preBreakWindowName），
+// 全局只允许一扇，多屏同时弹会互相顶替。而「即将休息」本来就是一句话提示，一块屏够了。
+// Resolve 里主屏排在最前，所以默认（全部屏）时行为和以前一致，仍落在主屏右下角。
+func (a *App) preBreakScreen() *application.Screen {
+	if list := a.targetDisplays(); len(list) > 0 {
+		return list[0]
+	}
+	return a.app.Screen.GetPrimary()
+}
+
 // preBreakURL 弹窗页面地址。版式经 query 下发（渲染层读 location.search，见文件头第一条）。
 // tail 里带中文与空格，必须逐段编码 —— 直接把原文拼进 query 会被 WebView2 当非法字符丢掉。
 // postpone=0 时渲染层首帧就藏掉「推迟」按钮（与 PreBreakState.canPostpone 同源）。
@@ -189,7 +201,9 @@ func (a *App) ShowPreBreakWindow(info PreBreakInfo) {
 		return
 	}
 	x, y, w, h := preBreakBounds(application.Rect{}, info.Custom)
-	if sc := a.app.Screen.GetPrimary(); sc != nil {
+	// 跟随「提醒窗口显示在哪几块屏」：取第一块。Resolve 主屏优先，所以用户只勾副屏时
+	// 小窗也去副屏 —— 否则会出现在用户明确取消勾选的那块屏上。
+	if sc := a.preBreakScreen(); sc != nil {
 		x, y, w, h = preBreakBounds(sc.WorkArea, info.Custom)
 	}
 	// 共享屏幕时隐藏：提前提示小窗里也有提醒文案，和休息窗口同一个开关

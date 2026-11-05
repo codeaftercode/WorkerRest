@@ -197,9 +197,12 @@ func main() {
 	//     并进版本行后回落到 857。测量方法见 window_size.go 顶部）；
 	//   · 勾选了「自动记录窗口尺寸」时改用上次记录的尺寸。
 	// 最小尺寸是布局下限（常量），不是用户偏好，故不进配置。
+	// 唯一的例外是「主屏工作区比这个下限还矮」（小屏 + 大缩放）：这时最小高度跟着
+	// 工作区收，否则窗口会比屏幕还高，底部永远在任务栏后面 —— 见 settingsWindowMinHeight。
 	winW, winH := backend.settingsWindowSize()
+	minH := backend.settingsWindowMinHeight()
 	log.Printf("[boot] 设置窗口初始尺寸 %dx%d（min %dx%d）",
-		winW, winH, settings.SettingsWindowMinWidth, settings.SettingsWindowMinHeight)
+		winW, winH, settings.SettingsWindowMinWidth, minH)
 	// 路由 / 另有一个 Go 版诊断页（index.html），用来手点一次提醒、看环境信息。
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{
 		Name:             "settings",
@@ -207,7 +210,7 @@ func main() {
 		Width:            winW,
 		Height:           winH,
 		MinWidth:         settings.SettingsWindowMinWidth,
-		MinHeight:        settings.SettingsWindowMinHeight,
+		MinHeight:        minH,
 		Frameless:        true,
 		URL:              "/settings.html?win=settings",
 		BackgroundColour: application.NewRGBA(0xf5, 0xf6, 0xfa, 0xff),

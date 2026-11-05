@@ -15,14 +15,14 @@ const endEarlyToleranceMs = 1500
 // 目前唯一的调用点是调度器的 finishBreak，所以这里顺带承担「休息结束」的副作用：
 // 播一次提示音（对应 上一版的 break-end → playConfiguredSound）。
 func (a *App) CloseBreakWindows() {
-	a.closeBreakWindowsOpt(false)
+	a.closeBreakWindowsOpt(false, true)
 }
 
 // closeBreakWindowsOpt silent=true 时不播「休息结束」提示音 —— 预览关窗（看一眼就走）
-// 与退出清理都不该出声；其余副作用（关窗、清会话、记统计、清空闲基准）完全一致。
-// 统一成一条路径是为了让「点任意处关预览」与「休息自然结束」不会各写一份收尾逻辑，
-// 少一处就可能漏一项（统计、轮询、idle 基准）。
-func (a *App) closeBreakWindowsOpt(silent bool) {
+// 与退出清理都不该出声；countEnd=false 时不记「休息结束」这笔统计 —— 被自动暂停
+// 打断的那种收窗由调度器记成「跳过」，这里再记一次「完成 / 提前结束」就重复了。
+// 其余副作用（关窗、清会话、清空闲基准）完全一致。
+func (a *App) closeBreakWindowsOpt(silent, countEnd bool) {
 	a.mu.Lock()
 	ws := a.breakWins
 	a.breakWins = nil
@@ -48,7 +48,7 @@ func (a *App) closeBreakWindowsOpt(silent bool) {
 	// 统计：休息结束（唯一调用点是调度器的 finishBreak，所以这里就是 break-end）。
 	// 类型取自会话本身 —— 休息结束时调度器状态可能已经翻篇，而记录要用**刚刚结束的那次**；
 	// 自定义提醒把名字快照一起记下来，提醒删了 / 改名了报表也还能对上号。
-	if info != nil && !info.Preview {
+	if countEnd && info != nil && !info.Preview {
 		name := ""
 		if cfg := a.CfgSnapshot(); cfg != nil {
 			name = cfg.BreakNameByID(info.Type)
@@ -104,6 +104,55 @@ func (a *App) OnPaused() {
 	a.ClosePreBreak()
 }
 
+// OnAutoPause 自动原因（空闲 / 勿扰 / 全屏 / 投屏 / 应用占用）进入暂停：把所有提醒窗口
+// 立刻收掉 —— 休息窗、提前提示窗、外卖提醒窗、外卖预通知，一个不留。
+//
+// 与 OnPaused 刻意不同：手动暂停是用户自己按的，外卖按自己的 pauseAction 决定照常 / 推迟 /
+// 跳过，休息窗也继续挂着走完；自动暂停是软件判定「他现在不该被打断」，那就不该有任何一扇窗
+// 留在屏幕上，也不该攒着等恢复再弹。所以这里不看外卖的配置，直接连外卖窗一起收。
+//
+// 记账分工：被打断的那次休息由调度器记「跳过」（它知道休息身份与时长）；这里只负责关窗，
+// 且**不记** break-end、不播结束提示音 —— 休息不是走完的，也不是用户点的结束。
+func (a *App) OnAutoPause() {
+	// 提前提示窗：外卖预通知与调度器的提示窗是同一个窗口，自动暂停时不再区分 owner。
+	// 关窗后连 owner 一起清掉 —— 留着一个 "takeout" 会让后续 ClosePreBreak 误判成
+	// 「这扇窗归外卖管」而跳过关闭，残留状态还会让 PreBreakState 读到已失效的倒计时。
+	a.closePreBreakWindow()
+	a.mu.Lock()
+	a.preInfo = PreBreakInfo{}
+	a.preTargetAt = 0
+	a.mu.Unlock()
+
+	// 外卖：窗口在场就关掉并记一次「取消」；推迟线一并作废（恢复后不补弹）。
+	// 到点那一刻的跳过由 checkTakeoutReminders 的自动暂停分支负责，两处不重叠。
+	// 预览窗不记账：用户只是点了一眼预览，不该算进外卖报表的取消次数。
+	a.mu.Lock()
+	hadTakeoutWin := len(a.takeoutWins) > 0
+	takeoutPreview := a.takeoutCurrent != nil && a.takeoutCurrent.Preview
+	hadTakeoutPostponed := a.takeoutPostponed != nil
+	a.takeoutPostponed = nil
+	a.mu.Unlock()
+	if hadTakeoutWin {
+		a.closeTakeoutWindowsOpt(true)
+		if !takeoutPreview {
+			a.statsStore().RecordTakeoutAction("skip")
+		}
+	}
+	if hadTakeoutPostponed {
+		a.statsStore().RecordTakeoutAction("skip")
+	}
+
+	// 休息窗：静默关、不记 break-end（统计由调度器按「跳过」记）
+	a.mu.Lock()
+	hadBreak := len(a.breakWins) > 0 || a.sess != nil
+	a.mu.Unlock()
+	if hadBreak {
+		a.closeBreakWindowsOpt(true, false)
+	}
+	log.Printf("[autoPause] 自动暂停：收掉全部提醒窗口（休息=%v 外卖=%v 外卖推迟=%v）",
+		hadBreak, hadTakeoutWin, hadTakeoutPostponed)
+}
+
 // ClosePreBreak 调度器重排时关掉残留的提前提示窗（对应 scheduler.Host.ClosePreBreak）。
 // 与 onPaused 的区别：这里只关窗、不改 pause 状态，专供「被禁用 / 重排的提醒」清场。
 //
@@ -147,10 +196,15 @@ func (a *App) TakeoutFiredSnapshot() map[string]bool {
 
 // ---------- 窗口 ----------
 
-// breakBoundsFor 提醒窗口在**指定显示器**工作区上的位置与大小：与 上一版
+// reminderBoundsFor 提醒窗口在**指定显示器**工作区上的位置与大小：与 上一版
 // breakWindow.ts 同规则——该屏工作区的 widthPct × heightPct，居中；全屏时铺满工作区。
 // 纯函数，多屏下对每块目标屏各算一次（单测直接验）。
-func breakBoundsFor(wa application.Rect, cfg model.AppearanceConfig) (x, y, w, h int) {
+//
+// 名字从 breakBoundsFor 改成 reminderBoundsFor（2026-11-05）：休息窗与外卖窗共用这一份。
+// 改成共用之前，外卖窗是自己手算的——尺寸只认 widthPct / heightPct，`全屏` 只挪了位置，
+// 于是「全屏 + 95%」会变成铺在左上角的 95% 方块，右下留一条 5% 的空隙（GUI 探针实测
+// 窗口 2432×1322 / 工作区 2560×1392）。同一份外观配置必须只有一处解读。
+func reminderBoundsFor(wa application.Rect, cfg model.AppearanceConfig) (x, y, w, h int) {
 	if cfg.Fullscreen {
 		return wa.X, wa.Y, wa.Width, wa.Height
 	}
@@ -233,7 +287,7 @@ func (a *App) ShowBreakWindow(kind string) {
 	ap := a.CfgSnapshot().AppearanceCfg()
 	var wins []*application.WebviewWindow
 	for _, display := range a.targetDisplays() {
-		x, y, w, h := breakBoundsFor(display.WorkArea, ap)
+		x, y, w, h := reminderBoundsFor(display.WorkArea, ap)
 		win := a.app.Window.NewWithOptions(application.WebviewWindowOptions{
 			Title:         "休息一下",
 			X:             x,
@@ -353,6 +407,10 @@ func (a *App) ensureWindowsOnScreen() {
 	ws := append([]*application.WebviewWindow(nil), a.breakWins...)
 	ws = append(ws, a.takeoutWins...)
 	if w := a.wins[preBreakWindowName]; w != nil {
+		ws = append(ws, w)
+	}
+	// 暂停提示小窗也纳入：拔掉外接屏时它同样可能落在不存在的坐标上
+	if w := a.wins[pauseNoticeWindowName]; w != nil {
 		ws = append(ws, w)
 	}
 	a.mu.Unlock()

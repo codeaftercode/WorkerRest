@@ -148,7 +148,7 @@ func TestBreakBoundsFor(t *testing.T) {
 
 	// 主屏 1920x1040（任务栏已扣除）→ 半屏居中
 	wa := application.Rect{X: 0, Y: 0, Width: 1920, Height: 1040}
-	x, y, w, h := breakBoundsFor(wa, cfg)
+	x, y, w, h := reminderBoundsFor(wa, cfg)
 	if w != 960 || h != 520 {
 		t.Fatalf("应为主屏工作区的 50%%，得到 %dx%d", w, h)
 	}
@@ -158,7 +158,7 @@ func TestBreakBoundsFor(t *testing.T) {
 
 	// 副屏（非零原点）也要相对**那块屏**居中
 	wa2 := application.Rect{X: 1920, Y: -200, Width: 2560, Height: 1400}
-	x, y, w, h = breakBoundsFor(wa2, cfg)
+	x, y, w, h = reminderBoundsFor(wa2, cfg)
 	if w != 1280 || h != 700 {
 		t.Fatalf("副屏应为该屏工作区的 50%%，得到 %dx%d", w, h)
 	}
@@ -167,14 +167,59 @@ func TestBreakBoundsFor(t *testing.T) {
 	}
 
 	// 全屏：铺满工作区；最小尺寸兜底
-	if x, y, w, h = breakBoundsFor(wa, model.AppearanceConfig{Fullscreen: true}); x != 0 || y != 0 || w != 1920 || h != 1040 {
+	if x, y, w, h = reminderBoundsFor(wa, model.AppearanceConfig{Fullscreen: true}); x != 0 || y != 0 || w != 1920 || h != 1040 {
 		t.Fatalf("全屏应铺满工作区，得到 %dx%d @(%d,%d)", w, h, x, y)
 	}
 	small := application.Rect{X: 0, Y: 0, Width: 400, Height: 300}
-	x, y, w, h = breakBoundsFor(small, cfg)
+	x, y, w, h = reminderBoundsFor(small, cfg)
 	if w != 320 || h != 240 {
 		t.Fatalf("过小工作区应触发最小尺寸兜底，得到 %dx%d", w, h)
 	}
+}
+
+// 扩展模式下「主屏 + 投影仪」是两块屏、两扇窗：每扇必须完整落在自己那块屏里，
+// 且两扇互不交叠。**不能把两块屏当成一个整体弹一扇横跨两屏的大窗** —— 那样窗口
+// 中点会落在两屏缝合处，投影仪上只看到半张立绘，比不弹更糟。
+//
+// 防的是将来有人图省事，用 GetAll 的并集矩形去建窗（或把 targetDisplays 的结果
+// 合并成一个"虚拟桌面"）。ShowBreakWindow 现在是「循环每块屏、各调一次本函数」，
+// 这条断言把这个前提固化成可执行的约束。
+func TestBreakWindowsStayInsideTheirOwnDisplay(t *testing.T) {
+	// 主屏 2560×1440 @(0,0)，右边接一块 1920×1080 的投影屏。
+	// 副屏给个负 Y 起点：非零/负原点最容易暴露「按并集算」的写法。
+	mainScr := application.Rect{X: 0, Y: 0, Width: 2560, Height: 1440}
+	projScr := application.Rect{X: 2560, Y: -209, Width: 1920, Height: 1080}
+
+	for _, cfg := range []model.AppearanceConfig{
+		{Fullscreen: true, WidthPct: 95, HeightPct: 95}, // 全屏铺满
+		{WidthPct: 95, HeightPct: 95},                   // 出厂默认
+		{WidthPct: 50, HeightPct: 50},                   // 半屏
+	} {
+		rects := [][4]int{boundsOf(mainScr, cfg), boundsOf(projScr, cfg)}
+		for i, wa := range []application.Rect{mainScr, projScr} {
+			x, y, w, h := rects[i][0], rects[i][1], rects[i][2], rects[i][3]
+			if x < wa.X || y < wa.Y || x+w > wa.X+wa.Width || y+h > wa.Y+wa.Height {
+				t.Fatalf("%+v：第 %d 块屏的窗口越界 (%d,%d) %dx%d，屏为 %+v",
+					cfg, i+1, x, y, w, h, wa)
+			}
+		}
+		if rectsOverlap(rects[0], rects[1]) {
+			t.Fatalf("%+v：两扇窗交叠了 %v / %v —— 说明几何被按并集算了",
+				cfg, rects[0], rects[1])
+		}
+	}
+}
+
+// boundsOf 把 reminderBoundsFor 的四个返回值收成 (x,y,w,h)，方便按矩形集合断言。
+func boundsOf(wa application.Rect, cfg model.AppearanceConfig) [4]int {
+	x, y, w, h := reminderBoundsFor(wa, cfg)
+	return [4]int{x, y, w, h}
+}
+
+// rectsOverlap 两个 (x,y,w,h) 矩形是否相交（边贴边不算）。
+func rectsOverlap(a, b [4]int) bool {
+	return a[0] < b[0]+b[2] && b[0] < a[0]+a[2] &&
+		a[1] < b[1]+b[3] && b[1] < a[1]+a[3]
 }
 
 // 地址里带版式：渲染层第一帧就按它铺，否则会先画内置版式再跳一次（窗口高度按版式给）
