@@ -143,7 +143,7 @@
     const n = Math.max(1, Math.round(Number(S && S.idlePauseMin) || 5));
     return "「暂停休息」指：系统空闲 " + n +
       " 分钟自动暂停、系统勿扰 / 专注 / 演示模式自动暂停、全屏独占应用运行时自动暂停、" +
-      "指定应用运行时自动暂停，以及手动暂停休息。";
+      "无线投放 / 复制模式时自动暂停、指定应用运行时自动暂停，以及手动暂停休息。";
   }
   function refreshPauseHints() {
     const text = pauseScopeHint();
@@ -305,6 +305,348 @@
     render();
     return api;
   }
+  // ---- 「显示的屏幕」多选下拉 ----
+  //
+  // 与上面 mountDrop 的关键差别：单选点一下就收起菜单，这里要能连续勾选，所以点击只切换、不关闭。
+  //
+  // 取值口径与 Go 侧 display.Resolve 严格对齐：**勾选结果是具体 ID 的快照**。
+  // 刻意不提供「全部」这种动态语义 —— 让新接入的屏自动进入显示范围，等于用户接上投影仪
+  // 的那一刻提醒就弹到投影上，而投影仪恰恰是最不该弹的那块屏。想多屏显示请自己勾，
+  // 插了新屏也请自己回来补勾（面板底部会写出当前检测到几块）。
+  // 空数组不是「全部」，而是「还没挑过」→ Go 侧兜底主屏，这里也按主屏显示勾选态。
+  var displayDrop = null;   // { get, setValue }
+  var displayCache = [];    // 最近一次枚举结果
+
+  function displayItems(list) {
+    return list.map(function (d) {
+      return {
+        value: d.id,
+        label: d.label || "显示器",
+        hint: d.width + "\u00D7" + d.height + (d.isPrimary ? " \u00B7 \u4E3B\u5C4F" : ""),
+        isPrimary: !!d.isPrimary,
+      };
+    });
+  }
+
+  // 现场枚举一次显示器，返回下拉要的 items。
+  //
+  // **枚举时机只有三个**：设置页加载完、点下拉里的「刷新」、恢复默认设置之后。
+  // 也就是说软件启动之后再插上或拔掉显示器，面板里的选项会一直是旧的，直到用户自己点刷新。
+  // 不自动刷新的取舍：勾选结果要落盘，选项在用户低头看面板时自己增减，容易点到一块刚消失的屏；
+  // 而「插了新屏没看见」有一个显式按钮可以补救，比猜时机更可控。
+  //
+  // 枚举失败（远程会话 / 无桌面 / 驱动未就绪）返回空数组 —— 调用方据此显示「未检测到显示器」，
+  // 但**绝不清空配置**：清空等于把「只显示副屏」悄悄改成「所有屏」。
+  async function fetchDisplays() {
+    let list = [];
+    try {
+      list = await window.api.listDisplays();
+    } catch (err) {
+      console.warn("[settings] 枚举显示器失败:", err);
+    }
+    displayCache = Array.isArray(list) ? list : [];
+    return displayItems(displayCache);
+  }
+
+  function mountMultiDrop(host, items, selected, onChange, name, reload) {
+    if (!host) return null;
+    host.classList.add("cdrop-host");
+    host.innerHTML = "";
+    var allIds = items.map(function (i) { return i.value; });
+    // 配置里的快照。用户没动过时原样回写：设置页别因为改了别的项就把这块重写一遍
+    var original = (selected || []).slice();
+    var picked = new Set();
+    var touched = false;
+
+    var root = document.createElement("div");
+    root.className = "cdrop cdrop-multi";
+    var btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cdrop-btn";
+    btn.setAttribute("aria-haspopup", "listbox");
+    btn.setAttribute("aria-expanded", "false");
+    if (name) btn.setAttribute("aria-label", name);
+    var cur = document.createElement("span");
+    cur.className = "cdrop-cur";
+    var caret = document.createElement("span");
+    caret.className = "cdrop-caret";
+    caret.textContent = "\u25BE";
+    btn.append(cur, caret);
+
+    var menu = document.createElement("div");
+    menu.className = "cdrop-menu hidden";
+    // listbox 只包住选项本身：底部的「刷新」行不能算选项，否则读屏会把它念成一块屏，
+    // 键盘上下键也会停到它身上。
+    var optsBox = document.createElement("div");
+    optsBox.className = "cdrop-opts";
+    optsBox.setAttribute("role", "listbox");
+    optsBox.setAttribute("aria-multiselectable", "true");
+    var empty = document.createElement("div");
+    empty.className = "cdrop-empty hidden";
+    empty.textContent = "\u672A\u68C0\u6D4B\u5230\u663E\u793A\u5668";
+    var foot = document.createElement("div");
+    foot.className = "cdrop-foot";
+    var note = document.createElement("span");
+    note.className = "cdrop-foot-note";
+    var refresh = document.createElement("button");
+    refresh.type = "button";
+    refresh.className = "cdrop-refresh";
+    refresh.setAttribute("aria-label", "\u91CD\u65B0\u68C0\u6D4B\u663E\u793A\u5668");
+    refresh.title = "\u91CD\u65B0\u68C0\u6D4B\u663E\u793A\u5668\uFF1A\u65B0\u63A5\u4E0A\u7684\u5C4F\u3001\u62D4\u6389\u7684\u5C4F\u90FD\u4F1A\u5728\u8FD9\u91CC\u66F4\u65B0";
+    var refreshIcon = document.createElement("span");
+    refreshIcon.className = "cdrop-refresh-icon";
+    refreshIcon.textContent = "\u21BB";
+    var refreshLabel = document.createElement("span");
+    refreshLabel.textContent = "\u5237\u65B0";
+    refresh.append(refreshIcon, refreshLabel);
+    foot.append(note, refresh);
+    menu.append(optsBox, empty, foot);
+    root.append(btn, menu);
+    host.appendChild(root);
+
+    function optEls() {
+      return Array.prototype.slice.call(optsBox.querySelectorAll("[role='option']"));
+    }
+    // 当前「算数」的选择：没动过就是配置原值（可能含已拔掉的屏），动过就是面板上的勾选。
+    // 已经拔掉的屏保留在配置里 —— 面板上看不见的东西，不该被一次「顺手保存」悄悄抹掉；
+    // 接回去时它还在，正好符合「勾选是快照」的语义。
+    function effective() {
+      if (!touched) return original.slice();
+      var absent = original.filter(function (id) { return allIds.indexOf(id) < 0; });
+      return Array.from(picked).concat(absent);
+    }
+    function value() { return effective(); }
+    function labelOf(id) {
+      var hit = items.filter(function (i) { return i.value === id; })[0];
+      return hit ? hit.label : "1 \u5757\u5C4F\u5E55";
+    }
+    function isOn(id) { return picked.has(id); }
+    function summary() {
+      if (allIds.length === 0) return "\u672A\u68C0\u6D4B\u5230\u663E\u793A\u5668";
+      if (picked.size === 1) return labelOf(picked.values().next().value);
+      return picked.size + " \u5757\u5C4F\u5E55";
+    }
+    function renderNote() {
+      if (allIds.length === 0) {
+        note.textContent = "\u70B9\u300C\u5237\u65B0\u300D\u91CD\u65B0\u68C0\u6D4B";
+        note.title = "\u679A\u4E3E\u4E0D\u5230\u663E\u793A\u5668\uFF1A\u8FDC\u7A0B\u684C\u9762\u3001\u65E0\u684C\u9762\u4F1A\u8BDD\uFF0C\u6216\u663E\u5361\u9A71\u52A8\u672A\u5C31\u7EEA";
+        return;
+      }
+      var missing = effective().filter(function (id) { return allIds.indexOf(id) < 0; });
+      note.textContent = "\u68C0\u6D4B\u5230 " + allIds.length + " \u5757" +
+        (missing.length ? "\uFF0C\u52FE\u9009\u7684 " + missing.length + " \u5757\u672A\u63A5\u5165" : "");
+      note.title = missing.length
+        ? "\u5DF2\u52FE\u9009\u4F46\u5F53\u524D\u6CA1\u63A5\u4E0A\u7684\u5C4F\uFF1A" + missing.join("\u3001") +
+          "\uFF08\u811A\u672C\u5C42\u9762\u4F1A\u5FFD\u7565\u5B83\uFF0C\u63A5\u56DE\u6765\u540E\u70B9\u4E00\u6B21\u5237\u65B0\u5373\u53EF\uFF09"
+        : "\u5217\u8868\u6765\u81EA\u6700\u8FD1\u4E00\u6B21\u68C0\u6D4B\u3002\u63A5\u4E86\u65B0\u5C4F\u6216\u62D4\u4E86\u5C4F\uFF0C\u70B9\u53F3\u8FB9\u300C\u5237\u65B0\u300D";
+    }
+    function render() {
+      cur.textContent = summary();
+      var opts = optEls();
+      for (var i = 0; i < opts.length; i++) {
+        opts[i].setAttribute("aria-selected", isOn(opts[i].dataset.value) ? "true" : "false");
+      }
+      // 探针按 dataset.value 读（JSON 数组），代替原生 select 的 .value
+      host.dataset.value = JSON.stringify(value());
+      renderNote();
+    }
+
+    function buildOption(opt) {
+      var item = document.createElement("button");
+      item.type = "button";
+      item.className = "cdrop-item";
+      item.dataset.value = opt.value;
+      item.setAttribute("role", "option");
+      var box = document.createElement("span");
+      box.className = "cdrop-box";
+      var label = document.createElement("span");
+      label.className = "cdrop-label";
+      label.textContent = opt.label;
+      item.append(box, label);
+      if (opt.hint) {
+        var hint = document.createElement("span");
+        hint.className = "cdrop-hint";
+        hint.textContent = opt.hint;
+        item.append(hint);
+      }
+      item.addEventListener("click", function () { toggle(opt.value); });
+      return item;
+    }
+    function renderOptions() {
+      optsBox.innerHTML = "";
+      for (var n = 0; n < items.length; n++) optsBox.appendChild(buildOption(items[n]));
+      empty.classList.toggle("hidden", items.length > 0);
+      render();
+    }
+
+    // 按当前 items 重算勾选：认不得的 ID（换过接口 / 屏被拔了）直接忽略，一块都不剩时兜底主屏
+    // —— 与 Go 的 Resolve 同口径（空 / 全失配 = 主屏，绝不是「所有屏」）。
+    function syncSelection() {
+      var basis = effective();
+      var next = new Set();
+      for (var k = 0; k < basis.length; k++) {
+        if (allIds.indexOf(basis[k]) >= 0) next.add(basis[k]);
+      }
+      if (next.size === 0) {
+        var pd = items.filter(function (i) { return i.isPrimary; })[0] || items[0];
+        if (pd) next.add(pd.value);
+      }
+      picked = next;
+    }
+    function toggle(id) {
+      if (picked.has(id)) {
+        if (picked.size === 1) {
+          // 全不勾 = 提醒窗口一块屏都不弹，用户只会以为软件坏了
+          toast("\u81F3\u5C11\u8981\u4FDD\u7559\u4E00\u5757\u5C4F\u5E55\u3002\u60F3\u5F7B\u5E95\u4E0D\u5F39\u63D0\u9192\uFF0C\u8BF7\u53BB\u5173\u4E0A\u9762\u7684\u63D0\u9192\u5F00\u5173");
+          return;
+        }
+        picked.delete(id);
+      } else {
+        picked.add(id);
+      }
+      // 不做「勾满就归一化成全部」：勾选结果就是快照，插新屏不该被自动带上
+      touched = true;
+      render();
+      // 落盘值就是新的「已配置」基准：刷新时靠它判断哪几块已勾选但当前没接上。
+      // 不同步的话基准一直停在「刚进这一页那一刻」的配置上，第一次勾选之后
+      // 新勾上的屏被拔掉就永远算不进「未接入」，也会被下一次刷新从配置里漏掉。
+      original = value().slice();
+      if (onChange) onChange(value());
+    }
+
+    // 「刷新」：重新枚举后就地替换选项（面板不关、能保住的勾选都保住）。
+    // 刷新本身**不写配置**：没动过的勾选原样回写，动过的等下一次 autoSave。
+    var busy = false;
+    function refreshToast(beforeIds) {
+      if (allIds.length === 0) return "\u672A\u68C0\u6D4B\u5230\u663E\u793A\u5668\uFF08\u8FDC\u7A0B\u684C\u9762\u6216\u663E\u5361\u672A\u5C31\u7EEA\uFF1F\uFF09";
+      var added = 0;
+      var removed = 0;
+      var i;
+      for (i = 0; i < allIds.length; i++) {
+        if (beforeIds.indexOf(allIds[i]) < 0) added++;
+      }
+      for (i = 0; i < beforeIds.length; i++) {
+        if (allIds.indexOf(beforeIds[i]) < 0) removed++;
+      }
+      var tail = [];
+      if (added) tail.push("\u65B0\u589E " + added + " \u5757");
+      if (removed) tail.push("\u79FB\u9664 " + removed + " \u5757");
+      return "\u5DF2\u68C0\u6D4B\u5230 " + allIds.length + " \u5757\u5C4F\u5E55" +
+        (tail.length ? "\uFF08" + tail.join("\uFF0C") + "\uFF09" : "");
+    }
+    async function doRefresh() {
+      if (!reload || busy) return;
+      busy = true;
+      // 用 class + aria-busy 而不是 disabled：disabled 会把焦点从按钮上踢掉，
+      // 面板的 focusout 逻辑随即判定「焦点离开了」，刚点的刷新反而把面板关了。
+      refresh.classList.add("busy");
+      refresh.setAttribute("aria-busy", "true");
+      var beforeIds = allIds.slice();
+      try {
+        var next = await reload();
+        if (Array.isArray(next)) {
+          items = next;
+          allIds = items.map(function (i) { return i.value; });
+          syncSelection();
+          renderOptions();
+          toast(refreshToast(beforeIds));
+        }
+      } finally {
+        busy = false;
+        refresh.classList.remove("busy");
+        refresh.removeAttribute("aria-busy");
+      }
+    }
+    refresh.addEventListener("click", function () { void doRefresh(); });
+
+    var outside = null;
+    function open() {
+      root.classList.add("open");
+      menu.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      outside = function (e) { if (!root.contains(e.target)) close(); };
+      document.addEventListener("pointerdown", outside, true);
+      var first = optEls()[0] || refresh;
+      if (first) first.focus();
+    }
+    function close() {
+      root.classList.remove("open");
+      menu.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+      if (outside) {
+        document.removeEventListener("pointerdown", outside, true);
+        outside = null;
+      }
+    }
+    function moveTo(e, dir) {
+      var all = optEls();
+      var i = all.indexOf(document.activeElement);
+      var next = all[(i < 0 ? -1 : i) + dir];
+      if (next) { e.preventDefault(); next.focus(); }
+    }
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (root.classList.contains("open")) close(); else open();
+    });
+    btn.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        open();
+      } else if (e.key === "Escape") {
+        close();
+      }
+    });
+    menu.addEventListener("keydown", function (e) {
+      var act = document.activeElement;
+      if (e.key === "ArrowDown") moveTo(e, 1);
+      else if (e.key === "ArrowUp") moveTo(e, -1);
+      else if (e.key === "Home") {
+        var head = optEls()[0];
+        if (head) { e.preventDefault(); head.focus(); }
+      } else if (e.key === "End") {
+        var tail = optEls().pop();
+        if (tail) { e.preventDefault(); tail.focus(); }
+      } else if (e.key === "Enter" || e.key === " ") {
+        // 「刷新」是普通按钮，交给它自己处理：这里 preventDefault 会把键盘激活一起吞掉
+        if (act === refresh) return;
+        // 多选不关菜单：勾完一块接着勾下一块是常态
+        e.preventDefault();
+        if (act && act.dataset && act.dataset.value != null) toggle(act.dataset.value);
+      } else if (e.key === "Escape") {
+        close();
+        btn.focus();
+      }
+    });
+    // 焦点整体离开面板才收起。用 setTimeout 而不是直接看 relatedTarget：点面板空白处时
+    // relatedTarget 是 null，但焦点其实还留在面板里（document.activeElement 仍是按钮）。
+    // 这样 Tab 也能走到「刷新」上，真正退出面板时才关。
+    root.addEventListener("focusout", function () {
+      setTimeout(function () {
+        if (root.contains(document.activeElement)) return;
+        close();
+      }, 0);
+    });
+
+    var api = {
+      get: value,
+      setValue: function (v) { original = (v || []).slice(); touched = false; syncSelection(); renderOptions(); },
+    };
+    syncSelection();
+    renderOptions();
+    return api;
+  }
+
+  // 拉一次显示器列表并挂上多选下拉。枚举为空时触发器显示「未检测到显示器」，
+  // 但面板里的「刷新」照样能用 —— 插好屏之后不必重启软件。
+  async function refreshDisplayDrop() {
+    const host = $("ap-displays");
+    if (!host) return;
+    const items = await fetchDisplays();
+    // 勾一下就落盘（同卡片里其它控件的 autoSave 节奏）；多选不关菜单，连勾几块会存几次，
+    // 每次都是整份配置，开销可以忽略
+    displayDrop = mountMultiDrop(host, items, S.displayIds || [], function () { void autoSave(); }, "显示的屏幕", fetchDisplays);
+  }
+
   // 「暂停休息时」：选中即存盘（原生 select 的 change 原来由 bindAutoSaveEl 兜着）。
   function mountPauseDrop(host, value) {
     return mountDrop(host, PAUSE_ACTIONS, pauseActionOf(value), "postpone", () => { void autoSave(); }, "暂停休息时");
@@ -667,7 +1009,7 @@
     setTimeout(() => t.classList.add("hidden"), 2200);
   }
   // ---- 对话框焦点管理（可访问性：域8 的「role=dialog 无焦点管理证据」）----
-  // 十个 .modal 全靠 classList 加/减 hidden 开关，调用点散在二十多处。逐个改必然漏，
+  // 十一个 .modal 全靠 classList 加/减 hidden 开关，调用点散在二十多处。逐个改必然漏，
   // 所以用 MutationObserver 盯 class 变化，统一做三件事：
   //   · 打开 → 记住触发元素，把焦点送进对话框（[data-autofocus] 优先，其次第一个可聚焦元素）
   //   · 打开期间 → Tab / Shift+Tab 在对话框内循环（原生 <dialog> 的免费能力，这里是手写的）
@@ -676,6 +1018,7 @@
   const MODAL_IDS = [
     "batch-modal", "confirm-modal", "prompt-modal", "app-pick-modal", "color-modal",
     "update-modal", "updated-modal", "stats-modal", "snd-scan-modal", "notices-modal",
+    "license-modal",
   ];
   const FOCUSABLE_SEL = 'a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
   let modalOpener = null;
@@ -1157,8 +1500,6 @@
   }
   function fillSupervisorImageName() {
     const name = currentRoleName();
-    const geomRole = $("sup-geom-role");
-    if (geomRole) geomRole.textContent = name;
     const msgRole = $("sup-msg-role");
     if (msgRole) msgRole.textContent = name;
     const advRole = $("sup-adv-role");
@@ -2566,6 +2907,9 @@
     // 老配置里没有 fullscreenPause：undefined 传给 checked 会让框呈现未选，
     // 与后端 Flag(false,…) 的默认值一致，所以这里不额外补默认值
     $("fullscreenPause").checked = !!S.fullscreenPause;
+    // 缺键按「开」（后端 Flag(true,…) 同口径），所以判据是 !== false，不能写成 !!
+    $("castWirelessPause").checked = S.castWirelessPause !== false;
+    $("castMirrorPause").checked = S.castMirrorPause !== false;
     $("chk-update").checked = S.checkUpdateOnStart;
     $("appPause-enabled").checked = S.appPause.enabled;
     renderAppList();
@@ -2579,7 +2923,9 @@
     $("ap-heightPct").value = String(a.heightPct);
     $("ap-fullscreen").checked = a.fullscreen;
     $("ap-alwaysOnTop").checked = a.alwaysOnTop;
-    $("ap-allScreens").checked = S.allScreens;
+    // 显示器列表必须现场枚举（HMONITOR 每次进程启动都会变，不能缓存上次结果）。
+    // 异步挂载，失败时下拉变灰、配置原样保留。
+    void refreshDisplayDrop();
     // 共享屏幕时隐藏：老配置里没有这个键，缺省按「开」——与 Go 侧 Flag(true,…) 同口径，
     // 不能写成 !!a.hideOnShare（undefined → false，老用户会被静默关掉保护）
     $("ap-hideOnShare").checked = a.hideOnShare !== false;
@@ -2621,6 +2967,8 @@
     S.window.rememberSize = $("win-remember").checked;
     S.dndPause = $("dndPause").checked;
     S.fullscreenPause = $("fullscreenPause").checked;
+    S.castWirelessPause = $("castWirelessPause").checked;
+    S.castMirrorPause = $("castMirrorPause").checked;
     S.checkUpdateOnStart = $("chk-update").checked;
     S.appPause.enabled = $("appPause-enabled").checked;
     const readBreak = (id) => {
@@ -2646,7 +2994,7 @@
     a.fullscreen = $("ap-fullscreen").checked;
     a.alwaysOnTop = $("ap-alwaysOnTop").checked;
     a.hideOnShare = $("ap-hideOnShare").checked;
-    S.allScreens = $("ap-allScreens").checked;
+    S.displayIds = displayDrop ? displayDrop.get() : (S.displayIds || []);
     S.sound.enabled = $("snd-enabled").checked;
     S.sound.volume = parseFloat($("snd-volume").value);
     S.sound.mode = $("snd-mode").dataset.mode || "single";
@@ -3088,6 +3436,11 @@
     if (r > 0) out += `${r}\u79D2`;
     return out;
   }
+  // 定时暂停的结束时刻（24 小时制）。只用于状态格的悬停提示，不参与判定。
+  function fmtClockMs(ms) {
+    const d = new Date(ms);
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
   var LAST_STATE = null;
   // 侧栏状态格字号自适应：名称（左）与时间（右）都必须单行，但侧栏只有 240px，
   // 「下次报警日报提醒」+「今日已无提醒」在 12/15px 下就超出卡片内宽。这里按实测宽度
@@ -3195,8 +3548,13 @@
     // 还是指定应用占用运行，状态格只给一个结论；具体原因挂到该格的 title 上悬停可看
     // （托盘 tooltip 里照旧是「已暂停：原因」）。
     const phaseVal = st.paused ? "\u6682\u505C\u4F11\u606F" : phaseText;
+    // 定时暂停多一句「到 X 自动结束」：状态格只写「暂停休息」的话，过一会儿就忘了
+    // 自己设过时长（托盘那边写的是剩余时间，两处口径不同，但指的是同一件事）。
+    const pauseUntilText = st.paused && st.pauseDeadline > 0
+      ? "\uFF1B\u5230 " + fmtClockMs(st.pauseDeadline) + " \u81EA\u52A8\u7ED3\u675F"
+      : "";
     const pauseTitle = st.paused && st.pauseReasons.length
-      ? "\u6682\u505C\u539F\u56E0\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001")
+      ? "\u6682\u505C\u539F\u56E0\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001") + pauseUntilText
       : "";
     const now = st.paused && !(st.phase === "break" && st.breakWhilePaused) ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("\u63D0\u9192") ? `\u4E0B\u6B21${name}` : `\u4E0B\u6B21${name}\u63D0\u9192`;
@@ -6435,43 +6793,62 @@
         void renderStats();
       })();
     });
-    // 开源鸣谢：全文内嵌在 exe 里（notices.go），首次点开才取 —— 18 KB 的纯文本
-    // 不必占用首帧；之后复用同一份字符串（同一版本内不会变）。
-    let noticesLoaded = false;
-    const openNotices = async () => {
-      $("notices-modal").classList.remove("hidden");
-      // 焦点移进弹窗（可访问性），但落在正文容器上而不是「关闭」按钮：
-      // 脚本聚焦会触发 :focus-visible，落在蓝色主按钮上会给它描一圈显眼的环，
-      // 看起来像「关闭」是必须点的默认动作。正文容器只需键盘可滚，视觉上最安静。
-      $("nt-body").focus();
-      if (noticesLoaded) return;
-      const text = await window.api.getThirdPartyNotices();
-      // textContent 而不是 innerHTML：清单是纯文本，且里面本来就有 <adrg@epistack.com>
-      // 这种尖括号，走 innerHTML 会被当成标签吞掉。
-      $("nt-body").textContent = text || "许可清单读取失败。";
-      $("nt-body").scrollTop = 0;
-      noticesLoaded = !!text;
-    };
-    const closeNotices = () => $("notices-modal").classList.add("hidden");
-    $("d-notices").addEventListener("click", () => void openNotices());
-    $("nt-close").addEventListener("click", closeNotices);
-    $("notices-modal").addEventListener("click", (e) => {
-      if (e.target === $("notices-modal")) closeNotices();
+    // 关于页的两个纯文本弹窗（许可条款 / 开源鸣谢）走同一套逻辑：整份文本内嵌在 exe 里
+    // （license.go / notices.go），首次点开才取 —— 不必占用首帧，之后复用同一份字符串
+    // （同一版本内不会变）。抽成一个函数而不是复制两遍：两边只有 id 与取数函数不同，
+    // 复制出来的第二份最容易在「焦点落哪儿」「Esc 走哪条路」这类细节上悄悄跑偏。
+    function mountTextModal(cfg) {
+      let loaded = false;
+      const body = $(cfg.body);
+      const open = async () => {
+        $(cfg.modal).classList.remove("hidden");
+        // 焦点移进弹窗（可访问性），但落在正文容器上而不是「关闭」按钮：
+        // 脚本聚焦会触发 :focus-visible，落在蓝色主按钮上会给它描一圈显眼的环，
+        // 看起来像「关闭」是必须点的默认动作。正文容器只需键盘可滚，视觉上最安静。
+        body.focus();
+        if (loaded) return;
+        const text = await cfg.load();
+        // textContent 而不是 innerHTML：正文是纯文本，且清单里本来就有 <adrg@epistack.com>
+        // 这种尖括号，走 innerHTML 会被当成标签吞掉。
+        body.textContent = text || cfg.fallback;
+        body.scrollTop = 0;
+        loaded = !!text;
+      };
+      const close = () => $(cfg.modal).classList.add("hidden");
+      $(cfg.trigger).addEventListener("click", () => void open());
+      $(cfg.close).addEventListener("click", close);
+      $(cfg.modal).addEventListener("click", (e) => {
+        if (e.target === $(cfg.modal)) close();
+      });
+      document.addEventListener("keydown", (e) => {
+        if ($(cfg.modal).classList.contains("hidden")) return;
+        if (e.key === "Escape") {
+          e.preventDefault();
+          close();
+        }
+      });
+      $(cfg.export).addEventListener("click", () => {
+        void (async () => {
+          const r = await cfg.exportFn();
+          if (!r || r.canceled) return;
+          if (r.error) return toast(r.error);
+          toast("已导出到 " + r.path);
+        })();
+      });
+    }
+    mountTextModal({
+      modal: "license-modal", body: "lic-body", trigger: "d-license",
+      close: "lic-close", export: "lic-export",
+      fallback: "许可条款读取失败。",
+      load: () => window.api.getProjectLicense(),
+      exportFn: () => window.api.exportProjectLicense(),
     });
-    document.addEventListener("keydown", (e) => {
-      if ($("notices-modal").classList.contains("hidden")) return;
-      if (e.key === "Escape") {
-        e.preventDefault();
-        closeNotices();
-      }
-    });
-    $("nt-export").addEventListener("click", () => {
-      void (async () => {
-        const r = await window.api.exportThirdPartyNotices();
-        if (!r || r.canceled) return;
-        if (r.error) return toast(r.error);
-        toast("已导出到 " + r.path);
-      })();
+    mountTextModal({
+      modal: "notices-modal", body: "nt-body", trigger: "d-notices",
+      close: "nt-close", export: "nt-export",
+      fallback: "许可清单读取失败。",
+      load: () => window.api.getThirdPartyNotices(),
+      exportFn: () => window.api.exportThirdPartyNotices(),
     });
     $("d-quit").addEventListener("click", () => void window.api.quit());
     // 版本号规范化：确保恰好一个 v 前缀（version.json 已是 v1.2.3，不要再拼一个 v）
@@ -6489,6 +6866,11 @@
     // 发布时间：打包时由 ldflags 注入 RFC3339；源码直跑没有这个时间戳，显示「本地构建」
     const rawBuild = info.buildTime || "";
     $("d-build-time").textContent = rawBuild ? rawBuild.replace("T", " ").slice(0, 16) : "本地构建";
+    // 行尾运行环境：Go 版本是「这份二进制由谁编译」的指纹，Wails 版本决定运行时行为差异，
+    // 用户报 bug 时这两项能省一轮来回。缺失时补「—」而不是留空 —— 否则会渲染成
+    // 「Go  · Wails 」这种断层，看着像页面加载坏了。
+    $("d-runtime").textContent =
+      "Go " + (info.goVersion || "—") + " · Wails " + (info.wailsVersion || "v3");
 
     const updateGo = $("d-update-go");
     const updatePill = $("d-update-pill");
@@ -6594,6 +6976,8 @@
       })();
     });
     // 「立即更新」（在「检查更新」左侧）：直接执行更新
+    // 暂停期间不拦这一下：暂停约束的是软件自己发起的自动检查，用户在机器前亲手点的
+    // 「立即更新」照常执行 —— 重启是他自己的选择，不是软件越过他做的决定。
     updateGo.addEventListener("click", () => {
       void (async () => {
         toast("正在更新，软件将重启…");

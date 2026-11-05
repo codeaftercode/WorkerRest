@@ -41,6 +41,9 @@ PROBE_JS = [
     os.path.join(HERE, "settings_ui_probe.js"),
     os.path.join(HERE, "settings_modals_probe.js"),
     os.path.join(HERE, "settings_flow_probe.js"),
+    # 放在最后：它逐个操作控件、改配置，会让页面停在「刚改完又改回去」的状态上，
+    # 前三个探针都假定初始形态，所以它必须收尾跑。
+    os.path.join(HERE, "settings_options_probe.js"),
 ]
 OUT = os.path.join(tempfile.gettempdir(), "wr_settings_ui")
 

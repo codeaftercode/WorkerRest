@@ -134,12 +134,19 @@ async function main() {
     });
     check(of.sw <= of.cw + 2, `tab ${tab.id} 内容区无横向溢出`, `scrollWidth=${of.sw} clientWidth=${of.cw}`);
 
+    // 首屏截图。注意不能指望 fullPage：内容区是内层滚动容器（.content overflow），
+    // body 高度等于视口，fullPage 只会得到同一张图。要靠下的卡片得先 scrollIntoView。
     await page.screenshot({ path: path.join(OUT, `tab_${tab.id}.png`) });
   }
 
   // ---------- 值与 settings 的一致性 ----------
   await page.locator('.nav-item[data-tab="general"]').click();
   await delay(150);
+  // 「提醒窗口」卡片在首屏之外，单独补一张 —— 里面有「显示的屏幕」多选下拉，
+  // 是靠肉眼复核对齐 / 溢出的唯一凭证
+  await page.locator("#ap-displays").scrollIntoViewIfNeeded();
+  await delay(150);
+  await page.screenshot({ path: path.join(OUT, "tab_general_windows.png") });
   const appName = await page.inputValue("#appName");
   check(appName === (cfg.appName || ""), "通用 tab 的标题输入框 == settings.appName",
     `ui=${appName} cfg=${cfg.appName}`);
@@ -148,6 +155,137 @@ async function main() {
   const idle = await page.inputValue("#idlePauseMin");
   check(String(idle) === String(cfg.idlePauseMin), "空闲分钟数 == settings.idlePauseMin",
     `ui=${idle} cfg=${cfg.idlePauseMin}`);
+  // 两个投屏开关：缺键按「开」（后端 Flag(true,…) 同口径），所以判据是 !== false，
+  // 不能写成 !cfg.xxx —— 老配置里没有这个键时会把「开」误判成「关」。
+  for (const [id, key, label] of [
+    ["#castWirelessPause", "castWirelessPause", "无线投放"],
+    ["#castMirrorPause", "castMirrorPause", "复制模式"],
+  ]) {
+    const chk = await page.isChecked(id);
+    check(chk === (cfg[key] !== false), `${label}自动暂停开关状态 == settings.${key}`,
+      `ui=${chk} cfg=${cfg[key]}`);
+  }
+
+  // 「显示的屏幕」多选下拉：选项来自现场枚举，**不能写死数量**（探针机器屏数不同）。
+  // 挂载是异步的（fillForm 之后才拉列表），所以先等按钮出现再断言。
+  await page.waitForFunction(() => {
+    const host = document.getElementById("ap-displays");
+    return !!host && !!host.querySelector(".cdrop-btn");
+  }, null, { timeout: 5000 }).catch(() => {});
+  const disp = await page.evaluate(async () => {
+    const list = await window.api.listDisplays();
+    const host = document.getElementById("ap-displays");
+    const btn = host && host.querySelector(".cdrop-btn");
+    const opts = host ? Array.from(host.querySelectorAll('[role="option"]')) : [];
+    const box = host && host.querySelector('[role="listbox"]');
+    return {
+      n: Array.isArray(list) ? list.length : -1,
+      btn: !!btn,
+      disabled: btn ? !!btn.disabled : null,
+      label: btn ? btn.getAttribute("aria-label") : null,
+      opts: opts.length,
+      selected: opts.filter((o) => o.getAttribute("aria-selected") === "true").length,
+      multi: box ? box.getAttribute("aria-multiselectable") : null,
+      text: btn ? btn.textContent.trim() : "",
+    };
+  });
+  check(disp.btn, "「显示的屏幕」下拉已挂载", JSON.stringify(disp));
+  if (disp.n > 0) {
+    check(!disp.disabled, "枚举成功时下拉可用", `disabled=${disp.disabled}`);
+    check(disp.opts === disp.n, "下拉选项数 == ListDisplays 返回的屏数",
+      `opts=${disp.opts} n=${disp.n}`);
+    check(disp.multi === "true", "多选下拉的 listbox 带 aria-multiselectable", disp.multi);
+    check(disp.label === "显示的屏幕", "下拉按钮有可访问名", disp.label);
+    // 勾选态必须与配置对得上。出厂 displayIds 是空数组，启动加载时会被补成主屏的**具体 ID**
+    // （见 settings 包的 fillPrimaryDisplayID），所以正常情况下面看到的是一个 ID；
+    // 空列表只在「枚举不可用」时还留着，同样按「只勾主屏」算。
+    const ids = Array.isArray(cfg.displayIds) ? cfg.displayIds : [];
+    const onlyPrimary = ids.length === 0;
+    const wantSel = onlyPrimary ? 1 : Math.min(ids.length, disp.n);
+    check(disp.selected === wantSel,
+      "勾选数 == 配置（空配置按「只主屏」兜底，不是「全部」）",
+      `selected=${disp.selected} want=${wantSel} ids=${JSON.stringify(ids)}`);
+    check(disp.text !== "所有屏幕", "按钮不再出现「所有屏幕」这种动态全选文案", disp.text);
+    // 底部刷新行：显示器热插拔，列表只在页面加载时枚举一次，必须有显式入口重新检测。
+    // 顺带钉住结构：刷新按钮不能落在 listbox 里面，否则读屏会把它念成一块屏、
+    // 上下键也会停在它上面（探针数选项用的是 [role=option]，能过；读屏过不了）。
+    const foot = await page.evaluate(() => {
+      const host = document.getElementById("ap-displays");
+      const f = host.querySelector(".cdrop-foot");
+      const btnR = host.querySelector(".cdrop-refresh");
+      const box = host.querySelector('[role="listbox"]');
+      return {
+        hasFoot: !!f,
+        note: f ? f.querySelector(".cdrop-foot-note").textContent.trim() : "",
+        label: btnR ? btnR.getAttribute("aria-label") : null,
+        inListbox: !!(box && box.querySelector(".cdrop-refresh")),
+        optsInBox: box ? box.querySelectorAll('[role="option"]').length : -1,
+      };
+    });
+    check(foot.hasFoot, "多选面板有底部的检测信息 + 刷新行", JSON.stringify(foot));
+    check(foot.note.includes("检测到") && foot.note.includes(String(disp.n)),
+      "底部写明本次检测到几块屏", foot.note);
+    check(!!foot.label, "刷新按钮有可访问名", String(foot.label));
+    check(!foot.inListbox, "刷新按钮不在 listbox 内（否则会被读成一块屏）", String(foot.inListbox));
+    check(foot.optsInBox === disp.n, "listbox 里只有显示器选项", `opts=${foot.optsInBox} n=${disp.n}`);
+  } else {
+    // 枚举不到屏时不给一个死掉的控件：按钮仍可点开，面板里只剩「刷新」，
+    // 用户接好屏当场就能重试，不用重启软件。
+    check(disp.text.includes("未检测到"), "枚举失败时触发器说明现状", disp.text);
+  }
+  // 键盘可达：自绘控件最容易漏的就是这条（鼠标能点 ≠ Tab 能到 ≠ 读屏能念）
+  if (disp.n > 0) {
+    await page.focus("#ap-displays .cdrop-btn");
+    await page.keyboard.press("Enter");
+    await delay(120);
+    const kbdOpen = await page.evaluate(() => ({
+      expanded: document.querySelector("#ap-displays .cdrop-btn").getAttribute("aria-expanded"),
+      role: document.activeElement && document.activeElement.getAttribute("role"),
+    }));
+    check(kbdOpen.expanded === "true", "Enter 展开多选面板", kbdOpen.expanded);
+    check(kbdOpen.role === "option", "展开后焦点落在第一个选项", kbdOpen.role);
+    await page.keyboard.press("Escape");
+    await delay(120);
+    const kbdClosed = await page.evaluate(() => ({
+      expanded: document.querySelector("#ap-displays .cdrop-btn").getAttribute("aria-expanded"),
+      onBtn: document.activeElement && document.activeElement.classList.contains("cdrop-btn"),
+    }));
+    check(kbdClosed.expanded === "false", "Esc 收起多选面板", kbdClosed.expanded);
+    check(kbdClosed.onBtn, "收起后焦点回到按钮（不会丢到 body）", String(kbdClosed.onBtn));
+  }
+  // 手动刷新：点一下就重新枚举一次，面板不重挂、勾选与配置都不动（刷新本身不写配置）。
+  // 这条钉的是「热插拔之后有没有补救入口」——显示器列表只在页面加载时枚举一次。
+  if (disp.n > 0) {
+    await page.click("#ap-displays .cdrop-btn");
+    await delay(150);
+    const beforeRefresh = await page.evaluate(() => ({
+      opts: document.querySelectorAll("#ap-displays [role='option']").length,
+      val: document.getElementById("ap-displays").dataset.value,
+    }));
+    await page.click("#ap-displays .cdrop-refresh");
+    await page.waitForFunction(() => {
+      const b = document.querySelector("#ap-displays .cdrop-refresh");
+      return !!b && !b.classList.contains("busy");
+    }, null, { timeout: 5000 }).catch(() => {});
+    await delay(200);
+    const afterRefresh = await page.evaluate(() => ({
+      opts: document.querySelectorAll("#ap-displays [role='option']").length,
+      val: document.getElementById("ap-displays").dataset.value,
+      open: !document.querySelector("#ap-displays .cdrop-menu").classList.contains("hidden"),
+      busy: document.querySelector("#ap-displays .cdrop-refresh").classList.contains("busy"),
+      toast: (document.getElementById("toast") || {}).textContent || "",
+    }));
+    check(afterRefresh.opts === beforeRefresh.opts, "刷新后选项数不变（屏没增减）",
+      `${beforeRefresh.opts} → ${afterRefresh.opts}`);
+    check(afterRefresh.val === beforeRefresh.val, "刷新不改动勾选（刷新本身不写配置）",
+      `${beforeRefresh.val} → ${afterRefresh.val}`);
+    check(afterRefresh.open, "刷新后面板仍打开（就地替换选项，不重挂控件）",
+      String(afterRefresh.open));
+    check(!afterRefresh.busy, "刷新结束后按钮恢复可点", String(afterRefresh.busy));
+    check(afterRefresh.toast.includes("已检测到"), "刷新有可见反馈（提示条）", afterRefresh.toast);
+    await page.keyboard.press("Escape");
+    await delay(120);
+  }
 
   await page.locator('.nav-item[data-tab="shortcuts"]').click();
   await delay(150);

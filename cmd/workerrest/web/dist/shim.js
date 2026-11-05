@@ -104,6 +104,11 @@
     saveSettings: function (s) {
       return call("SaveSettings", [s]);
     },
+    // 枚举当前接入的显示器（设置页「显示的屏幕」多选下拉）。
+    // 枚举不可用（远程会话 / 无桌面）时 Go 侧返回空数组，页面据此显示「未检测到显示器」。
+    listDisplays: function () {
+      return call("ListDisplays");
+    },
     builtinMsgDefaults: function () {
       return call("BuiltinMsgDefaults");
     },
@@ -152,6 +157,15 @@
     },
     preBreakAction: function (a) {
       return call("PreBreakAction", [str(a)]);
+    },
+
+    // ---- 自动暂停期间的「已暂停多久」提示（右下角小窗，见 pause_notice.go）----
+    // 只有两个动作：恢复（与托盘「恢复休息」同一个入口）与「只关提示、不恢复」。
+    pauseNoticeResume: function () {
+      return call("PauseNoticeResume");
+    },
+    pauseNoticeDismiss: function () {
+      return call("PauseNoticeDismiss");
     },
 
     // ---- 督休专员目录 ----
@@ -240,6 +254,14 @@
     },
     exportThirdPartyNotices: function () {
       return call("ExportThirdPartyNotices");
+    },
+    // 项目许可证：与鸣谢清单同源同形（内嵌 + 关于页入口 + 另存为）。
+    // 便携目录里不再散放 LICENSE，这两个绑定是条款唯一的出口。
+    getProjectLicense: function () {
+      return call("GetProjectLicense");
+    },
+    exportProjectLicense: function () {
+      return call("ExportProjectLicense");
     },
     openExternal: function (url) {
       return call("OpenExternal", [str(url)]);

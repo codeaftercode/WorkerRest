@@ -68,6 +68,7 @@ const TRIGGERED = [
     what: "删除提醒内容",
     pre: '.msg-panel[data-kind="short"] .msg-toggle', // 行本身在默认收起的 .msg-body 里
   },
+  { id: "license-modal", tab: "about", trigger: "#d-license", what: "许可条款" },
   { id: "notices-modal", tab: "about", trigger: "#d-notices", what: "开源鸣谢" },
 ];
 

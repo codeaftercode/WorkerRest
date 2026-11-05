@@ -264,6 +264,30 @@ body {
 #tab-about .rows .link-btn::after { content: "\203A"; font-size: 14px; line-height: 1; }
 #tab-about .rows .link-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 #tab-about .rows .link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+/* 「许可条款 · 开源鸣谢」：同一行的两个入口。
+   左对齐而不是 space-between —— 两者是同类动作，分置两端的读法是「标题 + 动作」，
+   会让人以为左边那句是说明文字。间距 16px、中间一道 1px 竖线：既分得开是一组里的两项，
+   又不至于像两个独立链接。竖线绝对定位，不参与布局，行高仍是 36px。
+   这一行不画「›」尖角：两个并排时「› | ›」三个符号挤在一起，比没有更难读。
+   零内边距：这一行的左缘必须与上面「软件版本」的 .k 严丝合缝地对齐。 */
+#tab-about .rows .lic-row { justify-content: flex-start; gap: 16px; }
+#tab-about .rows .lic-row .link-btn::after { content: none; }
+#tab-about .rows .lic-row .link-btn + .link-btn { position: relative; }
+#tab-about .rows .lic-row .link-btn + .link-btn::before {
+  content: ""; position: absolute; left: -8px; top: 50%; width: 1px; height: 12px;
+  margin-top: -6px; background: var(--border);
+}
+/* 行尾运行环境：margin-left:auto 顶到右端 —— 左侧两个入口是「点开看全文」的动作，
+   右边这一项是「不用点就能看到的事实」，两者性质不同，所以整行不用 space-between
+   （那会把右侧信息读成第二组按钮）。
+   整行最弱的一档（11.5px / 500 / --text-2）：它只是版本指纹，不该跟「许可条款」抢注意力。
+   nowrap + flex:none：窗口收到 760 最小宽时，宁可压缩中间的空白，也不许这一行折行 ——
+   折行会把 36px 的行高撑开，关于页高度就不再是出厂的那个「恰好不出滚动条」的值。
+   （曾经在它前面放过一枚「MIT License」徽章，和左边「许可条款」重复，已去掉。） */
+#tab-about .rows .lic-rt {
+  margin-left: auto; flex: none;
+  font-size: 11.5px; font-weight: 500; color: var(--text-2); white-space: nowrap;
+}
 
 /* 底部操作区：与上方键值行同一套虚线分隔 + 同一行高，整张卡片各行间距一致 */
 #tab-about .card-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 0; padding-top: 0; min-height: 36px; border-bottom: 1px dashed var(--border); }
@@ -1603,3 +1627,65 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .cdrop-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cdrop-item > .q-mark { margin-left: 0; flex-shrink: 0; }
+
+/* 「显示的屏幕」多选下拉：单选那套用左侧竖条表示选中，多选要能一眼看出「勾了哪几块」，
+   所以每项前面换成方框。面板允许比触发器宽 —— 「DELL U2719DS · 2560×1440 · 主屏」
+   塞不进 180px，但触发器本身仍与同列控件同宽对齐。 */
+.cdrop-multi .cdrop-menu { right: auto; width: max-content; min-width: 100%; max-width: 340px; }
+.cdrop-multi .cdrop-item[aria-selected='true']::before { display: none; }
+/* 多选里「选中」已经由方框表达了，文字不必再染色 —— 一次勾好几项时整片变蓝太吵 */
+.cdrop-multi .cdrop-item[aria-selected='true'] { color: var(--text); }
+/* 型号名与分辨率之间留够间隔：最长的那一项会把面板撑到刚好放下两者，
+   6px 时右侧分辨率会贴着型号名，看着像连在一起 */
+.cdrop-multi .cdrop-item { gap: 10px; }
+.cdrop-box {
+  flex-shrink: 0; width: 13px; height: 13px; box-sizing: border-box;
+  border: 1.5px solid var(--border); border-radius: 4px; background: var(--bg);
+  position: relative; transition: background 0.12s, border-color 0.12s;
+}
+.cdrop-item[aria-selected='true'] .cdrop-box { border-color: var(--accent); background: var(--accent); }
+.cdrop-item[aria-selected='true'] .cdrop-box::after {
+  content: ''; position: absolute; left: 2px; top: 3px; width: 6px; height: 3px;
+  border-left: 1.8px solid #fff; border-bottom: 1.8px solid #fff;
+  transform: rotate(-45deg);
+}
+.cdrop-hint { flex-shrink: 0; color: var(--text-2); font-size: 11.5px; }
+.cdrop-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
+
+/* 多选面板底部的「检测到 N 块 + 刷新」条：显示器是热插拔的，选项来自一次枚举快照，
+   没有这个按钮就只能重启软件才能看到新接上的屏。左侧说明用省略号收住（面板最宽 340px），
+   完整口径放在 title 里；按钮固定在右侧不参与收缩。 */
+.cdrop-foot {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 4px; padding: 6px 6px 2px;
+  border-top: 1px solid var(--border);
+}
+.cdrop-foot-note {
+  flex: 1; min-width: 0;
+  color: var(--text-2); font-size: 11.5px; line-height: 1.3;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cdrop-refresh {
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; gap: 4px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  color: var(--text); padding: 3px 8px;
+  font-size: 12px; font-family: inherit; line-height: 1.4;
+  cursor: pointer;
+}
+.cdrop-refresh:hover { border-color: var(--accent); color: var(--accent); }
+.cdrop-refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 转圈期间也要能看出「正在刷新」，否则点了没反应像坏了。
+   刻意不用 disabled：禁用一个正在焦点的按钮会把焦点踢到 body，面板的 focusout 逻辑
+   会立刻判定「焦点离开了」把面板收起来。所以只降不透明度 + 转图标，点击由 busy 标记拦住。 */
+.cdrop-refresh[disabled],
+.cdrop-refresh.busy { opacity: 0.6; cursor: progress; }
+.cdrop-refresh-icon { display: inline-block; line-height: 1; }
+.cdrop-refresh.busy .cdrop-refresh-icon { animation: cdrop-spin 0.8s linear infinite; }
+@keyframes cdrop-spin { to { transform: rotate(360deg); } }
+/* 枚举不到屏时：说明放在选项区，刷新行照常可用 */
+.cdrop-empty { padding: 8px 6px; color: var(--text-2); font-size: 12.5px; }
+.cdrop-empty.hidden { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .cdrop-refresh.busy .cdrop-refresh-icon { animation: none; }
+}

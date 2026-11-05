@@ -68,7 +68,7 @@
           <div class="row check"><label class="switch-row"><input type="checkbox" id="startMinimized" /> 启动时最小化到托盘</label></div>
         </div>
         <div class="card">
-          <h3>自动暂停</h3>
+          <h3>自动暂停<span class="q-mark" title="触发的那一刻会收掉屏幕上的提醒窗口，这段时间到点的提醒直接跳过。勿扰、全屏、投屏结束后不会自动恢复，点托盘的「恢复休息」继续；空闲和指定应用会自动恢复。暂停每满 1 小时在右下角提示一次（投屏、全屏、勿扰时除外）。">?</span></h3>
           <!-- 空闲自动暂停始终启用、不可关闭，所以这里没有勾选框，只有分钟数（最小 1）；
                行本身仍用 .mixed（内容紧挨着左对齐 + 行内窄数字框） -->
           <div class="row mixed">
@@ -81,6 +81,12 @@
           </div>
           <div class="row check">
             <label class="switch-row"><input type="checkbox" id="fullscreenPause" /> 全屏独占应用运行时自动暂停<span class="q-mark" title="按 Windows 的「全屏独占」判定（D3D 独占全屏）：真全屏游戏、视频播放器全屏。浏览器 F11、无边框全屏、系统不认为是独占全屏的窗口不会触发。">?</span></label>
+          </div>
+          <div class="row check">
+            <label class="switch-row"><input type="checkbox" id="castWirelessPause" /> 无线投放时自动暂停<span class="q-mark" title="按显示输出的连接方式判断：接了无线显示设备（Miracast、无线显示适配器）时算。它本身就是一种连接协议，所以用扩展模式接无线屏也照样触发。有线连接（HDMI / DP / VGA）不会命中这一条。">?</span></label>
+          </div>
+          <div class="row check">
+            <label class="switch-row"><input type="checkbox" id="castMirrorPause" /> 投影方式为「复制」时自动暂停<span class="q-mark" title="按投影方式判断：Win+P 选「复制」，桌面被镜像到另一块屏时算，这是讲台最常见的接法。注意「笔记本接外接显示器图省事设成复制」也会命中，那种情况请关掉这个开关。用扩展模式接副屏、或选「仅第二屏幕」不触发——系统分不清哪块屏是投影仪，这两种情况请手动暂停。">?</span></label>
           </div>
           <div class="row check">
             <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 指定应用运行时自动暂停</label>
@@ -135,10 +141,10 @@
           <div class="row field"><label for="ap-heightPct">窗口高度（屏幕百分比）</label><input type="number" id="ap-heightPct" min="20" max="100" /></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-fullscreen" /> 全屏显示<span class="q-mark" title="忽略窗口宽度、窗口高度参数">?</span> </label></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-alwaysOnTop" /> 窗口置顶 </label></div>
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-allScreens" /> 在所有屏幕显示 </label></div>
+          <div class="row field"><label id="ap-displays-label">显示的屏幕<span class="q-mark" title="只在勾选的屏上出现；插拔屏后点「刷新」重新检测。">?</span></label><div id="ap-displays"></div></div>
           <!-- 共享屏幕时隐藏：给提醒窗口打上「排除出屏幕捕获」（Windows 10 2004+）。
                明说是「提醒窗口」：设置窗口、督休画廊不受影响，自己截图也照样看不见它 -->
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-hideOnShare" /> 共享屏幕时隐藏提醒窗口<span class="q-mark" title="腾讯会议、飞书、钉钉、Zoom、Teams、Google Meet 等主流视频会议软件共享屏幕时，参会者看不到提醒窗口。副作用：自己截图、录屏时同样看不到。需要 Windows 10 2004 及以上，更老的系统上此开关无效。">?</span></label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-hideOnShare" /> 共享屏幕时隐藏提醒窗口<span class="q-mark" title="腾讯会议、飞书、钉钉、Zoom、Teams、Google Meet 等主流视频会议软件共享屏幕时，参会者看不到提醒窗口。副作用：自己截图、录屏时同样看不到。需要 Windows 10 2004（build 19041）及以上；更老的系统上不会隐藏，会变成一块黑色矩形，那种情况建议关掉此开关。">?</span></label></div>
         </div>
         <div class="card">
           <div class="card-head">
@@ -291,7 +297,7 @@
                下拉本体由 settings.js 的 mountPauseDrop 画（原生 select 装不下每一项的「?」）；
                标签上的「?」说明「暂停休息」包括哪几种情况，空闲分钟数由 settings.js 补全 -->
           <div class="row field">
-            <label>暂停休息时<span class="q-mark pause-scope-help" title="「暂停休息」指：系统空闲 5 分钟自动暂停、系统勿扰 / 专注 / 演示模式自动暂停、全屏独占应用运行时自动暂停、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+            <label>暂停休息时<span class="q-mark pause-scope-help" title="「暂停休息」指：系统空闲 5 分钟自动暂停、系统勿扰 / 专注 / 演示模式自动暂停、全屏独占应用运行时自动暂停、无线投放 / 复制模式时自动暂停、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
             <div class="cdrop-host" id="tk-pause"></div>
           </div>
           <div class="row field"><label for="tk-lead">提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>
@@ -541,9 +547,24 @@
               <span class="k">软件版本</span>
               <span class="v mono ver-cell"><span class="ver-num" id="d-version-val">v—</span><span class="ver-sep">|</span><span class="ver-build" id="d-build-time">本地构建</span></span>
             </div>
-            <!-- 开源鸣谢：全文内嵌在 exe 里（见 notices.go），点开可读、可另存为。
+            <!-- 许可条款 / 开源鸣谢：两份文本都内嵌在 exe 里（license.go / notices.go），
+                 点开可读、可另存为。行内两个入口并排，各自一个弹窗 —— 不再用「查看」这种
+                 中间按钮：一个「查看」要用户先记住它对应哪一行，两个入口写清名字更省一步。
+                 左对齐（不是 space-between）：两者是同类动作，分置两端会读成「标题 + 动作」。
                  不放启动弹窗 —— 义务只要求「可获取」，打扰用户不是合规的一部分。 -->
-            <div class="row"><span class="k">开源鸣谢</span><button type="button" class="link-btn" id="d-notices" aria-haspopup="dialog">查看</button></div>
+            <!-- 行尾补一块「不用点就知道」的信息：运行环境。
+                 左侧是「点开看全文」的动作，右侧是「一眼看事实」的信息，两类不并排，
+                 所以行尾用 margin-left:auto 顶到右端，而不是把整行改成 space-between
+                 （那会把右侧信息读成第二组按钮）。
+                 运行环境原本是独立一行，为了让关于页恰好不出现滚动条才整行删掉；
+                 压进本行行尾后不再占行高 —— 信息回来了、页面高度没变。
+                 「MIT License」徽章一度也放在这里，但它和左边「许可条款」说的是同一件事，
+                 同一行里说两遍只是噪音，已去掉。 -->
+            <div class="row lic-row">
+              <button type="button" class="link-btn" id="d-license" aria-haspopup="dialog">许可条款</button>
+              <button type="button" class="link-btn" id="d-notices" aria-haspopup="dialog">开源鸣谢</button>
+              <span class="lic-rt mono" id="d-runtime">Go · Wails v3</span>
+            </div>
           </div>
         </section>
 
@@ -802,6 +823,24 @@
       <div class="modal-actions">
         <button class="btn ghost" id="nt-export">另存为…</button>
         <button class="btn primary" id="nt-close">关闭</button>
+      </div>
+    </div>
+  </div>
+  <!-- 许可条款：MIT 正文内嵌在 exe 里（license.go）。与鸣谢弹窗同一套版式 ——
+       正文等宽可滚、可另存为。便携目录里不再散放 LICENSE，这两个弹窗就是条款的唯一出口，
+       所以「另存为」不是装饰：用户要一份文件留档时，这是他唯一能取到的方式。 -->
+  <div id="license-modal" class="modal hidden">
+    <div class="modal-box nt-box" role="dialog" aria-modal="true" aria-labelledby="lic-title">
+      <div class="cf-head">
+        <span class="cf-icon accent" aria-hidden="true">&copy;</span>
+        <div class="cf-titles">
+          <h3 id="lic-title">许可条款</h3>
+        </div>
+      </div>
+      <pre id="lic-body" class="nt-body" tabindex="0">正在读取…</pre>
+      <div class="modal-actions">
+        <button class="btn ghost" id="lic-export">另存为…</button>
+        <button class="btn primary" id="lic-close">关闭</button>
       </div>
     </div>
   </div>
