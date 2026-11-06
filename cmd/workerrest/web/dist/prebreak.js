@@ -15,8 +15,8 @@
   document.getElementById("pb-skip").addEventListener("click", () => void api.preBreakAction("skip"));
   document.getElementById("pb-pause").addEventListener("click", () => void api.preBreakAction("pause"));
   var BTN_LABELS = {
-    builtin: { now: "\u7ACB\u5373\u4F11\u606F", postpone: "\u63A8\u8FDF\u4F11\u606F", skip: "\u8DF3\u8FC7\u4F11\u606F" },
-    custom: { now: "\u7ACB\u5373\u63D0\u9192", postpone: "\u63A8\u8FDF\u63D0\u9192", skip: "\u8DF3\u8FC7\u63D0\u9192" }
+    builtin: { now: "立即休息", postpone: "推迟休息", skip: "跳过休息" },
+    custom: { now: "立即提醒", postpone: "推迟提醒", skip: "跳过提醒" }
   };
   function applyVariant(custom, tail, canPostpone) {
     postEl.textContent = tail;
@@ -163,7 +163,7 @@
   {
     const q = new URLSearchParams(location.search);
     urlPostpone = q.get("postpone");
-    applyVariant(q.get("custom") === "1", q.get("tail") ?? " \u79D2\u8FDB\u5165\u4F11\u606F", urlPostpone !== "0");
+    applyVariant(q.get("custom") === "1", q.get("tail") ?? " 秒进入休息", urlPostpone !== "0");
     // 首帧就把底色铺成用户配的颜色（地址里带了 bg），避免先闪一下内置默认蓝
     urlBg = q.get("bg");
     if (urlBg) applyPalette(urlBg);
@@ -175,11 +175,11 @@
       // 地址里带了的 bg 优先（与 postpone 同口径），轮询值只作旧地址的备份。
       if (urlBg === null && st.bgColor) applyPalette(st.bgColor);
       if (st.paused) {
-        titleEl.textContent = "\u5DF2\u6682\u505C";
+        titleEl.textContent = "已暂停";
         secondsEl.textContent = "--";
         postEl.textContent = "";
       } else {
-        titleEl.textContent = st.title || "\u60A8\u5DF2\u8FDE\u7EED\u5DE5\u4F5C\u8F83\u957F\u65F6\u95F4\uFF0C\u5EFA\u8BAE\u60A8\u77ED\u6682\u4F11\u606F";
+        titleEl.textContent = st.title || "您已连续工作较长时间，建议您短暂休息";
         secondsEl.textContent = String(Math.max(0, Math.ceil(st.remainMs / 1e3)));
         const canPost = urlPostpone !== null ? urlPostpone !== "0" : st.canPostpone !== false;
         applyVariant(st.custom, st.countdownTail, canPost);

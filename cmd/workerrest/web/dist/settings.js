@@ -38,18 +38,18 @@
     };
   }
   var SUPERVISOR_SELECTIONS = [
-    { value: "fixed", label: "\u56FA\u5B9A\u663E\u793A", hint: "\u6BCF\u6B21\u63D0\u9192\u90FD\u7528\u540C\u4E00\u4E2A\u7ACB\u7ED8\uFF1B\u70B9\u9009\u7ACB\u7ED8\u524D\u7684\u5355\u9009\u6846\u6307\u5B9A" },
-    { value: "random", label: "\u968F\u673A\u663E\u793A", hint: "\u6BCF\u6B21\u63D0\u9192\u5728\u5DF2\u52FE\u9009\u7684\u7ACB\u7ED8\u4E2D\u968F\u673A\u9009\u4E00\u4E2A" },
-    { value: "sequence", label: "\u987A\u5E8F\u5FAA\u73AF", hint: "\u5728\u5DF2\u52FE\u9009\u7684\u7ACB\u7ED8\u95F4\u6309\u5217\u8868\u987A\u5E8F\u8F6E\u6362" }
+    { value: "fixed", label: "固定显示", hint: "每次提醒都用同一个立绘；点选立绘前的单选框指定" },
+    { value: "random", label: "随机显示", hint: "每次提醒在已勾选的立绘中随机选一个" },
+    { value: "sequence", label: "顺序循环", hint: "在已勾选的立绘间按列表顺序轮换" }
   ];
   var WEEKDAYS = [
-    { value: 1, label: "\u5468\u4E00", short: "\u4E00" },
-    { value: 2, label: "\u5468\u4E8C", short: "\u4E8C" },
-    { value: 3, label: "\u5468\u4E09", short: "\u4E09" },
-    { value: 4, label: "\u5468\u56DB", short: "\u56DB" },
-    { value: 5, label: "\u5468\u4E94", short: "\u4E94" },
-    { value: 6, label: "\u5468\u516D", short: "\u516D" },
-    { value: 7, label: "\u5468\u65E5", short: "\u65E5" }
+    { value: 1, label: "周一", short: "一" },
+    { value: 2, label: "周二", short: "二" },
+    { value: 3, label: "周三", short: "三" },
+    { value: 4, label: "周四", short: "四" },
+    { value: 5, label: "周五", short: "五" },
+    { value: 6, label: "周六", short: "六" },
+    { value: 7, label: "周日", short: "日" }
   ];
   var DEFAULT_WEEKDAYS = [1, 2, 3, 4, 5];
   function isoWeekday(d) {
@@ -90,7 +90,7 @@
   // 飞书 / 钉钉 / 企业微信 / WeLink 是综合办公套件：能开会，但日常是消息与审批入口，
   // 进程常驻并不等于在开会，所以不入列。
   var APP_PAUSE_PRESETS = [
-    { exe: "WeMeetApp.exe", label: "\u817E\u8BAF\u4F1A\u8BAE" },
+    { exe: "WeMeetApp.exe", label: "腾讯会议" },
     { exe: "ms-teams.exe", label: "Microsoft Teams" },
     { exe: "Zoom.exe", label: "Zoom" },
     { exe: "CiscoCollabHost.exe", label: "Webex" }
@@ -115,8 +115,8 @@
     return seg.trim().slice(0, 120);
   }
   var BREAK_MODES = [
-    { value: "countdown", label: "\u5012\u8BA1\u65F6", hint: "\u6BCF\u9694\u4E00\u6BB5\u65F6\u95F4\u63D0\u9192\u4E00\u6B21" },
-    { value: "fixed", label: "\u56FA\u5B9A\u65F6\u95F4", hint: "\u5230\u8BBE\u5B9A\u7684\u65F6\u523B\u63D0\u9192" }
+    { value: "countdown", label: "倒计时", hint: "每隔一段时间提醒一次" },
+    { value: "fixed", label: "固定时间", hint: "到设定的时刻提醒" }
   ];
   var CUSTOM_BREAK_PREFIX = "cb-";
   // 「暂停休息时」下拉：三种处置，默认「推迟提醒」。每一项都带一个「?」，悬停看该项
@@ -187,7 +187,7 @@
     cur.className = "cdrop-cur";
     const caret = document.createElement("span");
     caret.className = "cdrop-caret";
-    caret.textContent = "\u25BE";
+    caret.textContent = "▾";
     btn.append(cur, mkQMark("", ""), caret);
     const menu = document.createElement("div");
     menu.className = "cdrop-menu hidden";
@@ -322,7 +322,7 @@
       return {
         value: d.id,
         label: d.label || "显示器",
-        hint: d.width + "\u00D7" + d.height + (d.isPrimary ? " \u00B7 \u4E3B\u5C4F" : ""),
+        hint: d.width + "×" + d.height + (d.isPrimary ? " · 主屏" : ""),
         isPrimary: !!d.isPrimary,
       };
     });
@@ -370,7 +370,7 @@
     cur.className = "cdrop-cur";
     var caret = document.createElement("span");
     caret.className = "cdrop-caret";
-    caret.textContent = "\u25BE";
+    caret.textContent = "▾";
     btn.append(cur, caret);
 
     var menu = document.createElement("div");
@@ -383,7 +383,7 @@
     optsBox.setAttribute("aria-multiselectable", "true");
     var empty = document.createElement("div");
     empty.className = "cdrop-empty hidden";
-    empty.textContent = "\u672A\u68C0\u6D4B\u5230\u663E\u793A\u5668";
+    empty.textContent = "未检测到显示器";
     var foot = document.createElement("div");
     foot.className = "cdrop-foot";
     var note = document.createElement("span");
@@ -391,13 +391,13 @@
     var refresh = document.createElement("button");
     refresh.type = "button";
     refresh.className = "cdrop-refresh";
-    refresh.setAttribute("aria-label", "\u91CD\u65B0\u68C0\u6D4B\u663E\u793A\u5668");
-    refresh.title = "\u91CD\u65B0\u68C0\u6D4B\u663E\u793A\u5668\uFF1A\u65B0\u63A5\u4E0A\u7684\u5C4F\u3001\u62D4\u6389\u7684\u5C4F\u90FD\u4F1A\u5728\u8FD9\u91CC\u66F4\u65B0";
+    refresh.setAttribute("aria-label", "重新检测显示器");
+    refresh.title = "重新检测显示器：新接上的屏、拔掉的屏都会在这里更新";
     var refreshIcon = document.createElement("span");
     refreshIcon.className = "cdrop-refresh-icon";
-    refreshIcon.textContent = "\u21BB";
+    refreshIcon.textContent = "↻";
     var refreshLabel = document.createElement("span");
-    refreshLabel.textContent = "\u5237\u65B0";
+    refreshLabel.textContent = "刷新";
     refresh.append(refreshIcon, refreshLabel);
     foot.append(note, refresh);
     menu.append(optsBox, empty, foot);
@@ -418,27 +418,27 @@
     function value() { return effective(); }
     function labelOf(id) {
       var hit = items.filter(function (i) { return i.value === id; })[0];
-      return hit ? hit.label : "1 \u5757\u5C4F\u5E55";
+      return hit ? hit.label : "1 块屏幕";
     }
     function isOn(id) { return picked.has(id); }
     function summary() {
-      if (allIds.length === 0) return "\u672A\u68C0\u6D4B\u5230\u663E\u793A\u5668";
+      if (allIds.length === 0) return "未检测到显示器";
       if (picked.size === 1) return labelOf(picked.values().next().value);
-      return picked.size + " \u5757\u5C4F\u5E55";
+      return picked.size + " 块屏幕";
     }
     function renderNote() {
       if (allIds.length === 0) {
-        note.textContent = "\u70B9\u300C\u5237\u65B0\u300D\u91CD\u65B0\u68C0\u6D4B";
-        note.title = "\u679A\u4E3E\u4E0D\u5230\u663E\u793A\u5668\uFF1A\u8FDC\u7A0B\u684C\u9762\u3001\u65E0\u684C\u9762\u4F1A\u8BDD\uFF0C\u6216\u663E\u5361\u9A71\u52A8\u672A\u5C31\u7EEA";
+        note.textContent = "点「刷新」重新检测";
+        note.title = "枚举不到显示器：远程桌面、无桌面会话，或显卡驱动未就绪";
         return;
       }
       var missing = effective().filter(function (id) { return allIds.indexOf(id) < 0; });
-      note.textContent = "\u68C0\u6D4B\u5230 " + allIds.length + " \u5757" +
-        (missing.length ? "\uFF0C\u52FE\u9009\u7684 " + missing.length + " \u5757\u672A\u63A5\u5165" : "");
+      note.textContent = "检测到 " + allIds.length + " 块" +
+        (missing.length ? "，勾选的 " + missing.length + " 块未接入" : "");
       note.title = missing.length
-        ? "\u5DF2\u52FE\u9009\u4F46\u5F53\u524D\u6CA1\u63A5\u4E0A\u7684\u5C4F\uFF1A" + missing.join("\u3001") +
-          "\uFF08\u811A\u672C\u5C42\u9762\u4F1A\u5FFD\u7565\u5B83\uFF0C\u63A5\u56DE\u6765\u540E\u70B9\u4E00\u6B21\u5237\u65B0\u5373\u53EF\uFF09"
-        : "\u5217\u8868\u6765\u81EA\u6700\u8FD1\u4E00\u6B21\u68C0\u6D4B\u3002\u63A5\u4E86\u65B0\u5C4F\u6216\u62D4\u4E86\u5C4F\uFF0C\u70B9\u53F3\u8FB9\u300C\u5237\u65B0\u300D";
+        ? "已勾选但当前没接上的屏：" + missing.join("、") +
+          "（脚本层面会忽略它，接回来后点一次刷新即可）"
+        : "列表来自最近一次检测。接了新屏或拔了屏，点右边「刷新」";
     }
     function render() {
       cur.textContent = summary();
@@ -497,7 +497,7 @@
       if (picked.has(id)) {
         if (picked.size === 1) {
           // 全不勾 = 提醒窗口一块屏都不弹，用户只会以为软件坏了
-          toast("\u81F3\u5C11\u8981\u4FDD\u7559\u4E00\u5757\u5C4F\u5E55\u3002\u60F3\u5F7B\u5E95\u4E0D\u5F39\u63D0\u9192\uFF0C\u8BF7\u53BB\u5173\u4E0A\u9762\u7684\u63D0\u9192\u5F00\u5173");
+          toast("至少要保留一块屏幕。想彻底不弹提醒，请去关上面的提醒开关");
           return;
         }
         picked.delete(id);
@@ -518,7 +518,7 @@
     // 刷新本身**不写配置**：没动过的勾选原样回写，动过的等下一次 autoSave。
     var busy = false;
     function refreshToast(beforeIds) {
-      if (allIds.length === 0) return "\u672A\u68C0\u6D4B\u5230\u663E\u793A\u5668\uFF08\u8FDC\u7A0B\u684C\u9762\u6216\u663E\u5361\u672A\u5C31\u7EEA\uFF1F\uFF09";
+      if (allIds.length === 0) return "未检测到显示器（远程桌面或显卡未就绪？）";
       var added = 0;
       var removed = 0;
       var i;
@@ -529,10 +529,10 @@
         if (allIds.indexOf(beforeIds[i]) < 0) removed++;
       }
       var tail = [];
-      if (added) tail.push("\u65B0\u589E " + added + " \u5757");
-      if (removed) tail.push("\u79FB\u9664 " + removed + " \u5757");
-      return "\u5DF2\u68C0\u6D4B\u5230 " + allIds.length + " \u5757\u5C4F\u5E55" +
-        (tail.length ? "\uFF08" + tail.join("\uFF0C") + "\uFF09" : "");
+      if (added) tail.push("新增 " + added + " 块");
+      if (removed) tail.push("移除 " + removed + " 块");
+      return "已检测到 " + allIds.length + " 块屏幕" +
+        (tail.length ? "（" + tail.join("，") + "）" : "");
     }
     async function doRefresh() {
       if (!reload || busy) return;
@@ -688,8 +688,8 @@
   }
   function breakEntries(s) {
     const out = [
-      { id: "short", name: "\u77ED\u4F11\u606F", config: s.short },
-      { id: "long", name: "\u957F\u4F11\u606F", config: s.long }
+      { id: "short", name: "短休息", config: s.short },
+      { id: "long", name: "长休息", config: s.long }
     ];
     for (const c of s.customBreaks ?? []) out.push({ id: c.id, name: c.name, config: c.config });
     return out;
@@ -701,9 +701,9 @@
   function pauseReasonText(reason) {
     switch (reason) {
       case "idle":
-        return "\u7CFB\u7EDF\u7A7A\u95F2";
+        return "系统空闲";
       case "manual":
-        return "\u624B\u52A8\u6682\u505C";
+        return "手动暂停";
       default:
         return reason;
     }
@@ -716,9 +716,9 @@
   }
   function describeTimeSlot(slot) {
     const time = slotTimeText(slot);
-    if (slot.repeat === "daily") return `\u6BCF\u5929 ${time}`;
+    if (slot.repeat === "daily") return `每天 ${time}`;
     const names = WEEKDAYS.filter((d) => slot.days.includes(d.value)).map((d) => d.short);
-    return `\u6BCF\u5468 ${names.join("\u3001") || "\uFF08\u672A\u9009\uFF09"} ${time}`;
+    return `每周 ${names.join("、") || "（未选）"} ${time}`;
   }
 
   // renderer/figureTrim.ts
@@ -978,7 +978,7 @@
     document.getElementById("titlebar")?.classList.toggle("maximized", max);
     const btn = document.getElementById("wb-max");
     if (btn) {
-      const label = max ? "\u8FD8\u539F" : "\u6700\u5927\u5316";
+      const label = max ? "还原" : "最大化";
       btn.title = label;
       btn.setAttribute("aria-label", label);
     }
@@ -1172,12 +1172,12 @@
     const add = (label, val) => {
       const div = document.createElement("div");
       div.className = "up-item";
-      div.textContent = `${label}：${val || "\u2014"}`;
+      div.textContent = `${label}：${val || "—"}`;
       body.appendChild(div);
     };
-    add("\u539F\u6587\u4EF6\u5DF2\u5907\u4EFD\u4E3A", n.backup || "\uFF08\u6539\u540D\u5931\u8D25\uFF09");
-    add("\u5224\u5B9A\u539F\u56E0", n.reason);
-    add("\u5904\u7406\u65F6\u95F4", n.at);
+    add("原文件已备份为", n.backup || "（改名失败）");
+    add("判定原因", n.reason);
+    add("处理时间", n.at);
     $("stats-modal").classList.remove("hidden");
     return true;
   }
@@ -1325,8 +1325,8 @@
     const detail = $("cf-detail");
     detail.textContent = opts.detail ?? "";
     detail.classList.toggle("hidden", !opts.detail);
-    $("cf-ok").textContent = opts.okText ?? "\u5220\u9664";
-    $("cf-cancel").textContent = opts.cancelText ?? "\u53D6\u6D88";
+    $("cf-ok").textContent = opts.okText ?? "删除";
+    $("cf-cancel").textContent = opts.cancelText ?? "取消";
     $("confirm-modal").classList.remove("hidden");
     setTimeout(() => $("cf-cancel").focus(), 0);
     return new Promise((resolve) => {
@@ -1355,7 +1355,7 @@
     const input = $("pm-input");
     input.value = opts.value ?? "";
     input.placeholder = opts.placeholder ?? "";
-    $("pm-ok").textContent = opts.okText ?? "\u786E\u5B9A";
+    $("pm-ok").textContent = opts.okText ?? "确定";
     // validate(value) 返回非空文案 = 拒绝保存。命名框用它做「重名检查」：
     // 拒绝时对话框**不关**，输入框里的内容原样留着，用户改个名再提交 ——
     // 而不是弹一下 toast 就把刚输入的名字丢掉（丢名字 = 用户白输一遍）。
@@ -1421,7 +1421,7 @@
     return supEditName;
   }
   function currentRoleName() {
-    return ROLES.find((r) => r.name === supEditName)?.name ?? "\u2014";
+    return ROLES.find((r) => r.name === supEditName)?.name ?? "—";
   }
   function geomOf(key) {
     return ROLES.find((r) => r.name === key)?.geom ?? null;
@@ -1444,9 +1444,9 @@
   // excludeName 同 roleNameTaken：改名时排除自己。
   function roleNameError(name, excludeName) {
     const n = (name ?? "").trim();
-    if (!n) return "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A";
+    if (!n) return "名称不能为空";
     if (roleNameTaken(n, excludeName)) {
-      return `\u540D\u79F0\u300C${n}\u300D\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A`;
+      return `名称「${n}」已存在，请换一个`;
     }
     return null;
   }
@@ -1557,11 +1557,11 @@
     const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     const input = await promptDialog({
-      title: "\u91CD\u547D\u540D",
-      desc: "\u540D\u79F0\u4F1A\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u3001\u53F0\u8BCD\u6C14\u6CE1\u7684\u8BF4\u8BDD\u4EBA\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\u3002",
+      title: "重命名",
+      desc: "名称会显示在立绘库磁贴、台词气泡的说话人与提醒内容面板标题。",
       value: role.name,
-      placeholder: "\u540D\u79F0",
-      okText: "\u786E\u5B9A",
+      placeholder: "名称",
+      okText: "确定",
       // 重名 → 拒绝保存，留在框里要求重新输入（不关对话框、不丢已输入的名字）。
       // excludeName = key：排除自己，否则「不改名直接点确定」会被自己的旧名挡住。
       //
@@ -1570,7 +1570,7 @@
       // 这时对话框不关、错误留在框里，用户改个名再提交，而不是弹个 toast 把名字丢掉。
       validate: async (v) => {
         const name = (v ?? "").trim();
-        if (!name) return "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A";
+        if (!name) return "名称不能为空";
         const err = roleNameError(name, key);
         if (err) return err;
         // 全字段保存（与原来的 persistRole 同一套语义：名字 / 启停 / 几何 / 台词一起落盘），
@@ -1580,7 +1580,7 @@
         const ok = await persistRole(key);
         if (!ok) {
           role.name = prev;
-          return "\u540D\u79F0\u5DF2\u5B58\u5728\uFF08\u6216\u4FDD\u5B58\u5931\u8D25\uFF09\uFF0C\u8BF7\u6362\u4E00\u4E2A";
+          return "名称已存在（或保存失败），请换一个";
         }
         return null;
       }
@@ -1592,7 +1592,7 @@
     autoSave();
     await refreshSupervisorPreview();
     await renderRoleGallery();
-    toast(`\u5DF2\u91CD\u547D\u540D\u4E3A\u300C${role.name}\u300D`);
+    toast(`已重命名为「${role.name}」`);
   }
   // makeRolePreview 生成并保存磁贴缩略图（导入 / 换图之后调用）。
   //
@@ -1627,24 +1627,24 @@
     }
     await renderRoleGallery();
     fillSupervisorImageName();
-    toast(`\u5DF2\u66F4\u65B0\u300C${role.name}\u300D\u7684\u7ACB\u7ED8\u56FE\u7247`);
+    toast(`已更新「${role.name}」的立绘图片`);
   }
   // 启用/禁用菜单项已移除：随机/顺序模式改由列表复选框直接控制 role.enabled
   async function removeRole(key) {
     const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     const ok = await confirmDialog({
-      title: "\u5220\u9664",
-      desc: `\u786E\u5B9A\u5220\u9664\u300C${role.name}\u300D\uFF1F`,
-      detail: "\u4F1A\u8FDE\u540C\u76EE\u5F55\uFF08\u914D\u7F6E\u3001\u7ACB\u7ED8\u3001\u9884\u89C8\u56FE\uFF09\u4E00\u5E76\u5220\u9664\uFF0C\u4E14\u65E0\u6CD5\u6062\u590D\u3002",
-      okText: "\u5220\u9664"
+      title: "删除",
+      desc: `确定删除「${role.name}」？`,
+      detail: "会连同目录（配置、立绘、预览图）一并删除，且无法恢复。",
+      okText: "删除"
     });
     if (!ok) return;
     // 必须看返回值：删除失败（文件被占用 / 权限不足）时若照样从 ROLES 里摘掉并提示
     // 「已删除」，界面会说谎，而重启后这个督休专员又原样冒出来。
     const done = await window.api.removeSupervisorRole(key);
     if (!done) {
-      toast("\u5220\u9664\u5931\u8D25\uFF1A\u6587\u4EF6\u53EF\u80FD\u88AB\u5360\u7528\uFF0C\u8BF7\u7A0D\u540E\u91CD\u8BD5");
+      toast("删除失败：文件可能被占用，请稍后重试");
       ROLES = await window.api.listSupervisorRoles();
       await renderRoleGallery();
       return;
@@ -1663,23 +1663,23 @@
     autoSave();
     await refreshSupervisorPreview();
     await renderRoleGallery();
-    toast("\u5DF2\u5220\u9664");
+    toast("已删除");
   }
   async function addCustomRole() {
     const picked = await window.api.pickSupervisorImage();
     if (!picked) return;
     // picked.name 是**磁盘上实际落盘**的名字（Go 侧建目录时已去过重：
     // 同名 → "名字 (2)"），用它当默认输入值 —— 用户不改名直接确定才不会撞名被拒。
-    const base = picked.name.trim() || "\u81EA\u5B9A\u4E49\u7ACB\u7ED8";
+    const base = picked.name.trim() || "自定义立绘";
     // saved = 名字是否已经存进磁盘（validate 里保存成功才算）。
     // 取消时要清掉刚建的目录 —— 那时名字还没存，目录是个半成品。
     let saved = false;
     const input = await promptDialog({
-      title: "\u547D\u540D",
-      desc: "\u7ED9\u8FD9\u4E2A\u7ACB\u7ED8\u8D77\u4E00\u4E2A\u540D\u5B57\uFF08\u663E\u793A\u5728\u7ACB\u7ED8\u5E93\u78C1\u8D34\u4E0E\u63D0\u9192\u5185\u5BB9\u9762\u677F\u6807\u9898\uFF09\uFF0C\u540D\u79F0\u4E0D\u80FD\u4E0E\u5176\u4ED6\u7763\u4F11\u4E13\u5458\u91CD\u540D\u3002",
+      title: "命名",
+      desc: "给这个立绘起一个名字（显示在立绘库磁贴与提醒内容面板标题），名称不能与其他督休专员重名。",
       value: base,
-      placeholder: "\u4F8B\u5982\uFF1A\u6211\u7684\u4E0A\u53F8",
-      okText: "\u6DFB\u52A0",
+      placeholder: "例如：我的上司",
+      okText: "添加",
       // 重名 → 拒绝保存，留在框里要求用户重新输入（不关对话框、不丢已输入的名字）。
       //
       // 校验与**保存**都在 validate 里做：Go 侧 SaveRole 才是权威（磁盘上可能已经
@@ -1687,11 +1687,11 @@
       // 这时对话框不关、错误留在框里，用户改个名再提交，而不是弹个 toast 把名字丢掉。
       validate: async (v) => {
         const name = (v ?? "").trim();
-        if (!name) return "\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A";
+        if (!name) return "名称不能为空";
         const err = roleNameError(name, picked.saved);
         if (err) return err;
         const ok = await window.api.saveSupervisorRole(picked.saved, { name });
-        if (!ok) return "\u540D\u79F0\u5DF2\u5B58\u5728\uFF08\u6216\u4FDD\u5B58\u5931\u8D25\uFF09\uFF0C\u8BF7\u6362\u4E00\u4E2A";
+        if (!ok) return "名称已存在（或保存失败），请换一个";
         saved = true;
         return null;
       }
@@ -1712,7 +1712,7 @@
     autoSave();
     await refreshSupervisorPreview();
     await renderRoleGallery();
-    toast(`\u5DF2\u6DFB\u52A0\u300C${name}\u300D`);
+    toast(`已添加「${name}」`);
   }
   function closeRoleMenu() {
     document.getElementById("sup-role-menu")?.remove();
@@ -1724,10 +1724,10 @@
     const menu = document.createElement("div");
     menu.id = "sup-role-menu";
     const items = [
-      { act: "preview", label: "\u9884\u89C8" },
-      { act: "rename", label: "\u91CD\u547D\u540D" },
-      { act: "replace", label: "\u4FEE\u6539\u56FE\u7247" },
-      { act: "del", label: "\u5220\u9664", danger: true }
+      { act: "preview", label: "预览" },
+      { act: "rename", label: "重命名" },
+      { act: "replace", label: "修改图片" },
+      { act: "del", label: "删除", danger: true }
     ];
     for (const it of items) {
       const b = document.createElement("button");
@@ -1966,7 +1966,7 @@
       img.draggable = false; // 图片默认可拖，会抢走磁贴的拖拽（拖的是图而不是整块磁贴）
       const hint = document.createElement("span");
       hint.className = "role-hint";
-      hint.textContent = "\u53F3\u952E\u64CD\u4F5C";
+      hint.textContent = "右键操作";
       // 选择指示：固定模式=单选框（按 fixedRole 名字），随机/顺序=复选框（按 enabled）。
       // 它是这份列表里唯一能改勾选的地方，所以带自己的 click / keydown 与 ARIA 状态。
       const sel = document.createElement("span");
@@ -1975,7 +1975,7 @@
       sel.classList.toggle("on", on);
       sel.setAttribute("role", fixedMode ? "radio" : "checkbox");
       sel.setAttribute("aria-checked", on ? "true" : "false");
-      sel.setAttribute("aria-label", (fixedMode ? "\u56FA\u5B9A\u663E\u793A\uFF1A" : "\u53C2\u4E0E\u8F6E\u6362\uFF1A") + r.name);
+      sel.setAttribute("aria-label", (fixedMode ? "固定显示：" : "参与轮换：") + r.name);
       sel.tabIndex = 0;
       sel.addEventListener("click", (e) => {
         // 别冒泡到磁贴：那一下是「切换编辑对象」，不是「再勾一次」
@@ -2032,8 +2032,8 @@
     const add = document.createElement("button");
     add.type = "button";
     add.className = "role-add";
-    add.title = "\u65B0\u589E\uFF1A\u652F\u6301 PNG / JPG / WebP\uFF0C\u5EFA\u8BAE\u900F\u660E\u80CC\u666F\u7684\u7AD6\u7248\u4EBA\u7269\u56FE\uFF1B\u56FE\u7247\u4F1A\u590D\u5236\u5230\u914D\u7F6E\u76EE\u5F55\uFF0C\u539F\u6587\u4EF6\u79FB\u52A8\u6216\u5220\u9664\u540E\u4ECD\u53EF\u7528";
-    add.innerHTML = '<span class="role-add-box"><span class="role-add-plus">\uFF0B</span><span class="role-add-hint">PNG / JPG / WebP<br>\u900F\u660E\u5E95\u7AD6\u7248\u56FE</span></span><span class="role-add-cap">\u65B0\u589E</span>';
+    add.title = "新增：支持 PNG / JPG / WebP，建议透明背景的竖版人物图；图片会复制到配置目录，原文件移动或删除后仍可用";
+    add.innerHTML = '<span class="role-add-box"><span class="role-add-plus">＋</span><span class="role-add-hint">PNG / JPG / WebP<br>透明底竖版图</span></span><span class="role-add-cap">新增</span>';
     add.addEventListener("click", () => void addCustomRole());
     box.appendChild(add);
     $("sup-gallery-count").textContent = String(ROLES.length);
@@ -2044,9 +2044,9 @@
     const el = $("sup-geom-summary");
     if (!el) return;
     const custom = g.sizePct !== SUP_GEOM_DEFAULT.sizePct || g.posXPct !== SUP_GEOM_DEFAULT.posXPct || g.posYPct !== SUP_GEOM_DEFAULT.posYPct || g.flip !== SUP_GEOM_DEFAULT.flip;
-    el.textContent = `${custom ? "\u5DF2\u8C03\u6574 \xB7 " : ""}\u9AD8\u5EA6 ${g.sizePct}% \xB7 \u8DDD\u5DE6 ${g.posXPct}% \xB7 \u8DDD\u5E95 ${g.posYPct}%` + (g.flip ? " \xB7 \u5DF2\u7FFB\u8F6C" : "");
+    el.textContent = `${custom ? "已调整 \xB7 " : ""}高度 ${g.sizePct}% \xB7 距左 ${g.posXPct}% \xB7 距底 ${g.posYPct}%` + (g.flip ? " \xB7 已翻转" : "");
     el.classList.toggle("customized", custom);
-    el.title = "\u70B9\u5F00\u300C\u9AD8\u7EA7\u9009\u9879\u300D\u53EF\u8C03\u6574\u5F53\u524D\u7ACB\u7ED8\u7684\u663E\u793A\u5C3A\u5BF8\u4E0E\u4F4D\u7F6E\uFF0C\u4EE5\u53CA\u662F\u5426\u6C34\u5E73\u7FFB\u8F6C";
+    el.title = "点开「高级选项」可调整当前立绘的显示尺寸与位置，以及是否水平翻转";
   }
   var supRelayout = null;
   function applySupGeometry(g) {
@@ -2135,8 +2135,8 @@
     box.dataset.enabled = off ? "0" : "1";
     const badge = $("sup-preview-badge");
     badge.classList.toggle("hidden", !off);
-    badge.textContent = off ? "\u529F\u80FD\u5DF2\u5173\u95ED \xB7 \u63D0\u9192\u7A97\u53E3\u4E0D\u4F1A\u663E\u793A\u7763\u4F11\u4E13\u5458" : "";
-    $("sup-preview-line").textContent = supPreview ? stage === 2 ? supPreview.lines.command || supPreview.lines.urge : supPreview.lines.urge : "\u65E0\u6CD5\u8BFB\u53D6\u7ACB\u7ED8\u6587\u4EF6";
+    badge.textContent = off ? "功能已关闭 \xB7 提醒窗口不会显示督休专员" : "";
+    $("sup-preview-line").textContent = supPreview ? stage === 2 ? supPreview.lines.command || supPreview.lines.urge : supPreview.lines.urge : "无法读取立绘文件";
     // 说话人由对话框左上角的名字牌承载（与休息窗口的 dialog-name 同款），不再挂在台词上
     const previewName = $("sup-preview-name");
     pickPreviewSeal(previewName);
@@ -2189,7 +2189,7 @@
     stopSoundPreview();
     const url = await window.api.soundFileUrl(file);
     if (!url) {
-      toast("\u627E\u4E0D\u5230\u8BE5\u97F3\u9891\u6587\u4EF6");
+      toast("找不到该音频文件");
       return;
     }
     const a = new Audio(url);
@@ -2202,8 +2202,8 @@
     const toggle = $("snd-player-toggle");
     $("snd-player-name").textContent = name;
     seek.value = "0";
-    time.textContent = "0:00 / \u2026";
-    toggle.textContent = "\u6682\u505C";
+    time.textContent = "0:00 / …";
+    toggle.textContent = "暂停";
     bar.classList.remove("hidden");
     a.addEventListener("timeupdate", () => {
       if (a !== previewAudio || !a.duration) return;
@@ -2215,12 +2215,12 @@
     });
     a.addEventListener("error", () => {
       if (a === previewAudio) {
-        toast("\u8BD5\u542C\u5931\u8D25\uFF1A\u6587\u4EF6\u4E0D\u53EF\u7528");
+        toast("试听失败：文件不可用");
         stopSoundPreview();
       }
     });
     void a.play().catch(() => {
-      toast("\u8BD5\u542C\u5931\u8D25\uFF1A\u6587\u4EF6\u4E0D\u53EF\u7528");
+      toast("试听失败：文件不可用");
       stopSoundPreview();
     });
   }
@@ -2236,10 +2236,10 @@
       if (!a) return;
       if (a.paused) {
         void a.play().catch(() => void 0);
-        toggle.textContent = "\u6682\u505C";
+        toggle.textContent = "暂停";
       } else {
         a.pause();
-        toggle.textContent = "\u7EE7\u7EED";
+        toggle.textContent = "继续";
       }
     });
     $("snd-player-stop").addEventListener("click", stopSoundPreview);
@@ -2253,7 +2253,7 @@
     if (music.length === 0) {
       const empty = document.createElement("p");
       empty.className = "hint";
-      empty.textContent = "\u5217\u8868\u5DF2\u7A7A\uFF1A\u64AD\u653E\u65F6\u4E0D\u4F1A\u518D\u6709\u63D0\u793A\u97F3\uFF0C\u70B9\u6807\u9898\u884C\u7684\u300C\uFF0B\u300D\u6DFB\u52A0\u3002";
+      empty.textContent = "列表已空：播放时不会再有提示音，点标题行的「＋」添加。";
       list.appendChild(empty);
       return;
     }
@@ -2262,8 +2262,8 @@
       row.className = "tk-item" + (!singleMode && !m.enabled ? " disabled" : "") + " snd-row";
       const handle = document.createElement("span");
       handle.className = "msg-handle";
-      handle.textContent = "\u283F";
-      handle.title = "\u62D6\u52A8\u8C03\u6574\u987A\u5E8F";
+      handle.textContent = "⠿";
+      handle.title = "拖动调整顺序";
       let ctrl;
       if (singleMode) {
         ctrl = document.createElement("input");
@@ -2271,7 +2271,7 @@
         ctrl.name = "snd-single";
         ctrl.value = m.id;
         ctrl.checked = m.id === S.sound.singleId;
-        ctrl.title = "\u5355\u66F2\u5FAA\u73AF\u64AD\u653E\u8FD9\u9996";
+        ctrl.title = "单曲循环播放这首";
         ctrl.addEventListener("change", () => {
           if (!ctrl.checked) return;
           S.sound.singleId = m.id;
@@ -2281,7 +2281,7 @@
         ctrl = document.createElement("input");
         ctrl.type = "checkbox";
         ctrl.checked = m.enabled;
-        ctrl.title = "\u542F\u7528 / \u505C\u7528\uFF1A\u662F\u5426\u53C2\u4E0E\u968F\u673A / \u987A\u5E8F\u64AD\u653E";
+        ctrl.title = "启用 / 停用：是否参与随机 / 顺序播放";
         ctrl.addEventListener("change", () => {
           m.enabled = ctrl.checked;
           row.classList.toggle("disabled", !ctrl.checked);
@@ -2294,20 +2294,20 @@
       name.title = m.file;
       const test = document.createElement("button");
       test.className = "btn mini";
-      test.textContent = "\u8BD5\u542C";
+      test.textContent = "试听";
       test.addEventListener("click", () => {
         void previewSoundFile(m.file, m.name);
       });
       const del = document.createElement("button");
       del.className = "btn mini danger";
-      del.textContent = "\u2715";
-      del.title = "\u5220\u9664\u8FD9\u9996\u97F3\u4E50";
+      del.textContent = "✕";
+      del.title = "删除这首音乐";
       del.addEventListener("click", async () => {
         const ok = await confirmDialog({
-          title: "\u5220\u9664\u8FD9\u9996\u97F3\u4E50\uFF1F",
-          desc: "\u5220\u9664\u540E\u5C06\u4ECE\u97F3\u4E50\u5217\u8868\u79FB\u9664\uFF0C\u5BFC\u5165\u7684\u97F3\u9891\u526F\u672C\u4E5F\u4F1A\u4E00\u5E76\u6E05\u9664\u3002",
+          title: "删除这首音乐？",
+          desc: "删除后将从音乐列表移除，导入的音频副本也会一并清除。",
           detail: m.name,
-          okText: "\u5220\u9664"
+          okText: "删除"
         });
         if (!ok) return;
         if (previewFile === m.file) stopSoundPreview();
@@ -2316,7 +2316,7 @@
         void window.api.deleteMusicSound(m.file);
         renderSoundMusic();
         autoSave();
-        toast("\u5DF2\u5220\u9664");
+        toast("已删除");
       });
       row.append(handle, ctrl, name, test, del);
       row.addEventListener("click", (e) => {
@@ -2428,15 +2428,15 @@
   function nextSlotDayLabel(at) {
     const d = new Date(at);
     const dayDiff = dayDiffOf(at);
-    const day = dayDiff === 0 ? "\u4ECA\u5929" : dayDiff === 1 ? "\u660E\u5929" : WEEKDAYS.find((w) => w.value === isoWeekday(d))?.label ?? "";
+    const day = dayDiff === 0 ? "今天" : dayDiff === 1 ? "明天" : WEEKDAYS.find((w) => w.value === isoWeekday(d))?.label ?? "";
     return `${day} ${pad22(d.getHours())}:${pad22(d.getMinutes())}`;
   }
   function slotNextText(next) {
     if (!next) return "";
-    if (dayDiffOf(next.at) > 0) return "\u4ECA\u65E5\u5DF2\u65E0\u63D0\u9192";
+    if (dayDiffOf(next.at) > 0) return "今日已无提醒";
     const mins = Math.max(0, Math.round((next.at - Date.now()) / 6e4));
-    const left = mins >= 60 ? `${Math.floor(mins / 60)} \u5C0F\u65F6 ${mins % 60} \u5206` : `${mins} \u5206`;
-    return `\u4E0B\u6B21 ${nextSlotDayLabel(next.at)}\uFF08${left}\u540E\uFF09`;
+    const left = mins >= 60 ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分` : `${mins} 分`;
+    return `下次 ${nextSlotDayLabel(next.at)}（${left}后）`;
   }
   function defaultSlotTime() {
     const d = /* @__PURE__ */ new Date();
@@ -2455,12 +2455,12 @@
     const t = S.takeout;
     const active = t.slots.filter((s) => s.enabled);
     if (!t.enabled) {
-      el.textContent = "\u5DF2\u5173\u95ED";
+      el.textContent = "已关闭";
       el.classList.remove("customized");
       return;
     }
     if (active.length === 0) {
-      el.textContent = "\u56FA\u5B9A\u65F6\u95F4 \xB7 \u8FD8\u6CA1\u6709\u63D0\u9192\u65F6\u523B";
+      el.textContent = "固定时间 \xB7 还没有提醒时刻";
       el.classList.remove("customized");
       return;
     }
@@ -2469,7 +2469,7 @@
     const next = plannedAt !== void 0 ? { at: plannedAt } : cfgNext && { at: cfgNext.at };
     // 标题栏右侧只报「类型 · 条数 · 下次时刻」：提前通知秒数是卡内设置项（下面就有
     // 输入框），标题行不再复述一遍。分段拼接是为了 next 为空时不留下结尾的「·」。
-    const parts = ["\u56FA\u5B9A\u65F6\u95F4", `${active.length} \u6761`];
+    const parts = ["固定时间", `${active.length} 条`];
     const nx = slotNextText(next);
     if (nx) parts.push(nx);
     el.textContent = parts.join(" \xB7 ");
@@ -2481,7 +2481,7 @@
     const on = document.createElement("input");
     on.type = "checkbox";
     on.checked = slot.enabled;
-    on.title = "\u542F\u7528 / \u505C\u7528\u8FD9\u6761\u63D0\u9192";
+    on.title = "启用 / 停用这条提醒";
     on.addEventListener("change", () => {
       slot.enabled = on.checked;
       row.classList.toggle("disabled", !on.checked);
@@ -2494,17 +2494,17 @@
     hh.min = "0";
     hh.max = "23";
     hh.value = String(slot.hour);
-    hh.title = "\u5C0F\u65F6\uFF080~23\uFF0C24 \u5C0F\u65F6\u5236\uFF09";
+    hh.title = "小时（0~23，24 小时制）";
     const mm = document.createElement("input");
     mm.type = "number";
     mm.min = "0";
     mm.max = "59";
     mm.value = String(slot.minute);
-    mm.title = "\u5206\u949F\uFF080~59\uFF09";
+    mm.title = "分钟（0~59）";
     const hhText = document.createElement("span");
-    hhText.textContent = "\u65F6";
+    hhText.textContent = "时";
     const mmText = document.createElement("span");
-    mmText.textContent = "\u5206";
+    mmText.textContent = "分";
     hh.addEventListener("change", () => {
       slot.hour = clampNum(hh, 12); // 区间读 hh.min/max（0~23），越界已回写
       opts.onChange();
@@ -2516,7 +2516,7 @@
     time.append(hh, hhText, mm, mmText);
     const repeat = document.createElement("select");
     repeat.className = "tk-repeat";
-    for (const opt of [{ v: "daily", t: "\u6BCF\u5929" }, { v: "weekly", t: "\u6BCF\u5468" }]) {
+    for (const opt of [{ v: "daily", t: "每天" }, { v: "weekly", t: "每周" }]) {
       const o = document.createElement("option");
       o.value = opt.v;
       o.textContent = opt.t;
@@ -2559,14 +2559,14 @@
     });
     const del = document.createElement("button");
     del.className = "btn mini danger";
-    del.textContent = "\u2715";
-    del.title = "\u5220\u9664\u8FD9\u6761\u63D0\u9192";
+    del.textContent = "✕";
+    del.title = "删除这条提醒";
     del.addEventListener("click", () => {
       void confirmDialog({
-        title: `\u5220\u9664${opts.what}\uFF1F`,
-        desc: "\u5220\u9664\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002",
+        title: `删除${opts.what}？`,
+        desc: "删除后立即生效，无法撤销。",
         detail: describeTimeSlot(slot),
-        okText: "\u5220\u9664"
+        okText: "删除"
       }).then((ok) => {
         if (ok) opts.onRemove(slot);
       });
@@ -2588,8 +2588,8 @@
   }
   function renderTakeoutList() {
     const t = S.takeout;
-    renderSlotList($("tk-list"), t.slots, "\u8FD8\u6CA1\u6709\u5916\u5356\u63D0\u9192\u65F6\u95F4\uFF0C\u70B9\u6807\u9898\u884C\u53F3\u4FA7\u7684\u300C\uFF0B\u300D\u65B0\u589E\u4E00\u6761", {
-      what: "\u8FD9\u6761\u5916\u5356\u63D0\u9192",
+    renderSlotList($("tk-list"), t.slots, "还没有外卖提醒时间，点标题行右侧的「＋」新增一条", {
+      what: "这条外卖提醒",
       onChange: () => {
         updateTakeoutSummary();
         autoSave();
@@ -2607,7 +2607,7 @@
   function shortBreakCard() {
     for (const c of document.querySelectorAll("#tab-timing > .card")) {
       const h = c.querySelector(":scope > .card-head h3");
-      if (h && h.textContent === "\u77ED\u4F11\u606F") return c;
+      if (h && h.textContent === "短休息") return c;
     }
     return null;
   }
@@ -2633,17 +2633,17 @@
     const head = card.querySelector(":scope > .card-head");
     head.querySelector("h3").textContent = cb.name;
     const sum = head.querySelector(".adv-summary");
-    sum.textContent = "\u2014";
+    sum.textContent = "—";
     const actions = document.createElement("div");
     actions.className = "card-actions";
     sum.replaceWith(actions);
     actions.appendChild(sum);
     // 重命名 / 删除：图标按钮（✎ / ✕，与「提醒内容」行尾的编辑 / 删除同款），
     // 重命名在左、删除在右；改名后即时同步卡片标题与今日时间线。
-    const rename = mkBtn("\u270E", "\u91CD\u547D\u540D", () => void renameCustomBreak(cb.id));
+    const rename = mkBtn("✎", "重命名", () => void renameCustomBreak(cb.id));
     rename.classList.add("cb-rename");
     actions.appendChild(rename);
-    const del = mkBtn("\u2715", "\u5220\u9664", () => void removeCustomBreak(cb.id));
+    const del = mkBtn("✕", "删除", () => void removeCustomBreak(cb.id));
     del.classList.add("cb-del", "danger");
     actions.appendChild(del);
     const pvBtn = card.querySelector(`#${cb.id}-preview`);
@@ -2659,7 +2659,7 @@
     const pauseRow = document.createElement("div");
     pauseRow.className = "row field";
     const pauseLabel = document.createElement("label");
-    pauseLabel.append(document.createTextNode("\u6682\u505C\u4F11\u606F\u65F6"),
+    pauseLabel.append(document.createTextNode("暂停休息时"),
       mkQMark("pause-scope-help", pauseScopeHint()));
     const pauseHost = document.createElement("div");
     pauseHost.id = `${cb.id}-pause`;
@@ -2697,7 +2697,7 @@
       renderBreakList(id);
       await autoSave();
       refreshStatusNow();
-      toast(`\u5DF2\u6DFB\u52A0 ${slotTimeText(slot)} \u7684${cb.name}`);
+      toast(`已添加 ${slotTimeText(slot)} 的${cb.name}`);
     });
     for (const suffix of ["enabled", "interval"]) {
       $(`${id}-${suffix}`).addEventListener("change", () => updateBreakSummary(id));
@@ -2727,25 +2727,25 @@
   }
   // 已被占用的提醒名称：内置（短休息/长休息/外卖提醒）+ 已有自定义提醒名称；新增时不得与之重名。
   function reservedReminderNames() {
-    const names = ["\u77ED\u4F11\u606F", "\u957F\u4F11\u606F", "\u5916\u5356\u63D0\u9192"];
+    const names = ["短休息", "长休息", "外卖提醒"];
     for (const cb of S.customBreaks ?? []) names.push(cb.name);
     return names;
   }
   async function addCustomBreak() {
     const input = await promptDialog({
-      title: "\u65B0\u5EFA\u81EA\u5B9A\u4E49\u63D0\u9192",
-      label: "\u63D0\u9192\u540D\u79F0\uFF1A",
-      placeholder: "\u4F8B\u5982\uFF1A\u559D\u6C34\u63D0\u9192",
-      okText: "\u521B\u5EFA"
+      title: "新建自定义提醒",
+      label: "提醒名称：",
+      placeholder: "例如：喝水提醒",
+      okText: "创建"
     });
     if (input === null) return;
     const name = input.trim().slice(0, 24);
     if (!name) {
-      toast("\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+      toast("名称不能为空");
       return;
     }
     if (reservedReminderNames().includes(name)) {
-      toast(`\u63D0\u9192\u540D\u79F0\u300C${name}\u300D\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A`);
+      toast(`提醒名称「${name}」已存在，请换一个`);
       return;
     }
     const cb = {
@@ -2760,7 +2760,7 @@
     applyBreakModeUI();
     autoSave();
     refreshStatusNow();
-    toast(`\u5DF2\u65B0\u5EFA\u81EA\u5B9A\u4E49\u63D0\u9192\u300C${name}\u300D`);
+    toast(`已新建自定义提醒「${name}」`);
   }
   // 重命名自定义提醒：复用新建时的输入弹窗（预填当前名并自动全选，直接输入即覆盖）。
   // 校验口径与新建一致：非空 / ≤24 字 / 不与内置和其他自定义提醒重名；
@@ -2769,20 +2769,20 @@
     const cb = (S.customBreaks ?? []).find((c) => c.id === id);
     if (!cb) return;
     const input = await promptDialog({
-      title: "\u91CD\u547D\u540D\u81EA\u5B9A\u4E49\u63D0\u9192",
-      label: "\u63D0\u9192\u540D\u79F0\uFF1A",
+      title: "重命名自定义提醒",
+      label: "提醒名称：",
       value: cb.name,
-      okText: "\u4FDD\u5B58"
+      okText: "保存"
     });
     if (input === null) return;
     const name = input.trim().slice(0, 24);
     if (!name) {
-      toast("\u540D\u79F0\u4E0D\u80FD\u4E3A\u7A7A");
+      toast("名称不能为空");
       return;
     }
     if (name === cb.name) return; // 没改：不落盘、不提示
     if (reservedReminderNames().includes(name)) {
-      toast(`\u63D0\u9192\u540D\u79F0\u300C${name}\u300D\u5DF2\u5B58\u5728\uFF0C\u8BF7\u6362\u4E00\u4E2A`);
+      toast(`提醒名称「${name}」已存在，请换一个`);
       return;
     }
     cb.name = name;
@@ -2790,16 +2790,16 @@
     if (h3) h3.textContent = name;
     autoSave();
     refreshStatusNow();
-    toast(`\u5DF2\u91CD\u547D\u540D\u4E3A\u300C${name}\u300D`);
+    toast(`已重命名为「${name}」`);
   }
   async function removeCustomBreak(id) {
     const cb = (S.customBreaks ?? []).find((c) => c.id === id);
     if (!cb) return;
     const ok = await confirmDialog({
-      title: `\u5220\u9664\u81EA\u5B9A\u4E49\u63D0\u9192\u300C${cb.name}\u300D\uFF1F`,
-      desc: "\u5220\u9664\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002",
-      detail: cb.config.mode === "fixed" ? `\u56FA\u5B9A\u65F6\u95F4 \xB7 ${cb.config.slots.length} \u6761\u65F6\u523B` : `\u5012\u8BA1\u65F6 \xB7 \u6BCF ${Math.round(cb.config.intervalMs / 6e4)} \u5206\u949F\u4E00\u6B21`,
-      okText: "\u5220\u9664"
+      title: `删除自定义提醒「${cb.name}」？`,
+      desc: "删除后立即生效，无法撤销。",
+      detail: cb.config.mode === "fixed" ? `固定时间 \xB7 ${cb.config.slots.length} 条时刻` : `倒计时 \xB7 每 ${Math.round(cb.config.intervalMs / 6e4)} 分钟一次`,
+      okText: "删除"
     });
     if (!ok) return;
     S.customBreaks = (S.customBreaks ?? []).filter((c) => c.id !== id);
@@ -2807,7 +2807,7 @@
     applyBreakModeUI();
     autoSave();
     refreshStatusNow();
-    toast(`\u5DF2\u5220\u9664\u81EA\u5B9A\u4E49\u63D0\u9192\u300C${cb.name}\u300D`);
+    toast(`已删除自定义提醒「${cb.name}」`);
   }
   function allBreakIds() {
     return ["short", "long", ...(S.customBreaks ?? []).map((c) => c.id)];
@@ -2823,31 +2823,31 @@
     const c = breakCfg(id);
     if (!el || !c) return;
     if (!c.enabled) {
-      el.textContent = "\u5DF2\u5173\u95ED";
+      el.textContent = "已关闭";
       el.classList.remove("customized");
       return;
     }
     if (c.mode === "countdown") {
-      el.textContent = `\u5012\u8BA1\u65F6 \xB7 \u6BCF ${Math.round(c.intervalMs / 6e4)} \u5206\u949F\u4E00\u6B21`;
+      el.textContent = `倒计时 \xB7 每 ${Math.round(c.intervalMs / 6e4)} 分钟一次`;
       el.classList.add("customized");
       return;
     }
     const n = activeSlotCount(id);
     if (n === 0) {
-      el.textContent = "\u56FA\u5B9A\u65F6\u95F4 \xB7 \u8FD8\u6CA1\u6709\u63D0\u9192\u65F6\u523B";
+      el.textContent = "固定时间 \xB7 还没有提醒时刻";
       el.classList.remove("customized");
       return;
     }
     const plannedAt = LAST_STATE?.fixedNext?.[id];
     const next = plannedAt !== void 0 ? { at: plannedAt } : nextSlotAt(c.slots);
-    el.textContent = `\u56FA\u5B9A\u65F6\u95F4 \xB7 ${n} \u6761 \xB7 ${slotNextText(next)}`;
+    el.textContent = `固定时间 \xB7 ${n} 条 \xB7 ${slotNextText(next)}`;
     el.classList.add("customized");
   }
   function renderBreakList(id) {
     const c = breakCfg(id);
     if (!c) return;
-    renderSlotList($(`${id}-list`), c.slots, "\u8FD8\u6CA1\u6709\u63D0\u9192\u65F6\u95F4\uFF0C\u70B9\u6807\u9898\u884C\u53F3\u4FA7\u7684\u300C\uFF0B\u300D\u65B0\u589E\u4E00\u6761", {
-      what: "\u8FD9\u6761\u4F11\u606F\u65F6\u523B",
+    renderSlotList($(`${id}-list`), c.slots, "还没有提醒时间，点标题行右侧的「＋」新增一条", {
+      what: "这条休息时刻",
       onChange: () => {
         updateBreakSummary(id);
         autoSave();
@@ -2892,7 +2892,7 @@
   }
   function fillForm() {
     $("appName").value = S.appName ?? "";
-    $("tb-title").textContent = S.appName || "\u5403\u997C\u4EBA\u4E5F\u6562\u4F11\u606F\uFF1F";
+    $("tb-title").textContent = S.appName || "吃饼人也敢休息？";
     const themeVal = S.theme === "light" || S.theme === "dark" ? S.theme : "light";
     document.querySelector(`input[name=theme][value="${themeVal}"]`).checked = true;
     S.theme = themeVal;
@@ -2954,7 +2954,7 @@
   }
   function collectForm() {
     S.theme = document.querySelector("input[name=theme]:checked").value;
-    S.appName = ($("appName").value.trim() || "\u5403\u997C\u4EBA\u4E5F\u6562\u4F11\u606F\uFF1F").slice(0, 30);
+    S.appName = ($("appName").value.trim() || "吃饼人也敢休息？").slice(0, 30);
     $("tb-title").textContent = S.appName;
     S.idlePauseMin = clampNum($("idlePauseMin"), 5);
     S.longEveryNShort = clampNum($("longEveryNShort"), 2);
@@ -3033,7 +3033,7 @@
     return v;
   }
   var MSG_KINDS = ["short", "long", "takeout"];
-  var MSG_KIND_LABEL = { short: "\u77ED\u4F11\u606F", long: "\u957F\u4F11\u606F", takeout: "\u5916\u5356\u63D0\u9192" };
+  var MSG_KIND_LABEL = { short: "短休息", long: "长休息", takeout: "外卖提醒" };
   var msgBatchTarget = "short";
   var BUILTIN_MSGS = null;
   // 条目 id = 本列表内的序号（与 Go 侧 nextSeqID 同口径）：取现有最大整数 +1。
@@ -3095,14 +3095,14 @@
     if (!cfg) {
       const d = document.createElement("div");
       d.className = "msg-empty";
-      d.textContent = "\u6B63\u5728\u8BC6\u522B\u5F53\u524D\u7ACB\u7ED8\uFF0C\u8BF7\u7A0D\u5019\u2026";
+      d.textContent = "正在识别当前立绘，请稍候…";
       list.appendChild(d);
       return;
     }
     if (cfg.items.length === 0) {
       const d = document.createElement("div");
       d.className = "msg-empty";
-      d.textContent = target === "takeout" ? "\u6682\u65E0\u63D0\u9192\u5185\u5BB9\uFF1A\u5916\u5356\u63D0\u9192\u7A97\u53E3\u91CC\u5C06\u663E\u793A\u300C\u5916\u5356\u63D0\u9192\u300D" : target === "sup" ? "\u6682\u65E0\u63D0\u9192\u5185\u5BB9\uFF1A\u5347\u7EA7\u9636\u6BB5\u5C06\u6CBF\u7528\u7B2C\u4E00\u9636\u6BB5\u7684\u53F0\u8BCD" : "\u6682\u65E0\u63D0\u9192\u5185\u5BB9\uFF1A\u63D0\u9192\u7A97\u53E3\u91CC\u5C06\u663E\u793A\u8BE5\u63D0\u9192\u7684\u540D\u79F0";
+      d.textContent = target === "takeout" ? "暂无提醒内容：外卖提醒窗口里将显示「外卖提醒」" : target === "sup" ? "暂无提醒内容：升级阶段将沿用第一阶段的台词" : "暂无提醒内容：提醒窗口里将显示该提醒的名称";
       list.appendChild(d);
       return;
     }
@@ -3121,15 +3121,15 @@
     row.dataset.id = item.id;
     const handle = document.createElement("span");
     handle.className = "msg-handle";
-    handle.title = "\u62D6\u52A8\u8C03\u6574\u987A\u5E8F";
-    handle.textContent = "\u283F";
+    handle.title = "拖动调整顺序";
+    handle.textContent = "⠿";
     let ctrl;
     if (fixedMode) {
       ctrl = document.createElement("input");
       ctrl.type = "radio";
       ctrl.name = `msg-single-${target}`;
       ctrl.checked = item.id === cfg?.fixedId;
-      ctrl.title = "\u56FA\u5B9A\u663E\u793A\u8FD9\u4E00\u6761";
+      ctrl.title = "固定显示这一条";
       ctrl.addEventListener("change", () => {
         if (!ctrl.checked || !cfg) return;
         cfg.fixedId = item.id;
@@ -3140,7 +3140,7 @@
       ctrl = document.createElement("input");
       ctrl.type = "checkbox";
       ctrl.checked = item.enabled;
-      ctrl.title = "\u542F\u7528/\u7981\u7528\uFF1A\u662F\u5426\u53C2\u4E0E\u968F\u673A / \u987A\u5E8F\u53D6\u66F2";
+      ctrl.title = "启用/禁用：是否参与随机 / 顺序取曲";
       ctrl.addEventListener("change", () => {
         item.enabled = ctrl.checked;
         row.classList.toggle("disabled", !ctrl.checked);
@@ -3152,17 +3152,17 @@
     txt.type = "text";
     txt.className = "msg-text";
     txt.value = item.text;
-    txt.placeholder = "\u63D0\u9192\u5185\u5BB9\uFF08\u7EAF\u6587\u672C\uFF09";
+    txt.placeholder = "提醒内容（纯文本）";
     txt.readOnly = true; // 默认不可编辑，点「编辑」图标才进入编辑态
-    const ICON_EDIT = "\u270E", ICON_DEL = "\u2715", ICON_SAVE = "\u2713", ICON_CANCEL = "\u21BA";
+    const ICON_EDIT = "✎", ICON_DEL = "✕", ICON_SAVE = "✓", ICON_CANCEL = "↺";
     let editing = false;
     function setButtonsToEdit() {
-      editBtn.textContent = ICON_EDIT; editBtn.title = "\u7F16\u8F91";
-      delBtn.textContent = ICON_DEL; delBtn.title = "\u5220\u9664";
+      editBtn.textContent = ICON_EDIT; editBtn.title = "编辑";
+      delBtn.textContent = ICON_DEL; delBtn.title = "删除";
     }
     function setButtonsToSave() {
-      editBtn.textContent = ICON_SAVE; editBtn.title = "\u4FDD\u5B58";
-      delBtn.textContent = ICON_CANCEL; delBtn.title = "\u53D6\u6D88";
+      editBtn.textContent = ICON_SAVE; editBtn.title = "保存";
+      delBtn.textContent = ICON_CANCEL; delBtn.title = "取消";
     }
     function enterEdit() {
       if (editing) return;
@@ -3191,10 +3191,10 @@
     }
     function deleteRow() {
       void confirmDialog({
-        title: "\u5220\u9664\u8FD9\u6761\u63D0\u9192\u5185\u5BB9\uFF1F",
-        desc: "\u5220\u9664\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002",
-        detail: item.text || "(\u7A7A)",
-        okText: "\u5220\u9664"
+        title: "删除这条提醒内容？",
+        desc: "删除后立即生效，无法撤销。",
+        detail: item.text || "(空)",
+        okText: "删除"
       }).then((ok) => {
         if (!ok) return;
         const c = msgCfgOf(target);
@@ -3209,12 +3209,12 @@
     editBtn.type = "button";
     editBtn.className = "btn mini";
     editBtn.textContent = ICON_EDIT;
-    editBtn.title = "\u7F16\u8F91";
+    editBtn.title = "编辑";
     const delBtn = document.createElement("button");
     delBtn.type = "button";
     delBtn.className = "btn mini danger";
     delBtn.textContent = ICON_DEL;
-    delBtn.title = "\u5220\u9664";
+    delBtn.title = "删除";
     editBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       if (editing) saveEdit(); else enterEdit();
@@ -3311,7 +3311,7 @@
     }
     panel.querySelector(".msg-add").addEventListener("click", () => {
       msgBatchTarget = target;
-      $("batch-title").textContent = `\u6279\u91CF\u65B0\u589E\u63D0\u9192\u5185\u5BB9\uFF08${msgTargetLabel(target)}\uFF09`;
+      $("batch-title").textContent = `批量新增提醒内容（${msgTargetLabel(target)}）`;
       $("msg-batch-text").value = "";
       $("batch-modal").classList.remove("hidden");
       $("msg-batch-text").focus();
@@ -3344,14 +3344,14 @@
   // 撞车时先注册的那个能生效，后面的注册失败（所以「重复」只标后一行）。
   var SHORTCUT_IDS = ["sc-postpone", "sc-endEarly", "sc-pause", "sc-nextBreak"];
   var SHORTCUT_LABELS = {
-    "sc-postpone": "\u63A8\u8FDF\u5F53\u524D\u4F11\u606F",
-    "sc-endEarly": "\u63D0\u524D\u7ED3\u675F\u4F11\u606F",
-    "sc-pause": "\u6682\u505C / \u6062\u590D\u4F11\u606F",
-    "sc-nextBreak": "\u8DF3\u8F6C\u5230\u4E0B\u4E00\u6B21\u4F11\u606F"
+    "sc-postpone": "推迟当前休息",
+    "sc-endEarly": "提前结束休息",
+    "sc-pause": "暂停 / 恢复休息",
+    "sc-nextBreak": "跳转到下一次休息"
   };
   var SHORTCUT_MODS = ["Ctrl", "Alt", "Shift", "Super"];
-  var SHORTCUT_TITLE_OK = "\u70B9\u51FB\u540E\u6309\u4E0B\u7EC4\u5408\u952E\u5F55\u5165\uFF1B\u7559\u7A7A\u8868\u793A\u7981\u7528\uFF1BEsc \u6E05\u7A7A";
-  var SHORTCUT_NO_MOD = "\u9700\u8981\u81F3\u5C11\u4E00\u4E2A\u4FEE\u9970\u952E\uFF08Ctrl / Alt / Shift / Super\uFF09";
+  var SHORTCUT_TITLE_OK = "点击后按下组合键录入；留空表示禁用；Esc 清空";
+  var SHORTCUT_NO_MOD = "需要至少一个修饰键（Ctrl / Alt / Shift / Super）";
   // 一道判断两处用：录入时挡下、回填后标红。裸键（A / F5 / 空格）注册成全局热键会把
   // 正常打字全吃掉，Go 侧 parseAccelerator 本来就拒绝 —— 这里必须当场说清楚，
   // 而不是让用户录进去一个永远不生效的键（P3-4）。
@@ -3365,7 +3365,7 @@
       if (other === id) continue;
       if (SHORTCUT_IDS.indexOf(other) > SHORTCUT_IDS.indexOf(id)) continue;
       if (($(other)?.value ?? "").trim() === acc) {
-        return `\u548C\u300C${SHORTCUT_LABELS[other]}\u300D\u7528\u4E86\u540C\u4E00\u4E2A\u7EC4\u5408\u952E\uFF08\u53EA\u6709\u5B83\u751F\u6548\uFF09`;
+        return `和「${SHORTCUT_LABELS[other]}」用了同一个组合键（只有它生效）`;
       }
     }
     return "";
@@ -3380,11 +3380,11 @@
       const issue = shortcutIssue(id);
       input.classList.toggle("bad", !!issue);
       input.title = issue || SHORTCUT_TITLE_OK;
-      if (issue) msgs.push(`\u300C${SHORTCUT_LABELS[id]}\u300D${issue}`);
+      if (issue) msgs.push(`「${SHORTCUT_LABELS[id]}」${issue}`);
     }
     const warn = $("sc-warn");
     if (warn) {
-      warn.textContent = msgs.join("\uFF1B");
+      warn.textContent = msgs.join("；");
       warn.classList.toggle("hidden", msgs.length === 0);
     }
   }
@@ -3425,15 +3425,15 @@
   }
   function fmtRemain(ms) {
     const s = Math.max(0, Math.ceil(ms / 1e3));
-    if (s < 60) return `${s}\u79D2`;
+    if (s < 60) return `${s}秒`;
     const m = Math.floor(s / 60);
     const r = s % 60;
-    if (m < 60) return r > 0 ? `${m}\u5206${r}\u79D2` : `${m}\u5206`;
+    if (m < 60) return r > 0 ? `${m}分${r}秒` : `${m}分`;
     const h = Math.floor(m / 60);
     const mm = m % 60;
-    let out = `${h}\u5C0F\u65F6`;
-    if (mm > 0) out += `${mm}\u5206`;
-    if (r > 0) out += `${r}\u79D2`;
+    let out = `${h}小时`;
+    if (mm > 0) out += `${mm}分`;
+    if (r > 0) out += `${r}秒`;
     return out;
   }
   // 定时暂停的结束时刻（24 小时制）。只用于状态格的悬停提示，不参与判定。
@@ -3494,12 +3494,12 @@
       if (k.scrollWidth > k.clientWidth + 1 && full.length > 3) {
         k.title = full;
         // 中间省略：保留「下次…提醒」首尾，二分找能放下的最长长度
-        let lo = 2, hi = full.length - 1, best = "\u2026";
+        let lo = 2, hi = full.length - 1, best = "…";
         while (lo <= hi) {
           const mid = (lo + hi) >> 1;
           const head = Math.ceil(mid / 2);
           const tail = mid - head;
-          const cand = full.slice(0, head) + "\u2026" + (tail > 0 ? full.slice(full.length - tail) : "");
+          const cand = full.slice(0, head) + "…" + (tail > 0 ? full.slice(full.length - tail) : "");
           k.textContent = cand;
           if (k.scrollWidth <= k.clientWidth + 1) { best = cand; lo = mid + 1; } else { hi = mid - 1; }
         }
@@ -3526,7 +3526,7 @@
     LAST_STATE = st;
     // 「暂停休息/恢复休息」互斥显示：暂停中只显示「恢复休息」，否则只显示「暂停休息」
     const qaPause = $("qa-pause");
-    if (qaPause) qaPause.textContent = st.paused ? "\u6062\u590D\u4F11\u606F" : "\u6682\u505C\u4F11\u606F";
+    if (qaPause) qaPause.textContent = st.paused ? "恢复休息" : "暂停休息";
     // 「推迟休息」按钮：当前下次提醒的「可推迟」为 0 分钟时不显示 —— 推迟 0 分钟
     // 等于立即再弹一次，没有意义。提前提示窗 / 外卖窗口的「推迟」按钮同样按此显隐。
     // 休息进行中也不显示（已经在休息了，没有「再往后推」这回事）。
@@ -3537,40 +3537,40 @@
     const qaBreak = $("qa-break");
     if (qaBreak) qaBreak.disabled = inBreak;
     const qaSkip = $("qa-skip");
-    if (qaSkip) qaSkip.textContent = inBreak ? "\u63D0\u524D\u7ED3\u675F" : "\u8DF3\u8FC7\u672C\u6B21";
+    if (qaSkip) qaSkip.textContent = inBreak ? "提前结束" : "跳过本次";
     const qaPostpone = $("qa-postpone");
     if (qaPostpone) {
       const cfg = st.nextType ? breakCfg(st.nextType) : null;
       qaPostpone.classList.toggle("hidden", inBreak || !(cfg && cfg.postponeMs > 0));
     }
-    const phaseText = st.phase === "break" ? "\u4F11\u606F\u4E2D" : st.phase === "pre" ? "\u5373\u5C06\u4F11\u606F" : "\u52AA\u529B\u5DE5\u4F5C\u4E2D";
+    const phaseText = st.phase === "break" ? "休息中" : st.phase === "pre" ? "即将休息" : "努力工作中";
     // 暂停统一显示「暂停休息」：不论是手动暂停、系统空闲（人离开工位）、系统勿扰
     // 还是指定应用占用运行，状态格只给一个结论；具体原因挂到该格的 title 上悬停可看
     // （托盘 tooltip 里照旧是「已暂停：原因」）。
-    const phaseVal = st.paused ? "\u6682\u505C\u4F11\u606F" : phaseText;
+    const phaseVal = st.paused ? "暂停休息" : phaseText;
     // 定时暂停多一句「到 X 自动结束」：状态格只写「暂停休息」的话，过一会儿就忘了
     // 自己设过时长（托盘那边写的是剩余时间，两处口径不同，但指的是同一件事）。
     const pauseUntilText = st.paused && st.pauseDeadline > 0
-      ? "\uFF1B\u5230 " + fmtClockMs(st.pauseDeadline) + " \u81EA\u52A8\u7ED3\u675F"
+      ? "；到 " + fmtClockMs(st.pauseDeadline) + " 自动结束"
       : "";
     const pauseTitle = st.paused && st.pauseReasons.length
-      ? "\u6682\u505C\u539F\u56E0\uFF1A" + st.pauseReasons.map(pauseReasonText).join("\u3001") + pauseUntilText
+      ? "暂停原因：" + st.pauseReasons.map(pauseReasonText).join("、") + pauseUntilText
       : "";
     const now = st.paused && !(st.phase === "break" && st.breakWhilePaused) ? st.pausedAt : Date.now();
-    const otherKey = (name) => name.endsWith("\u63D0\u9192") ? `\u4E0B\u6B21${name}` : `\u4E0B\u6B21${name}\u63D0\u9192`;
-    const todayOnly = (at) => dayDiffOf(at) > 0 ? "\u4ECA\u65E5\u5DF2\u65E0\u63D0\u9192" : fmtRemain(Math.max(0, at - now));
+    const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
+    const todayOnly = (at) => dayDiffOf(at) > 0 ? "今日已无提醒" : fmtRemain(Math.max(0, at - now));
     // 「下次提醒」取外卖/自定义里最近的一次（st.other 已合并两者）；
     // 仅当该最近提醒落在「今天」（at 在当天剩余时间）才显示，否则隐藏整格。
     const otherCell = st.other && dayDiffOf(st.other.at) === 0
       ? [otherKey(st.other.name), todayOnly(st.other.at)]
       : null;
-    const cells = [["\u72B6\u6001", phaseVal, pauseTitle]];
+    const cells = [["状态", phaseVal, pauseTitle]];
     if (st.phase === "break") {
-      cells.push(["\u6B63\u5728\u4F11\u606F", fmtRemain(Math.max(0, st.breakEndsAt - now))]);
-      if (otherCell) cells.push(["\u4E0B\u6B21\u63D0\u9192", "\u2014"]);
+      cells.push(["正在休息", fmtRemain(Math.max(0, st.breakEndsAt - now))]);
+      if (otherCell) cells.push(["下次提醒", "—"]);
     } else {
       cells.push(
-        st.rest ? [`\u4E0B\u6B21${st.rest.name}`, todayOnly(st.rest.at)] : ["\u4E0B\u6B21\u4F11\u606F\u63D0\u9192", "\u672A\u5B89\u6392"]
+        st.rest ? [`下次${st.rest.name}`, todayOnly(st.rest.at)] : ["下次休息提醒", "未安排"]
       );
       if (otherCell) cells.push(otherCell);
     }
@@ -3625,7 +3625,7 @@
     const empty = document.getElementById("tl-empty");
     if (!card || !count || !body || !list || !empty) return;
     const items = st?.timeline ?? [];
-    count.textContent = items.length > 0 ? `\u5F85\u89E6\u53D1 ${items.length} \u6761` : "\u4ECA\u5929\u6CA1\u6709\u672A\u89E6\u53D1\u7684\u63D0\u9192";
+    count.textContent = items.length > 0 ? `待触发 ${items.length} 条` : "今天没有未触发的提醒";
     body.classList.toggle("hidden", !tlExpanded);
     card.classList.toggle("open", tlExpanded);
     empty.classList.toggle("hidden", items.length > 0);
@@ -3645,12 +3645,12 @@
       name.textContent = it.name;
       const src = document.createElement("span");
       src.className = "tl-src";
-      src.textContent = it.source === "countdown" ? "\u5012\u8BA1\u65F6" : "\u56FA\u5B9A\u65F6\u523B";
+      src.textContent = it.source === "countdown" ? "倒计时" : "固定时刻";
       row.append(time, dot, name, src);
       if (it.paused) {
         const badge = document.createElement("span");
         badge.className = "tl-badge pause";
-        badge.textContent = "\u5DF2\u6682\u505C";
+        badge.textContent = "已暂停";
         row.append(badge);
       }
       list.append(row);
@@ -3661,13 +3661,13 @@
   }
   function fmtDur(ms) {
     const s = Math.round(ms / 1e3);
-    if (s < 60) return `${s} \u79D2`;
+    if (s < 60) return `${s} 秒`;
     const m = Math.floor(s / 60);
-    if (m < 60) return `${m} \u5206 ${s % 60} \u79D2`;
+    if (m < 60) return `${m} 分 ${s % 60} 秒`;
     const h = Math.floor(m / 60);
-    if (h < 24) return `${h} \u5C0F\u65F6 ${m % 60} \u5206`;
+    if (h < 24) return `${h} 小时 ${m % 60} 分`;
     const d = Math.floor(h / 24);
-    return `${d} \u5929 ${h % 24} \u5C0F\u65F6`;
+    return `${d} 天 ${h % 24} 小时`;
   }
   // ---------- 今天：一条堆叠条 + 两组横向条形 ----------
   // 为什么不用三个饼图：「工作 / 休息 / 离开」互斥且加总就是今天的软件运行时长，属部分-整体；
@@ -3788,7 +3788,7 @@
     const dateEl = $("stats-date");
     if (dateEl && t.date) {
       const wd = weekdayLabelOf(t.date);
-      dateEl.textContent = wd ? `\uFF08${t.date} ${wd}\uFF09` : `\uFF08${t.date}\uFF09`;
+      dateEl.textContent = wd ? `（${t.date} ${wd}）` : `（${t.date}）`;
     }
     if (box.dataset.built !== "1") {
       buildComposition(box);
@@ -3797,7 +3797,7 @@
     const vals = { work: t.workMs || 0, break: t.breakMs || 0, away: t.awayMs || 0 };
     const total = vals.work + vals.break + vals.away;
     const tot = $("comp-total");
-    if (tot) tot.textContent = total ? `\u8F6F\u4EF6\u8FD0\u884C ${fmtDur(total)}` : "\u6682\u65E0\u8BB0\u5F55";
+    if (tot) tot.textContent = total ? `软件运行 ${fmtDur(total)}` : "暂无记录";
     for (const s of COMP_TIME) {
       const v = vals[s.k];
       const seg = box.querySelector(`[data-seg="${s.k}"]`);
@@ -3865,21 +3865,21 @@
   var RC_M = { top: 16, right: 46, bottom: 26, left: 44 };
   var RC_WINDOWS = { day: 30, week: 26, month: 13, quarter: 5, year: 2 };
   var RC_UNITS = [
-    { u: "day", label: "\u65E5" },
-    { u: "week", label: "\u5468" },
-    { u: "month", label: "\u6708" },
-    { u: "quarter", label: "\u5B63" },
-    { u: "year", label: "\u5E74" }
+    { u: "day", label: "日" },
+    { u: "week", label: "周" },
+    { u: "month", label: "月" },
+    { u: "quarter", label: "季" },
+    { u: "year", label: "年" }
   ];
   var RC_SERIES = [
-    { id: "long", label: "\u957F\u4F11\u606F\u65F6\u95F4", kind: "bar", cls: "rc-long" },
-    { id: "short", label: "\u77ED\u4F11\u606F\u65F6\u95F4", kind: "bar", cls: "rc-short" },
-    { id: "rest", label: "\u4F11\u606F\u6B21\u6570", kind: "line", cls: "rc-l-rest" },
-    { id: "skip", label: "\u8DF3\u8FC7\u6B21\u6570", kind: "line", cls: "rc-l-skip" },
-    { id: "postpone", label: "\u63A8\u8FDF\u6B21\u6570", kind: "line", cls: "rc-l-post" },
+    { id: "long", label: "长休息时间", kind: "bar", cls: "rc-long" },
+    { id: "short", label: "短休息时间", kind: "bar", cls: "rc-short" },
+    { id: "rest", label: "休息次数", kind: "line", cls: "rc-l-rest" },
+    { id: "skip", label: "跳过次数", kind: "line", cls: "rc-l-skip" },
+    { id: "postpone", label: "推迟次数", kind: "line", cls: "rc-l-post" },
     // 提前结束与休息次数**互不排斥**：休息开始了就算一次休息，提前结束只是没坐满，
     // 所以这条线不会从「休息次数」里扣掉任何东西（今天卡的「完成」才是坐满整次的次数）。
-    { id: "early", label: "\u63D0\u524D\u7ED3\u675F\u6B21\u6570", kind: "line", cls: "rc-l-early" }
+    { id: "early", label: "提前结束次数", kind: "line", cls: "rc-l-early" }
   ];
   var rcUnit = rcLoadStr("unit", "wr-rc-unit") || "";
   if (!RC_WINDOWS[rcUnit]) rcUnit = "day";
@@ -3904,9 +3904,9 @@
     const s = Math.round(ms / 1e3);
     const h = Math.floor(s / 3600);
     const m = Math.floor(s % 3600 / 60);
-    if (h > 0) return `${h} \u65F6 ${m} \u5206 ${s % 60} \u79D2`;
-    if (m > 0) return `${m} \u5206 ${s % 60} \u79D2`;
-    return `${s % 60} \u79D2`;
+    if (h > 0) return `${h} 时 ${m} 分 ${s % 60} 秒`;
+    if (m > 0) return `${m} 分 ${s % 60} 秒`;
+    return `${s % 60} 秒`;
   }
   function rcDayStr(d) {
     const p = (n) => String(n).padStart(2, "0");
@@ -4076,7 +4076,7 @@
             mk(
               `${d.getFullYear()}-W${wk}`,
               `${d.getFullYear()}W${wk}`,
-              `${d.getFullYear()} \u5E74\u7B2C ${wk} \u5468\uFF08${s.slice(5)} ~ ${rcDayStr(sun).slice(5)}\uFF09`,
+              `${d.getFullYear()} 年第 ${wk} 周（${s.slice(5)} ~ ${rcDayStr(sun).slice(5)}）`,
               s,
               rcDayStr(sun)
             )
@@ -4097,7 +4097,7 @@
             mk(
               `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
               `${String(d.getFullYear()).slice(2)}/${d.getMonth() + 1}`,
-              `${d.getFullYear()} \u5E74 ${d.getMonth() + 1} \u6708`,
+              `${d.getFullYear()} 年 ${d.getMonth() + 1} 月`,
               s,
               rcDayStr(e)
             )
@@ -4108,7 +4108,7 @@
             mk(
               `${d.getFullYear()}-Q${q}`,
               `${String(d.getFullYear()).slice(2)}Q${q}`,
-              `${d.getFullYear()} \u5E74\u7B2C ${q} \u5B63\u5EA6`,
+              `${d.getFullYear()} 年第 ${q} 季度`,
               s,
               rcDayStr(e)
             )
@@ -4117,7 +4117,7 @@
       }
     } else {
       for (let yy = Number(range.start); yy <= Number(range.end) && out.length < cap; yy++) {
-        out.push(mk(String(yy), String(yy), `${yy} \u5E74`, `${yy}-01-01`, `${yy}-12-31`));
+        out.push(mk(String(yy), String(yy), `${yy} 年`, `${yy}-01-01`, `${yy}-12-31`));
       }
     }
     return out;
@@ -4158,14 +4158,14 @@
     const brk = shown.reduce((s, b) => s + b.breakMs, 0);
     const avg = shown.length ? brk / shown.length : 0;
     const top = shown.reduce((m, b) => !m || b.breakMs > m.breakMs ? b : m, null);
-    const unitLabel = { day: "\u65E5\u5747", week: "\u5468\u5747", month: "\u6708\u5747", quarter: "\u5B63\u5747", year: "\u5E74\u5747" }[unit];
+    const unitLabel = { day: "日均", week: "周均", month: "月均", quarter: "季均", year: "年均" }[unit];
     const delta = (cur, old) => {
       if (old <= 0) return "";
       const pct = Math.round((cur - old) / old * 100);
-      return pct === 0 ? "\u8F83\u4E0A\u671F\u6301\u5E73" : `\u8F83\u4E0A\u671F ${pct > 0 ? "+" : "\u2212"}${Math.abs(pct)}%`;
+      return pct === 0 ? "较上期持平" : `较上期 ${pct > 0 ? "+" : "−"}${Math.abs(pct)}%`;
     };
     const badge = (k, v, sub) => `<div class="rc-badge"><span class="k">${k}</span><b>${v}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
-    box.innerHTML = badge("\u5DE5\u4F5C\u65F6\u95F4", fmtDur(work), delta(work, prev.work)) + badge("\u4F11\u606F\u65F6\u95F4", fmtDur(brk), delta(brk, prev.brk)) + badge(`${unitLabel}\u4F11\u606F`, shown.length ? fmtDur(avg) : "\u2014", `${shown.length} \u4E2A\u5468\u671F`) + badge("\u6700\u957F\u4F11\u606F", top ? fmtDur(top.breakMs) : "\u2014", top ? top.title : "");
+    box.innerHTML = badge("工作时间", fmtDur(work), delta(work, prev.work)) + badge("休息时间", fmtDur(brk), delta(brk, prev.brk)) + badge(`${unitLabel}休息`, shown.length ? fmtDur(avg) : "—", `${shown.length} 个周期`) + badge("最长休息", top ? fmtDur(top.breakMs) : "—", top ? top.title : "");
   }
   async function renderRestChart(animate = false) {
     const seq = ++rcSeq;
@@ -4205,16 +4205,16 @@
     early: (b) => b.endEarlyCount
   };
   var RC_TABLE_COLS = [
-    { key: "period", label: "\u7EDF\u8BA1\u5468\u671F" },
-    { key: "work", label: "\u5DE5\u4F5C\u65F6\u95F4" },
-    { key: "break", label: "\u4F11\u606F\u603B\u65F6\u95F4" },
-    { key: "long", label: "\u957F\u4F11\u606F" },
-    { key: "short", label: "\u77ED\u4F11\u606F" },
-    { key: "away", label: "\u79BB\u5F00\u65F6\u95F4" },
-    { key: "rest", label: "\u4F11\u606F\u6B21\u6570" },
-    { key: "skip", label: "\u8DF3\u8FC7\u6B21\u6570" },
-    { key: "post", label: "\u63A8\u8FDF\u6B21\u6570" },
-    { key: "early", label: "\u63D0\u524D\u7ED3\u675F\u6B21\u6570" }
+    { key: "period", label: "统计周期" },
+    { key: "work", label: "工作时间" },
+    { key: "break", label: "休息总时间" },
+    { key: "long", label: "长休息" },
+    { key: "short", label: "短休息" },
+    { key: "away", label: "离开时间" },
+    { key: "rest", label: "休息次数" },
+    { key: "skip", label: "跳过次数" },
+    { key: "post", label: "推迟次数" },
+    { key: "early", label: "提前结束次数" }
   ];
   var rcTableSort = { key: "period", dir: "desc" };
   var rcTableData = [];
@@ -4223,9 +4223,9 @@
     if (!t) return;
     rcTableData = rows;
     const head = "<tr>" + RC_TABLE_COLS.map((c) => {
-      const arrow = c.key === rcTableSort.key ? rcTableSort.dir === "asc" ? " \u25B2" : " \u25BC" : "";
+      const arrow = c.key === rcTableSort.key ? rcTableSort.dir === "asc" ? " ▲" : " ▼" : "";
       const num = c.key === "period" ? "" : " num";
-      return `<th class="sortable${num}" data-key="${c.key}" title="\u70B9\u6309\u6392\u5E8F">${c.label}${arrow}</th>`;
+      return `<th class="sortable${num}" data-key="${c.key}" title="点按排序">${c.label}${arrow}</th>`;
     }).join("") + "</tr>";
     const dir = rcTableSort.dir === "asc" ? 1 : -1;
     const get = RC_SORT_GET[rcTableSort.key];
@@ -4235,9 +4235,9 @@
       return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
     });
     const cells = (b) => `<td>${b.title}</td><td class="num rcv-work" data-v="${b.workMs}">${fmtDur(b.workMs)}</td><td class="num" data-v="${b.breakMs}">${fmtDur(b.breakMs)}</td><td class="num rcv-long" data-v="${b.longMs}">${fmtDur(b.longMs)}</td><td class="num rcv-short" data-v="${b.shortMs}">${fmtDur(b.shortMs)}</td><td class="num" data-v="${b.awayMs}">${fmtDur(b.awayMs)}</td><td class="num rcv-rest" data-v="${b.restCount}">${b.restCount}</td><td class="num rcv-skip" data-v="${b.skipCount}">${b.skipCount}</td><td class="num rcv-post" data-v="${b.postponeCount}">${b.postponeCount}</td><td class="num rcv-early" data-v="${b.endEarlyCount}">${b.endEarlyCount}</td>`;
-    const body = rows.length ? sorted.map((b) => `<tr>${cells(b)}</tr>`).join("") : '<tr><td colspan="10" class="rc-empty">\u6682\u65E0\u6570\u636E</td></tr>';
+    const body = rows.length ? sorted.map((b) => `<tr>${cells(b)}</tr>`).join("") : '<tr><td colspan="10" class="rc-empty">暂无数据</td></tr>';
     const sum = (f) => rows.reduce((s, b) => s + f(b), 0);
-    const total = rows.length ? `<tr class="total"><td>\u5408\u8BA1</td><td class="num rcv-work">${fmtDur(sum((b) => b.workMs))}</td><td class="num">${fmtDur(sum((b) => b.breakMs))}</td><td class="num rcv-long">${fmtDur(sum((b) => b.longMs))}</td><td class="num rcv-short">${fmtDur(sum((b) => b.shortMs))}</td><td class="num">${fmtDur(sum((b) => b.awayMs))}</td><td class="num rcv-rest">${sum((b) => b.restCount)}</td><td class="num rcv-skip">${sum((b) => b.skipCount)}</td><td class="num rcv-post">${sum((b) => b.postponeCount)}</td><td class="num rcv-early">${sum((b) => b.endEarlyCount)}</td></tr>` : "";
+    const total = rows.length ? `<tr class="total"><td>合计</td><td class="num rcv-work">${fmtDur(sum((b) => b.workMs))}</td><td class="num">${fmtDur(sum((b) => b.breakMs))}</td><td class="num rcv-long">${fmtDur(sum((b) => b.longMs))}</td><td class="num rcv-short">${fmtDur(sum((b) => b.shortMs))}</td><td class="num">${fmtDur(sum((b) => b.awayMs))}</td><td class="num rcv-rest">${sum((b) => b.restCount)}</td><td class="num rcv-skip">${sum((b) => b.skipCount)}</td><td class="num rcv-post">${sum((b) => b.postponeCount)}</td><td class="num rcv-early">${sum((b) => b.endEarlyCount)}</td></tr>` : "";
     t.innerHTML = head + body + total;
   }
   var rcTip = null;
@@ -4254,15 +4254,15 @@
     const prev = rcPrevOf?.(b) ?? null;
     if (prev) {
       const pct = (cur, old) => {
-        if (old <= 0) return cur > 0 ? "\u2014" : "";
+        if (old <= 0) return cur > 0 ? "—" : "";
         const p = Math.round((cur - old) / old * 100);
-        return p === 0 ? "\u6301\u5E73" : `${p > 0 ? "+" : "\u2212"}${Math.abs(p)}%`;
+        return p === 0 ? "持平" : `${p > 0 ? "+" : "−"}${Math.abs(p)}%`;
       };
       const bp = pct(b.breakMs, prev.breakMs);
       const wp = pct(b.workMs, prev.workMs);
-      if (bp || wp) env = `<span class="rc-tip-d">\u8F83\u4E0A\u4E00\u671F\u3000\u4F11\u606F ${bp || "\u2014"} \xB7 \u5DE5\u4F5C ${wp || "\u2014"}</span>`;
+      if (bp || wp) env = `<span class="rc-tip-d">较上一期\u3000休息 ${bp || "—"} \xB7 工作 ${wp || "—"}</span>`;
     }
-    rcTip.innerHTML = `<b>${b.title}</b><span class="rcv-work">\u5DE5\u4F5C\u65F6\u95F4 ${fmtHms(b.workMs)}</span><span>\u4F11\u606F\u603B\u65F6\u95F4 ${fmtHms(b.breakMs)}</span><span class="rcv-long">\u957F\u4F11\u606F\u65F6\u95F4 ${fmtHms(b.longMs)}</span><span class="rcv-short">\u77ED\u4F11\u606F\u65F6\u95F4 ${fmtHms(b.shortMs)}</span><span>\u79BB\u5F00\u65F6\u95F4 ${fmtHms(b.awayMs)}</span><span class="rcv-rest">\u4F11\u606F ${b.restCount} \u6B21</span><span class="rcv-skip">\u8DF3\u8FC7 ${b.skipCount} \u6B21</span><span class="rcv-post">\u63A8\u8FDF ${b.postponeCount} \u6B21</span><span class="rcv-early">\u63D0\u524D\u7ED3\u675F ${b.endEarlyCount} \u6B21</span>` + env;
+    rcTip.innerHTML = `<b>${b.title}</b><span class="rcv-work">工作时间 ${fmtHms(b.workMs)}</span><span>休息总时间 ${fmtHms(b.breakMs)}</span><span class="rcv-long">长休息时间 ${fmtHms(b.longMs)}</span><span class="rcv-short">短休息时间 ${fmtHms(b.shortMs)}</span><span>离开时间 ${fmtHms(b.awayMs)}</span><span class="rcv-rest">休息 ${b.restCount} 次</span><span class="rcv-skip">跳过 ${b.skipCount} 次</span><span class="rcv-post">推迟 ${b.postponeCount} 次</span><span class="rcv-early">提前结束 ${b.endEarlyCount} 次</span>` + env;
     rcTip.style.display = "block";
     const r = rcTip.getBoundingClientRect();
     rcTip.style.left = `${Math.max(8, Math.min(window.innerWidth - r.width - 8, x + 14))}px`;
@@ -4336,7 +4336,7 @@
     for (let v = 0; v <= axM.max; v += axM.step) {
       g += `<text class="tick" x="${RC_W - RC_M.right + 6}" y="${(yMs(v * 6e4) + 4).toFixed(1)}">${v}</text>`;
     }
-    g += `<text class="tick rc-cap" x="${RC_M.left - 6}" y="10" text-anchor="end">\u6B21\u6570</text><text class="tick rc-cap" x="${RC_W - RC_M.right + 6}" y="10">\u5206\u949F</text>`;
+    g += `<text class="tick rc-cap" x="${RC_M.left - 6}" y="10" text-anchor="end">次数</text><text class="tick rc-cap" x="${RC_W - RC_M.right + 6}" y="10">分钟</text>`;
     const withData = buckets.filter((b) => !rcEmptyBucket(b));
     // 平均线的文字单独攒着，等柱、折线、圆点全画完再追加 —— SVG 按文档顺序绘制，
     // 早画的会被后画的盖住；这段文字贴着右轴，正好落在末几根柱子的范围里。
@@ -4348,7 +4348,7 @@
         const yy = yMs(avgMs).toFixed(1);
         // 虚线本身仍画在柱后（保持原来的层次），只有文字提到最上层
         g += `<line class="rc-avgline" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/>`;
-        avgLabel = `<text class="rc-avglabel" x="${RC_W - RC_M.right - 4}" y="${+yy - 4}" text-anchor="end">\u5E73\u5747 ${fmtDur(avgMs)}</text>`;
+        avgLabel = `<text class="rc-avglabel" x="${RC_W - RC_M.right - 4}" y="${+yy - 4}" text-anchor="end">平均 ${fmtDur(avgMs)}</text>`;
       }
     }
     const barTop = (x, y, w, h, gid) => {
@@ -4417,13 +4417,13 @@
       }
     });
     if (view.length === 0 || withData.length === 0) {
-      g += `<text class="tick" x="${(RC_M.left + iw / 2).toFixed(1)}" y="${(RC_M.top + ih / 2).toFixed(1)}" text-anchor="middle">\u6682\u65E0\u6570\u636E</text>`;
+      g += `<text class="tick" x="${(RC_M.left + iw / 2).toFixed(1)}" y="${(RC_M.top + ih / 2).toFixed(1)}" text-anchor="middle">暂无数据</text>`;
     }
     // 「平均 x 分 x 秒」最后追加，压在所有图形之上（见上面 avgLabel 的说明）
     g += avgLabel;
     g += `<line class="rc-cursor" x1="0" y1="${RC_M.top}" x2="0" y2="${(RC_M.top + ih).toFixed(1)}" style="display:none"/>`;
     g += `<rect class="rc-hit" x="${RC_M.left}" y="${RC_M.top}" width="${iw.toFixed(1)}" height="${ih.toFixed(1)}"/>`;
-    box.innerHTML = `<svg viewBox="0 0 ${RC_W} ${RC_H}" role="img" tabindex="0" aria-label="\u4F11\u606F\u62A5\u8868\u56FE"${animate ? ' class="anim"' : ""}>${defs}${g}</svg>`;
+    box.innerHTML = `<svg viewBox="0 0 ${RC_W} ${RC_H}" role="img" tabindex="0" aria-label="休息报表图"${animate ? ' class="anim"' : ""}>${defs}${g}</svg>`;
     const svg = box.querySelector("svg");
     if (!svg) return;
     svg.style.cursor = rcZoom ? "grab" : "";
@@ -4560,7 +4560,7 @@
     const rows = days.map(
       (d) => `<tr><td>${d.date}</td><td>${fmtDur(d.workMs)}</td><td>${fmtDur(d.breakMs)}</td><td>${fmtDur(d.longMs)}</td><td>${fmtDur(d.shortMs)}</td><td>${fmtDur(d.awayMs ?? 0)}</td><td>${d.shortCount + d.longCount}/${d.skipCount}/${d.postponeCount}</td></tr>`
     ).join("");
-    rcDetailEl.innerHTML = `<div class="rc-detail-head"><b>${b.title}</b><button type="button" class="rc-detail-x" title="\u5173\u95ED">\u2715</button></div><div class="rc-detail-scroll"><table class="stats-table"><tr><th>\u65E5\u671F</th><th>\u5DE5\u4F5C</th><th>\u4F11\u606F\u603B</th><th>\u957F\u4F11</th><th>\u77ED\u4F11</th><th>\u79BB\u5F00</th><th>\u4F11/\u8DF3/\u63A8</th></tr>` + (rows || '<tr><td colspan="7" class="rc-empty">\u8BE5\u5468\u671F\u6CA1\u6709\u9010\u65E5\u6570\u636E</td></tr>') + "</table></div>";
+    rcDetailEl.innerHTML = `<div class="rc-detail-head"><b>${b.title}</b><button type="button" class="rc-detail-x" title="关闭">✕</button></div><div class="rc-detail-scroll"><table class="stats-table"><tr><th>日期</th><th>工作</th><th>休息总</th><th>长休</th><th>短休</th><th>离开</th><th>休/跳/推</th></tr>` + (rows || '<tr><td colspan="7" class="rc-empty">该周期没有逐日数据</td></tr>') + "</table></div>";
     rcDetailEl.classList.add("open");
     rcDetailEl.querySelector(".rc-detail-x")?.addEventListener("click", rcCloseDetail);
     const hr = host.getBoundingClientRect();
@@ -4575,7 +4575,7 @@
     rcRenderRange();
     const on = rcLegendOn();
     $("rc-legend").innerHTML = RC_SERIES.map(
-      (s) => `<button type="button" class="rc-legend-item${on[s.id] ? "" : " off"}" data-s="${s.id}" title="\u70B9\u51FB\u663E\u793A / \u9690\u85CF"><i class="${s.cls} ${s.kind}"></i>${s.label}</button>`
+      (s) => `<button type="button" class="rc-legend-item${on[s.id] ? "" : " off"}" data-s="${s.id}" title="点击显示 / 隐藏"><i class="${s.cls} ${s.kind}"></i>${s.label}</button>`
     ).join("");
   }
   function rcRangeLabel(unit, r) {
@@ -4589,7 +4589,7 @@
       };
       const y1 = r.start.slice(0, 4);
       const y2 = r.end.slice(0, 4);
-      return y1 === y2 ? `${y1} \u5E74\u7B2C ${wk(r.start)} \u5468 ~ \u7B2C ${wk(r.end)} \u5468` : `${y1} \u5E74\u7B2C ${wk(r.start)} \u5468 ~ ${y2} \u5E74\u7B2C ${wk(r.end)} \u5468`;
+      return y1 === y2 ? `${y1} 年第 ${wk(r.start)} 周 ~ 第 ${wk(r.end)} 周` : `${y1} 年第 ${wk(r.start)} 周 ~ ${y2} 年第 ${wk(r.end)} 周`;
     }
     if (unit === "quarter") {
       const q = (a) => `${a.slice(0, 4)}Q${Math.floor(Number(a.slice(5, 7)) / 3) + 1}`;
@@ -4598,7 +4598,7 @@
     return `${r.start} ~ ${r.end}`;
   }
   function rcOpts(list, sel) {
-    if (sel && !list.some((x) => x.v === sel)) list.unshift({ v: sel, t: `\u9009\u5B9A\uFF1A${sel}` });
+    if (sel && !list.some((x) => x.v === sel)) list.unshift({ v: sel, t: `选定：${sel}` });
     return list.map((x) => `<option value="${x.v}"${x.v === sel ? " selected" : ""}>${x.t}</option>`).join("");
   }
   function rcWeekOpts(sel) {
@@ -4616,7 +4616,7 @@
       const sun = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 6);
       list.push({
         v,
-        t: `${d.getFullYear()} \u5E74\u7B2C ${rcIsoWeek(d)} \u5468\uFF08${v.slice(5)} ~ ${rcDayStr(sun).slice(5)}\uFF09`
+        t: `${d.getFullYear()} 年第 ${rcIsoWeek(d)} 周（${v.slice(5)} ~ ${rcDayStr(sun).slice(5)}）`
       });
     }
     return rcOpts(list, sel);
@@ -4633,7 +4633,7 @@
       const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
       list.push({
         v: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-        t: `${d.getFullYear()} \u5E74 ${d.getMonth() + 1} \u6708`
+        t: `${d.getFullYear()} 年 ${d.getMonth() + 1} 月`
       });
     }
     return rcOpts(list, sel);
@@ -4651,7 +4651,7 @@
       const d = new Date(now.getFullYear(), (q0 - i) * 3, 1);
       list.push({
         v: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`,
-        t: `${d.getFullYear()} \u5E74\u7B2C ${Math.floor(d.getMonth() / 3) + 1} \u5B63\u5EA6`
+        t: `${d.getFullYear()} 年第 ${Math.floor(d.getMonth() / 3) + 1} 季度`
       });
     }
     return rcOpts(list, sel);
@@ -4661,28 +4661,28 @@
     const y = (/* @__PURE__ */ new Date()).getFullYear();
     let ys = 6;
     if (rcEarliest) ys = y - Number(rcEarliest.slice(0, 4)) + 1;
-    for (let i = 0; i < ys; i++) list.push({ v: String(y - i), t: `${y - i} \u5E74` });
+    for (let i = 0; i < ys; i++) list.push({ v: String(y - i), t: `${y - i} 年` });
     return rcOpts(list, sel);
   }
   function rcPickerHtml(unit, r) {
     const row = (span, ctl) => `<div class="rc-pop-row"><span>${span}</span>${ctl}</div>`;
     if (unit === "day") {
       const min = rcEarliest ? ` min="${rcEarliest}"` : "";
-      return row("\u4ECE", `<input type="date" class="rc-in" id="rc-rs" value="${r.start}"${min}>`) + row("\u5230", `<input type="date" class="rc-in" id="rc-re" value="${r.end}"${min}>`);
+      return row("从", `<input type="date" class="rc-in" id="rc-rs" value="${r.start}"${min}>`) + row("到", `<input type="date" class="rc-in" id="rc-re" value="${r.end}"${min}>`);
     }
     const opts = unit === "week" ? rcWeekOpts : unit === "month" ? rcMonthOpts : unit === "quarter" ? rcQuarterOpts : unit === "year" ? rcYearOpts : null;
     if (!opts) return "";
-    return row("\u4ECE", `<select class="rc-in" id="rc-rs">${opts(r.start)}</select>`) + row("\u5230", `<select class="rc-in" id="rc-re">${opts(r.end)}</select>`);
+    return row("从", `<select class="rc-in" id="rc-rs">${opts(r.start)}</select>`) + row("到", `<select class="rc-in" id="rc-re">${opts(r.end)}</select>`);
   }
   function rcRenderRange() {
     const box = $("rc-range");
     const r = rcGetRange(rcUnit);
-    box.innerHTML = `<button type="button" class="rc-range-btn" id="rc-range-btn" title="\u9009\u62E9\u65F6\u95F4\u8303\u56F4"><span id="rc-range-label">${rcRangeLabel(rcUnit, r)}</span><span class="rc-caret">\u25BE</span></button><div class="rc-pop" id="rc-pop">${rcPickerHtml(rcUnit, r)}<div class="rc-pop-foot"><button type="button" class="btn ghost" id="rc-range-all" title="\u4ECE\u6700\u65E9\u8BB0\u5F55\u4E00\u76F4\u770B\u5230\u5F53\u524D\u5468\u671F">\u5168\u90E8\u6570\u636E</button><button type="button" class="btn ghost" id="rc-range-reset">\u6062\u590D\u9ED8\u8BA4</button></div></div>`;
+    box.innerHTML = `<button type="button" class="rc-range-btn" id="rc-range-btn" title="选择时间范围"><span id="rc-range-label">${rcRangeLabel(rcUnit, r)}</span><span class="rc-caret">▾</span></button><div class="rc-pop" id="rc-pop">${rcPickerHtml(rcUnit, r)}<div class="rc-pop-foot"><button type="button" class="btn ghost" id="rc-range-all" title="从最早记录一直看到当前周期">全部数据</button><button type="button" class="btn ghost" id="rc-range-reset">恢复默认</button></div></div>`;
     $("rc-range-btn").addEventListener("click", () => box.classList.toggle("open"));
     $("rc-range-all").addEventListener("click", () => {
       const all = rcAllRange(rcUnit);
       if (!all) {
-        toast("\u8FD8\u6CA1\u6709\u7EDF\u8BA1\u6570\u636E");
+        toast("还没有统计数据");
         return;
       }
       rcSetRange(rcUnit, all);
@@ -4733,7 +4733,7 @@
   function rcExportName(ext) {
     const ul = RC_UNITS.find((x) => x.u === rcUnit)?.label ?? rcUnit;
     const fp = rcRangeFilePart(rcUnit, rcGetRange(rcUnit));
-    return `\u4F11\u606F\u62A5\u8868_${ul}_${fp.s}_${fp.e}.${ext}`;
+    return `休息报表_${ul}_${fp.s}_${fp.e}.${ext}`;
   }
   // 报表导出统一走「另存为」对话框：blob 转 base64 交给 Go 侧 ExportReport，
   // 由用户选择存储路径（上一版时代的 a.download 落点不可控，Wails 下也不可靠）。
@@ -4746,7 +4746,7 @@
       fr.readAsDataURL(blob);
     });
     if (!b64) {
-      toast("\u5BFC\u51FA\u5931\u8D25");
+      toast("导出失败");
       return;
     }
     const r = await window.api.exportReport(name, b64);
@@ -4755,7 +4755,7 @@
       toast(r.error);
       return;
     }
-    toast(`\u5DF2\u5BFC\u51FA\u5230 ${r.path}`);
+    toast(`已导出到 ${r.path}`);
   }
   function setupRestChart() {
     $("rc-units").addEventListener("click", (e) => {
@@ -4799,7 +4799,7 @@
     $("rc-exp-csv").addEventListener("click", () => {
       const rows = [...rcTableData].sort((a2, b) => a2.start < b.start ? -1 : 1);
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      const lines = ["\u7EDF\u8BA1\u5468\u671F,\u5F00\u59CB,\u7ED3\u675F,\u5DE5\u4F5C\u65F6\u95F4,\u4F11\u606F\u603B\u65F6\u95F4,\u957F\u4F11\u606F,\u77ED\u4F11\u606F,\u79BB\u5F00\u65F6\u95F4,\u4F11\u606F\u6B21\u6570,\u8DF3\u8FC7\u6B21\u6570,\u63A8\u8FDF\u6B21\u6570,\u63D0\u524D\u7ED3\u675F\u6B21\u6570"];
+      const lines = ["统计周期,开始,结束,工作时间,休息总时间,长休息,短休息,离开时间,休息次数,跳过次数,推迟次数,提前结束次数"];
       for (const b of rows) {
         lines.push(
           [
@@ -4822,7 +4822,7 @@
         const sum = (f) => rows.reduce((s, b) => s + f(b), 0);
         lines.push(
           [
-            "\u5408\u8BA1",
+            "合计",
             "",
             "",
             fmtDur(sum((b) => b.workMs)),
@@ -4867,12 +4867,12 @@
               void saveExportFile(rcExportName("png"), blob);
             }, "image/png");
           } catch {
-            toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
+            toast("导出图片失败");
           }
         };
         img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
       } catch {
-        toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
+        toast("导出图片失败");
       }
     });
     document.addEventListener("click", (e) => {
@@ -4902,9 +4902,9 @@
     localStorage.setItem(`${TK_NS}-${key}`, v);
   }
   var TK_SERIES = [
-    { id: "ord", label: "\u70B9\u5916\u5356\u6B21\u6570", cls: "tk-l-ord" },
-    { id: "can", label: "\u53D6\u6D88\u6B21\u6570", cls: "tk-l-can" },
-    { id: "post", label: "\u63A8\u8FDF\u6B21\u6570", cls: "tk-l-post" }
+    { id: "ord", label: "点外卖次数", cls: "tk-l-ord" },
+    { id: "can", label: "取消次数", cls: "tk-l-can" },
+    { id: "post", label: "推迟次数", cls: "tk-l-post" }
   ];
   var tkUnit = tkLoadStr("unit") || "";
   if (!RC_WINDOWS[tkUnit]) tkUnit = "day";
@@ -4955,17 +4955,17 @@
     const ord = shown.reduce((s, b) => s + b.takeoutOrdered, 0);
     const can = shown.reduce((s, b) => s + b.takeoutSkipped, 0);
     const post = shown.reduce((s, b) => s + b.takeoutPostponed, 0);
-    const unitLabel = { day: "\u65E5\u5747", week: "\u5468\u5747", month: "\u6708\u5747", quarter: "\u5B63\u5747", year: "\u5E74\u5747" }[unit];
+    const unitLabel = { day: "日均", week: "周均", month: "月均", quarter: "季均", year: "年均" }[unit];
     const delta = (cur, old) => {
       if (old <= 0) return "";
       const pct = Math.round((cur - old) / old * 100);
-      return pct === 0 ? "\u8F83\u4E0A\u671F\u6301\u5E73" : `\u8F83\u4E0A\u671F ${pct > 0 ? "+" : "\u2212"}${Math.abs(pct)}%`;
+      return pct === 0 ? "较上期持平" : `较上期 ${pct > 0 ? "+" : "−"}${Math.abs(pct)}%`;
     };
     const badge = (k, v, sub) => `<div class="rc-badge"><span class="k">${k}</span><b>${v}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
-    box.innerHTML = badge("\u70B9\u5916\u5356\u6B21\u6570", String(ord), delta(ord, prev.ord)) + badge("\u53D6\u6D88\u6B21\u6570", String(can), delta(can, prev.can)) + badge("\u63A8\u8FDF\u6B21\u6570", String(post), delta(post, prev.post)) + badge(
-      `${unitLabel}\u70B9\u5916\u5356`,
-      shown.length ? String(Math.round(ord / shown.length * 10) / 10) : "\u2014",
-      `${shown.length} \u4E2A\u5468\u671F`
+    box.innerHTML = badge("点外卖次数", String(ord), delta(ord, prev.ord)) + badge("取消次数", String(can), delta(can, prev.can)) + badge("推迟次数", String(post), delta(post, prev.post)) + badge(
+      `${unitLabel}点外卖`,
+      shown.length ? String(Math.round(ord / shown.length * 10) / 10) : "—",
+      `${shown.length} 个周期`
     );
   }
   async function renderTakeoutChart(animate = false) {
@@ -5001,10 +5001,10 @@
     post: (b) => b.takeoutPostponed
   };
   var TK_TABLE_COLS = [
-    { key: "period", label: "\u7EDF\u8BA1\u5468\u671F" },
-    { key: "ord", label: "\u70B9\u5916\u5356\u6B21\u6570" },
-    { key: "can", label: "\u53D6\u6D88\u6B21\u6570" },
-    { key: "post", label: "\u63A8\u8FDF\u6B21\u6570" }
+    { key: "period", label: "统计周期" },
+    { key: "ord", label: "点外卖次数" },
+    { key: "can", label: "取消次数" },
+    { key: "post", label: "推迟次数" }
   ];
   var tkTableSort = { key: "period", dir: "desc" };
   var tkTableData = [];
@@ -5013,9 +5013,9 @@
     if (!t) return;
     tkTableData = rows;
     const head = "<tr>" + TK_TABLE_COLS.map((c) => {
-      const arrow = c.key === tkTableSort.key ? tkTableSort.dir === "asc" ? " \u25B2" : " \u25BC" : "";
+      const arrow = c.key === tkTableSort.key ? tkTableSort.dir === "asc" ? " ▲" : " ▼" : "";
       const num = c.key === "period" ? "" : " num";
-      return `<th class="sortable${num}" data-key="${c.key}" title="\u70B9\u6309\u6392\u5E8F">${c.label}${arrow}</th>`;
+      return `<th class="sortable${num}" data-key="${c.key}" title="点按排序">${c.label}${arrow}</th>`;
     }).join("") + "</tr>";
     const dir = tkTableSort.dir === "asc" ? 1 : -1;
     const get = TK_SORT_GET[tkTableSort.key];
@@ -5025,9 +5025,9 @@
       return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
     });
     const cells = (b) => `<td>${b.title}</td><td class="num tkv-ord" data-v="${b.takeoutOrdered}">${b.takeoutOrdered}</td><td class="num tkv-can" data-v="${b.takeoutSkipped}">${b.takeoutSkipped}</td><td class="num tkv-post" data-v="${b.takeoutPostponed}">${b.takeoutPostponed}</td>`;
-    const body = rows.length ? sorted.map((b) => `<tr>${cells(b)}</tr>`).join("") : '<tr><td colspan="4" class="rc-empty">\u6682\u65E0\u6570\u636E</td></tr>';
+    const body = rows.length ? sorted.map((b) => `<tr>${cells(b)}</tr>`).join("") : '<tr><td colspan="4" class="rc-empty">暂无数据</td></tr>';
     const sum = (f) => rows.reduce((s, b) => s + f(b), 0);
-    const total = rows.length ? `<tr class="total"><td>\u5408\u8BA1</td><td class="num tkv-ord">${sum((b) => b.takeoutOrdered)}</td><td class="num tkv-can">${sum((b) => b.takeoutSkipped)}</td><td class="num tkv-post">${sum((b) => b.takeoutPostponed)}</td></tr>` : "";
+    const total = rows.length ? `<tr class="total"><td>合计</td><td class="num tkv-ord">${sum((b) => b.takeoutOrdered)}</td><td class="num tkv-can">${sum((b) => b.takeoutSkipped)}</td><td class="num tkv-post">${sum((b) => b.takeoutPostponed)}</td></tr>` : "";
     t.innerHTML = head + body + total;
   }
   var tkTip = null;
@@ -5044,18 +5044,18 @@
     const prev = tkPrevOf?.(b) ?? null;
     if (prev) {
       const pct = (cur, old) => {
-        if (old <= 0) return cur > 0 ? "\u2014" : "";
+        if (old <= 0) return cur > 0 ? "—" : "";
         const p = Math.round((cur - old) / old * 100);
-        return p === 0 ? "\u6301\u5E73" : `${p > 0 ? "+" : "\u2212"}${Math.abs(p)}%`;
+        return p === 0 ? "持平" : `${p > 0 ? "+" : "−"}${Math.abs(p)}%`;
       };
       const op = pct(b.takeoutOrdered, prev.takeoutOrdered);
       const cp = pct(b.takeoutSkipped, prev.takeoutSkipped);
       const pp = pct(b.takeoutPostponed, prev.takeoutPostponed);
       if (op || cp || pp) {
-        env = `<span class="rc-tip-d">\u8F83\u4E0A\u4E00\u671F\u3000\u70B9\u5916\u5356 ${op || "\u2014"} \xB7 \u53D6\u6D88 ${cp || "\u2014"} \xB7 \u63A8\u8FDF ${pp || "\u2014"}</span>`;
+        env = `<span class="rc-tip-d">较上一期\u3000点外卖 ${op || "—"} \xB7 取消 ${cp || "—"} \xB7 推迟 ${pp || "—"}</span>`;
       }
     }
-    tkTip.innerHTML = `<b>${b.title}</b><span class="tkv-ord">\u70B9\u5916\u5356 ${b.takeoutOrdered} \u6B21</span><span class="tkv-can">\u53D6\u6D88 ${b.takeoutSkipped} \u6B21</span><span class="tkv-post">\u63A8\u8FDF ${b.takeoutPostponed} \u6B21</span>` + env;
+    tkTip.innerHTML = `<b>${b.title}</b><span class="tkv-ord">点外卖 ${b.takeoutOrdered} 次</span><span class="tkv-can">取消 ${b.takeoutSkipped} 次</span><span class="tkv-post">推迟 ${b.takeoutPostponed} 次</span>` + env;
     tkTip.style.display = "block";
     const r = tkTip.getBoundingClientRect();
     tkTip.style.left = `${Math.max(8, Math.min(window.innerWidth - r.width - 8, x + 14))}px`;
@@ -5092,14 +5092,14 @@
       const yy = yC(v).toFixed(1);
       g += `<line class="grid" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/><text class="tick" x="${RC_M.left - 6}" y="${+yy + 4}" text-anchor="end">${v}</text>`;
     }
-    g += `<text class="tick rc-cap" x="${RC_M.left - 6}" y="10" text-anchor="end">\u6B21\u6570</text>`;
+    g += `<text class="tick rc-cap" x="${RC_M.left - 6}" y="10" text-anchor="end">次数</text>`;
     const withData = buckets.filter((b) => !tkEmptyBucket(b));
     if (withData.length) {
       const avg = withData.reduce((s, b) => s + b.takeoutOrdered, 0) / withData.length;
       if (avg > 0 && avg < ax.max) {
         const yy = yC(avg).toFixed(1);
         const txt = avg < 10 ? String(Math.round(avg * 10) / 10) : String(Math.round(avg));
-        g += `<line class="rc-avgline" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/><text class="rc-avglabel" x="${RC_W - RC_M.right - 4}" y="${+yy - 4}" text-anchor="end">\u5E73\u5747 ${txt} \u6B21</text>`;
+        g += `<line class="rc-avgline" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/><text class="rc-avglabel" x="${RC_W - RC_M.right - 4}" y="${+yy - 4}" text-anchor="end">平均 ${txt} 次</text>`;
       }
     }
     for (const s of lineParts) {
@@ -5145,11 +5145,11 @@
       }
     });
     if (view.length === 0 || withData.length === 0) {
-      g += `<text class="tick" x="${(RC_M.left + iw / 2).toFixed(1)}" y="${(RC_M.top + ih / 2).toFixed(1)}" text-anchor="middle">\u6682\u65E0\u6570\u636E</text>`;
+      g += `<text class="tick" x="${(RC_M.left + iw / 2).toFixed(1)}" y="${(RC_M.top + ih / 2).toFixed(1)}" text-anchor="middle">暂无数据</text>`;
     }
     g += `<line class="rc-cursor" x1="0" y1="${RC_M.top}" x2="0" y2="${(RC_M.top + ih).toFixed(1)}" style="display:none"/>`;
     g += `<rect class="rc-hit" x="${RC_M.left}" y="${RC_M.top}" width="${iw.toFixed(1)}" height="${ih.toFixed(1)}"/>`;
-    box.innerHTML = `<svg viewBox="0 0 ${RC_W} ${RC_H}" role="img" tabindex="0" aria-label="\u5916\u5356\u62A5\u8868\u56FE"${animate ? ' class="anim"' : ""}>${defs}${g}</svg>`;
+    box.innerHTML = `<svg viewBox="0 0 ${RC_W} ${RC_H}" role="img" tabindex="0" aria-label="外卖报表图"${animate ? ' class="anim"' : ""}>${defs}${g}</svg>`;
     const svg = box.querySelector("svg");
     if (!svg) return;
     svg.style.cursor = tkZoom ? "grab" : "";
@@ -5286,7 +5286,7 @@
     const rows = days.map(
       (d) => `<tr><td>${d.date}</td><td>${d.takeoutOrdered}</td><td>${d.takeoutSkipped}</td><td>${d.takeoutPostponed}</td></tr>`
     ).join("");
-    tkDetailEl.innerHTML = `<div class="rc-detail-head"><b>${b.title}</b><button type="button" class="rc-detail-x" title="\u5173\u95ED">\u2715</button></div><div class="rc-detail-scroll"><table class="stats-table"><tr><th>\u65E5\u671F</th><th>\u70B9\u5916\u5356</th><th>\u53D6\u6D88</th><th>\u63A8\u8FDF</th></tr>` + (rows || '<tr><td colspan="4" class="rc-empty">\u8BE5\u5468\u671F\u6CA1\u6709\u9010\u65E5\u6570\u636E</td></tr>') + "</table></div>";
+    tkDetailEl.innerHTML = `<div class="rc-detail-head"><b>${b.title}</b><button type="button" class="rc-detail-x" title="关闭">✕</button></div><div class="rc-detail-scroll"><table class="stats-table"><tr><th>日期</th><th>点外卖</th><th>取消</th><th>推迟</th></tr>` + (rows || '<tr><td colspan="4" class="rc-empty">该周期没有逐日数据</td></tr>') + "</table></div>";
     tkDetailEl.classList.add("open");
     tkDetailEl.querySelector(".rc-detail-x")?.addEventListener("click", tkCloseDetail);
     const hr = host.getBoundingClientRect();
@@ -5301,18 +5301,18 @@
     tkRenderRange();
     const on = tkLegendOn();
     $("tk-legend").innerHTML = TK_SERIES.map(
-      (s) => `<button type="button" class="rc-legend-item${on[s.id] ? "" : " off"}" data-s="${s.id}" title="\u70B9\u51FB\u663E\u793A / \u9690\u85CF"><i class="${s.cls} line"></i>${s.label}</button>`
+      (s) => `<button type="button" class="rc-legend-item${on[s.id] ? "" : " off"}" data-s="${s.id}" title="点击显示 / 隐藏"><i class="${s.cls} line"></i>${s.label}</button>`
     ).join("");
   }
   function tkRenderRange() {
     const box = $("tk-range");
     const r = tkGetRange(tkUnit);
-    box.innerHTML = `<button type="button" class="rc-range-btn" id="tk-range-btn" title="\u9009\u62E9\u65F6\u95F4\u8303\u56F4"><span id="tk-range-label">${rcRangeLabel(tkUnit, r)}</span><span class="rc-caret">\u25BE</span></button><div class="rc-pop">${rcPickerHtml(tkUnit, r).replaceAll('id="rc-rs"', 'id="tk-rs"').replaceAll('id="rc-re"', 'id="tk-re"')}<div class="rc-pop-foot"><button type="button" class="btn ghost" id="tk-range-all" title="\u4ECE\u6700\u65E9\u8BB0\u5F55\u4E00\u76F4\u770B\u5230\u5F53\u524D\u5468\u671F">\u5168\u90E8\u6570\u636E</button><button type="button" class="btn ghost" id="tk-range-reset">\u6062\u590D\u9ED8\u8BA4</button></div></div>`;
+    box.innerHTML = `<button type="button" class="rc-range-btn" id="tk-range-btn" title="选择时间范围"><span id="tk-range-label">${rcRangeLabel(tkUnit, r)}</span><span class="rc-caret">▾</span></button><div class="rc-pop">${rcPickerHtml(tkUnit, r).replaceAll('id="rc-rs"', 'id="tk-rs"').replaceAll('id="rc-re"', 'id="tk-re"')}<div class="rc-pop-foot"><button type="button" class="btn ghost" id="tk-range-all" title="从最早记录一直看到当前周期">全部数据</button><button type="button" class="btn ghost" id="tk-range-reset">恢复默认</button></div></div>`;
     $("tk-range-btn").addEventListener("click", () => box.classList.toggle("open"));
     $("tk-range-all").addEventListener("click", () => {
       const all = rcAllRange(tkUnit);
       if (!all) {
-        toast("\u8FD8\u6CA1\u6709\u7EDF\u8BA1\u6570\u636E");
+        toast("还没有统计数据");
         return;
       }
       tkSetRange(tkUnit, all);
@@ -5340,7 +5340,7 @@
   function tkExportName(ext) {
     const ul = RC_UNITS.find((x) => x.u === tkUnit)?.label ?? tkUnit;
     const fp = rcRangeFilePart(tkUnit, tkGetRange(tkUnit));
-    return `\u5916\u5356\u62A5\u8868_${ul}_${fp.s}_${fp.e}.${ext}`;
+    return `外卖报表_${ul}_${fp.s}_${fp.e}.${ext}`;
   }
   function setupTakeoutChart() {
     $("tk-units").addEventListener("click", (e) => {
@@ -5384,7 +5384,7 @@
     $("tk-exp-csv").addEventListener("click", () => {
       const rows = [...tkTableData].sort((a2, b) => a2.start < b.start ? -1 : 1);
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      const lines = ["\u7EDF\u8BA1\u5468\u671F,\u5F00\u59CB,\u7ED3\u675F,\u70B9\u5916\u5356\u6B21\u6570,\u53D6\u6D88\u6B21\u6570,\u63A8\u8FDF\u6B21\u6570"];
+      const lines = ["统计周期,开始,结束,点外卖次数,取消次数,推迟次数"];
       for (const b of rows) {
         lines.push(
           [b.title, b.start, b.end, b.takeoutOrdered, b.takeoutSkipped, b.takeoutPostponed].map(q).join(",")
@@ -5393,7 +5393,7 @@
       if (rows.length) {
         const sum = (f) => rows.reduce((s, b) => s + f(b), 0);
         lines.push(
-          ["\u5408\u8BA1", "", "", sum((b) => b.takeoutOrdered), sum((b) => b.takeoutSkipped), sum((b) => b.takeoutPostponed)].map(q).join(",")
+          ["合计", "", "", sum((b) => b.takeoutOrdered), sum((b) => b.takeoutSkipped), sum((b) => b.takeoutPostponed)].map(q).join(",")
         );
       }
       void saveExportFile(tkExportName("csv"), new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
@@ -5426,12 +5426,12 @@
               void saveExportFile(tkExportName("png"), blob);
             }, "image/png");
           } catch {
-            toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
+            toast("导出图片失败");
           }
         };
         img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
       } catch {
-        toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
+        toast("导出图片失败");
       }
     });
     $("tk-table").addEventListener("click", (e) => {
@@ -5511,18 +5511,18 @@
     const box = $("ck-badges");
     if (!box) return;
     const total = shown.reduce((s, b) => s + ckBucketTotal(b), 0);
-    const unitLabel = { day: "\u65E5\u5747", week: "\u5468\u5747", month: "\u6708\u5747", quarter: "\u5B63\u5747", year: "\u5E74\u5747" }[unit];
+    const unitLabel = { day: "日均", week: "周均", month: "月均", quarter: "季均", year: "年均" }[unit];
     let env = "";
     if (prevTotal > 0) {
       const pct = Math.round((total - prevTotal) / prevTotal * 100);
-      env = pct === 0 ? "\u8F83\u4E0A\u671F\u6301\u5E73" : `\u8F83\u4E0A\u671F ${pct > 0 ? "+" : "\u2212"}${Math.abs(pct)}%`;
+      env = pct === 0 ? "较上期持平" : `较上期 ${pct > 0 ? "+" : "−"}${Math.abs(pct)}%`;
     }
     const badge = (k, v, sub) => `<div class="rc-badge"><span class="k">${k}</span><b>${v}</b>${sub ? `<i>${sub}</i>` : ""}</div>`;
-    box.innerHTML = badge("\u89E6\u53D1\u6B21\u6570", String(total), env) + badge(
-      `${unitLabel}\u89E6\u53D1`,
-      shown.length ? String(Math.round(total / shown.length * 10) / 10) : "\u2014",
-      `${shown.length} \u4E2A\u5468\u671F`
-    ) + badge("\u6700\u6D3B\u8DC3\u63D0\u9192", top ? `${topN} \u6B21` : "\u2014", top ? ckEsc(top.label) : "") + badge("\u63D0\u9192\u6761\u6570", String(seriesCount), seriesCount ? "\u542B\u5DF2\u5220\u9664\u63D0\u9192\u7684\u5386\u53F2" : "");
+    box.innerHTML = badge("触发次数", String(total), env) + badge(
+      `${unitLabel}触发`,
+      shown.length ? String(Math.round(total / shown.length * 10) / 10) : "—",
+      `${shown.length} 个周期`
+    ) + badge("最活跃提醒", top ? `${topN} 次` : "—", top ? ckEsc(top.label) : "") + badge("提醒条数", String(seriesCount), seriesCount ? "含已删除提醒的历史" : "");
   }
   async function renderCustomReportChart(animate = false) {
     const seq = ++ckSeq;
@@ -5540,7 +5540,7 @@
     for (const b of [...buckets, ...prevBuckets]) for (const id of Object.keys(b.customCounts)) seen.add(id);
     const names = data.customNames ?? {};
     const live = (S.customBreaks ?? []).map((cb) => ({ id: cb.id, label: cb.name, color: "" }));
-    const hist = [...seen].filter((id) => !live.some((s) => s.id === id)).sort((a, b) => a.localeCompare(b)).map((id) => ({ id, label: names[id] || "\u5DF2\u5220\u9664\u7684\u63D0\u9192", color: "" }));
+    const hist = [...seen].filter((id) => !live.some((s) => s.id === id)).sort((a, b) => a.localeCompare(b)).map((id) => ({ id, label: names[id] || "已删除的提醒", color: "" }));
     const series = [...live, ...hist];
     const order = series.map((s) => s.id).sort();
     for (const s of series) s.color = CK_PALETTE[order.indexOf(s.id) % CK_PALETTE.length];
@@ -5572,7 +5572,7 @@
     if (!box) return;
     const on = ckLegendOn();
     box.innerHTML = ckSeries.map(
-      (s) => `<button type="button" class="rc-legend-item${on[s.id] === false ? " off" : ""}" data-s="${s.id}" title="\u70B9\u51FB\u663E\u793A / \u9690\u85CF"><i class="line" style="background:${s.color}"></i>${ckEsc(s.label)}</button>`
+      (s) => `<button type="button" class="rc-legend-item${on[s.id] === false ? " off" : ""}" data-s="${s.id}" title="点击显示 / 隐藏"><i class="line" style="background:${s.color}"></i>${ckEsc(s.label)}</button>`
     ).join("");
   }
   var ckTableSort = { key: "period", dir: "desc" };
@@ -5582,11 +5582,11 @@
     if (!t) return;
     ckTableData = rows;
     const th = (key, label) => {
-      const arrow = key === ckTableSort.key ? ckTableSort.dir === "asc" ? " \u25B2" : " \u25BC" : "";
+      const arrow = key === ckTableSort.key ? ckTableSort.dir === "asc" ? " ▲" : " ▼" : "";
       const num = key === "period" ? "" : " num";
-      return `<th class="sortable${num}" data-key="${key}" title="\u70B9\u6309\u6392\u5E8F">${ckEsc(label)}${arrow}</th>`;
+      return `<th class="sortable${num}" data-key="${key}" title="点按排序">${ckEsc(label)}${arrow}</th>`;
     };
-    const head = "<tr>" + th("period", "\u7EDF\u8BA1\u5468\u671F") + ckSeries.map((s) => th(s.id, s.label)).join("") + "</tr>";
+    const head = "<tr>" + th("period", "统计周期") + ckSeries.map((s) => th(s.id, s.label)).join("") + "</tr>";
     const dir = ckTableSort.dir === "asc" ? 1 : -1;
     const sorted = [...rows].sort((a, b) => {
       const va = ckTableSort.key === "period" ? a.start : ckVal(a, ckTableSort.key);
@@ -5594,8 +5594,8 @@
       return (va < vb ? -1 : va > vb ? 1 : 0) * dir;
     });
     const cells = (b) => `<td>${b.title}</td>` + ckSeries.map((s) => `<td class="num" data-v="${ckVal(b, s.id)}">${ckVal(b, s.id)}</td>`).join("");
-    const body = rows.length ? sorted.map((b) => `<tr>${cells(b)}</tr>`).join("") : '<tr><td colspan="2" class="rc-empty">\u6682\u65E0\u6570\u636E</td></tr>';
-    const total = rows.length ? '<tr class="total"><td>\u5408\u8BA1</td>' + ckSeries.map((s) => `<td class="num">${rows.reduce((sum, b) => sum + ckVal(b, s.id), 0)}</td>`).join("") + "</tr>" : "";
+    const body = rows.length ? sorted.map((b) => `<tr>${cells(b)}</tr>`).join("") : '<tr><td colspan="2" class="rc-empty">暂无数据</td></tr>';
+    const total = rows.length ? '<tr class="total"><td>合计</td>' + ckSeries.map((s) => `<td class="num">${rows.reduce((sum, b) => sum + ckVal(b, s.id), 0)}</td>`).join("") + "</tr>" : "";
     t.innerHTML = head + body + total;
   }
   var ckTip = null;
@@ -5615,7 +5615,7 @@
       const old = ckBucketTotal(prev);
       if (old > 0 || cur > 0) {
         const p = old > 0 ? Math.round((cur - old) / old * 100) : null;
-        env = `<span class="rc-tip-d">\u8F83\u4E0A\u4E00\u671F ${p === null ? "\u2014" : p === 0 ? "\u6301\u5E73" : `${p > 0 ? "+" : "\u2212"}${Math.abs(p)}%`}</span>`;
+        env = `<span class="rc-tip-d">较上一期 ${p === null ? "—" : p === 0 ? "持平" : `${p > 0 ? "+" : "−"}${Math.abs(p)}%`}</span>`;
       }
     }
     // 与图例、表格列对齐：**所有提醒都列**（本期 0 次的用暗色显示）。
@@ -5623,10 +5623,10 @@
     const rows = ckSeries.map((s) => {
       const v = ckVal(b, s.id);
       return v > 0
-        ? `<span style="color:${s.color}">${ckEsc(s.label)} ${v} \u6B21</span>`
-        : `<span class="ckv-0">${ckEsc(s.label)} 0 \u6B21</span>`;
+        ? `<span style="color:${s.color}">${ckEsc(s.label)} ${v} 次</span>`
+        : `<span class="ckv-0">${ckEsc(s.label)} 0 次</span>`;
     }).join("");
-    ckTip.innerHTML = `<b>${b.title}</b><span>\u89E6\u53D1 ${ckBucketTotal(b)} \u6B21</span>` + (rows || "<span>\u8BE5\u5468\u671F\u6CA1\u6709\u53EF\u7EDF\u8BA1\u7684\u63D0\u9192</span>") + env;
+    ckTip.innerHTML = `<b>${b.title}</b><span>触发 ${ckBucketTotal(b)} 次</span>` + (rows || "<span>该周期没有可统计的提醒</span>") + env;
     ckTip.style.display = "block";
     const r = ckTip.getBoundingClientRect();
     ckTip.style.left = `${Math.max(8, Math.min(window.innerWidth - r.width - 8, x + 14))}px`;
@@ -5661,14 +5661,14 @@
       const yy = yC(v).toFixed(1);
       g += `<line class="grid" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/><text class="tick" x="${RC_M.left - 6}" y="${+yy + 4}" text-anchor="end">${v}</text>`;
     }
-    g += `<text class="tick rc-cap" x="${RC_M.left - 6}" y="10" text-anchor="end">\u6B21\u6570</text>`;
+    g += `<text class="tick rc-cap" x="${RC_M.left - 6}" y="10" text-anchor="end">次数</text>`;
     const withData = buckets.filter((b) => !ckEmptyBucket(b));
     if (withData.length) {
       const avg = withData.reduce((s, b) => s + ckBucketTotal(b), 0) / withData.length;
       if (avg > 0 && avg < ax.max) {
         const yy = yC(avg).toFixed(1);
         const txt = avg < 10 ? String(Math.round(avg * 10) / 10) : String(Math.round(avg));
-        g += `<line class="rc-avgline" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/><text class="rc-avglabel" x="${RC_W - RC_M.right - 4}" y="${+yy - 4}" text-anchor="end">\u5E73\u5747 ${txt} \u6B21</text>`;
+        g += `<line class="rc-avgline" x1="${RC_M.left}" y1="${yy}" x2="${RC_W - RC_M.right}" y2="${yy}"/><text class="rc-avglabel" x="${RC_W - RC_M.right - 4}" y="${+yy - 4}" text-anchor="end">平均 ${txt} 次</text>`;
       }
     }
     for (const s of lineParts) {
@@ -5713,11 +5713,11 @@
       }
     });
     if (view.length === 0 || withData.length === 0) {
-      g += `<text class="tick" x="${(RC_M.left + iw / 2).toFixed(1)}" y="${(RC_M.top + ih / 2).toFixed(1)}" text-anchor="middle">\u6682\u65E0\u6570\u636E</text>`;
+      g += `<text class="tick" x="${(RC_M.left + iw / 2).toFixed(1)}" y="${(RC_M.top + ih / 2).toFixed(1)}" text-anchor="middle">暂无数据</text>`;
     }
     g += `<line class="rc-cursor" x1="0" y1="${RC_M.top}" x2="0" y2="${(RC_M.top + ih).toFixed(1)}" style="display:none"/>`;
     g += `<rect class="rc-hit" x="${RC_M.left}" y="${RC_M.top}" width="${iw.toFixed(1)}" height="${ih.toFixed(1)}"/>`;
-    box.innerHTML = `<svg viewBox="0 0 ${RC_W} ${RC_H}" role="img" tabindex="0" aria-label="\u81EA\u5B9A\u4E49\u63D0\u9192\u62A5\u8868\u56FE"${animate ? ' class="anim"' : ""}>${defs}${g}</svg>`;
+    box.innerHTML = `<svg viewBox="0 0 ${RC_W} ${RC_H}" role="img" tabindex="0" aria-label="自定义提醒报表图"${animate ? ' class="anim"' : ""}>${defs}${g}</svg>`;
     const svg = box.querySelector("svg");
     if (!svg) return;
     svg.style.cursor = ckZoom ? "grab" : "";
@@ -5855,7 +5855,7 @@
     const rows = days.map(
       (d) => `<tr><td>${d.date}</td>` + ckSeries.map((s) => `<td>${d.customCounts?.[s.id] ?? 0}</td>`).join("") + "</tr>"
     ).join("");
-    ckDetailEl.innerHTML = `<div class="rc-detail-head"><b>${b.title}</b><button type="button" class="rc-detail-x" title="\u5173\u95ED">\u2715</button></div><div class="rc-detail-scroll"><table class="stats-table"><tr><th>\u65E5\u671F</th>${ckSeries.map((s) => `<th>${ckEsc(s.label)}</th>`).join("")}</tr>` + (rows || `<tr><td colspan="${span}" class="rc-empty">\u8BE5\u5468\u671F\u6CA1\u6709\u9010\u65E5\u6570\u636E</td></tr>`) + "</table></div>";
+    ckDetailEl.innerHTML = `<div class="rc-detail-head"><b>${b.title}</b><button type="button" class="rc-detail-x" title="关闭">✕</button></div><div class="rc-detail-scroll"><table class="stats-table"><tr><th>日期</th>${ckSeries.map((s) => `<th>${ckEsc(s.label)}</th>`).join("")}</tr>` + (rows || `<tr><td colspan="${span}" class="rc-empty">该周期没有逐日数据</td></tr>`) + "</table></div>";
     ckDetailEl.classList.add("open");
     ckDetailEl.querySelector(".rc-detail-x")?.addEventListener("click", ckCloseDetail);
     const hr = host.getBoundingClientRect();
@@ -5872,12 +5872,12 @@
   function ckRenderRange() {
     const box = $("ck-range");
     const r = ckGetRange(ckUnit);
-    box.innerHTML = `<button type="button" class="rc-range-btn" id="ck-range-btn" title="\u9009\u62E9\u65F6\u95F4\u8303\u56F4"><span id="ck-range-label">${rcRangeLabel(ckUnit, r)}</span><span class="rc-caret">\u25BE</span></button><div class="rc-pop">${rcPickerHtml(ckUnit, r).replaceAll('id="rc-rs"', 'id="ck-rs"').replaceAll('id="rc-re"', 'id="ck-re"')}<div class="rc-pop-foot"><button type="button" class="btn ghost" id="ck-range-all" title="\u4ECE\u6700\u65E9\u8BB0\u5F55\u4E00\u76F4\u770B\u5230\u5F53\u524D\u5468\u671F">\u5168\u90E8\u6570\u636E</button><button type="button" class="btn ghost" id="ck-range-reset">\u6062\u590D\u9ED8\u8BA4</button></div></div>`;
+    box.innerHTML = `<button type="button" class="rc-range-btn" id="ck-range-btn" title="选择时间范围"><span id="ck-range-label">${rcRangeLabel(ckUnit, r)}</span><span class="rc-caret">▾</span></button><div class="rc-pop">${rcPickerHtml(ckUnit, r).replaceAll('id="rc-rs"', 'id="ck-rs"').replaceAll('id="rc-re"', 'id="ck-re"')}<div class="rc-pop-foot"><button type="button" class="btn ghost" id="ck-range-all" title="从最早记录一直看到当前周期">全部数据</button><button type="button" class="btn ghost" id="ck-range-reset">恢复默认</button></div></div>`;
     $("ck-range-btn").addEventListener("click", () => box.classList.toggle("open"));
     $("ck-range-all").addEventListener("click", () => {
       const all = rcAllRange(ckUnit);
       if (!all) {
-        toast("\u8FD8\u6CA1\u6709\u7EDF\u8BA1\u6570\u636E");
+        toast("还没有统计数据");
         return;
       }
       ckSetRange(ckUnit, all);
@@ -5905,7 +5905,7 @@
   function ckExportName(ext) {
     const ul = RC_UNITS.find((x) => x.u === ckUnit)?.label ?? ckUnit;
     const fp = rcRangeFilePart(ckUnit, ckGetRange(ckUnit));
-    return `\u81EA\u5B9A\u4E49\u63D0\u9192\u62A5\u8868_${ul}_${fp.s}_${fp.e}.${ext}`;
+    return `自定义提醒报表_${ul}_${fp.s}_${fp.e}.${ext}`;
   }
   function setupCustomReportChart() {
     $("ck-units").addEventListener("click", (e) => {
@@ -5953,13 +5953,13 @@
     $("ck-exp-csv").addEventListener("click", () => {
       const rows = [...ckTableData].sort((a2, b) => a2.start < b.start ? -1 : 1);
       const q = (v) => `"${String(v).replace(/"/g, '""')}"`;
-      const lines = [["\u7EDF\u8BA1\u5468\u671F", "\u5F00\u59CB", "\u7ED3\u675F", ...ckSeries.map((s) => s.label)].map(q).join(",")];
+      const lines = [["统计周期", "开始", "结束", ...ckSeries.map((s) => s.label)].map(q).join(",")];
       for (const b of rows) {
         lines.push([b.title, b.start, b.end, ...ckSeries.map((s) => ckVal(b, s.id))].map(q).join(","));
       }
       if (rows.length) {
         lines.push(
-          ["\u5408\u8BA1", "", "", ...ckSeries.map((s) => rows.reduce((sum, b) => sum + ckVal(b, s.id), 0))].map(q).join(",")
+          ["合计", "", "", ...ckSeries.map((s) => rows.reduce((sum, b) => sum + ckVal(b, s.id), 0))].map(q).join(",")
         );
       }
       void saveExportFile(ckExportName("csv"), new Blob(["\uFEFF" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
@@ -5992,12 +5992,12 @@
               void saveExportFile(ckExportName("png"), blob);
             }, "image/png");
           } catch {
-            toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
+            toast("导出图片失败");
           }
         };
         img.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(xml);
       } catch {
-        toast("\u5BFC\u51FA\u56FE\u7247\u5931\u8D25");
+        toast("导出图片失败");
       }
     });
     $("ck-table").addEventListener("click", (e) => {
@@ -6036,7 +6036,7 @@
     const on = document.createElement("input");
     on.type = "checkbox";
     on.checked = item.enabled;
-    on.title = "\u542F\u7528 / \u505C\u7528\u8FD9\u6761\u89C4\u5219";
+    on.title = "启用 / 停用这条规则";
     on.addEventListener("change", () => {
       item.enabled = on.checked;
       row.classList.toggle("disabled", !on.checked);
@@ -6046,15 +6046,15 @@
     exe.type = "text";
     exe.className = "app-exe";
     exe.value = item.exe;
-    exe.placeholder = "\u53EF\u6267\u884C\u6587\u4EF6\u540D\uFF0C\u5982 Code.exe";
-    exe.title = "\u53EF\u6267\u884C\u6587\u4EF6\u540D\uFF1A\u5FFD\u7565\u8DEF\u5F84\u3001\u4E0D\u533A\u5206\u5927\u5C0F\u5199\uFF0C\u7528\u5B83\u8DDF\u6B63\u5728\u8FD0\u884C\u7684\u7A0B\u5E8F\u6BD4\u5BF9";
+    exe.placeholder = "可执行文件名，如 Code.exe";
+    exe.title = "可执行文件名：忽略路径、不区分大小写，用它跟正在运行的程序比对";
     const name = document.createElement("input");
     name.type = "text";
     name.className = "app-name";
     name.value = item.name;
     name.maxLength = APP_NAME_MAX;
-    name.placeholder = appPauseLabel(item.exe) || "\u8F6F\u4EF6\u540D\uFF08\u53EF\u9009\uFF09";
-    name.title = "\u8F6F\u4EF6\u540D\uFF1A\u53EA\u5F71\u54CD\u663E\u793A\uFF0C\u53EF\u7559\u7A7A\uFF1B\u81EA\u5DF1\u6539\u8FC7\u4E4B\u540E\u5C31\u4E0D\u4F1A\u518D\u88AB\u81EA\u52A8\u6539\u540D\u8986\u76D6";
+    name.placeholder = appPauseLabel(item.exe) || "软件名（可选）";
+    name.title = "软件名：只影响显示，可留空；自己改过之后就不会再被自动改名覆盖";
     name.addEventListener("input", () => fitNameInput(name));
     name.addEventListener("change", () => {
       item.name = normalizeAppName(name.value);
@@ -6066,7 +6066,7 @@
       const v = exeBasename(exe.value);
       const clash = !v || S.appPause.items.some((i) => i !== item && i.exe.toLowerCase() === v.toLowerCase());
       if (clash) {
-        toast(v ? `${v} \u5DF2\u5728\u5217\u8868\u4E2D` : "\u53EF\u6267\u884C\u6587\u4EF6\u540D\u4E0D\u80FD\u4E3A\u7A7A");
+        toast(v ? `${v} 已在列表中` : "可执行文件名不能为空");
         exe.value = item.exe;
         return;
       }
@@ -6075,16 +6075,16 @@
       exe.value = v;
       item.name = syncAppName(item.name, from, v);
       name.value = item.name;
-      name.placeholder = appPauseLabel(v) || "\u8F6F\u4EF6\u540D\uFF08\u53EF\u9009\uFF09";
+      name.placeholder = appPauseLabel(v) || "软件名（可选）";
       fitNameInput(name);
       autoSave();
     });
-    const del = mkBtn("\u2715", "\u5220\u9664\u8FD9\u6761\u89C4\u5219", () => {
+    const del = mkBtn("✕", "删除这条规则", () => {
       void confirmDialog({
-        title: "\u5220\u9664\u8FD9\u6761\u5E94\u7528\u89C4\u5219\uFF1F",
-        desc: "\u5220\u9664\u540E\u7ACB\u5373\u751F\u6548\uFF0C\u65E0\u6CD5\u64A4\u9500\u3002",
-        detail: item.name ? `${item.name}\uFF08${item.exe}\uFF09` : item.exe,
-        okText: "\u5220\u9664"
+        title: "删除这条应用规则？",
+        desc: "删除后立即生效，无法撤销。",
+        detail: item.name ? `${item.name}（${item.exe}）` : item.exe,
+        okText: "删除"
       }).then((ok) => {
         if (!ok) return;
         S.appPause.items = S.appPause.items.filter((i) => i.id !== item.id);
@@ -6100,12 +6100,12 @@
     const list = $("app-pause-list");
     if (!list || !S.appPause) return;
     const sum = document.getElementById("app-advanced-summary");
-    if (sum) sum.textContent = S.appPause.items.length > 0 ? `${S.appPause.items.length} \u9879` : "\u7A7A";
+    if (sum) sum.textContent = S.appPause.items.length > 0 ? `${S.appPause.items.length} 项` : "空";
     list.innerHTML = "";
     if (S.appPause.items.length === 0) {
       const empty = document.createElement("div");
       empty.className = "tk-empty";
-      empty.textContent = "\u8FD8\u6CA1\u6709\u6307\u5B9A\u5E94\u7528\uFF0C\u70B9\u4E0A\u65B9\u6309\u94AE\u6DFB\u52A0";
+      empty.textContent = "还没有指定应用，点上方按钮添加";
       list.appendChild(empty);
       return;
     }
@@ -6151,7 +6151,7 @@
     if (names.length === 0) {
       const d = document.createElement("div");
       d.className = "tk-empty";
-      d.textContent = runningApps.length === 0 ? "\u6CA1\u6709\u8BFB\u5230\u6B63\u5728\u8FD0\u884C\u7684\u7A0B\u5E8F" : "\u6CA1\u6709\u5339\u914D\u7684\u7A0B\u5E8F";
+      d.textContent = runningApps.length === 0 ? "没有读到正在运行的程序" : "没有匹配的程序";
       list.appendChild(d);
       return;
     }
@@ -6175,7 +6175,7 @@
       }
       if (dup) {
         const tag = document.createElement("em");
-        tag.textContent = "\u5DF2\u5728\u5217\u8868";
+        tag.textContent = "已在列表";
         row.appendChild(tag);
       }
       row.addEventListener("click", (e) => {
@@ -6193,16 +6193,16 @@
     if (!modal || !list || !note || !filter) return;
     filter.value = "";
     list.innerHTML = "";
-    note.textContent = "\u6B63\u5728\u8BFB\u53D6\u6B63\u5728\u8FD0\u884C\u7684\u7A0B\u5E8F\u2026";
+    note.textContent = "正在读取正在运行的程序…";
     modal.classList.remove("hidden");
     void window.api.listRunningApps().then((r) => {
       if (modal.classList.contains("hidden")) return;
       if (!r || !r.supported) {
-        note.textContent = r && r.detail || "\u5F53\u524D\u5E73\u53F0\u4E0D\u652F\u6301\u8BFB\u53D6\u7A0B\u5E8F\u5217\u8868\uFF0C\u8BF7\u6539\u7528\u300C\u9009\u62E9\u7A0B\u5E8F\u6587\u4EF6\u300D\u6216\u300C\u624B\u52A8\u6DFB\u52A0\u300D\u3002";
+        note.textContent = r && r.detail || "当前平台不支持读取程序列表，请改用「选择程序文件」或「手动添加」。";
         return;
       }
       runningApps = r.names;
-      note.textContent = `\u5171 ${runningApps.length} \u4E2A\u6B63\u5728\u8FD0\u884C\u7684\u7A0B\u5E8F\uFF0C\u52FE\u9009\u540E\u70B9\u300C\u6DFB\u52A0\u300D`;
+      note.textContent = `共 ${runningApps.length} 个正在运行的程序，勾选后点「添加」`;
       renderAppPickItems("");
       filter.focus();
     });
@@ -6211,18 +6211,18 @@
     const modal = $("app-pick-modal");
     $("app-pause-add").addEventListener("click", () => {
       void promptDialog({
-        title: "\u624B\u52A8\u6DFB\u52A0\u5E94\u7528",
-        desc: "\u586B\u53EF\u6267\u884C\u6587\u4EF6\u540D\uFF0C\u4F8B\u5982 chrome.exe\uFF1B\u4EFB\u52A1\u7BA1\u7406\u5668\u300C\u8BE6\u7EC6\u4FE1\u606F\u300D\u91CC\u80FD\u770B\u5230\u3002\u6DFB\u52A0\u540E\u5C31\u80FD\u7ED9\u5B83\u8D77\u4E2A\u540D\u5B57\u3002",
-        placeholder: "\u4F8B\u5982 chrome.exe",
-        okText: "\u6DFB\u52A0"
+        title: "手动添加应用",
+        desc: "填可执行文件名，例如 chrome.exe；任务管理器「详细信息」里能看到。添加后就能给它起个名字。",
+        placeholder: "例如 chrome.exe",
+        okText: "添加"
       }).then((v) => {
         if (v === null) return;
         const added = addApps([v]);
         if (added.length === 0) {
-          toast("\u6CA1\u6709\u65B0\u589E\uFF08\u540D\u79F0\u4E3A\u7A7A\u6216\u5DF2\u5728\u5217\u8868\u4E2D\uFF09");
+          toast("没有新增（名称为空或已在列表中）");
           return;
         }
-        toast(`\u5DF2\u6DFB\u52A0 ${added[0].exe}`);
+        toast(`已添加 ${added[0].exe}`);
         focusAppName(added[0].id);
       });
     });
@@ -6231,10 +6231,10 @@
       if (!r) return;
       const added = addApps([r.exe]);
       if (added.length === 0) {
-        toast(`${r.exe} \u5DF2\u5728\u5217\u8868\u4E2D`);
+        toast(`${r.exe} 已在列表中`);
         return;
       }
-      toast(`\u5DF2\u6DFB\u52A0 ${added[0].exe}`);
+      toast(`已添加 ${added[0].exe}`);
       focusAppName(added[0].id);
     });
     $("app-pause-pick").addEventListener("click", () => openAppPickModal());
@@ -6251,7 +6251,7 @@
       ).map((b) => b.value);
       modal.classList.add("hidden");
       const added = addApps(names);
-      toast(added.length > 0 ? `\u5DF2\u6DFB\u52A0 ${added.length} \u4E2A\u5E94\u7528` : "\u6CA1\u6709\u65B0\u589E\uFF08\u672A\u52FE\u9009\u6216\u90FD\u5DF2\u5728\u5217\u8868\u4E2D\uFF09");
+      toast(added.length > 0 ? `已添加 ${added.length} 个应用` : "没有新增（未勾选或都已在列表中）");
     });
     document.addEventListener("keydown", (e) => {
       if (modal.classList.contains("hidden")) return;
@@ -6262,18 +6262,18 @@
     });
   }
   var ACCENT_PRESETS = [
-    { hex: "#4f7cff", name: "\u7ECF\u5178\u84DD" },
-    { hex: "#2d9cdb", name: "\u5929\u9752" },
-    { hex: "#12a594", name: "\u677E\u77F3\u7EFF" },
-    { hex: "#2e9e5b", name: "\u68EE\u6797\u7EFF" },
-    { hex: "#77a82c", name: "\u6A44\u6984\u7EFF" },
-    { hex: "#e0a020", name: "\u7425\u73C0" },
-    { hex: "#ed7a35", name: "\u843D\u65E5\u6A58" },
-    { hex: "#e2544c", name: "\u6731\u7802\u7EA2" },
-    { hex: "#d8478f", name: "\u73AB\u7EA2" },
-    { hex: "#8b5cf6", name: "\u7D2B\u7F57\u5170" },
-    { hex: "#9a6a4f", name: "\u6469\u5361\u68D5" },
-    { hex: "#5a6474", name: "\u77F3\u58A8\u7070" }
+    { hex: "#4f7cff", name: "经典蓝" },
+    { hex: "#2d9cdb", name: "天青" },
+    { hex: "#12a594", name: "松石绿" },
+    { hex: "#2e9e5b", name: "森林绿" },
+    { hex: "#77a82c", name: "橄榄绿" },
+    { hex: "#e0a020", name: "琥珀" },
+    { hex: "#ed7a35", name: "落日橘" },
+    { hex: "#e2544c", name: "朱砂红" },
+    { hex: "#d8478f", name: "玫红" },
+    { hex: "#8b5cf6", name: "紫罗兰" },
+    { hex: "#9a6a4f", name: "摩卡棕" },
+    { hex: "#5a6474", name: "石墨灰" }
   ];
   var DEFAULT_ACCENT = "#4f7cff";
   function normalizeHex(raw) {
@@ -6386,7 +6386,7 @@
   function resetAccentColor() {
     cpSetColor(DEFAULT_ACCENT, true);
     cpCommit();
-    toast("\u5DF2\u6062\u590D\u9ED8\u8BA4\u989C\u8272");
+    toast("已恢复默认颜色");
   }
   function closeColorPicker() {
     cpFlushHex();
@@ -6582,7 +6582,7 @@
       const r = await window.api.addMusicSound();
       if (r.canceled) return;
       if (!r.items || r.items.length === 0) {
-        toast(r.error ?? "\u6DFB\u52A0\u5931\u8D25");
+        toast(r.error ?? "添加失败");
         return;
       }
       for (const it of r.items) {
@@ -6595,7 +6595,7 @@
       }
       renderSoundMusic();
       autoSave();
-      toast(r.items.length > 1 ? `\u5DF2\u6DFB\u52A0 ${r.items.length} \u9996\u97F3\u4E50` : "\u5DF2\u6DFB\u52A0\u5230\u97F3\u4E50\u5217\u8868");
+      toast(r.items.length > 1 ? `已添加 ${r.items.length} 首音乐` : "已添加到音乐列表");
     });
     setupGalleryPanel();
     bindRoleGalleryDrag();
@@ -6643,7 +6643,7 @@
       commitGeomToRole(g);
       fillGeomControls(g);
       autoSave();
-      toast("\u5DF2\u6062\u590D\u9ED8\u8BA4\u5C3A\u5BF8\u4E0E\u4F4D\u7F6E");
+      toast("已恢复默认尺寸与位置");
     });
     $("tk-add").addEventListener("click", async () => {
       const slot = newSlot();
@@ -6651,7 +6651,7 @@
       renderTakeoutList();
       await autoSave();
       refreshStatusNow();
-      toast(`\u5DF2\u6DFB\u52A0 ${slotTimeText(slot)} \u7684\u5916\u5356\u63D0\u9192`);
+      toast(`已添加 ${slotTimeText(slot)} 的外卖提醒`);
     });
     $("cb-add").addEventListener("click", () => void addCustomBreak());
     for (const t of ["short", "long"]) {
@@ -6664,7 +6664,7 @@
         renderBreakList(t);
         await autoSave();
         refreshStatusNow();
-        toast(`\u5DF2\u6DFB\u52A0 ${slotTimeText(slot)} \u7684${t === "short" ? "\u77ED" : "\u957F"}\u4F11\u606F`);
+        toast(`已添加 ${slotTimeText(slot)} 的${t === "short" ? "短" : "长"}休息`);
       });
       for (const id of [`${t}-enabled`, `${t}-interval`]) {
         $(id).addEventListener("change", () => updateBreakSummary(t));
@@ -6716,7 +6716,7 @@
       batchModal.classList.add("hidden");
       renderMsgList(msgBatchTarget);
       autoSave();
-      toast(`\u5DF2\u6DFB\u52A0 ${lines.length} \u6761\u63D0\u9192\u5185\u5BB9`);
+      toast(`已添加 ${lines.length} 条提醒内容`);
     });
     $("cf-cancel").addEventListener("click", () => closeConfirm(false));
     $("cf-ok").addEventListener("click", () => closeConfirm(true));
@@ -6782,14 +6782,14 @@
     $("d-clearstats").addEventListener("click", () => {
       void (async () => {
         const ok = await confirmDialog({
-          title: "\u6E05\u7A7A\u7EDF\u8BA1\u6570\u636E",
-          desc: "\u786E\u5B9A\u6E05\u7A7A\u5168\u90E8\u4F7F\u7528\u7EDF\u8BA1\u6570\u636E\uFF1F",
-          detail: "\u5C06\u5220\u9664\u672C\u5730 stats.json \u91CC\u7684\u5168\u90E8\u5DE5\u4F5C/\u4F11\u606F/\u5916\u5356\u7EDF\u8BA1\uFF0C\u4E14\u65E0\u6CD5\u6062\u590D\u3002",
-          okText: "\u6E05\u7A7A"
+          title: "清空统计数据",
+          desc: "确定清空全部使用统计数据？",
+          detail: "将删除本地 stats.json 里的全部工作/休息/外卖统计，且无法恢复。",
+          okText: "清空"
         });
         if (!ok) return;
         await window.api.clearStats();
-        toast("\u7EDF\u8BA1\u6570\u636E\u5DF2\u6E05\u7A7A");
+        toast("统计数据已清空");
         void renderStats();
       })();
     });
@@ -6963,13 +6963,13 @@
           // 手动检查：发现新版本必须弹窗（force），不受忽略/去重限制；
           // 其余两种结果没有弹窗，用 toast 明确告知。
           renderUpdate(st, true, true);
-          if (st.status === "up-to-date") toast("\u5DF2\u662F\u6700\u65B0\u7248\u672C");
+          if (st.status === "up-to-date") toast("已是最新版本");
           else if (st.status !== "update-available")
-            toast(`\u68C0\u67E5\u66F4\u65B0\u5931\u8D25\uFF08${st.message ?? "\u66F4\u65B0\u6E90\u4E0D\u53EF\u8FBE"}\uFF09`);
+            toast(`检查更新失败（${st.message ?? "更新源不可达"}）`);
         } catch (e) {
           // 绑定调用本身出错（非 status=error）：也要收敛成一个明确的结果，别停在「检查中」
           setPill("err", "更新检查失败");
-          toast(`\u68C0\u67E5\u66F4\u65B0\u5931\u8D25\uFF08${e?.message ?? "\u672A\u77E5\u9519\u8BEF"}\uFF09`);
+          toast(`检查更新失败（${e?.message ?? "未知错误"}）`);
         } finally {
           setChecking(false);
         }
@@ -7029,18 +7029,18 @@
     $("d-reset").addEventListener("click", () => {
       void (async () => {
         const ok = await confirmDialog({
-          title: "\u6062\u590D\u9ED8\u8BA4\u8BBE\u7F6E",
-          desc: "\u786E\u5B9A\u628A\u5168\u90E8\u8BBE\u7F6E\u6062\u590D\u4E3A\u51FA\u5382\u9ED8\u8BA4\uFF1F",
-          detail: "\u5F53\u524D\u914D\u7F6E\u4F1A\u5148\u5907\u4EFD\u6210 settings.backup.json\uFF08\u6BCF\u6B21\u8986\u76D6\uFF09\u3002\u7763\u4F11\u4E13\u5458\u76EE\u5F55\u4E0E\u5DF2\u5BFC\u5165\u7684\u97F3\u4E50\u6587\u4EF6\u4E0D\u53D7\u5F71\u54CD\uFF1B\u5F00\u673A\u81EA\u542F\u52A8\u4F1A\u4E00\u5E76\u5173\u95ED\u3002",
-          okText: "\u6062\u590D\u9ED8\u8BA4"
+          title: "恢复默认设置",
+          desc: "确定把全部设置恢复为出厂默认？",
+          detail: "当前配置会先备份成 settings.backup.json（每次覆盖）。督休专员目录与已导入的音乐文件不受影响；开机自启动会一并关闭。",
+          okText: "恢复默认"
         });
         if (!ok) return;
         const r = await window.api.resetSettings();
         if (!r.ok) {
-          toast(`\u6062\u590D\u5931\u8D25\uFF1A${r.message ?? "\u672A\u77E5\u9519\u8BEF"}`);
+          toast(`恢复失败：${r.message ?? "未知错误"}`);
           return;
         }
-        toast("\u5DF2\u6062\u590D\u9ED8\u8BA4\u8BBE\u7F6E\uFF08\u539F\u914D\u7F6E\u5DF2\u5907\u4EFD\uFF09");
+        toast("已恢复默认设置（原配置已备份）");
         S = await window.api.getSettings();
         fillForm();
         renderAllMsgLists();

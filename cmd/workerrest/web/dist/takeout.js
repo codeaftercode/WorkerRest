@@ -2848,12 +2848,12 @@
     app.dataset.rounded = info.appearance.fullscreen ? "0" : "1";
     const postEl = el("tk-postponed");
     if (info.postponedCount > 0) {
-      postEl.textContent = `\u5DF2\u63A8\u8FDF ${info.postponedCount} \u6B21`;
+      postEl.textContent = `已推迟 ${info.postponedCount} 次`;
       postEl.classList.remove("hidden");
     }
     // 「可推迟」为 0 分钟时不显示「推迟」按钮（buildTakeoutInfo 透传配置快照）
     if (info.postponeMin > 0) {
-      el("tk-postpone").textContent = `\u63A8\u8FDF ${info.postponeMin} \u5206\u949F`;
+      el("tk-postpone").textContent = `推迟 ${info.postponeMin} 分钟`;
     } else {
       el("tk-postpone").classList.add("hidden");
     }
@@ -2871,10 +2871,10 @@
       if (data && data.url) {
         const qr = el("rp-qr");
         qr.classList.remove("hidden");
-        el("rp-text").textContent = "\u5916\u5356\u4F18\u60E0\u5238 \xB7 \u5FAE\u4FE1\u626B\u7801\u9886\u53D6";
+        el("rp-text").textContent = "外卖优惠券 \xB7 微信扫码领取";
         import_qrcode.default.toCanvas(qr, data.url, { width: 120, margin: 1, color: { dark: "#331a12", light: "#ffffff" } }).catch(() => {
           qr.classList.add("hidden");
-          el("rp-text").textContent = "\u652F\u4ED8\u7EA2\u5305 \xB7 \u4E8C\u7EF4\u7801\u751F\u6210\u5931\u8D25";
+          el("rp-text").textContent = "支付红包 \xB7 二维码生成失败";
         });
       }
     }
