@@ -68,28 +68,23 @@
           <div class="row check"><label class="switch-row"><input type="checkbox" id="startMinimized" /> 启动时最小化到托盘</label></div>
         </div>
         <div class="card">
-          <h3>自动暂停<span class="q-mark" title="触发的那一刻会收掉屏幕上的提醒窗口，这段时间到点的提醒直接跳过。勿扰、全屏、投屏结束后不会自动恢复，点托盘的「恢复休息」继续；空闲和指定应用会自动恢复。暂停每满 1 小时在右下角提示一次（投屏、全屏、勿扰时除外）。">?</span></h3>
+          <h3>自动暂停<span class="q-mark" title="满足以下任意条件时自动暂停">?</span></h3>
           <!-- 空闲自动暂停始终启用、不可关闭，所以这里没有勾选框，只有分钟数（最小 1）；
                行本身仍用 .mixed（内容紧挨着左对齐 + 行内窄数字框） -->
           <div class="row mixed">
             <label class="lead" for="idlePauseMin">系统空闲</label>
             <input type="number" id="idlePauseMin" min="1" max="120" />
-            <span class="tail">分钟后自动暂停</span>
+            <span class="tail">分钟</span>
+          </div>
+          <!-- 四条系统状态开关并排一行：选项名只留最短的辨识词，判据与边界都写在各自的「?」里 -->
+          <div class="row check check-inline">
+            <label class="switch-row"><input type="checkbox" id="dndPause" /> 勿扰模式<span class="q-mark" title="系统处于“请勿打扰”模式时自动暂停">?</span></label>
+            <label class="switch-row"><input type="checkbox" id="fullscreenPause" /> 全屏/演示<span class="q-mark" title="播放器、浏览器、游戏等真全屏窗口或 Windows 演示设置生效时自动暂停（要求整个屏幕被无边框窗口铺满。最大化不算，因为有边框）">?</span></label>
+            <label class="switch-row"><input type="checkbox" id="castWirelessPause" /> 无线投放<span class="q-mark" title="连接到无线显示器时自动暂停">?</span></label>
+            <label class="switch-row"><input type="checkbox" id="castMirrorPause" /> 复制投影<span class="q-mark" title="投影方式为“复制”时自动暂停">?</span></label>
           </div>
           <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="dndPause" /> 系统勿扰、专注、演示模式自动暂停</label>
-          </div>
-          <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="fullscreenPause" /> 全屏独占应用运行时自动暂停<span class="q-mark" title="按 Windows 的「全屏独占」判定（D3D 独占全屏）：真全屏游戏、视频播放器全屏。浏览器 F11、无边框全屏、系统不认为是独占全屏的窗口不会触发。">?</span></label>
-          </div>
-          <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="castWirelessPause" /> 无线投放时自动暂停<span class="q-mark" title="按显示输出的连接方式判断：接了无线显示设备（Miracast、无线显示适配器）时算。它本身就是一种连接协议，所以用扩展模式接无线屏也照样触发。有线连接（HDMI / DP / VGA）不会命中这一条。">?</span></label>
-          </div>
-          <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="castMirrorPause" /> 投影方式为「复制」时自动暂停<span class="q-mark" title="按投影方式判断：Win+P 选「复制」，桌面被镜像到另一块屏时算，这是讲台最常见的接法。注意「笔记本接外接显示器图省事设成复制」也会命中，那种情况请关掉这个开关。用扩展模式接副屏、或选「仅第二屏幕」不触发——系统分不清哪块屏是投影仪，这两种情况请手动暂停。">?</span></label>
-          </div>
-          <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 指定应用运行时自动暂停</label>
+            <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 运行应用</label>
           </div>
           <!-- 应用列表：与「提醒内容」「高级选项」共用同一套折叠外观（details.advanced），默认收起；
                卡片内顺序固定为「按钮行 → 列表 → 说明」，三个添加入口都在列表上方 -->
@@ -297,7 +292,7 @@
                下拉本体由 settings.js 的 mountPauseDrop 画（原生 select 装不下每一项的「?」）；
                标签上的「?」说明「暂停休息」包括哪几种情况，空闲分钟数由 settings.js 补全 -->
           <div class="row field">
-            <label>暂停休息时<span class="q-mark pause-scope-help" title="「暂停休息」指：系统空闲 5 分钟自动暂停、系统勿扰 / 专注 / 演示模式自动暂停、全屏独占应用运行时自动暂停、无线投放 / 复制模式时自动暂停、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+            <label>暂停休息时<span class="q-mark pause-scope-help" title="「暂停休息」指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
             <div class="cdrop-host" id="tk-pause"></div>
           </div>
           <div class="row field"><label for="tk-lead">提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>

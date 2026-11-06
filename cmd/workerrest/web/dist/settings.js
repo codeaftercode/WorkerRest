@@ -142,8 +142,8 @@
   function pauseScopeHint() {
     const n = Math.max(1, Math.round(Number(S && S.idlePauseMin) || 5));
     return "「暂停休息」指：系统空闲 " + n +
-      " 分钟自动暂停、系统勿扰 / 专注 / 演示模式自动暂停、全屏独占应用运行时自动暂停、" +
-      "无线投放 / 复制模式时自动暂停、指定应用运行时自动暂停，以及手动暂停休息。";
+      " 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，" +
+      "以及手动暂停休息。";
   }
   function refreshPauseHints() {
     const text = pauseScopeHint();
@@ -2903,9 +2903,9 @@
     // 自动记录窗口尺寸：老配置里可能没有 window 块（deepMerge 会补，但填表这一层
     // 不能假设后端一定下发），缺了就当「开」——与后端 Flag(true, …) 的默认值一致
     $("win-remember").checked = !(S.window && S.window.rememberSize === false);
-    $("dndPause").checked = S.dndPause;
-    // 老配置里没有 fullscreenPause：undefined 传给 checked 会让框呈现未选，
-    // 与后端 Flag(false,…) 的默认值一致，所以这里不额外补默认值
+    $("dndPause").checked = S.dndPause !== false;
+    // 老配置里可能没有 fullscreenPause；后端 deepMerge 会补上出厂 true，
+    // 这里不额外兜底，避免与后端下发的实际值不一致
     $("fullscreenPause").checked = !!S.fullscreenPause;
     // 缺键按「开」（后端 Flag(true,…) 同口径），所以判据是 !== false，不能写成 !!
     $("castWirelessPause").checked = S.castWirelessPause !== false;
