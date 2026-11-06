@@ -144,7 +144,7 @@ func (a *App) pauseExpiryTick() {
 
 // pauseActiveSnapshot 到期判定要看的「条件此刻是否成立」。
 //
-// 五条自动原因查登记表（applyAutoPause 每跳写）；**空闲单独处理**：它不走那个函数，
+// 其余自动原因查登记表（applyAutoPause 每跳写）；**空闲单独处理**：它不走那个函数，
 // 由 idleWatchTick 直接 Pause / Resume，所以登记表里没有它。人不在的证据在调度器那边
 // —— `PauseReasons` 里还挂着 idle 就说明离开还没结束（人回来时 Resume(idle) 会摘掉它）。
 // 不这么补的话，「23:55 设到明天、合盖睡觉、7:30 唤醒」会在第一拍判定时读到一个空的

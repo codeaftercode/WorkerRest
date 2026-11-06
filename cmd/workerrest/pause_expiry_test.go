@@ -64,7 +64,7 @@ func TestPauseHoldReasons(t *testing.T) {
 		t.Fatalf("登记为 false 不等于生效，得到 %v", got)
 	}
 	got := pauseHoldReasons(map[string]bool{
-		"全屏独占": true,
+		"全屏或演示": true,
 		"勿扰":   true,
 	})
 	txt := pauseHoldText(got)
@@ -103,8 +103,8 @@ func TestTimedPauseText(t *testing.T) {
 	}
 
 	// 到期且被挡住：点名在等什么
-	tip, status = timedPauseText(now-1, []string{"全屏独占"}, now)
-	if !strings.Contains(tip, "时长已到") || !strings.Contains(tip, "全屏独占") {
+	tip, status = timedPauseText(now-1, []string{"全屏或演示"}, now)
+	if !strings.Contains(tip, "时长已到") || !strings.Contains(tip, "全屏或演示") {
 		t.Fatalf("到期被挡应点名原因，得到 %q", tip)
 	}
 	if !strings.Contains(status, "时长已到") {
@@ -390,7 +390,7 @@ func TestTrayDropsTimedTextAfterManualResumeKeepsAuto(t *testing.T) {
 // 到期时被勿扰挡住、之后勿扰结束：现在停在「勿扰这条原因还在（按策略保留）」上。
 //
 // 这条用例刻意钉的是**当前语义**而不是理想语义：到期只摘 manual，其余的自动原因按
-// 各自策略走（勿扰 / 全屏 / 投屏四条条件消失也不自动恢复）。结果是「用户设了『到明天』，
+// 各自策略走（勿扰 / 全屏或演示 / 两条投屏，条件消失也不自动恢复）。结果是「用户设了『到明天』，
 // 零点正开着勿扰 → 第二天早上关掉勿扰，提醒仍然停着，得点一下恢复」。
 // 留着它有两个用处：一是把这条行为写进验收，二是将来若改成「到期授权恢复到底」，
 // 这条会立刻变红，提醒按新口径重写。

@@ -15,13 +15,16 @@ import (
 	"workerrest/internal/winproc"
 )
 
-// 系统能力监视器：空闲 / 勿扰 / 应用占用 —— 三条链路都汇聚到调度器的
+// 系统能力监视器：空闲 / 请勿打扰·全屏或演示 / 投屏 / 应用占用 —— 各条链路都汇聚到调度器的
 // 「暂停提醒 / 恢复提醒」，与 历史源码/main.ts 的 startIdleWatcher / startDndWatcher /
-// startAppPauseWatcher 逐条对齐。
+// startAppPauseWatcher 对齐。
 //
-// 判定逻辑本身抽在别处（decideIdleStep / GetDndStatus / plan.MatchAppPause），这里只负责
-// 「多久看一次」与「看到之后对调度器做什么」。三个 tick 函数都是 App 的方法而不是内联
+// 判定逻辑本身抽在别处（decideIdleStep / windnd.Query / plan.MatchAppPause），这里只负责
+// 「多久看一次」与「看到之后对调度器做什么」。tick 函数都是 App 的方法而不是内联
 // 在 goroutine 里，就是为了让单测能直接推进一步，不必等真实的 1/3/4 秒。
+//
+// 2026-11-06 起「勿扰」这一拍一次读两条独立信号（WNF 勿扰档位 + QUNS 通知状态），
+// 分别落到「请勿打扰 / 全屏或演示」两条暂停原因上，各有自己的开关与忽略表。
 
 const (
 	// dndWatchMs 勿扰轮询间隔（与 main.ts 的 3_000 一致）
@@ -45,7 +48,7 @@ const (
 	// autoPauseEnterConfirmTicks 「进入暂停」要连续几拍条件成立才算数（见 applyAutoPause）。
 	//
 	// 这是与 appPauseExitConfirmMisses 对称的**进入侧**去抖，专治「保持暂停」那四条
-	// （勿扰 / 全屏独占 / 复制模式 / 无线投放）的一次性尖峰：SHQueryUserNotificationState
+	// （请勿打扰 / 全屏或演示 / 复制模式 / 无线投放）的一次性尖峰：SHQueryUserNotificationState
 	// 偶发返回 QUNS_BUSY（全屏应用一帧、演示设置闪一下），QueryDisplayConfig 在拓扑重排
 	// 那几百毫秒报一次镜像。单拍命中就把提醒挂进一条「不自动恢复」的暂停，用户得自己去
 	// 托盘手动点，而且完全不知道为什么。
@@ -63,9 +66,13 @@ const (
 // 「复制模式」与「无线投放」刻意分成两条原因：判据来源、开关、以及用户对它们的心智都是
 // 独立的——复制模式看的是拓扑被镜像，无线投放看的是输出端是不是 Miracast。合成一个
 // 「投屏」时，用户为复制模式点一次「恢复休息」，正在用的无线投放会被一起静音。
+// 前两条是 2026-11-06 从原来的一条「系统勿扰」合并开关拆出来的：判据来源不同、
+// 开关不同、暂停原因不同，互不牵连。「勿扰」读 WNF 档位，「全屏或演示」读 QUNS。
+// 一度拆成三条（勿扰 / 系统忙碌 / 演示设置），但 QUNS 是互斥单值、微软未公开
+// 2 与 4 谁对应演示设置的判定顺序，于是 2 / 3 / 4 统一并回一条选项。
 const (
-	pauseReasonDnd          = "勿扰"
-	pauseReasonFullScr      = "全屏独占"
+	pauseReasonDnd     = "勿扰"
+	pauseReasonFullScr = "全屏或演示"
 	pauseReasonCastMirror   = "复制模式"
 	pauseReasonCastWireless = "无线投放"
 	pauseReasonAppPause     = "应用占用"
@@ -77,6 +84,9 @@ const (
 // 判据本身在 scheduler.IsAutoPauseReason（不等于 manual 即自动）。这份白名单保留
 // 在 App 侧，是因为「该忽略谁」只认已知的六条：将来万一有别的原因名混进 PauseReasons，
 // 也不该被当成可忽略的自动原因。
+//
+// 顺序同时决定托盘 / 到期提示里原因的排列：请勿打扰、全屏或演示在最前
+// （用户最常问的两个），其后是投屏两条，最后是应用占用。
 var autoPauseReasons = []string{
 	scheduler.PauseReasonIdle,
 	pauseReasonDnd,
@@ -93,8 +103,8 @@ var autoPauseReasons = []string{
 //   - 空闲：人回来了 = 条件消失就是场景结束，必须自动恢复。否则每次离开几分钟回来
 //     都要去托盘点一下，提醒会停摆一整天 —— 而空闲暂停时人不在场，本来就没有尴尬可言。
 //   - 应用占用：目标应用退出 = 忙完了，同样是明确的结束信号，自动恢复。
-//   - 勿扰 / 全屏独占 / 复制模式 / 无线投放：条件消失 **不等于** 场景结束 —— 退出全屏
-//     还可以继续开会、投屏线松一下还会接回去、勿扰可能被系统或别人随手关掉。这几条
+//   - 请勿打扰 / 全屏或演示 / 复制模式 / 无线投放：条件消失 **不等于** 场景结束
+//     —— 退出全屏还可以继续开会、投屏线松一下还会接回去、勿扰可能被系统或别人随手关掉。这几条
 //     一律保留暂停，等用户自己点「恢复休息」，否则提醒会在会议中途弹出来，正是自动
 //     暂停要拦的那一幕。
 //
@@ -125,7 +135,7 @@ func (a *App) startSystemWatchers() {
 	procs := winproc.ListProcessNames()
 	dndNote := dnd.Detail
 	if !dnd.Supported {
-		dndNote += "（不支持，勿扰暂停不生效）"
+		dndNote += "（勿扰档位读不到，这条暂停不生效；全屏或演示不受影响）"
 	}
 	castNote := cast.Detail
 	if !cast.Supported {
@@ -142,7 +152,7 @@ func (a *App) startSystemWatchers() {
 	// close 之后把字段置 nil，若某一跳恰好读到 nil，`<-nil` 会永久阻塞，goroutine
 	// 既停不下来也不再轮询（应用退出时留下一个卡住的监视器）。
 	stop := a.sysStop
-	// 空闲：不立刻判一次（先攒够采样），其余两条与上一版 一样启动即判一次
+	// 空闲：不立刻判一次（先攒够采样），其余各条与上一版 一样启动即判一次
 	go a.watchLoop(stop, "空闲", idle.SampleMs, false, func() { a.idleAway = a.idleWatchTick(a.idleAway) })
 	go a.watchLoop(stop, "勿扰", dndWatchMs, true, a.dndWatchTick)
 	go a.watchLoop(stop, "投屏", castWatchMs, true, a.castWatchTick)
@@ -228,11 +238,12 @@ func (a *App) idleWatchTick(away bool) bool {
 	return away
 }
 
-// dndWatchTick 推进一次系统「勿扰 / 全屏独占」判定。
+// dndWatchTick 推进一次系统状态判定：请勿打扰 / 全屏或演示。
 //
-// 两条支路共用同一次 SHQueryUserNotificationState 查询（同一个返回值的不同取值）：
-//   - 2 / 4：勿扰、专注助手、演示模式 —— 开关 dndPause
-//   - 3：全屏独占（真全屏游戏、播放器全屏）—— 开关 fullscreenPause
+// 名字沿用旧 watcher，但这一拍现在读两条独立信号（见 windnd.Query），落到两条暂停原因：
+//   - WNF 勿扰档位 ≠ 0 → 勿扰（开关 dndPause）
+//   - QUNS 2 / 3 / 4 → 全屏或演示（开关 fullscreenPause）；2 = 非独占全屏或
+//     演示设置已应用，3 = D3D 独占全屏，4 = 演示设置主动屏蔽通知
 //
 // 与 上一版有一处**刻意不同**：那边每一跳（3 秒）都打一条 `[dnd] active: …`，
 // 勿扰开着的时候日志会被刷满；这里只在「进入 / 退出暂停」的那一次打日志。
@@ -241,40 +252,42 @@ func (a *App) dndWatchTick() {
 		return
 	}
 	cfg := a.CfgSnapshot()
-	dnd, fs := windnd.Query()
-	a.dndApply(dnd, fs, cfg.DndPause(), cfg.FullScreenPause())
+	a.dndApply(windnd.Query(), cfg.DndPause(), cfg.FullScreenPause())
 }
 
-// dndApply 把一次「勿扰 / 全屏独占」查询结果落到调度器上。
+// dndApply 把一次系统状态采样落到调度器上，两条原因各走各的开关、日志与忽略表。
 //
-// **探测失败（Supported=false）时整拍跳过**，不是当成「条件不成立」。两者差别很大：
-// SHQueryUserNotificationState 偶发调用失败（会话切换、系统忙、UAC 桌面）时，
-// 若按「假」处理就会走「条件消失」分支 —— 误恢复提醒、把用户点过恢复的忽略表清掉
-// （下次条件成立又挂回来，用户会疑惑「我明明点过恢复了」）、还会在日志里留下一句
-// 假的「已关闭」。没有结论就什么都别做，等下一次查询成功再判。
+// **探测失败（Supported=false）时只跳过它自己那条**，不是当成「条件不成立」，也不是
+// 整拍作废。两者差别很大：SHQueryUserNotificationState 偶发调用失败（会话切换、系统忙、
+// UAC 桌面）、或 WNF 未文档化接口在某台机器上读不到时，若按「假」处理就会走「条件消失」
+// 分支 —— 误恢复提醒、把用户点过恢复的忽略表清掉（下次条件成立又挂回来，用户会疑惑
+// 「我明明点过恢复了」）、还会在日志里留下一句假的「已关闭」。没有结论就什么都别做。
+//
+// 两条信号**互相独立**：WNF 读不到只让「勿扰」这一条没有结论，QUNS 的全屏或演示
+// 照常判；反过来 QUNS 失败也不影响勿扰。这正是两条选项「互不相关」在探测层的保证。
 //
 // 抽出独立函数是为了让这条判据可测：真机上没法让系统 API 按需失败（测试见
-// TestProbeFailureKeepsPause）。
-//
-// 勿扰与全屏独占共用同一次查询（同一个返回值），所以只判一次 Supported：
-// 一个失败就是两个都失败。
-func (a *App) dndApply(dnd windnd.DndStatus, fs windnd.FullScreenStatus, dndOn, fsOn bool) {
-	if !dnd.Supported {
+// probe_failure_test.go）。
+func (a *App) dndApply(st windnd.BusyStatus, dndOn, fsOn bool) {
+	if st.WnfSupported {
+		d := st.Dnd()
+		a.applyAutoPause(dndOn && d.Active, pauseReasonDnd, &a.dndActiveLogged,
+			"[dnd] 系统勿扰已开启（"+d.Detail+"），暂停提醒",
+			"[dnd] 系统勿扰已关闭：恢复提醒")
+	}
+	if !st.QunsSupported {
 		return
 	}
-	a.applyAutoPause(dndOn && dnd.Active, pauseReasonDnd, &a.dndActiveLogged,
-		"[dnd] 系统勿扰 / 专注 / 演示模式已开启："+dnd.Detail+"，暂停提醒",
-		"[dnd] 系统勿扰 / 专注 / 演示模式已关闭：恢复提醒")
-
+	fs := st.FullScreen()
 	a.applyAutoPause(fsOn && fs.Active, pauseReasonFullScr, &a.fsActiveLogged,
-		"[fullscreen] 检测到全屏独占应用运行（"+fs.Detail+"），暂停提醒",
-		"[fullscreen] 全屏独占应用已退出：恢复提醒")
+		"[screen] 检测到全屏应用或演示设置（"+fs.Detail+"），暂停提醒",
+		"[screen] 全屏或演示已结束：恢复提醒")
 }
 
 // castWatchTick 推进一次「是否正在投屏」判定。
 //
-// 单独成一条链路、不并进 dndWatchTick，是因为判据来源完全不同：勿扰与全屏独占读的是
-// SHQueryUserNotificationState 的同一个返回值，投屏读的是显示拓扑（QueryDisplayConfig）。
+// 单独成一条链路、不并进 dndWatchTick，是因为判据来源完全不同：勿扰读 WNF 勿扰档位，
+// 全屏或演示读 SHQueryUserNotificationState，投屏读显示拓扑（QueryDisplayConfig）。
 // 合在一起那个函数名就彻底名不副实了。
 //
 // 三种「不暂停」分在三处，别混：探测失败 → castApply 整拍跳过（不是当成没投屏）；
@@ -332,7 +345,7 @@ func castWant(cast windnd.CastStatus, mirrorOn, wirelessOn bool) (mirror, wirele
 //
 // 条件消失后走哪条路，由 autoResumeOnClear 决定：
 //   - 自动恢复（空闲 / 应用占用）：Resume，与以前一致；
-//   - 保留暂停（勿扰 / 全屏 / 投屏两条）：只清忽略、打日志，暂停原因留在调度器里，
+//   - 保留暂停（勿扰 / 全屏或演示 / 投屏两条）：只清忽略、打日志，暂停原因留在调度器里，
 //     等用户手动点「恢复休息」；logged 照常清零，条件再次成立时重新报一次「暂停提醒」。
 //
 // **进入侧有去抖**（autoPauseEnterConfirmTicks）：条件要连续两拍成立才真正 Pause。一次
@@ -482,7 +495,7 @@ func (a *App) appPauseApply(acfg model.AppPauseConfig, r winproc.AppProcessList)
 
 // ---------- 「用户已手动恢复过」的忽略表 ----------
 //
-// 语义（六条自动原因共用）：因某原因自动暂停 → 用户点「恢复休息」→ 该原因的条件还在，
+// 语义（全部自动原因共用）：因某原因自动暂停 → 用户点「恢复休息」→ 该原因的条件还在，
 // 也不再因它暂停；条件消失后解除，下次达成照常触发。其他原因不受影响——它们各自有
 // 自己的表项，用户恢复的是「当时正在生效的那几条」。
 //
@@ -503,7 +516,7 @@ func (a *App) activeAutoPauseReasons() []string {
 	out := make([]string, 0, len(reasons))
 	for _, r := range reasons {
 		// 两个判据都用上：IsAutoPauseReason 定「手动还是自动」的大类，
-		// 白名单保证只认这六条已知的，别把将来混进来的怪名字当成可忽略原因。
+		// 白名单保证只认这几条已知的，别把将来混进来的怪名字当成可忽略原因。
 		if known[r] && scheduler.IsAutoPauseReason(r) {
 			out = append(out, r)
 		}
@@ -625,6 +638,7 @@ func (a *App) SysProbe() map[string]any {
 		idleInfo = a.idle.Info()
 	}
 	procs := winproc.ListProcessNames()
+	busy := windnd.Query()
 	cur := autostart.ReadRunEntry()
 	dis := autostart.ApprovalDisabled()
 	autostartInfo := map[string]any{
@@ -644,11 +658,13 @@ func (a *App) SysProbe() map[string]any {
 		autostartInfo["wanted"] = a.CfgSnapshot().Autostart()
 	}
 	return map[string]any{
-		"idle":       idleInfo,
-		"dnd":        windnd.GetDndStatus(),
-		"fullscreen": windnd.GetFullScreenStatus(),
-		"cast":       windnd.GetCastStatus(),
-		"processes":  procs,
-		"autostart":  autostartInfo,
+		"idle":              idleInfo,
+		"dnd":               busy.Dnd(),
+		"fullscreen":        busy.FullScreen(),
+		"quietHoursProfile": busy.QuietProfile,
+		"quns":              busy.Quns,
+		"cast":              windnd.GetCastStatus(),
+		"processes":         procs,
+		"autostart":         autostartInfo,
 	}
 }

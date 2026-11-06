@@ -600,3 +600,22 @@ func TestDefaultDisplayIDsEmptyThenFilled(t *testing.T) {
 		t.Fatalf("出厂 displayIds 必须是空数组，得到 %v", def["displayIds"])
 	}
 }
+
+// 出厂默认里两条系统状态开关都在，且访问器各自读自己的键（互不相关）。
+func TestSplitPauseAccessors(t *testing.T) {
+	def := DefaultSettingsMap()
+	for _, k := range []string{"dndPause", "fullscreenPause"} {
+		if v, ok := def[k].(bool); !ok || !v {
+			t.Fatalf("出厂默认缺 %s 或不是 true，得到 %v", k, def[k])
+		}
+	}
+	for _, gone := range []string{"focusPause", "presentationPause"} {
+		if _, ok := def[gone]; ok {
+			t.Fatalf("%s 已删除，出厂默认不该再有这个键", gone)
+		}
+	}
+	s := New(map[string]any{"dndPause": false, "fullscreenPause": true}, "")
+	if s.DndPause() || !s.FullScreenPause() {
+		t.Fatal("两条访问器必须各自读自己的键")
+	}
+}

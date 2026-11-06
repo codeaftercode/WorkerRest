@@ -8,7 +8,7 @@ import (
 
 // 暂停状态机的不变量（随机操作序列）。
 //
-// 为什么需要这一组：单条用例只能钉住「我想到的那条路径」。暂停的入口有六条自动原因 +
+// 为什么需要这一组：单条用例只能钉住「我想到的那条路径」。暂停的入口有五条自动原因 +
 // 手动 + 定时，出口有 Resume / ResumeQuiet / PauseToggle / 到期判定，两两叠加就是几十种
 // 组合。真正会出错的往往是「A 摘掉之后 B 还挂着」这种中间态 —— 状态字段之间对不上，
 // 界面就开始说胡话（托盘写着「还有 25 分钟」，实际那段暂停早被用户结束了）。
@@ -63,7 +63,7 @@ func TestPauseResumeInvariants(t *testing.T) {
 	reasons := []string{
 		PauseReasonManual,
 		PauseReasonIdle,
-		"勿扰", "全屏独占", "复制模式", "无线投放", "应用占用",
+		"勿扰", "全屏或演示", "复制模式", "无线投放", "应用占用",
 	}
 	rng := rand.New(rand.NewSource(20261105))
 
@@ -149,7 +149,7 @@ func TestResumeUnknownReasonIsNoop(t *testing.T) {
 	before := s.StateCopy()
 
 	s.Resume("应用占用")
-	s.ResumeQuiet("全屏独占")
+	s.ResumeQuiet("全屏或演示")
 
 	st := s.StateCopy()
 	if !st.Paused || len(st.PauseReasons) != 1 || st.PausedAt != before.PausedAt {

@@ -37,10 +37,19 @@ func (s *Settings) IdlePauseMin() int {
 	return int(n)
 }
 
-// DndPause 系统勿扰 / 专注 / 演示模式时暂停
+// 两条独立的「系统状态」自动暂停开关（2026-11-06 三次收敛定稿）。以前只有
+// 一个 dndPause 管着勿扰 / 忙碌 / 演示设置，关掉一条就得把三条一起关；现在各管各的：
+//   - DndPause        请勿打扰（Win11 通知中心「请勿打扰」/ Win10 专注助手档位，WNF）
+//   - FullScreenPause 全屏或演示（QUNS 2 / 3 / 4，见下方）
+// 出厂全开。presentationPause 已按用户口径删除：微软从未公开 QUNS 2 与 4 谁对应
+// 演示设置的判定顺序，两条独立开关在未文档化的实现细节上分家没有依据。
+// 软件未发布，不做旧键迁移；磁盘上残留的 presentationPause 键无人读取，无害。
+
+// DndPause 系统勿扰时暂停
 func (s *Settings) DndPause() bool { return s.Flag(true, "dndPause") }
 
-// FullScreenPause 全屏独占应用运行时暂停（QUNS_RUNNING_D3D_FULL_SCREEN）。
+// FullScreenPause 全屏应用或 Windows 演示设置生效时暂停（QUNS 2 / 3 / 4）。
+// 2 = 非独占全屏或演示设置已应用，3 = D3D 独占全屏，4 = 演示设置主动屏蔽通知。
 // 缺键兜底取「开」，与 default_settings.json 的 fullscreenPause 同值
 // （2026-10-29 用户把出厂默认定为「开」，见 settings.go 的 AppearanceCfg 注释）。
 func (s *Settings) FullScreenPause() bool { return s.Flag(true, "fullscreenPause") }

@@ -282,21 +282,41 @@ func jsonStr(s string) string {
 
 func TestDndWatchIsIdempotent(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
-	a.dndWatchTick()
-	a.dndWatchTick()
-	st := s.StateCopy()
-	// 本机此刻到底开没开勿扰不确定，但必须满足：没开 → 一条暂停原因都不留
-	live := windnd.GetDndStatus()
-	if live.Supported && live.Active {
-		if len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonDnd {
-			t.Fatalf("勿扰开启时应恰好停在该原因上，得到 %v", st.PauseReasons)
-		}
-	} else if len(st.PauseReasons) != 0 {
-		t.Fatalf("勿扰未开启时不该留下暂停原因，得到 %v", st.PauseReasons)
+	// 真机上此刻的勿扰档位 / QUNS 都不确定：喂一份确定的「两条都不成立」采样，
+	// 连推两拍，验证不会凭空叠出暂停原因。真机探测形状由 windnd 自己的用例覆盖。
+	none := windnd.BusyStatus{QunsSupported: true, Quns: 5, WnfSupported: true, QuietProfile: 0}
+	a.dndApply(none, true, true)
+	a.dndApply(none, true, true)
+	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("两条条件都不成立时不该留下暂停原因，得到 %v", st.PauseReasons)
 	}
 }
 
-// 全屏独占支路：只读写它自己那条暂停原因，进入 / 退出各打一行日志（边沿触发），
+// 两条原因各自有独立的「已手动恢复」忽略表：为勿扰点过恢复，不该把随后成立的
+// 全屏或演示一起静音（这正是把勿扰从 QUNS 里拆出来的理由）。
+func TestSplitPauseReasonsHaveSeparateIgnoreTables(t *testing.T) {
+	a, s := newWatchApp(t, shortCountdown)
+	dndOn := windnd.BusyStatus{QunsSupported: true, Quns: 5, WnfSupported: true, QuietProfile: 1}
+	a.dndApply(dndOn, true, true)
+	a.dndApply(dndOn, true, true)
+	a.schedPauseToggle() // 用户为「勿扰」点恢复休息
+	if !a.isAutoPauseIgnored(pauseReasonDnd) {
+		t.Fatal("前置：勿扰条件仍成立，点恢复应记忽略")
+	}
+	if a.isAutoPauseIgnored(pauseReasonFullScr) {
+		t.Fatal("忽略表不该串到全屏或演示")
+	}
+
+	// QUNS=4（演示设置）合并后归「全屏或演示」，仍要能独立触发。
+	screenOn := windnd.BusyStatus{QunsSupported: true, Quns: 4, WnfSupported: true, QuietProfile: 0}
+	a.dndApply(screenOn, true, true)
+	a.dndApply(screenOn, true, true)
+	if !containsReason(s.StateCopy().PauseReasons, pauseReasonFullScr) {
+		t.Fatalf("QUNS=4 应照常自动暂停，得到 %v", s.StateCopy().PauseReasons)
+	}
+}
+
+// 全屏或演示支路：只读写它自己那条暂停原因，进入 / 退出各打一行日志（边沿触发），
 // 中间反复「仍然活跃」不重复暂停、也不产生第二条原因。
 func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
@@ -319,11 +339,11 @@ func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 		t.Fatal("单拍活跃不该留下「已记录」标记")
 	}
 
-	// ③ 第二拍仍活跃：确认，暂停原因恰好是「全屏独占」，且标记置位
+	// ③ 第二拍仍活跃：确认，暂停原因恰好是「全屏或演示」，且标记置位
 	a.applyAutoPause(true, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
 	st := s.StateCopy()
 	if !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonFullScr {
-		t.Fatalf("两拍活跃应停在「全屏独占」上，得到 paused=%v %v", st.Paused, st.PauseReasons)
+		t.Fatalf("两拍活跃应停在「全屏或演示」上，得到 paused=%v %v", st.Paused, st.PauseReasons)
 	}
 	if !a.fsActiveLogged {
 		t.Fatal("确认暂停时该置位「已记录」标记（否则每 3 秒刷一行日志）")
@@ -374,8 +394,8 @@ func TestAutostartTargetSkipsDevBuild(t *testing.T) {
 
 // ---------- 真机系统调用 ----------
 
-// 自动暂停开关的默认值：勿扰、全屏独占、无线投放、复制模式都默认开。
-// 全屏独占原本默认关（新增能力不替用户决定），2026-10-29 用户要求「以当前配置为出厂默认」
+// 自动暂停开关的默认值：勿扰、全屏或演示、无线投放、复制模式都默认开。
+// 全屏应用原本默认关（新增能力不替用户决定），2026-10-29 用户要求「以当前配置为出厂默认」
 // 后改为开 —— 出厂默认与代码兜底必须同值，否则老配置（缺键走兜底）与新装表现不一致。
 // 投屏（2026-11-03 新增，同日拆成无线 / 复制两个）沿用同一个口径：出厂即勾选，代码兜底同为 true。
 func TestAutoPauseFlagDefaults(t *testing.T) {
@@ -495,7 +515,7 @@ func TestCastWatchRespectsEachSwitch(t *testing.T) {
 		live.Active, live.Mirror, live.Wireless, live.Detail)
 }
 
-// 六条自动原因共用的「恢复休息」语义（本表覆盖其中五条；「应用占用」走自己的
+// 自动原因共用的「恢复休息」语义（本表覆盖除「应用占用」外那几条；应用占用走自己的
 // appPauseWatchTick，由 TestAppPauseWatch* 一组单独覆盖）：
 //
 //	因某原因暂停 → 点恢复休息 → 条件还在也不再因它暂停 → 条件消失后解除 → 再次达成照常暂停。
@@ -521,7 +541,7 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 			},
 		},
 		{
-			name: "全屏独占", reason: pauseReasonFullScr, other: pauseReasonDnd,
+			name: "全屏或演示", reason: pauseReasonFullScr, other: pauseReasonDnd,
 			on: func(a *App, on bool) {
 				a.applyAutoPause(on, pauseReasonFullScr, &a.fsActiveLogged, "", "")
 				if on {
@@ -603,7 +623,7 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 			}
 			a.applyAutoPause(false, c.other, new(bool), "", "")
 			// 条件消失后怎么收场，取决于该原因的策略（autoResumeOnClear）：
-			// 空闲与应用占用自动恢复；勿扰 / 全屏 / 两条投屏保留暂停，等用户手动点。
+			// 空闲与应用占用自动恢复；勿扰 / 全屏或演示 / 两条投屏保留暂停，等用户手动点。
 			if autoResumeOnClear(c.other) {
 				if s.IsPaused() {
 					t.Fatalf("「%s」条件消失后应自动恢复，得到 %v", c.other, s.StateCopy().PauseReasons)
@@ -640,7 +660,7 @@ func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
 
 	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, "", "")
 	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, "", "") // 进入侧去抖：第二拍
-	a.schedPauseToggle() // 恢复 + 忽略勿扰
+	a.schedPauseToggle()                                               // 恢复 + 忽略勿扰
 	if !a.isAutoPauseIgnored(pauseReasonDnd) {
 		t.Fatal("前置：恢复后应处于忽略状态")
 	}

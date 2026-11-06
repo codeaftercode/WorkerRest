@@ -21,7 +21,7 @@ func TestAutoResumeOnClearMatrix(t *testing.T) {
 		{scheduler.PauseReasonIdle, true, "人回来了 = 场景结束；空闲时人不在场，没有尴尬可言"},
 		{pauseReasonAppPause, true, "目标应用退出 = 忙完了，是明确的结束信号"},
 		{pauseReasonDnd, false, "勿扰可能被系统或别人随手关掉，会议还在"},
-		{pauseReasonFullScr, false, "退出全屏还可以继续开会"},
+		{pauseReasonFullScr, false, "退出全屏或演示还可以继续开会"},
 		{pauseReasonCastMirror, false, "投屏断开不等于散会"},
 		{pauseReasonCastWireless, false, "无线投放断开不等于散会"},
 	}

@@ -20,7 +20,7 @@ import (
 // 说话的人）。「已暂停 1 小时 · 恢复」谁看都只是一句软件状态；写成「该休息了」就成了
 // 当众被人读到「他在摸鱼」。按钮同理，叫「恢复」，不叫「恢复休息」。
 //
-// 二、**投屏 / 全屏 / 勿扰生效时一次都不弹**。右下角的小窗在投屏时会被整屏分享出去，
+// 二、**投屏 / 全屏或演示 / 请勿打扰生效时一次都不弹**。右下角的小窗在投屏时会被整屏分享出去，
 // 那正是最不该出现在别人屏幕上的东西；全屏（演示 / 放片）与勿扰同理会压住画面。
 // 这几条原因里任意一条的条件仍成立，就整段静默 —— 宁可不提示，也不冒这个险。
 //
@@ -56,6 +56,7 @@ const (
 //
 // 只收「屏幕可能被旁人看到 / 画面不能被压住」这四条，空闲与应用占用不在其中：
 // 人不在座位上时弹窗没人看（也不尴尬），应用占用只说明某个软件在跑，屏幕还是私人的。
+// 请勿打扰与全屏或演示两条虽然判据不同，但都属于「此刻不该有新画面」，一并压制。
 var pauseNoticeRiskReasons = []string{
 	pauseReasonDnd,
 	pauseReasonFullScr,
@@ -70,7 +71,7 @@ type pauseNoticeState struct {
 	PausedAt int64
 	// ShownAt 本段自动暂停里上一次弹出的时刻（0 = 还没弹过）
 	ShownAt int64
-	// Suppressed 上一拍是否被「投屏 / 全屏 / 勿扰」压制 —— 用来识别压制解除的那一刻
+	// Suppressed 上一拍是否被「投屏 / 全屏或演示 / 请勿打扰」压制 —— 用来识别压制解除的那一刻
 	Suppressed bool
 }
 
@@ -122,7 +123,7 @@ func pauseNoticeStep(prev pauseNoticeState, pausedAt, now int64, suppressed bool
 		// 压制期间什么都不弹；记下「这段被压过」，解除那一刻才有得补
 		return false, pauseNoticeState{PausedAt: pausedAt, ShownAt: prev.ShownAt, Suppressed: true}
 	}
-	// 压制刚解除 = 投屏 / 全屏 / 勿扰都结束了：这一刻屏幕重新属于用户，先补一次。
+	// 压制刚解除 = 投屏 / 全屏或演示 / 请勿打扰都结束了：这一刻屏幕重新属于用户，先补一次。
 	// 但刚弹过（不到最短间隔）就不重复弹 —— 开关一次全屏不该换来两条提示。
 	edge := prev.Suppressed && pauseNoticeGapOK(prev.ShownAt, now)
 	if !edge && !pauseNoticeDue(pausedAt, prev.ShownAt, now, pauseNoticeIntervalMs) {

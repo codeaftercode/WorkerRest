@@ -12,7 +12,7 @@ import (
 
 // 自动暂停期间的「已暂停多久」提示（见 pause_notice.go）。
 //
-// 三组用例分别钉住三件事：哪些原因不许弹（投屏 / 全屏 / 勿扰）、什么时候弹
+// 三组用例分别钉住三件事：哪些原因不许弹（投屏 / 全屏或演示 / 请勿打扰）、什么时候弹
 // （满一小时 / 压制解除补一次 / 刚弹过不重复），以及**文案里不许出现「休息」**
 // —— 最后这条是产品要求，不是口味问题：这扇窗可能被旁人看到。
 
@@ -24,7 +24,7 @@ func TestPauseNoticeSuppressedMatrix(t *testing.T) {
 	}{
 		{"什么都没生效", map[string]bool{}, false},
 		{"勿扰", map[string]bool{pauseReasonDnd: true}, true},
-		{"全屏独占", map[string]bool{pauseReasonFullScr: true}, true},
+		{"全屏或演示", map[string]bool{pauseReasonFullScr: true}, true},
 		{"复制模式", map[string]bool{pauseReasonCastMirror: true}, true},
 		{"无线投放", map[string]bool{pauseReasonCastWireless: true}, true},
 		// 这两条不压制：人不在座位上时弹窗没人看；应用占用只说明某个软件在跑，

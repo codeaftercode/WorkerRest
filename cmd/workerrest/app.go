@@ -114,19 +114,20 @@ type App struct {
 	supWatch     supWatchInfo
 	supWatchStop chan struct{}
 
-	// 系统能力（见 sys_*.go）：空闲状态机 + 四条监视链路的停止信号与「上一跳状态」。
-	// idleAway / dndActiveLogged / fsActiveLogged / castMirrorLogged / castWirelessLogged /
-	// appPauseHitLogged 只被各自的 goroutine 读写，提成字段是为了让单测能直接调 tick 函数；
+	// 系统能力（见 sys_*.go）：空闲状态机 + 各条监视链路的停止信号与「上一跳状态」。
+	// idleAway / dndActiveLogged /
+	// fsActiveLogged / castMirrorLogged / castWirelessLogged / appPauseHitLogged
+	// 只被各自的 goroutine 读写，提成字段是为了让单测能直接调 tick 函数；
 	// 它们的值不影响任何跨链路判定。
 	// autoPauseIgnored 例外：监视 goroutine 与「手动恢复」的 UI 线程都会碰，走 autoPauseMu。
-	idle               *idle.IdleState
-	sysStop            chan struct{}
-	idleAway           bool
-	dndActiveLogged    bool
-	fsActiveLogged     bool
-	castMirrorLogged   bool
-	castWirelessLogged bool
-	appPauseHitLogged  bool
+	idle                     *idle.IdleState
+	sysStop                  chan struct{}
+	idleAway                 bool
+	dndActiveLogged          bool
+	fsActiveLogged           bool
+	castMirrorLogged         bool
+	castWirelessLogged       bool
+	appPauseHitLogged        bool
 	// appPauseMissStreak 「目标应用退出」的连续未命中拍数（见 appPauseExitConfirmMisses）。
 	// 探测失败不计入：读不到不等于不在跑。只被应用占用那条 goroutine 读写。
 	appPauseMissStreak int
