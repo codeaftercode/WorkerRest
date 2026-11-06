@@ -417,15 +417,18 @@ async function main() {
   // ---------- 交互：开关 / 滑块 / 自绘下拉 ----------
   await page.locator('.nav-item[data-tab="general"]').click();
   await delay(150);
-  const before = await page.isChecked("#dndPause");
-  await page.click("#dndPause");
-  await delay(80);
-  const mid = await page.isChecked("#dndPause");
-  await page.click("#dndPause");
-  await delay(80);
-  const after = await page.isChecked("#dndPause");
-  check(mid !== before && after === before, "勿扰开关点两次：状态翻转后复原",
-    `${before} → ${mid} → ${after}`);
+  for (const id of ["dndPause", "fullscreenPause"]) {
+    const sel = "#" + id;
+    const before = await page.isChecked(sel);
+    await page.click(sel);
+    await delay(80);
+    const mid = await page.isChecked(sel);
+    await page.click(sel);
+    await delay(80);
+    const after = await page.isChecked(sel);
+    check(mid !== before && after === before, id + " 开关点两次：状态翻转后复原",
+      `${before} → ${mid} → ${after}`);
+  }
 
   // 透明度滑块的定义域是 0~0.5（不是 0~100），按它自己的刻度取中点再断言标签变了
   const opBefore = await page.inputValue("#ap-opacity");

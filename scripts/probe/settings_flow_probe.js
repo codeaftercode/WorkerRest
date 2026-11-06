@@ -100,6 +100,36 @@ async function main() {
       check(back === before, `${label}自动暂停开关翻回来落盘`, `cfg ${back}`);
     }
 
+    // ---------- 零·一、请勿打扰 / 全屏或演示：两条独立开关 ----------
+    // 2026-11-06 从一条合并开关拆出来：最容易出的错是两行绑到同一个键、或改一条
+    // 顺带把另一条也写了。每条都验「翻转落盘 + 另一条的配置与界面都不动 + 翻回复原」。
+    console.log("\n[F0·1] 请勿打扰 / 全屏或演示：两条开关互不牵连");
+    const pair = [
+      ["#dndPause", "dndPause", "请勿打扰"],
+      ["#fullscreenPause", "fullscreenPause", "全屏或演示"],
+    ];
+    for (const [id, key, label] of pair) {
+      const before = await page.isChecked(id);
+      const othersBefore = {};
+      for (const [, k] of pair) {
+        if (k !== key) othersBefore[k] = (await cfg())[k];
+      }
+      await page.click(id);
+      await delay(SAVE_WAIT);
+      const after = (await cfg())[key];
+      check(after === !before, `${label}开关翻转落盘`, `ui ${before} → cfg ${after}`);
+      for (const [otherId, k] of pair) {
+        if (k === key) continue;
+        check((await cfg())[k] === othersBefore[k], `${label}翻转不牵连 ${k} 的配置`,
+          `${othersBefore[k]} → ${(await cfg())[k]}`);
+        check(await page.isChecked(otherId) === othersBefore[k],
+          `${label}翻转不牵连 ${k} 的界面勾选`, otherId);
+      }
+      await page.click(id);
+      await delay(SAVE_WAIT);
+      check((await cfg())[key] === before, `${label}开关翻回来落盘`, `cfg ${(await cfg())[key]}`);
+    }
+
     // ---------- 零·二、显示的屏幕（多选下拉） ----------
     // 单屏机器也能测「最后一块不许取消」——那是最容易被改坏的一条保护：
     // 全不勾 = 提醒窗口一块屏都不弹，用户只会以为软件坏了。
@@ -163,49 +193,79 @@ async function main() {
         check(JSON.stringify(keep) === dispBefore, "被拒绝的操作没有写进配置",
           `${dispBefore} → ${JSON.stringify(keep)}`);
       } else {
-      // 出厂是空数组，启动加载时补成主屏 ID：只有主屏被勾。所以第 2 个选项（副屏）
-      // 必定是没勾的那块。早先这里直接点「第一个选项」，那是单屏时代的写法 ——
-      // 多屏时第一个恰好是唯一勾着的主屏，点下去等于「取消最后一块」，UI 拒绝是正确行为。
-      await page.locator(OPT).nth(1).click();
-      await delay(SAVE_WAIT);
-      const addSel = await page.locator(OPT).nth(1).getAttribute("aria-selected");
-      const addOpen = await page.evaluate(() => {
-        const h = document.getElementById("ap-displays");
-        return !h.querySelector(".cdrop-menu").classList.contains("hidden");
-      });
-      check(addOpen, "勾选后菜单不收起（多选要能连着勾）", `open=${addOpen}`);
-      check(addSel === "true", "点未勾选的屏会把它勾上", `aria-selected=${addSel}`);
-      const afterAdd = (await cfg()).displayIds || [];
-      check(afterAdd.length === 2, "勾第二块后落盘成两块的具体 ID 快照",
-        JSON.stringify(afterAdd));
+        // 面板里的勾选态来自用户配置，**不能按位置猜**：出厂只有主屏被勾，但接过副屏
+        // 并勾选过的机器会两块都勾着。早先这里硬点「第 1 个选项」（单屏时代写法，点它
+        // 等于取消最后一块），改成「第 2 个选项」之后又栽在双屏全勾的机器上——第一步
+        // 同样等于取消，后面五条断言连锁误报。两次都是同一个根因：拿位置当前置。
+        // 现在先归一化成「只勾一块」，再按「已勾的第一块」keepIdx /「未勾的第一块」addIdx 定位。
+        const readSel = () => page.evaluate((sel) =>
+          [...document.querySelectorAll(sel)].map(o => o.getAttribute("aria-selected") === "true"), OPT);
 
-      // 取消一块：点已勾的主屏，这时还剩一块，必须允许
-      await page.locator(OPT).nth(0).click();
-      await delay(SAVE_WAIT);
-      const delSel = await page.locator(OPT).nth(0).getAttribute("aria-selected");
-      const afterDel = (await cfg()).displayIds || [];
-      check(delSel === "false", "两块以上时可以取消某一块", `aria-selected=${delSel}`);
-      check(afterDel.length === 1, "取消一块后配置只剩另一块", JSON.stringify(afterDel));
+        let states = await readSel();
+        let selCount = states.filter(Boolean).length;
+        check(selCount >= 1, "面板里至少有一块屏处于勾选态", JSON.stringify(states));
+        let guard = 0;
+        while (selCount > 1 && guard++ < dispN) {
+          const dropIdx = states.findIndex(Boolean);
+          await page.locator(OPT).nth(dropIdx).click();
+          await delay(SAVE_WAIT);
+          states = await readSel();
+          check(states[dropIdx] === false, "多块都勾着时可以取消其中一块，剩下的仍生效",
+            `idx=${dropIdx} → ${JSON.stringify(states)}`);
+          selCount = states.filter(Boolean).length;
+        }
+        check(selCount === 1, "归一化后只剩一块勾选", `n=${selCount} states=${JSON.stringify(states)}`);
 
-      // 复原：再点一次勾回来 → 勾满时写的是具体 ID 快照，不是空数组
-      await page.locator(OPT).nth(0).click();
-      await delay(SAVE_WAIT);
-      const restored = (await cfg()).displayIds || [];
-      check(restored.length === 2,
-        "勾满后写具体 ID 快照（不是空数组，插新屏不会被自动带上）", JSON.stringify(restored));
+        const keepIdx = states.findIndex(Boolean);
+        const addIdx = states.findIndex(s => !s);
+        if (addIdx < 0 || keepIdx < 0) {
+          check(false, "存在可勾选 / 可取消的屏供后续断言使用",
+            `keep=${keepIdx} add=${addIdx} states=${JSON.stringify(states)}`);
+        } else {
+          // 勾上未勾的那一块
+          await page.locator(OPT).nth(addIdx).click();
+          await delay(SAVE_WAIT);
+          const addSel = await page.locator(OPT).nth(addIdx).getAttribute("aria-selected");
+          const addOpen = await page.evaluate(() => {
+            const h = document.getElementById("ap-displays");
+            return !h.querySelector(".cdrop-menu").classList.contains("hidden");
+          });
+          check(addOpen, "勾选后菜单不收起（多选要能连着勾）", `open=${addOpen}`);
+          check(addSel === "true", "点未勾选的屏会把它勾上", `aria-selected=${addSel}`);
+          const afterAdd = (await cfg()).displayIds || [];
+          check(afterAdd.length === 2, "勾第二块后落盘成两块的具体 ID 快照",
+            JSON.stringify(afterAdd));
 
-      // 最后一块不许取消：先取消到只剩一块，再点那块唯一的
-      await page.locator(OPT).nth(0).click();
-      await delay(SAVE_WAIT);
-      await page.locator(OPT).nth(1).click();
-      await delay(SAVE_WAIT);
-      const lastSel = await page.locator(OPT).nth(1).getAttribute("aria-selected");
-      const afterLast = (await cfg()).displayIds || [];
-      check(lastSel === "true" && afterLast.length === 1,
-        "最后一块不允许取消（全不勾 = 一个窗都不弹）", `selected=${lastSel} n=${afterLast.length}`);
-      // 收尾复原：把主屏勾回来
-      await page.locator(OPT).nth(0).click();
-      await delay(SAVE_WAIT);
+          // 取消一块：点已勾的那块，这时还剩一块，必须允许
+          await page.locator(OPT).nth(keepIdx).click();
+          await delay(SAVE_WAIT);
+          const delSel = await page.locator(OPT).nth(keepIdx).getAttribute("aria-selected");
+          const afterDel = (await cfg()).displayIds || [];
+          check(delSel === "false", "两块以上时可以取消某一块", `aria-selected=${delSel}`);
+          check(afterDel.length === 1, "取消一块后配置只剩另一块", JSON.stringify(afterDel));
+
+          // 复原：再点一次勾回来 → 勾满时写的是具体 ID 快照，不是空数组
+          await page.locator(OPT).nth(keepIdx).click();
+          await delay(SAVE_WAIT);
+          const restored = (await cfg()).displayIds || [];
+          check(restored.length === 2,
+            "勾满后写具体 ID 快照（不是空数组，插新屏不会被自动带上）", JSON.stringify(restored));
+
+          // 最后一块不许取消：先取消掉 keepIdx，只剩 addIdx 那块，再点它
+          await page.locator(OPT).nth(keepIdx).click();
+          await delay(SAVE_WAIT);
+          await page.locator(OPT).nth(addIdx).click();
+          await delay(SAVE_WAIT);
+          const lastSel = await page.locator(OPT).nth(addIdx).getAttribute("aria-selected");
+          const afterLast = (await cfg()).displayIds || [];
+          check(lastSel === "true" && afterLast.length === 1,
+            "最后一块不允许取消（全不勾 = 一个窗都不弹）", `selected=${lastSel} n=${afterLast.length}`);
+          // 收尾：把 keepIdx 勾回去，尽量让结束态贴近运行前。**不作断言**——隔离配置
+          // 每轮都从真实配置重拷，结束态不影响下一次运行，也不碰用户数据。
+          // （产品路径已单独验证：勾选后立刻 Esc 关面板，300ms 内照样落盘。）
+          await page.locator(OPT).nth(keepIdx).click();
+          await delay(SAVE_WAIT);
+        }
       }
       await page.keyboard.press("Escape");
     }

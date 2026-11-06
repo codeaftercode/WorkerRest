@@ -508,19 +508,19 @@ def main():
               "勿扰暂停勾选态 == 配置 dndPause",
               "%s vs %s" % (stg.get("dndPause"), cfg.get("dndPause")))
         check(stg.get("fullscreenPause") == bool(cfg.get("fullscreenPause")),
-              "全屏独占暂停勾选态 == 配置 fullscreenPause",
+              "全屏或演示暂停勾选态 == 配置 fullscreenPause",
               "%s vs %s" % (stg.get("fullscreenPause"), cfg.get("fullscreenPause")))
         fsrt = m.get("fsPauseRoundTrip") or {}
         check(fsrt.get("on") is True,
-              "全屏独占开关：页面勾上后配置真的是 true",
+              "全屏应用开关：页面勾上后配置真的是 true",
               fsrt.get("on"))
         check(fsrt.get("off") is False,
-              "全屏独占开关：页面取消后配置真的变成 false",
+              "全屏或演示开关：页面取消后配置真的变成 false",
               fsrt.get("off"))
         # 收尾必须回到初值：真实配置本来开着这个开关时，探针不能把它留成 false
         # （否则下一条「勾选态 == 磁盘值」自相矛盾，2026-10-29 实测踩到）
         check(fsrt.get("restored") == bool(stg.get("fullscreenPause")),
-              "全屏独占开关：探针收尾把配置还原成初值",
+              "全屏或演示开关：探针收尾把配置还原成初值",
               "%s vs %s" % (fsrt.get("restored"), stg.get("fullscreenPause")))
         # 共享屏幕时隐藏：默认开（Go 侧 Flag(true,…)），缺键时页面也必须呈现勾选态。
         # 比对基准是**开跑前的快照** seed_cfg —— 不能用收尾时读的 cfg：探针中途做过

@@ -690,6 +690,19 @@ def main():
                   and isinstance(dnd.get("active"), bool) and bool(dnd.get("detail")),
                   "勿扰探测返回 {supported, active, detail}", dnd)
 
+            # 2026-11-06 的「全屏或演示」判据（QUNS 2 / 3 / 4 合并），以及 WNF 勿扰档位原始值
+            for key in ("fullscreen",):
+                item = probe.get(key) or {}
+                check(isinstance(item, dict) and isinstance(item.get("supported"), bool)
+                      and isinstance(item.get("active"), bool) and bool(item.get("detail")),
+                      "%s 探测返回 {supported, active, detail}" % key, item)
+            qhp = probe.get("quietHoursProfile")
+            check(isinstance(qhp, int) and not isinstance(qhp, bool) and qhp >= 0,
+                  "SysProbe 暴露 WNF 勿扰档位整数", qhp)
+            quns = probe.get("quns")
+            check(isinstance(quns, int) and not isinstance(quns, bool) and quns >= 0,
+                  "SysProbe 暴露 QUNS 原始取值", quns)
+
             fs = probe.get("fullscreen") or {}
             check(isinstance(fs, dict) and isinstance(fs.get("supported"), bool)
                   and isinstance(fs.get("active"), bool) and bool(fs.get("detail")),

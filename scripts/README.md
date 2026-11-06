@@ -48,6 +48,7 @@
 | `probe_gui_boot.py` | 带控制台的 GUI 产物启动 12 秒，读日志确认启动链路 |
 | `probe_pause_cycle.py` + `pause_cycle_probe.js` | 暂停 / 恢复端到端：真页面点按钮 → 真绑定 → 真调度器（状态翻转 / nextAt 冻结与平移 / 暂停中到点不弹 / 恢复后照常弹 / 反复切换不留脏状态） |
 | `probe_pause_autopause.py` | 自动暂停（应用占用）端到端：真 GUI 产物 + 真实进程占用（`ping.exe`）触发 → 收全部提醒窗 → 暂停期不弹 → 进程退出自动恢复并重锚 |
+| `probe_dnd_wnf.py` | 系统请勿打扰 / 全屏或演示判据的只读诊断：并排打印 WNF 勿扰档位与 QUNS；`--watch N` 连续采样，用于手动开关 Win11「请勿打扰」时核对档位 0↔1/2 |
 | `probe_static_audit.py` | 静态资产审计（52 项，不用浏览器，秒级）：7 个页面的资源在不在、脚本集合与 HTML 逐字一致、无内联脚本（CSP `default-src 'self'` 会静默拦）、id 不重复、`node --check` 全部脚本、CSS `url()` 与 JS 引用的 id 都存在 |
 | `probe_pages_sweep.py` + `pages_sweep_probe.js` | 7 页面全谱健康扫描（80 项）：每页同一组不变量——页面 200 / 零 JS 报错 / **零失败请求**（含子资源 404 与被中止）/ `lang` / `title` / 无横向溢出 / `<img>` 真的解码 / 样式表真的生效 / 壳元素在且可见 + 页面专属契约（`index` 要真数据、`prebreak` 要倒计时在跳） |
 | `probe_pause_page.py` + `pause_page_probe.js` | 暂停提示小窗（`pause.html`）：300×76 尺寸、文案不压按钮、可访问名、页面上不出现「休息」二字、点「恢复」调 `pauseNoticeResume`、Esc 只关不恢复、超长文案省略号截断 |

@@ -345,7 +345,8 @@ def phase_a():
 
         # ---- 开关类：类型错误的原始值不要求被改写（读取侧用 Bool 带默认），
         #      判据是「不污染运行路径」：保存后服务照样能起状态、值仍是可解释的。
-        cfg = save_get(base, {"dndPause": 0, "fullscreenPause": "false",
+        cfg = save_get(base, {"dndPause": 0,
+                              "fullscreenPause": "false",
                               "appPause": {"enabled": "true"}, "window": {"rememberSize": "yes"}})
         note("类型错误的开关值（服务端保留原值，读取侧取默认）",
              "dndPause=%r fullscreenPause=%r appPause.enabled=%r rememberSize=%r" % (

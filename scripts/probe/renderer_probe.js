@@ -1935,7 +1935,7 @@ async function run() {
   );
   await delay(800);
 
-  // ---- 5c. 「全屏独占应用运行时自动暂停」：页面上勾一下，配置真的跟着变 ----
+  // ---- 5c. 「全屏/演示」：勾一下，配置真的跟着变 ----
   // 静态控件上的 change 由 bindAutoSave 统一接到 autoSave（collectForm + saveSettings），
   // 这里验的就是这条链路；fillForm 的回填另有 stg 断言覆盖。
   // 验完立刻还原，免得影响后面按磁盘配置比对的断言。
