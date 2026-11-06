@@ -321,10 +321,18 @@ async function main() {
 
       // ② 拔掉一块「配置里勾着」的真屏（配置为空时没有可拔的对象，跳过这一段）
       const cfgIds = JSON.parse(cfgBeforeHotplug);
+      // 「拔屏」的前提是这块屏此刻确实在枚举结果里。隔离配置从别处拷来、或换了接口、
+      // 重装驱动后 ID 变了时，勾着的 ID 可能一块都不在当前列表里 —— 按 ID 过滤删不到
+      // 任何东西，opts-1 的期望根本不成立。这属于场景不适用，不是断言失败。
+      const listedIds = await page.evaluate(async () =>
+        (await window.__wrRealListDisplays()).map((d) => d.id));
+      const ticked = cfgIds.find((id) => listedIds.includes(id));
       if (cfgIds.length === 0) {
         console.log("  [skip] 配置里没有具体屏 ID（本机只补了空数组），跳过「拔屏保留」断言");
+      } else if (!ticked) {
+        console.log(`  [skip] 配置勾着的 ${cfgIds.length} 块都不在当前枚举里` +
+          `（当前 ${listedIds.join(",") || "无"}），跳过「拔屏保留」断言`);
       } else {
-      const ticked = cfgIds[0];
       await page.evaluate(async (drop) => {
         const all = await window.__wrRealListDisplays();
         window.api.listDisplays = async () => all.filter((d) => d.id !== drop);
