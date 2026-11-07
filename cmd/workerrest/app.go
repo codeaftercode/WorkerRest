@@ -37,20 +37,20 @@ type App struct {
 	// breakSessID breakWins 里的窗口是为**哪个会话**建的（= a.sess.ID 的快照）。
 	// 预览每点一次就是一个新会话：会话一变必须重建窗口，不能复用还在场上的旧窗口 ——
 	// 旧窗口里的页面渲染的是上一次会话（旧立绘 / 旧倒计时，甚至上一次会话本来
-	// 就没有立绘，看起来就像「没显示督休专员」）。
+	// 就没有立绘，看起来就像“没显示督休专员”）。
 	breakSessID string
 	// breakWinSess 窗口 → 建它时的会话 id：窗口被关掉时据此判断它是不是**当前**
 	// 会话的窗口。迟到的 WindowClosing（上一次会话的窗）不许清掉刚建好的新会话，
 	// 否则新窗口首帧 breakCurrent() 拿到 nil，页面上只剩背景。
 	breakWinSess map[*application.WebviewWindow]string
-	// breakWinMu 串行化「建休息窗口」这一段：连点两下「预览」会并发建窗，
+	// breakWinMu 串行化“建休息窗口”这一段：连点两下“预览”会并发建窗，
 	// 两批窗户怼在一起时后注册的会覆盖前者、前者变成没人管的野窗。
 	breakWinMu sync.Mutex
-	// takeoutWinMu 同理串行化「建外卖窗口」：连点两下「预览」会并发建窗，
+	// takeoutWinMu 同理串行化“建外卖窗口”：连点两下“预览”会并发建窗，
 	// 后一批 a.takeoutWins = wins 会把前一批的引用整批顶掉，前一批就成了
 	// 屏幕上关不掉的野窗（休息窗口那边踩过同一个坑）。
 	takeoutWinMu sync.Mutex
-	// preBreakMu 串行化「建提前提示窗」：调度器的 onPreNotify 与外卖预通知是两个
+	// preBreakMu 串行化“建提前提示窗”：调度器的 onPreNotify 与外卖预通知是两个
 	// goroutine，可能同时弹同一扇窗（固定名 prebreak）。不串行的话两批窗互相覆盖，
 	// 后写入的那扇成为唯一引用，先建的那扇就再也关不掉了。
 	preBreakMu sync.Mutex
@@ -67,10 +67,10 @@ type App struct {
 	roleTurn int // 督休专员本体按顺序轮换时的游标
 
 	// 最近一次检查更新结果（内存态，但会通过 lastUpdateResult 持久化到配置，
-	// 使「发现新版本但未更新」在重启后仍显示在关于页，直到更新成功才清除）
+	// 使“发现新版本但未更新”在重启后仍显示在关于页，直到更新成功才清除）
 	updateStatus map[string]any
 	// activeTab 设置页当前所在的 tab（前端每次切页通过 SetActiveTab 上报，
-	// 用于在自更新重启后恢复「更新前所在的页面」）。默认 general。
+	// 用于在自更新重启后恢复“更新前所在的页面”）。默认 general。
 	activeTab string
 
 	// 托盘（server 模式为 nil）：状态一变就刷新提示与菜单文案
@@ -80,14 +80,14 @@ type App struct {
 	trayPause     *application.MenuItem
 	trayAutostart *application.MenuItem
 	// trayStop 托盘定时刷新循环的停止信号（nil = 未启动）：剩余时间流逝但调度状态没变时，
-	// 靠它每秒重算 tooltip / 菜单里的「约 X 分钟后」（见 tray.go）。
+	// 靠它每秒重算 tooltip / 菜单里的“约 X 分钟后”（见 tray.go）。
 	trayStop chan struct{}
 	// trayLast 上一次写到托盘/菜单的文案（a.mu 保护）：只在变化时才写，秒级 tick 不灌原生调用
 	trayLast trayLabels
 
 	// 提前提示窗当前该显示的内容（打开时算一次，轮询期间不随计划漂移；见 prebreak.go）
 	preInfo PreBreakInfo
-	// 外卖预通知：当前预通知所指向的「原定时刻」与条目（倒计时与动作据此判断）。
+	// 外卖预通知：当前预通知所指向的“原定时刻”与条目（倒计时与动作据此判断）。
 	// 仅在外卖预通知窗打开期间有意义；owner 标记见 prebreak.go 的 PreBreakInfo.Owner。
 	preTargetAt     int64
 	preTakeoutSlot  model.TimeSlot
@@ -114,47 +114,47 @@ type App struct {
 	supWatch     supWatchInfo
 	supWatchStop chan struct{}
 
-	// 系统能力（见 sys_*.go）：空闲状态机 + 各条监视链路的停止信号与「上一跳状态」。
+	// 系统能力（见 sys_*.go）：空闲状态机 + 各条监视链路的停止信号与“上一跳状态”。
 	// idleAway / dndActiveLogged /
 	// fsActiveLogged / castMirrorLogged / castWirelessLogged / appPauseHitLogged
 	// 只被各自的 goroutine 读写，提成字段是为了让单测能直接调 tick 函数；
 	// 它们的值不影响任何跨链路判定。
-	// autoPauseIgnored 例外：监视 goroutine 与「手动恢复」的 UI 线程都会碰，走 autoPauseMu。
-	idle                     *idle.IdleState
-	sysStop                  chan struct{}
-	idleAway                 bool
-	dndActiveLogged          bool
-	fsActiveLogged           bool
-	castMirrorLogged         bool
-	castWirelessLogged       bool
-	appPauseHitLogged        bool
-	// appPauseMissStreak 「目标应用退出」的连续未命中拍数（见 appPauseExitConfirmMisses）。
+	// autoPauseIgnored 例外：监视 goroutine 与“手动恢复”的 UI 线程都会碰，走 autoPauseMu。
+	idle               *idle.IdleState
+	sysStop            chan struct{}
+	idleAway           bool
+	dndActiveLogged    bool
+	fsActiveLogged     bool
+	castMirrorLogged   bool
+	castWirelessLogged bool
+	appPauseHitLogged  bool
+	// appPauseMissStreak “目标应用退出”的连续未命中拍数（见 appPauseExitConfirmMisses）。
 	// 探测失败不计入：读不到不等于不在跑。只被应用占用那条 goroutine 读写。
 	appPauseMissStreak int
-	// autoPauseStreak 每条「保持暂停」原因的「条件连续成立」拍数（见 autoPauseEnterConfirmTicks）。
+	// autoPauseStreak 每条“保持暂停”原因的“条件连续成立”拍数（见 autoPauseEnterConfirmTicks）。
 	// 进入侧去抖用：单次尖峰不暂停，攒满两拍才认。键 = 原因名，只被 applyAutoPause 读写
 	// （四条支路各写自己的键），与 autoReasonActive 共用 autoPauseMu。
 	autoPauseStreak map[string]int
-	// autoPauseIgnored 用户点「恢复休息」时正在生效的那几条自动原因（键 = 原因名）。
+	// autoPauseIgnored 用户点“恢复休息”时正在生效的那几条自动原因（键 = 原因名）。
 	// 该原因的条件消除前，监视器不再因它暂停；条件消失时从表里删掉，下次达成照常触发。
-	// 手动暂停会清空整张表（用户要的是「回到常规判定」）。监视 goroutine 与 UI 线程共用，
+	// 手动暂停会清空整张表（用户要的是“回到常规判定”）。监视 goroutine 与 UI 线程共用，
 	// 走 autoPauseMu。
 	autoPauseIgnored map[string]bool
-	// autoReasonActive 每条自动原因「条件此刻是否仍成立」，由监视链路（applyAutoPause /
+	// autoReasonActive 每条自动原因“条件此刻是否仍成立”，由监视链路（applyAutoPause /
 	// appPauseWatchTick）每跳登记。与 autoPauseIgnored 共用 autoPauseMu。
 	//
 	// 为什么需要另开一张表：条件消失后暂停**不一定会结束**（投屏 / 全屏 / 勿扰按策略
 	// 保留暂停，等用户手动恢复），此时原因仍在 PauseReasons 里但条件已经没了。
-	// 用户这时点「恢复休息」，不该为它记忽略 —— 记了下一场会议就不会再自动暂停。
+	// 用户这时点“恢复休息”，不该为它记忽略 —— 记了下一场会议就不会再自动暂停。
 	// 未登记的键按 true 处理（保守方向：宁可记忽略，别把用户点过恢复这件事丢掉）。
 	autoReasonActive map[string]bool
 	autoPauseMu      sync.Mutex
 
-	// 自动暂停期间的「已暂停多久」提示（见 pause_notice.go）：
+	// 自动暂停期间的“已暂停多久”提示（见 pause_notice.go）：
 	// pauseNoticePausedAt 这一段暂停的开始时刻（段标识：换段即从零计），
 	// pauseNoticeShownAt 本段暂停里上一次弹出的时刻（0 = 还没弹过），
 	// pauseNoticeSuppressed 上一拍是否因投屏 / 全屏 / 勿扰被压制 —— 用来识别压制解除那一刻。
-	// 三者只由 pauseNoticeTick 与「恢复」路径读写，走 pauseNoticeMu；
+	// 三者只由 pauseNoticeTick 与“恢复”路径读写，走 pauseNoticeMu；
 	// 建窗 / 关窗另走 pauseNoticeWinMu（与退出清理的 TryLock 相配，见 ServiceShutdown）。
 	pauseNoticePausedAt   int64
 	pauseNoticeShownAt    int64
@@ -162,13 +162,13 @@ type App struct {
 	pauseNoticeMu         sync.Mutex
 	pauseNoticeWinMu      sync.Mutex
 
-	// 定时手动暂停的「到期了但被什么挡住」（见 pause_expiry.go）：
+	// 定时手动暂停的“到期了但被什么挡住”（见 pause_expiry.go）：
 	// 只给托盘文案读，不参与判定 —— 判据每拍现算，这里只是快照。
 	pauseHold   []string
 	pauseHoldMu sync.Mutex
 
-	// 托盘「暂停一段时间」子菜单的四档与「取消定时」项（见 tray.go）：
-	// 暂停中要把标签从「暂停 30 分钟」改成「改到 30 分钟后结束」，「取消定时」只在
+	// 托盘“暂停一段时间”子菜单的四档与“取消定时”项（见 tray.go）：
+	// 暂停中要把标签从“暂停 30 分钟”改成“改到 30 分钟后结束”，“取消定时”只在
 	// 定时暂停时出现。trayTimedKey 记录上一次落过的形态，避免每秒重写原生菜单。
 	trayTimed       []*application.MenuItem
 	trayTimedCancel *application.MenuItem
@@ -182,7 +182,7 @@ type App struct {
 	stats *stats.StatsStore
 
 	// 随包 sounds/ 的启动体检（见 sound_scan.go）：只在新发现 / 有缺失时非空，
-	// 用户处理完或点「暂不」就置 nil，本次运行不再询问。用独立锁，不要与 a.mu 交叉。
+	// 用户处理完或点“暂不”就置 nil，本次运行不再询问。用独立锁，不要与 a.mu 交叉。
 	soundScanMu sync.Mutex
 	soundScan   *SoundScanNotice
 
@@ -208,7 +208,7 @@ func NewApp(app *application.App) *App {
 		activeTab:       "general",
 	}
 	a.rolesRoot = a.assetDir("supervisors")
-	// 配置落盘目标需要「随包数据目录」来推导便携路径（首次运行还没有配置文件时用）
+	// 配置落盘目标需要“随包数据目录”来推导便携路径（首次运行还没有配置文件时用）
 	settings.SetResourcesRootHint(a.resourcesRoot)
 	// 内置提示音随包目录：打包态 <exe>/sounds，开发态 <模块根>/assets/sounds
 	sound.SetBuiltinDirFn(func() string { return a.assetDir("sounds") })
@@ -224,7 +224,7 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 	log.Printf("[boot] 配置 %s；外观 %s %.0f%%x%.0f%%，短休息 %d ms",
 		orNone(a.cfg.Path()), ap.Color, ap.WidthPct, ap.HeightPct, a.cfg.Break("short").DurationMs)
 	// 前端契约自检：shim.js 按名字调用绑定，JS 侧拼错没有任何编译期检查，
-	// 只能在这里把「契约里有、Go 侧没有」的方法名点出来
+	// 只能在这里把“契约里有、Go 侧没有”的方法名点出来
 	if missing := missingFrontendBindings(); len(missing) > 0 {
 		log.Printf("[boot] ⚠ 前端契约缺失绑定：%v（shim.js 调用会静默失败）", missing)
 	} else {
@@ -257,9 +257,9 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 	//（设置页打开时弹窗逐项询问，见 sound_scan.go）
 	a.startSoundScan()
 	// 不显示设置窗口、直接最小化到托盘的两条路径：开机自启动拉起，或用户勾选了
-	// 「启动时最小化到托盘」（此前只认自启动标志，勾选无效 —— 窗口照常弹出）。
+	// “启动时最小化到托盘”（此前只认自启动标志，勾选无效 —— 窗口照常弹出）。
 	// 与 上一版 `if (!launchedAtLogin()) openSettingsWindow(...)` 同口径。
-	// 服务的启动发生在「窗口真正被 run 起来」之前，所以这里的 Hide 不会闪一下窗口。
+	// 服务的启动发生在“窗口真正被 run 起来”之前，所以这里的 Hide 不会闪一下窗口。
 	if hasAutostartFlag() || a.cfg.StartMinimized() {
 		if w := a.settingsWindow(); w != nil {
 			w.Hide()
@@ -270,7 +270,7 @@ func (a *App) ServiceStartup(_ context.Context, _ application.ServiceOptions) er
 			log.Printf("[boot] startMinimized：只起托盘，不显示设置窗口")
 		}
 	}
-	// 恢复上次「发现新版本但未更新」的状态（重启后仍显示「有更新」，见 update.go）。
+	// 恢复上次“发现新版本但未更新”的状态（重启后仍显示“有更新”，见 update.go）。
 	a.restoreUpdateStatus()
 	// 启动时检查更新：按配置在首次非空闲时静默查一次（失败不打扰，见 update.go）。
 	a.startAutoUpdateCheck()
@@ -295,13 +295,13 @@ func (a *App) ServiceShutdown() error {
 	}
 	a.stopTakeoutWatcher()
 	// 退出清理要把**所有**提醒窗口都收掉：外卖、休息、右下角提前提示小窗。
-	// 少收一类就等于把窗口留给进程销毁时的「兜底」——进程真退出时看不出来，
+	// 少收一类就等于把窗口留给进程销毁时的“兜底”——进程真退出时看不出来，
 	// 但只要退出流程被拖慢（WebView2 卸载、自更新替换 exe），那扇窗就会在屏幕上
-	// 多停一会儿，用户只能等。一律静默：退出不是「提醒结束」，不该响一声。
+	// 多停一会儿，用户只能等。一律静默：退出不是“提醒结束”，不该响一声。
 	a.closeTakeoutWindowsOpt(true)
 	a.closeBreakWindowsOpt(true, false)
 	// 提前提示窗用 TryLock：退出可能发生在主线程，而建窗路径可能在等主线程处理
-	// InvokeSync —— 硬等这把锁会让「等主线程」和「主线程等锁」互相卡死（退出挂住）。
+	// InvokeSync —— 硬等这把锁会让“等主线程”和“主线程等锁”互相卡死（退出挂住）。
 	// 抢不到就跳过：进程马上结束，那一扇窗会随进程一起消失。
 	if a.preBreakMu.TryLock() {
 		a.closePreBreakWindowLocked()
@@ -315,7 +315,7 @@ func (a *App) ServiceShutdown() error {
 	a.stopSystemWatchers()
 	a.stopTrayRefresh()
 	a.destroySoundHost()
-	// 尺寸记忆收尾：托盘「退出」时窗口还开着，resize 的防抖定时器可能没到期
+	// 尺寸记忆收尾：托盘“退出”时窗口还开着，resize 的防抖定时器可能没到期
 	a.mu.Lock()
 	rememberSize := a.cfg != nil && a.cfg.WindowSizeCfg().Remember
 	a.mu.Unlock()
@@ -331,7 +331,7 @@ func (a *App) ServiceShutdown() error {
 
 func orNone(s string) string {
 	if s == "" {
-		return "(未找到，使用出厂默认)"
+		return "（未找到，使用出厂默认）"
 	}
 	return s
 }
@@ -419,7 +419,7 @@ func nearestModuleRoot(dir string) string {
 //   - 开发态：仓库里统一收在 assets/ 下（<模块根>/assets/supervisors）。
 //
 // 优先平铺：只有当平铺目录不存在时才回退到 assets/。两者都不存在时返回平铺路径，
-// 调用方按「空目录」处理（会走「没有可用专员 / 没有内置提示音」的分支）。
+// 调用方按“空目录”处理（会走“没有可用专员 / 没有内置提示音”的分支）。
 func (a *App) assetDir(name string) string {
 	root := a.resourcesRoot()
 	flat := filepath.Join(root, name)
@@ -433,8 +433,8 @@ func (a *App) assetDir(name string) string {
 	return flat
 }
 
-// hasSupervisorsDir 判断某个目录是不是「随包数据根」：便携包看平铺的 supervisors/，
-// 仓库里看 assets/supervisors/。用来区分「exe 旁的安装目录」与「构建输出目录」。
+// hasSupervisorsDir 判断某个目录是不是“随包数据根”：便携包看平铺的 supervisors/，
+// 仓库里看 assets/supervisors/。用来区分“exe 旁的安装目录”与“构建输出目录”。
 func hasSupervisorsDir(dir string) bool {
 	for _, p := range []string{
 		filepath.Join(dir, "supervisors"),

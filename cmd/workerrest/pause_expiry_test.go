@@ -13,8 +13,8 @@ import (
 // 定时手动暂停的判据与文案。全部写成具名纯函数，时刻靠参数喂 —— 跨夜、到期被挡、
 // 改时长这些时序在真实时间下没法测，恰好也是最容易写错的部分。
 
-// 「到明天」= 下一个本地零点。零点是日期边界，「下一个零点」永远唯一，
-// 不需要「不足一小时算次日」那种给「早上 8 点」打的补丁。
+// “到明天”= 下一个本地零点。零点是日期边界，“下一个零点”永远唯一，
+// 不需要“不足一小时算次日”那种给“早上 8 点”打的补丁。
 func TestNextMidnight(t *testing.T) {
 	loc := time.Local
 	cases := []struct {
@@ -55,7 +55,7 @@ func TestPauseExpired(t *testing.T) {
 	}
 }
 
-// 到期时「此刻恢复会不会打扰」：六条自动原因全算，顺序固定（文案稳定）。
+// 到期时“此刻恢复会不会打扰”：六条自动原因全算，顺序固定（文案稳定）。
 func TestPauseHoldReasons(t *testing.T) {
 	if got := pauseHoldReasons(nil); len(got) != 0 {
 		t.Fatalf("没有任何条件生效时应可恢复，得到 %v", got)
@@ -65,7 +65,7 @@ func TestPauseHoldReasons(t *testing.T) {
 	}
 	got := pauseHoldReasons(map[string]bool{
 		"全屏或演示": true,
-		"勿扰":   true,
+		"勿扰":    true,
 	})
 	txt := pauseHoldText(got)
 	if !strings.Contains(txt, "勿扰") || !strings.Contains(txt, "全屏") {
@@ -148,7 +148,7 @@ func TestFormatPauseAt(t *testing.T) {
 		t.Fatalf("当天应写 HH:MM，得到 %q", got)
 	}
 	if got := fmtPauseAt(at(2026, 11, 6, 0, 0), now.UnixMilli()); got != "明天 00:00" {
-		t.Fatalf("次日应写「明天 00:00」，得到 %q", got)
+		t.Fatalf("次日应写“明天 00:00”，得到 %q", got)
 	}
 	if got := fmtPauseAt(at(2026, 11, 9, 0, 0), now.UnixMilli()); got != "11月9日 00:00" {
 		t.Fatalf("更远应写日期，得到 %q", got)
@@ -162,20 +162,20 @@ func TestTimedPauseLabels(t *testing.T) {
 		t.Fatalf("四档：idle=%v paused=%v", idle, paused)
 	}
 	if idle[0] != "暂停 30 分钟" || idle[3] != "暂停到明天" {
-		t.Fatalf("未暂停时是「暂停 …」，得到 %v", idle)
+		t.Fatalf("未暂停时是“暂停 …”，得到 %v", idle)
 	}
 	for _, s := range paused {
 		if !strings.HasPrefix(s, "改到") {
-			t.Fatalf("暂停中应说「改到 …」，得到 %q", s)
+			t.Fatalf("暂停中应说“改到 …”，得到 %q", s)
 		}
 	}
-	// 「暂停」与「改到」不能混用：前者会被读成「再暂停一次」
+	// “暂停”与“改到”不能混用：前者会被读成“再暂停一次”
 	if strings.Contains(paused[0], "暂停 30 分钟") {
-		t.Fatalf("暂停中不该再用「暂停 30 分钟」，得到 %q", paused[0])
+		t.Fatalf("暂停中不该再用“暂停 30 分钟”，得到 %q", paused[0])
 	}
 }
 
-// 托盘文案：定时暂停走「还有多久」，不走「已暂停多久」。
+// 托盘文案：定时暂停走“还有多久”，不走“已暂停多久”。
 func TestTrayTextsTimedPause(t *testing.T) {
 	now := nowMs()
 	st := model.SchedulerState{
@@ -274,7 +274,7 @@ func TestPauseExpiryHoldsWhenBlocked(t *testing.T) {
 		t.Fatal("勿扰生效时不该恢复")
 	}
 	if hold := a.pauseHoldSnapshot(); len(hold) != 1 || hold[0] != "勿扰" {
-		t.Fatalf("应记下阻挡原因「勿扰」，得到 %v", hold)
+		t.Fatalf("应记下阻挡原因“勿扰”，得到 %v", hold)
 	}
 
 	a.setAutoReasonActive(pauseReasonDnd, false)
@@ -288,7 +288,7 @@ func TestPauseExpiryHoldsWhenBlocked(t *testing.T) {
 }
 
 // 人不在（idle 挂在 PauseReasons 里）也算阻挡 —— 空闲不走登记表，靠这条补。
-// 场景：23:55 设「到明天」、合盖睡觉，0 点到期时人不在，等第二天回来再恢复。
+// 场景：23:55 设“到明天”、合盖睡觉，0 点到期时人不在，等第二天回来再恢复。
 func TestPauseExpiryHoldsWhenIdle(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	a.sched.PauseUntil(nowMs() - 1000)
@@ -301,7 +301,7 @@ func TestPauseExpiryHoldsWhenIdle(t *testing.T) {
 	}
 	hold := a.pauseHoldSnapshot()
 	if len(hold) != 1 || hold[0] != "系统空闲" {
-		t.Fatalf("应点名「系统空闲」，得到 %v", hold)
+		t.Fatalf("应点名“系统空闲”，得到 %v", hold)
 	}
 
 	// 人回来：idle 被摘掉，下一拍恢复
@@ -327,8 +327,8 @@ func TestPauseExpiryDoesNothingBeforeDeadline(t *testing.T) {
 	}
 }
 
-// 定时暂停中点了「恢复休息」，但勿扰还挂着：这段定时暂停已经结束，不该再报
-// 「时长已到」——那是用户刚做过的操作，不该被说成一件待办。
+// 定时暂停中点了“恢复休息”，但勿扰还挂着：这段定时暂停已经结束，不该再报
+// “时长已到”——那是用户刚做过的操作，不该被说成一件待办。
 func TestPauseExpiryIgnoresAfterManualResume(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	a.sched.PauseUntil(nowMs() - 1000)
@@ -362,9 +362,9 @@ func TestSchedulerStateJSONHasPauseDeadline(t *testing.T) {
 	}
 }
 
-// 托盘层面复现「定时那段已结束，却还在说还有多久」：
-// 定时暂停中点了「恢复休息」，勿扰还挂着（暂停继续）→ 托盘必须回到
-// 「已暂停 X：勿扰」，不能再说「还有 25 分钟（到 …）」，也不该再给「取消定时」。
+// 托盘层面复现“定时那段已结束，却还在说还有多久”：
+// 定时暂停中点了“恢复休息”，勿扰还挂着（暂停继续）→ 托盘必须回到
+// “已暂停 X：勿扰”，不能再说“还有 25 分钟（到 …）”，也不该再给“取消定时”。
 func TestTrayDropsTimedTextAfterManualResumeKeepsAuto(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	a.sched.Pause(pauseReasonDnd)
@@ -380,19 +380,19 @@ func TestTrayDropsTimedTextAfterManualResumeKeepsAuto(t *testing.T) {
 	}
 	tip, _, _, _ := trayTextsAt(st, false, nil, nowMs())
 	if strings.Contains(tip, "还有") {
-		t.Fatalf("托盘不该再说「还有 …（到 …）」，得到 %q", tip)
+		t.Fatalf("托盘不该再说“还有 …（到 …）”，得到 %q", tip)
 	}
 	if !strings.Contains(tip, "已暂停") || !strings.Contains(tip, "勿扰") {
-		t.Fatalf("托盘应回到「已暂停 … ：勿扰」，得到 %q", tip)
+		t.Fatalf("托盘应回到“已暂停 … ：勿扰”，得到 %q", tip)
 	}
 }
 
-// 到期时被勿扰挡住、之后勿扰结束：现在停在「勿扰这条原因还在（按策略保留）」上。
+// 到期时被勿扰挡住、之后勿扰结束：现在停在“勿扰这条原因还在（按策略保留）”上。
 //
 // 这条用例刻意钉的是**当前语义**而不是理想语义：到期只摘 manual，其余的自动原因按
-// 各自策略走（勿扰 / 全屏或演示 / 两条投屏，条件消失也不自动恢复）。结果是「用户设了『到明天』，
-// 零点正开着勿扰 → 第二天早上关掉勿扰，提醒仍然停着，得点一下恢复」。
-// 留着它有两个用处：一是把这条行为写进验收，二是将来若改成「到期授权恢复到底」，
+// 各自策略走（勿扰 / 全屏或演示 / 两条投屏，条件消失也不自动恢复）。结果是“用户设了『到明天』，
+// 零点正开着勿扰 → 第二天早上关掉勿扰，提醒仍然停着，得点一下恢复”。
+// 留着它有两个用处：一是把这条行为写进验收，二是将来若改成“到期授权恢复到底”，
 // 这条会立刻变红，提醒按新口径重写。
 func TestTimedPauseExpiryAfterHoldClearsLeavesAutoPause(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)

@@ -6,11 +6,12 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/wailsapp/wails/v3/pkg/application"
 	"workerrest/internal/settings"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// TestReminderWindowsEnableCaptureGuard 「共享屏幕时隐藏提醒窗口」必须覆盖**每一个**
+// TestReminderWindowsEnableCaptureGuard “共享屏幕时隐藏提醒窗口”必须覆盖**每一个**
 // 提醒窗口建窗点。
 //
 // 这条功能的特点是失效时完全没有症状：窗口照样弹、颜色照样对，只有真开会共享屏幕
@@ -18,7 +19,7 @@ import (
 // 冒烟全都不会报。所以用源码扫描钉住：除白名单外，任何 WebviewWindowOptions
 // 字面量都必须带 ContentProtectionEnabled。
 //
-// 白名单按**文件**粒度，只允许放「画面上不承载提醒内容」的窗口；
+// 白名单按**文件**粒度，只允许放“画面上不承载提醒内容”的窗口；
 // 往白名单里加东西必须同时写清理由，否则这条断言会被人情一点点蛀空。
 func TestReminderWindowsEnableCaptureGuard(t *testing.T) {
 	skip := map[string]string{

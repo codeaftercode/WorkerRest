@@ -2,14 +2,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/wailsapp/wails/v3/pkg/application"
-	"github.com/wailsapp/wails/v3/pkg/events"
 	"log"
 	"math/rand"
 	"net/url"
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
+	"github.com/wailsapp/wails/v3/pkg/events"
 
 	"workerrest/internal/logx"
 	"workerrest/internal/sound"
@@ -18,8 +19,8 @@ import (
 // ---------- 播放宿主 ----------
 
 // initSoundHost 建播放宿主窗口（隐藏 1×1，加载 sound.html）。
-// 无头构建下没有原生窗口 —— 播放会退化成「只记日志」（见 playSoundFile），
-// 所以无头冒烟仍能断言「该播哪一首」这条链路。
+// 无头构建下没有原生窗口 —— 播放会退化成“只记日志”（见 playSoundFile），
+// 所以无头冒烟仍能断言“该播哪一首”这条链路。
 func (a *App) initSoundHost() {
 	if serverMode || a.app == nil {
 		log.Printf("[sound] server 模式无原生窗口，跳过播放宿主创建")
@@ -48,7 +49,7 @@ func (a *App) initSoundHost() {
 	})
 	// 页面加载完（WebView 运行时就绪）只用来留一条 debug 日志 —— 播放**不**依赖它：
 	// webbview 未就绪时 ExecJS 会把脚本排队、等加载完再执行（Wails 自带语义），
-	// 所以自己加一道「没就绪就不发」反而会把播放整段丢掉。
+	// 所以自己加一道“没就绪就不发”反而会把播放整段丢掉。
 	win.OnWindowEvent(events.Common.WindowRuntimeReady, func(*application.WindowEvent) {
 		logx.Debugf("[sound] 播放宿主就绪（sound.html 已加载）")
 	})
@@ -77,7 +78,7 @@ func (a *App) destroySoundHost() {
 }
 
 // playConfiguredSound 播放当前生效的提示音（休息开始 / 结束各一次）。
-// 静音是「配置的选择」而不是错误，所以静音路径只记日志、不报错。
+// 静音是“配置的选择”而不是错误，所以静音路径只记日志、不报错。
 func (a *App) playConfiguredSound() {
 	cfg := a.CfgSnapshot().SoundCfg()
 	file := a.soundPickNext(cfg, rand.Intn)
@@ -91,7 +92,7 @@ func (a *App) playConfiguredSound() {
 
 // playSoundFile 让宿主窗口播一个文件。
 //
-// 不需要等宿主「就绪」：WebView 还没加载完时 ExecJS 会把脚本排队、加载完自动执行
+// 不需要等宿主“就绪”：WebView 还没加载完时 ExecJS 会把脚本排队、加载完自动执行
 // （见 WebviewWindow.ExecJS 的 pendingJS 分支）。宿主窗口在启动时就建好了，
 // 头几次播放通常远晚于页面加载，这条路径不会丢。
 func (a *App) playSoundFile(file string, volume float64) {
@@ -122,7 +123,7 @@ func (a *App) execPlaySound(url string, volume float64) {
 }
 
 // audioHostWindow 挑一个承载 <audio> 的窗口：优先主设置窗口（main.go 里随应用创建、
-// 「关闭」只是 Hide 不销毁，全程存活、已加载且用户交互过），退回专用宿主窗。
+// “关闭”只是 Hide 不销毁，全程存活、已加载且用户交互过），退回专用宿主窗。
 // 历史上只用隐藏宿主窗，但那条链从未被验证能真发声（隐藏窗可能不加载 + WebView2 默认
 // 拦无手势有声自动播放）；改走必然存活的设置窗更稳，autoplay 已在 main.go 全局放开。
 // 二者皆无返回 nil（server 模式在 playSoundFile 已先行短路，不会走到这里）。
@@ -136,7 +137,7 @@ func (a *App) audioHostWindow() application.Window {
 	hw := a.wins[soundHostWindowName]
 	a.mu.Unlock()
 	if hw == nil {
-		return nil // 别把「类型化 nil」当接口返回，否则上层 w==nil 判不出
+		return nil // 别把“类型化 nil”当接口返回，否则上层 w==nil 判不出
 	}
 	return hw
 }
@@ -146,7 +147,7 @@ func (a *App) audioHostWindow() application.Window {
 // SoundFileURL 把音频文件换算成可播放 URL（设置页试听用 <audio>、播放宿主用 Audio）。
 // 内置音（相对文件名）→ 资源服务的 /sounds/xxx.wav；自定义音（绝对路径）→ 本进程的
 // /__sound/?p=…（白名单见 allowedSoundPath）。**文件不可用返回空串** ——
-// 渲染层正是用 `if (!url)` 判「找不到该音频文件」的。
+// 渲染层正是用 `if (!url)` 判“找不到该音频文件”的。
 func (a *App) SoundFileURL(file string) string {
 	file = strings.TrimSpace(file)
 	if file == "" {

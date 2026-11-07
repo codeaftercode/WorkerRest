@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"github.com/wailsapp/wails/v3/pkg/application"
 	"log"
 	"runtime"
 	"runtime/debug"
@@ -12,6 +11,8 @@ import (
 	"workerrest/internal/plan"
 	"workerrest/internal/role"
 	"workerrest/internal/scheduler"
+
+	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
 // settingsWindow 取设置窗口（按名字查，避免跨 tick 持有已销毁的窗口引用 ——
@@ -25,10 +26,10 @@ func (a *App) settingsWindow() application.Window {
 	return w
 }
 
-// ListDisplays 枚举当前接入的显示器，给设置页「显示的屏幕」多选下拉用。
+// ListDisplays 枚举当前接入的显示器，给设置页“显示的屏幕”多选下拉用。
 //
 // 主屏排在最前。枚举失败（远程会话、无桌面会话、非 Windows）返回空数组而不是 error：
-// 前端拿到空列表时显示「未检测到显示器」并退回旧行为，不值得为此弹错误框。
+// 前端拿到空列表时显示“未检测到显示器”并退回旧行为，不值得为此弹错误框。
 func (a *App) ListDisplays() []display.Info {
 	list, err := display.List()
 	if err != nil {
@@ -38,10 +39,10 @@ func (a *App) ListDisplays() []display.Info {
 }
 
 // ShowSettingsWindow 打开（或唤起）设置窗口。窗口在 main.go 里随应用创建，
-// 这里负责「按配置决定这次用多大」+ 显示与聚焦——托盘、单实例二次启动、
+// 这里负责“按配置决定这次用多大”+ 显示与聚焦——托盘、单实例二次启动、
 // 自更新重启恢复都走它。
 //
-// 每次都过一遍 applySettingsWindowSize：勾了「自动记录窗口尺寸」就用上次的尺寸，
+// 每次都过一遍 applySettingsWindowSize：勾了“自动记录窗口尺寸”就用上次的尺寸，
 // 没勾就回到默认尺寸（用户中途拖大过窗口，关掉再开也应恢复默认，见 window_size.go）。
 func (a *App) ShowSettingsWindow() {
 	w := a.settingsWindow()
@@ -54,7 +55,7 @@ func (a *App) ShowSettingsWindow() {
 }
 
 // SetActiveTab 前端每次切页时上报当前 tab 名（general/timing/supervisor/stats/
-// shortcuts/about），用于自更新重启后恢复「更新前所在的页面」。
+// shortcuts/about），用于自更新重启后恢复“更新前所在的页面”。
 func (a *App) SetActiveTab(tab string) {
 	if tab == "" {
 		return
@@ -64,7 +65,7 @@ func (a *App) SetActiveTab(tab string) {
 	a.mu.Unlock()
 }
 
-// CloseWindow 渲染层「关窗」入口（休息窗口的预览点任意处 / 设置窗口的关闭按钮）。
+// CloseWindow 渲染层“关窗”入口（休息窗口的预览点任意处 / 设置窗口的关闭按钮）。
 // 休息窗口是多窗口（每块目标屏一个，存 a.breakWins），点任意一个预览窗整组关掉；
 // 外卖窗口同理走 closeTakeoutWindows。
 func (a *App) CloseWindow(win string) {
@@ -73,7 +74,7 @@ func (a *App) CloseWindow(win string) {
 		return
 	}
 	// 提前提示窗走专用入口：它有自己的建窗锁，通用分支直接 delete(a.wins, win) 会
-	// 与「关旧窗 → 建新窗」交错（删掉刚建好的新窗引用，那扇窗就没人关了）。
+	// 与“关旧窗 → 建新窗”交错（删掉刚建好的新窗引用，那扇窗就没人关了）。
 	if win == preBreakWindowName {
 		a.closePreBreakWindow()
 		return
@@ -156,7 +157,7 @@ func (a *App) Action(win, name string) error {
 			}
 		}
 	case "winClose":
-		// 关闭 = 隐藏到托盘（不是销毁）：托盘「设置…」/ 双击要能重新唤起。
+		// 关闭 = 隐藏到托盘（不是销毁）：托盘“设置…”/ 双击要能重新唤起。
 		// Wails 的 Window.Close() 会销毁窗口并从注册表移除，之后 GetByName 拿不到、
 		// ShowSettingsWindow 就无法再显示 —— 所以这里用 Hide 保留窗口对象。
 		// 隐藏前把当前尺寸记下来：防抖 1 秒内关窗时定时器还没到，不主动 flush 就丢了。
@@ -191,15 +192,15 @@ func (a *App) schedSkip() {
 	}
 }
 
-// schedPauseToggle 托盘 / 提示窗 / 快捷键共用的手动「暂停休息 ↔ 恢复休息」。
+// schedPauseToggle 托盘 / 提示窗 / 快捷键共用的手动“暂停休息 ↔ 恢复休息”。
 //
-// 自动暂停生效时点「恢复休息」有个特殊语义：不是去摘一个不存在的 manual 原因
+// 自动暂停生效时点“恢复休息”有个特殊语义：不是去摘一个不存在的 manual 原因
 // （那会原地 no-op，按钮像坏了），而是把**当时正在生效的自动原因**全部记为
-// 「已手动恢复」并逐个摘掉——立即恢复，且这些原因的条件没消失前不会挂回来；
+// “已手动恢复”并逐个摘掉——立即恢复，且这些原因的条件没消失前不会挂回来；
 // 条件消失后忽略自动解除，下次达成照常暂停。恢复之后才成立的别的原因不受影响，
 // 它们该暂停还是暂停（每条原因一格，互不牵连）。
 //
-// 反过来，用户点「暂停休息」时作废所有忽略，回到常规自动判定。
+// 反过来，用户点“暂停休息”时作废所有忽略，回到常规自动判定。
 func (a *App) schedPauseToggle() {
 	if a.sched == nil {
 		return
@@ -209,9 +210,9 @@ func (a *App) schedPauseToggle() {
 		for _, r := range auto {
 			a.sched.Resume(r)
 		}
-		// 若还叠着手动暂停，一并摘掉：用户点的是「恢复休息」，就该恢复到底
+		// 若还叠着手动暂停，一并摘掉：用户点的是“恢复休息”，就该恢复到底
 		a.sched.Resume(scheduler.PauseReasonManual)
-		// 「已暂停多久」小窗随恢复一起收：它说的那件事已经结束了，留在屏幕上会误导
+		// “已暂停多久”小窗随恢复一起收：它说的那件事已经结束了，留在屏幕上会误导
 		a.closePauseNoticeWindow()
 		log.Printf("[autoPause] 用户手动恢复：忽略 %s（条件消失前不再因它们暂停）",
 			strings.Join(auto, "、"))
@@ -221,7 +222,7 @@ func (a *App) schedPauseToggle() {
 		// 手动暂停：作废可能残留的忽略，回到常规自动暂停判定
 		a.resetAutoPauseIgnored()
 	} else {
-		// 从这里往下是「恢复」那一支：暂停结束，「已暂停多久」小窗一并收掉。
+		// 从这里往下是“恢复”那一支：暂停结束，“已暂停多久”小窗一并收掉。
 		// 放在 PauseToggle 之前——恢复会触发 emitState，窗口晚一步收会闪一下
 		a.closePauseNoticeWindow()
 	}
@@ -239,7 +240,7 @@ func (a *App) schedEndBreak() {
 	}
 	a.sched.EndBreak()
 	// 兜底：调度器已经不在休息阶段时 endBreak 直接返回（自然到点 / 状态已翻篇），
-	// 屏幕上的窗口就成了「点了没反应」的窗 —— 用户只能 Alt+F4。这里直接收掉，
+	// 屏幕上的窗口就成了“点了没反应”的窗 —— 用户只能 Alt+F4。这里直接收掉，
 	// 绝不把无主窗口留给用户。正常路径上 finishBreak 已经关过窗，这步是空操作。
 	if a.sched.StateCopy().Phase != "break" && a.hasBreakWindows() {
 		log.Printf("[action] endBreak 无效（调度器不在休息阶段），直接收掉残留的休息窗口")
@@ -253,17 +254,17 @@ func (a *App) SupActivity(win string) {
 	a.app.Event.Emit("sup:active")
 }
 
-// PreviewBreak 弹一次预览：顶层「督休专员-启用」开关仍生效（未启用时预览窗直接不显示立绘，
+// PreviewBreak 弹一次预览：顶层“督休专员-启用”开关仍生效（未启用时预览窗直接不显示立绘，
 // 与设置页勾选状态一致）；forceKey 指定督休专员（空 = 按配置选），可绕过单个督休专员的启用
-// 以预览已停用的督休专员。预览窗口带「预览模式」角标、点任意处关闭，
+// 以预览已停用的督休专员。预览窗口带“预览模式”角标、点任意处关闭，
 // 且不影响真实倒计时与统计——与 上一版 break:preview 同语义。
 //
 // 预览**完全不进调度器**：不消费 occurrence、不改 phase、不占会话（与上一版 一致，
 // 那边 break:preview 直接调 showBreakWindows）。
 //
 // 真实休息窗口在场时**拒弹**（返回 previewBusyReply）：预览会建一个新会话并顶掉当前
-// 会话，ShowBreakWindow 随后把旧窗口当 stale 关掉 —— 用户看到的就是「点了预览，正在
-// 进行的休息窗被关掉」，而且那次休息的统计 / 结束判定也跟着乱。让真实提醒照常走完。
+// 会话，ShowBreakWindow 随后把旧窗口当 stale 关掉 —— 用户看到的就是“点了预览，正在
+// 进行的休息窗被关掉”，而且那次休息的统计 / 结束判定也跟着乱。让真实提醒照常走完。
 func (a *App) PreviewBreak(kind, forceKey string) string {
 	if kind == "" {
 		kind = "short"
@@ -288,7 +289,7 @@ func (a *App) realBreakActive() bool {
 }
 
 // StartBreak 立即开始一次指定类型的休息（托盘 / 诊断页）。
-// kind 留空 = 用当前计划的那一条（与托盘「立即休息一下」同义）。
+// kind 留空 = 用当前计划的那一条（与托盘“立即休息一下”同义）。
 //
 // 走调度器而不是直接建会话：phase / 已消费记账 / 派生视图都要跟着动，
 // 否则到点前又会被 replan 排回来弹第二次。
@@ -337,7 +338,7 @@ func structToMap(v any) map[string]any {
 
 // AppInfo 关于页的环境信息。
 //
-// 如实回报引擎为 Wails v3 (Go)，不伪装成 上一版。设置页「软件信息」卡片现在只渲染
+// 如实回报引擎为 Wails v3 (Go)，不伪装成 上一版。设置页“软件信息”卡片现在只渲染
 // version / buildTime（发布时间）两行；goVersion / wailsVersion 仍然回传，供探针与
 // 排障判断跑的是哪个引擎版本（尤其是 beta 与正式版之分），只是不再上界面。
 func (a *App) AppInfo() map[string]any {
@@ -377,7 +378,7 @@ func wailsVersion() string {
 
 // ListRoles 督休专员目录扫描结果（预览图为 data URL，设置页督休专员列表用）
 // ListRoles 候选督休专员列表（设置页画廊 / 主窗口共用）。
-// 顺序按用户拖动保存的 supervisor.order 排 —— 画廊显示顺序与「顺序轮换」的出场次序
+// 顺序按用户拖动保存的 supervisor.order 排 —— 画廊显示顺序与“顺序轮换”的出场次序
 // 共用这一份顺序，用户拖一次两边同时生效。
 func (a *App) ListRoles() []role.Role {
 	roles := role.ScanRoles(a.rolesRoot)
@@ -386,7 +387,7 @@ func (a *App) ListRoles() []role.Role {
 	}
 	// 空目录（便携包被删了 assets/supervisors、或首次运行素材还没落地）时 ScanRoles
 	// 返回 nil，JSON 序列化成 null；前端是 `for (const r of ROLES)`，拿到 null 会直接
-	// 抛 TypeError 让整个立绘库白屏。这里统一给空数组，让「没有专员」是一种正常状态。
+	// 抛 TypeError 让整个立绘库白屏。这里统一给空数组，让“没有专员”是一种正常状态。
 	if roles == nil {
 		return []role.Role{}
 	}
@@ -413,8 +414,8 @@ func (a *App) WindowMaximized() bool {
 // 不在源码里写死真实版本号，避免与 tag 分裂。
 var appVersion = "dev"
 
-// buildTime 打包时通过 -ldflags "-X main.buildTime=<RFC3339>" 注入，关于页以「发布时间」
-// 展示；开发 / 无头验证不注入则留空，前端回退显示「本地构建」。
+// buildTime 打包时通过 -ldflags "-X main.buildTime=<RFC3339>" 注入，关于页以“发布时间”
+// 展示；开发 / 无头验证不注入则留空，前端回退显示“本地构建”。
 var buildTime = ""
 
 // pauseReasonText 暂停原因键 → 界面文案：内部用稳定的英文键，展示层不该原样抛给用户；
