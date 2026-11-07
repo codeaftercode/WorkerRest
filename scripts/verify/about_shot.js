@@ -54,7 +54,7 @@ async function shotEl(page, selector, name) {
   await set.screenshot({ path: path.join(OUT, "verify_settings_viewport.png") });
   console.log("[shot] verify_settings_viewport -> viewport");
 
-  // 开源鸣谢弹窗：入口在“软件信息”卡片第二行（#d-notices）。
+  // 开源鸣谢弹窗：入口在“软件信息”卡片首行状态条下方的那一行（#d-notices）。
   // 截图 + 读出实测样式，用来确认它与其它弹窗（同一套 .modal / .cf-box 体系）完全一致，
   // 且正文真的读到了（不是空壳）。
   await set.evaluate(`(function(){var b=document.getElementById('d-notices');if(b)b.click();})()`);
@@ -161,7 +161,7 @@ async function shotEl(page, selector, name) {
       checkUpdatePrimary: (function(){var b=document.getElementById('d-checkupdate');return b?b.className.indexOf('primary')>=0:null;})(),
       checkUpdateSoft: (function(){var b=document.getElementById('d-checkupdate');return b?b.className.indexOf('btn-soft')>=0:null;})(),
       checkLeftOfButton: (function(){var c=document.getElementById('chk-update'),b=document.getElementById('d-checkupdate');if(!c||!b)return null;var cr=c.getBoundingClientRect(),br=b.getBoundingClientRect();return cr.right<=br.left+2;})(),
-      footBeforeRows: (function(){var f=document.querySelector('#tab-about .card-foot'),r=document.querySelector('#tab-about .rows');if(!f||!r)return null;return (f.compareDocumentPosition(r)&Node.DOCUMENT_POSITION_FOLLOWING)!==0;})(),
+      footBeforeRows: (function(){var f=document.querySelector('#tab-about .info-line'),r=document.querySelector('#tab-about .rows');if(!f||!r)return null;return (f.compareDocumentPosition(r)&Node.DOCUMENT_POSITION_FOLLOWING)!==0;})(),
       hasManual: !!document.getElementById('d-manual'),
       // 各页面标题（h2）应全部删除
       h2Total: document.querySelectorAll('#content .tab h2').length,

@@ -519,10 +519,15 @@
             <div>
               <h3>软件信息</h3>
             </div>
-            <span class="pill ok" id="d-update-pill"><i></i><span id="d-update-pill-text">已是最新版本</span></span>
           </div>
 
-          <div class="card-foot">
+          <!-- 首行 = 一条完整的“版本状态条”：左边是长期开关，右边是一次性动作，
+               中间是只读事实（版本号 | 发布时间 + 状态徽章）。三件事同属“这个版本”，
+               原先拆成「标题行徽章 / 操作行 / 版本行」三段各说各话，才显得乱。
+               徽章文案由 settings.js 按检查结果显示：已是最新版本 / 发现新版本 x /
+               正在检查更新… / 更新检查失败；徽章跟着版本事实走，一眼能对上。
+               11 个绑定 id 全部保留，只换了容器，逻辑零改动。 -->
+          <div class="info-line">
             <label class="check">
               <input type="checkbox" id="chk-update" />
               <span class="box">
@@ -530,6 +535,10 @@
               </span>
               <span class="txt">自动检查更新</span>
             </label>
+            <div class="info-mid">
+              <span class="mono ver-cell"><span class="ver-num" id="d-version-val">v—</span><span class="ver-sep">|</span><span class="ver-build" id="d-build-time">本地构建</span></span>
+              <span class="pill ok" id="d-update-pill"><i></i><span id="d-update-pill-text">已是最新版本</span></span>
+            </div>
             <div class="foot-right">
               <button class="btn-soft hidden" id="d-update-go">立即更新</button>
               <button class="btn-soft" id="d-checkupdate">检查更新</button>
@@ -537,13 +546,6 @@
           </div>
 
           <div class="rows">
-            <!-- 版本与发布时间同一行：两者都是“这份二进制是谁”，分成两行只是各占一行空间。
-                 版本号是主值（14px/650），发布时间退一档做注脚（12.5px/520 且压暗），
-                 中间的竖线只作分隔、不参与信息层级。 -->
-            <div class="row">
-              <span class="k">软件版本</span>
-              <span class="v mono ver-cell"><span class="ver-num" id="d-version-val">v—</span><span class="ver-sep">|</span><span class="ver-build" id="d-build-time">本地构建</span></span>
-            </div>
             <!-- 许可条款 / 开源鸣谢：两份文本都内嵌在 exe 里（license.go / notices.go），
                  点开可读、可另存为。行内两个入口并排，各自一个弹窗 —— 不再用“查看”这种
                  中间按钮：一个“查看”要用户先记住它对应哪一行，两个入口写清名字更省一步。
@@ -580,7 +582,7 @@
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
                 <path d="m9 12 2 2 4-4"/>
               </svg>
-              <span>免注册登录，不收集个人信息；仅检查更新时联网，且只下载、不上传</span>
+              <span>免注册登录，不收集个人信息</span>
             </div>
             <div class="note-row">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
