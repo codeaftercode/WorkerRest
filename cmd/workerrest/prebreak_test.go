@@ -13,14 +13,14 @@ import (
 
 // 提前提示窗（历史源码/windows/preBreakWindow.ts 的移植）的回归。
 //
-// 分工：「窗口真的弹出来了」只有 probe_gui_boot.py（拉起 GUI 产物读日志）与
+// 分工：“窗口真的弹出来了”只有 probe_gui_boot.py（拉起 GUI 产物读日志）与
 // scripts/smoke_server.py（无头下走绑定）能验；这里钉的是四件纯逻辑的事：
 //
-//  一、版式内容 —— 内置短 / 长用劝说文案，自定义提醒用「XX时间到」，
-//     后缀去重规则（「喝水时间」不再补一次「时间」、「喝水提醒」不再补一次「提醒」）；
+//  一、版式内容 —— 内置短 / 长用劝说文案，自定义提醒用“XX时间到”，
+//     后缀去重规则（“喝水时间”不再补一次“时间”、“喝水提醒”不再补一次“提醒”）；
 //  二、窗口几何 —— 右下角定位、两档高度、副屏 / 负坐标工作区；
 //  三、状态快照的**字段集** —— 渲染层每 500ms 轮询 PreBreakState，少一个字段
-//     不会报错，只会静默显示错内容（这个坑在「占位返回形状」上踩过一次）；
+//     不会报错，只会静默显示错内容（这个坑在“占位返回形状”上踩过一次）；
 //  四、四个动作真的汇聚到调度器，未知动作要报错而不是静默无事。
 
 // customWaterCfg 带一条自定义提醒（喝水提醒）的配置，够 preBreakInfoOfType 取名用
@@ -30,7 +30,7 @@ const customWaterCfg = `{"short":{"enabled":true,"mode":"countdown","intervalMs"
 	`"config":{"enabled":true,"mode":"countdown","intervalMs":600000,"durationMs":20000,` +
 	`"notifyBeforeMs":60000,"postponeMs":120000,"slots":[]}}]}`
 
-// newPreBreakApp 造一个「配置 + 调度器」的最小 App（不碰窗口 / 托盘 / Wails）
+// newPreBreakApp 造一个“配置 + 调度器”的最小 App（不碰窗口 / 托盘 / Wails）
 func newPreBreakApp(t *testing.T, cfgJSON string) (*App, *scheduler.Scheduler) {
 	t.Helper()
 	s, host := newTestSched(t, cfgJSON)
@@ -47,7 +47,7 @@ func TestPreBreakInfoOfTypeBuiltin(t *testing.T) {
 		if got.Custom {
 			t.Fatalf("%s 应走内置版式（四按钮 + 两行说明），得到 custom=true", kind)
 		}
-		// 标题按长短休息区分：short→「建议您短休息」、long→「建议您长休息」
+		// 标题按长短休息区分：short→“建议您短休息”、long→“建议您长休息”
 		wantTitle := builtinPreBreakTitleShort
 		if kind == "long" {
 			wantTitle = builtinPreBreakTitleLong
@@ -65,17 +65,17 @@ func TestPreBreakInfoOfTypeCustom(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	got := a.preBreakInfoOfType("cb-water")
 	if !got.Custom {
-		t.Fatal("自定义提醒应走自定义版式（无两行说明、按钮改「…提醒」）")
+		t.Fatal("自定义提醒应走自定义版式（无两行说明、按钮改“…提醒”）")
 	}
 	if got.Title != "喝水提醒时间到" {
-		t.Fatalf("标题应是「喝水提醒时间到」，得到 %q", got.Title)
+		t.Fatalf("标题应是“喝水提醒时间到”，得到 %q", got.Title)
 	}
 	if got.CountdownTail != " 秒显示喝水提醒" {
-		t.Fatalf("倒计时后缀应是「 秒显示喝水提醒」，得到 %q", got.CountdownTail)
+		t.Fatalf("倒计时后缀应是“ 秒显示喝水提醒”，得到 %q", got.CountdownTail)
 	}
 }
 
-// 后缀去重：名称已经以「时间 / 提醒」结尾时不再补一次（叠字很难看）
+// 后缀去重：名称已经以“时间 / 提醒”结尾时不再补一次（叠字很难看）
 func TestPreBreakSuffixDedup(t *testing.T) {
 	cases := []struct {
 		name  string
@@ -98,12 +98,12 @@ func TestPreBreakSuffixDedup(t *testing.T) {
 	}
 }
 
-// 不认识的身份（提醒刚被删掉）回落成「休息」，不能让标题空着
+// 不认识的身份（提醒刚被删掉）回落成“休息”，不能让标题空着
 func TestPreBreakInfoOfTypeUnknownFallsBack(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	got := a.preBreakInfoOfType("cb-gone")
 	if !got.Custom || got.Title != "休息时间到" {
-		t.Fatalf("已删除的自定义提醒应回落成「休息时间到」，得到 %+v", got)
+		t.Fatalf("已删除的自定义提醒应回落成“休息时间到”，得到 %+v", got)
 	}
 }
 
@@ -175,18 +175,32 @@ func TestBreakBoundsFor(t *testing.T) {
 	if w != 320 || h != 240 {
 		t.Fatalf("过小工作区应触发最小尺寸兜底，得到 %dx%d", w, h)
 	}
+	// 兜底之后位置必须按**夹紧后的**尺寸重算，否则窗口从居中偏出去
+	if x != 40 || y != 30 {
+		t.Fatalf("兜底后仍应居中（(400-320)/2, (300-240)/2），得到 (%d,%d)", x, y)
+	}
+
+	// 1280 的屏、20% 宽 = 256 < 320：夹到 320 后仍要居中（曾右偏 32px）
+	narrow := application.Rect{X: 0, Y: 0, Width: 1280, Height: 720}
+	x, y, w, h = reminderBoundsFor(narrow, model.AppearanceConfig{WidthPct: 20, HeightPct: 20})
+	if w != 320 || h != 240 {
+		t.Fatalf("1280×720 的 20%% 应夹到 320×240，得到 %dx%d", w, h)
+	}
+	if x != (1280-320)/2 || y != (720-240)/2 {
+		t.Fatalf("夹紧后应居中于该屏，得到 (%d,%d)", x, y)
+	}
 }
 
-// 扩展模式下「主屏 + 投影仪」是两块屏、两扇窗：每扇必须完整落在自己那块屏里，
+// 扩展模式下“主屏 + 投影仪”是两块屏、两扇窗：每扇必须完整落在自己那块屏里，
 // 且两扇互不交叠。**不能把两块屏当成一个整体弹一扇横跨两屏的大窗** —— 那样窗口
 // 中点会落在两屏缝合处，投影仪上只看到半张立绘，比不弹更糟。
 //
 // 防的是将来有人图省事，用 GetAll 的并集矩形去建窗（或把 targetDisplays 的结果
-// 合并成一个"虚拟桌面"）。ShowBreakWindow 现在是「循环每块屏、各调一次本函数」，
+// 合并成一个"虚拟桌面"）。ShowBreakWindow 现在是“循环每块屏、各调一次本函数”，
 // 这条断言把这个前提固化成可执行的约束。
 func TestBreakWindowsStayInsideTheirOwnDisplay(t *testing.T) {
 	// 主屏 2560×1440 @(0,0)，右边接一块 1920×1080 的投影屏。
-	// 副屏给个负 Y 起点：非零/负原点最容易暴露「按并集算」的写法。
+	// 副屏给个负 Y 起点：非零/负原点最容易暴露“按并集算”的写法。
 	mainScr := application.Rect{X: 0, Y: 0, Width: 2560, Height: 1440}
 	projScr := application.Rect{X: 2560, Y: -209, Width: 1920, Height: 1080}
 
@@ -238,7 +252,7 @@ func TestPreBreakURL(t *testing.T) {
 		t.Fatalf("内置版式地址参数不对：%q", builtin)
 	}
 
-	// 不可推迟（PostponeMin=0）时带 postpone=0，渲染层首帧就藏掉「推迟」按钮
+	// 不可推迟（PostponeMin=0）时带 postpone=0，渲染层首帧就藏掉“推迟”按钮
 	custom := preBreakURL(PreBreakInfo{Custom: true, CountdownTail: " 秒显示喝水提醒", PostponeMin: 0})
 	parsed2, err := url.Parse(custom)
 	if err != nil {
@@ -251,7 +265,7 @@ func TestPreBreakURL(t *testing.T) {
 	}
 }
 
-// 「可推迟」为 0：弹窗内容、地址、轮询状态三处都不给「推迟」按钮活路
+// “可推迟”为 0：弹窗内容、地址、轮询状态三处都不给“推迟”按钮活路
 // （提前提示窗 / 外卖窗口 / 设置页 quick-action 三个入口共用这一语义）
 func TestPreBreakPostponeZero(t *testing.T) {
 	zeroCfg := `{"short":{"enabled":true,"mode":"countdown","intervalMs":600000,` +
@@ -317,7 +331,7 @@ func TestPreBreakStateShape(t *testing.T) {
 	}
 }
 
-// 内容「算一次就记住」：弹窗打开后读到的标题不随计划漂移（与 上一版的模块级 info 同口径）
+// 内容“算一次就记住”：弹窗打开后读到的标题不随计划漂移（与 上一版的模块级 info 同口径）
 func TestPreBreakInfoRemembered(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	got := a.rememberPreBreakInfo("cb-water")
@@ -329,7 +343,7 @@ func TestPreBreakInfoRemembered(t *testing.T) {
 		st["countdownTail"] != " 秒显示喝水提醒" {
 		t.Fatalf("PreBreakState 应回放记住的内容，得到 %v", st)
 	}
-	// 下一次弹出换回内置提醒：记忆要跟着换（不是「第一次是什么就永远是什么」）
+	// 下一次弹出换回内置提醒：记忆要跟着换（不是“第一次是什么就永远是什么”）
 	a.rememberPreBreakInfo("short")
 	st = a.PreBreakState()
 	if st["title"] != builtinPreBreakTitleShort || st["custom"] != false {
@@ -337,15 +351,15 @@ func TestPreBreakInfoRemembered(t *testing.T) {
 	}
 }
 
-// ---------- 背景颜色（跟随「通用配置 → 提醒窗口 → 背景颜色」） ----------
+// ---------- 背景颜色（跟随“通用配置 → 提醒窗口 → 背景颜色”） ----------
 
-// bgColorCfg 把提醒窗口背景色调成亮黄（浅底）：用来钉「小窗底色跟着配置走」这条链路
+// bgColorCfg 把提醒窗口背景色调成亮黄（浅底）：用来钉“小窗底色跟着配置走”这条链路
 const bgColorCfg = `{"appearance":{"color":"#ffd400"},` +
 	`"short":{"enabled":true,"mode":"countdown","intervalMs":600000,"durationMs":20000,` +
 	`"notifyBeforeMs":10000,"postponeMs":120000,"slots":[]}}`
 
 // 小窗底色 = appearance.color（不是写死的深色）：弹窗内容、URL（首帧）、轮询状态三处同源。
-// 渲染层的「浅底配深字」由 prebreak.js 按这个颜色算，探针里断言，不在 Go 侧。
+// 渲染层的“浅底配深字”由 prebreak.js 按这个颜色算，探针里断言，不在 Go 侧。
 func TestPreBreakBgColorFollowsAppearance(t *testing.T) {
 	a, _ := newPreBreakApp(t, bgColorCfg)
 	info := a.preBreakInfoOfType("short")
@@ -395,7 +409,7 @@ func TestPreBreakActionPostponeAndSkip(t *testing.T) {
 	if after.Phase != "idle" {
 		t.Fatalf("推迟后应回到 idle，得到 %q", after.Phase)
 	}
-	// 推迟 = 在原定时刻上往后推（不是「从现在起算」）：提前提示窗弹出时原定时刻还在
+	// 推迟 = 在原定时刻上往后推（不是“从现在起算”）：提前提示窗弹出时原定时刻还在
 	// 未来，若写 now+postponeMs 会把提醒提前到现在（P2-1，实测 1798s→299s）。
 	want := before + 120_000 // shortCountdown 的 postponeMs
 	if diff := after.NextAt - want; diff < -2000 || diff > 2000 {
@@ -444,7 +458,7 @@ func TestPreBreakActionPauseToggles(t *testing.T) {
 	}
 }
 
-// 未知动作必须报错：静默无事是这类「按名调用」链路最容易漏的坑
+// 未知动作必须报错：静默无事是这类“按名调用”链路最容易漏的坑
 func TestPreBreakActionUnknownErrors(t *testing.T) {
 	a, s := newPreBreakApp(t, shortCountdown)
 	before := s.StateCopy()
@@ -462,5 +476,5 @@ func TestPreBreakActionUnknownErrors(t *testing.T) {
 
 // 注：ShowPreBreakWindow 本身不在这里测 —— 它会去碰 Wails 的窗口管理器，
 // 而 go test 默认**不带** -tags server（serverMode=false），单测里没有 application.App。
-// 「真的弹出来了」由 probe_gui_boot.py（GUI 产物 + 日志）与 smoke_server.py
+// “真的弹出来了”由 probe_gui_boot.py（GUI 产物 + 日志）与 smoke_server.py
 // （无头下走 PreBreakState / PreBreakAction）覆盖。

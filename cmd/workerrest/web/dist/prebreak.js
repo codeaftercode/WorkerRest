@@ -22,7 +22,7 @@
     postEl.textContent = tail;
     tipsEl.classList.toggle("hidden", custom);
     pauseBtn.classList.toggle("hidden", custom);
-    // 「可推迟」为 0 分钟时不显示「推迟」按钮（URL query 的 postpone 与
+    // “可推迟”为 0 分钟时不显示“推迟”按钮（URL query 的 postpone 与
     // PreBreakState.canPostpone 同源，首帧与轮询两条路都喂）
     postponeBtn.classList.toggle("hidden", canPostpone === false);
     const label = custom ? BTN_LABELS.custom : BTN_LABELS.builtin;
@@ -32,7 +32,7 @@
   }
 
   // ---------- 底色 / 文字色自适应 ----------
-  // 小窗底色跟随「通用配置 → 提醒窗口 → 背景颜色」（appearance.color，与休息窗口同一个键），
+  // 小窗底色跟随“通用配置 → 提醒窗口 → 背景颜色”（appearance.color，与休息窗口同一个键），
   // 由主进程经 URL 的 bg 参数（首帧）与 PreBreakState.bgColor（轮询）下发。
   //
   // 颜色是用户随便调的，所以文字色绝不能写死：这里把配置色当“主色”，派生出两档底色
@@ -106,7 +106,7 @@
     ];
   }
   // 把颜色朝 toward 方向挪，直到与 bg 的对比度够 want（最多挪 24 步，够不到就取最接近的）。
-  // 用于「主色本身当字色 / 当按钮底」时兜底：配置色被调成极深或极浅都不会糊进底色。
+  // 用于“主色本身当字色 / 当按钮底”时兜底：配置色被调成极深或极浅都不会糊进底色。
   function ensureContrast(c, bg, want, toward) {
     var out = c.slice();
     for (var i = 0; i < 24 && contrast(out, bg) < want; i++) out = mix(out, toward, 0.12);
@@ -156,7 +156,7 @@
     document.documentElement.dataset.pbBg = toHex(src);
   }
 
-  // URL 里显式带了 postpone 时以它为准：地址由主进程按「弹窗打开时的配置」生成，
+  // URL 里显式带了 postpone 时以它为准：地址由主进程按“弹窗打开时的配置”生成，
   // 轮询的 canPostpone 只是同源备份（query 缺失的旧地址才回退到 state）
   var urlPostpone = null;
   var urlBg = null;
@@ -179,7 +179,7 @@
         secondsEl.textContent = "--";
         postEl.textContent = "";
       } else {
-        titleEl.textContent = st.title || "您已连续工作较长时间，建议您短暂休息";
+        titleEl.textContent = st.title || "您已连续工作较长时间，建议您短休息";
         secondsEl.textContent = String(Math.max(0, Math.ceil(st.remainMs / 1e3)));
         const canPost = urlPostpone !== null ? urlPostpone !== "0" : st.canPostpone !== false;
         applyVariant(st.custom, st.countdownTail, canPost);

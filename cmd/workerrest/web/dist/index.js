@@ -66,7 +66,7 @@
     var state = await window.api.getState();
     var info = await window.api.appInfo();
     fillEnv(state, info);
-    if (state && state.settings && state.settings.indexOf("未找到") === 0) {
+    if (state && state.settings && state.settings.indexOf("未找到") >= 0) {
       document.getElementById("settingsHint").textContent =
         "未找到已有配置，正在使用出厂默认值（安装版/免安装版会把配置写在程序目录或 %APPDATA% 下）。";
     }
@@ -89,7 +89,7 @@
         return;
       }
       var ok = await window.api.previewSupervisor(null, key);
-      log(ok ? "已用「" + key + "」预览" : "预览失败：" + key);
+      log(ok ? "已用“" + key + "”预览" : "预览失败：" + key);
     });
     document.getElementById("quit").addEventListener("click", function () {
       window.api.quit();

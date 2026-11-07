@@ -12,14 +12,14 @@
   <div id="app" data-theme="dark">
     <div class="title" id="pb-title">您已连续工作较长时间，建议您短休息</div>
     <!-- 倒计时拆成三段：前缀固定、数字单独放大、后缀由渲染层按版式改写
-         （内置「还有 N 秒进入休息」/ 自定义提醒「还有 N 秒显示 XX 提醒」） -->
+         （内置“还有 N 秒进入休息”/ 自定义提醒“还有 N 秒显示 XX 提醒”） -->
     <div class="countdown" id="pb-countdown">还有 <span id="pb-seconds">10</span><span id="pb-post"> 秒进入休息</span></div>
     <!-- 固定两行说明：上行（红）= 硬撑的代价，下行（绿）= 短暂休息的收益。
          内容不随休息类型变化，长/短休息前的提前弹窗共用这一块；
          **自定义提醒**不显示这一块（渲染层按主进程下发的版式加 .hidden，见 FR-3.9） -->
     <div class="tips" id="pb-tips">
-      <p class="tip bad">过度疲劳 -> 效率下降 => 忙乱出错</p>
-      <p class="tip good">短暂休息 -> 效率提升 => 减少失误</p>
+      <p class="tip bad">过度疲劳 → 效率下降 → 忙乱出错</p>
+      <p class="tip good">短休息 → 效率提升 → 减少失误</p>
     </div>
     <div class="actions">
       <button class="btn primary" id="pb-now">立即休息</button>
