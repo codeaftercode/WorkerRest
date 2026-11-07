@@ -97,7 +97,7 @@ body {
 #titlebar #wb-close:active { background: #c93b3f; color: #ffffff; }
 #titlebar .tb-btns button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
 
-/* 最大化态：主进程把窗口状态推下来后 #titlebar 带上 .maximized，图标在「最大化 ⇄ 还原」间切 */
+/* 最大化态：主进程把窗口状态推下来后 #titlebar 带上 .maximized，图标在“最大化 ⇄ 还原”间切 */
 #titlebar .ico-restore { display: none; }
 #titlebar.maximized .ico-max { display: none; }
 #titlebar.maximized .ico-restore { display: block; }
@@ -129,7 +129,7 @@ body {
 .nav-item.active { background: var(--accent); color: #fff; }
 .nav-item .icon { font-size: 16px; }
 
-/* 侧栏底部：当前状态网格 + 快捷操作（合并自原「关于」页的当前状态卡） */
+/* 侧栏底部：当前状态网格 + 快捷操作（合并自原“关于”页的当前状态卡） */
 .sidebar-footer { border-top: 1px solid var(--border); padding-top: 14px; flex-shrink: 0; display: flex; flex-direction: column; gap: 10px; }
 .sidebar-footer .status-grid { grid-template-columns: 1fr; gap: 6px; }
 .sidebar-footer .status-cell { background: var(--bg); border-radius: 8px; padding: 6px 10px; }
@@ -199,7 +199,7 @@ body {
 
 /* 关于页：在保持卡片满宽（与其他页面一致）的前提下，徽标 / 说明块 / 软按钮沿用 v2 视觉 */
 /* 顶部横幅（久坐风险图）：宽度 = .tab 内容宽（与下方 .card 逐像素同宽），高度恒定 260px。
-   图片按原比例（1440×804 ≈ 1.79）以「高度撑满、宽度自适应」的方式居中显示，窗口变宽时
+   图片按原比例（1440×804 ≈ 1.79）以“高度撑满、宽度自适应”的方式居中显示，窗口变宽时
    两侧多出的宽度由图片自身的米色底（#e0d6ce，取自原图边缘像素均值）填充 —— 因为色值
    与图片边缘完全一致，接缝不可见，整体读起来是一块圆角横幅。窗口窄到图片比容器宽时
    由 overflow:hidden 居中裁掉两侧，人物主体仍在画面中。 */
@@ -245,16 +245,16 @@ body {
 #tab-about .rows .k { color: var(--text-2); }
 #tab-about .rows .v { color: var(--text); font-weight: 520; }
 #tab-about .rows .v.strong { font-size: 14px; font-weight: 650; }
-/* 「版本 | 发布时间」：一行两个值。版本号是主值，沿用原 .v.strong 的 14px/650；
+/* “版本 | 发布时间”：一行两个值。版本号是主值，沿用原 .v.strong 的 14px/650；
    发布时间退一档（12.5px/520）并压到 --text-2 —— 它是版本号的注脚，与主值同级会抢重心。
-   baseline 对齐而非 center：两者字号不同，居中会让「|」偏离文字基线。
+   baseline 对齐而非 center：两者字号不同，居中会让“|”偏离文字基线。
    分隔符取 --border 色（比正文淡得多），只做分隔、不参与信息层级。 */
 #tab-about .rows .ver-cell { display: inline-flex; align-items: baseline; gap: 7px; min-width: 0; }
 #tab-about .rows .ver-cell .ver-num { font-size: 14px; font-weight: 650; }
 #tab-about .rows .ver-cell .ver-sep { color: var(--border); font-weight: 400; }
 #tab-about .rows .ver-cell .ver-build { font-size: 12.5px; font-weight: 520; color: var(--text-2); white-space: nowrap; }
 #tab-about .mono { font-family: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace; font-variant-numeric: tabular-nums; letter-spacing: -.2px; }
-/* 「第三方许可」入口：行内文字按钮。字号/字重跟随同列 .v，padding 归零 ——
+/* “第三方许可”入口：行内文字按钮。字号/字重跟随同列 .v，padding 归零 ——
    它是一行里的值，不是卡片里的按钮，任何内边距都会把 36px 的行高撑开。 */
 #tab-about .rows .link-btn {
   display: inline-flex; align-items: center; gap: 3px;
@@ -264,12 +264,12 @@ body {
 #tab-about .rows .link-btn::after { content: "\203A"; font-size: 14px; line-height: 1; }
 #tab-about .rows .link-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 #tab-about .rows .link-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
-/* 「许可条款 · 开源鸣谢」：同一行的两个入口。
-   左对齐而不是 space-between —— 两者是同类动作，分置两端的读法是「标题 + 动作」，
+/* “许可条款 · 开源鸣谢”：同一行的两个入口。
+   左对齐而不是 space-between —— 两者是同类动作，分置两端的读法是“标题 + 动作”，
    会让人以为左边那句是说明文字。间距 16px、中间一道 1px 竖线：既分得开是一组里的两项，
    又不至于像两个独立链接。竖线绝对定位，不参与布局，行高仍是 36px。
-   这一行不画「›」尖角：两个并排时「› | ›」三个符号挤在一起，比没有更难读。
-   零内边距：这一行的左缘必须与上面「软件版本」的 .k 严丝合缝地对齐。 */
+   这一行不画“›”尖角：两个并排时“› | ›”三个符号挤在一起，比没有更难读。
+   零内边距：这一行的左缘必须与上面“软件版本”的 .k 严丝合缝地对齐。 */
 #tab-about .rows .lic-row { justify-content: flex-start; gap: 16px; }
 #tab-about .rows .lic-row .link-btn::after { content: none; }
 #tab-about .rows .lic-row .link-btn + .link-btn { position: relative; }
@@ -277,13 +277,13 @@ body {
   content: ""; position: absolute; left: -8px; top: 50%; width: 1px; height: 12px;
   margin-top: -6px; background: var(--border);
 }
-/* 行尾运行环境：margin-left:auto 顶到右端 —— 左侧两个入口是「点开看全文」的动作，
-   右边这一项是「不用点就能看到的事实」，两者性质不同，所以整行不用 space-between
+/* 行尾运行环境：margin-left:auto 顶到右端 —— 左侧两个入口是“点开看全文”的动作，
+   右边这一项是“不用点就能看到的事实”，两者性质不同，所以整行不用 space-between
    （那会把右侧信息读成第二组按钮）。
-   整行最弱的一档（11.5px / 500 / --text-2）：它只是版本指纹，不该跟「许可条款」抢注意力。
+   整行最弱的一档（11.5px / 500 / --text-2）：它只是版本指纹，不该跟“许可条款”抢注意力。
    nowrap + flex:none：窗口收到 760 最小宽时，宁可压缩中间的空白，也不许这一行折行 ——
-   折行会把 36px 的行高撑开，关于页高度就不再是出厂的那个「恰好不出滚动条」的值。
-   （曾经在它前面放过一枚「MIT License」徽章，和左边「许可条款」重复，已去掉。） */
+   折行会把 36px 的行高撑开，关于页高度就不再是出厂的那个“恰好不出滚动条”的值。
+   （曾经在它前面放过一枚“MIT License”徽章，和左边“许可条款”重复，已去掉。） */
 #tab-about .rows .lic-rt {
   margin-left: auto; flex: none;
   font-size: 11.5px; font-weight: 500; color: var(--text-2); white-space: nowrap;
@@ -318,7 +318,7 @@ body {
 /* 检查中：按钮置灰 + 进度光标，配合状态条的脉冲点，点下去立刻有反馈 */
 #tab-about .btn-soft:disabled { cursor: progress; opacity: .6; }
 #tab-about .btn-soft:disabled:hover { background: var(--panel); border-color: var(--border); color: var(--text); }
-/* 状态条「正在检查更新…」 */
+/* 状态条“正在检查更新…” */
 #tab-about .pill.loading { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 #tab-about .pill.loading i { background: var(--accent); animation: pillPulse 1.1s ease-in-out infinite; }
 @keyframes pillPulse {
@@ -335,7 +335,7 @@ body {
 #tab-about .btn-quit svg { display: block; }
 
 
-/* 配置行：全站只保留三种形态，卡片里不再有「半列网格 + 整行」混排。
+/* 配置行：全站只保留三种形态，卡片里不再有“半列网格 + 整行”混排。
    改版式前这里是单个 .row 承担四种语义（勾选/字段/按钮/说明），唯一的对齐规则是
    space-between，于是按钮被推到两端、说明被挤到行尾、控件贴右边缘 —— 窄窗口看不出来，
    一拉宽全暴露。现在各自一种明确的对齐。 */
@@ -350,10 +350,12 @@ body {
 /* 勾选行：整个条目就是一个开关，文字紧跟勾选框、整行左对齐 */
 .row.check { justify-content: flex-start; }
 /* 并排勾选行（自动暂停卡片顶上的四条系统状态开关）：名字都只有四个字，
-   默认窗口宽度下四组「框 + 名字 + ?」正好一行放下；列间距比 .row-gap 宽一点，
-   免得两个「?」挤在一起分不清归属。窄窗口放不下时按行折返，不会溢出卡片。 */
-.row.check-inline { flex-wrap: wrap; column-gap: 18px; }
-/* 带动作按钮的勾选行（外卖卡「启用」+「预览」）：与字段行同一套网格——
+   默认窗口宽度下四组“框 + 名字 + ?”正好一行放下；列间距比 .row-gap 宽一点，
+   免得两个“?”挤在一起分不清归属。窄窗口放不下时按行折返，不会溢出卡片。
+   2026-11-06：「勿扰模式」改「勿扰/专注」多出两个字，18px 间距下刚好贴满内容区右缘、
+   零余量，字体回退宽一点就掉行；收到 12px 留 18px 余量。 */
+.row.check-inline { flex-wrap: wrap; column-gap: 12px; }
+/* 带动作按钮的勾选行（外卖卡“启用”+“预览”）：与字段行同一套网格——
    按钮落在第二列，左缘与其他行输入框严格同列 */
 .row.check.has-btn {
   display: grid;
@@ -363,14 +365,14 @@ body {
 .row.check.has-btn > .btn { justify-self: start; }
 
 /* 字段行：标签列定宽 + 控件列。控件左缘因此恒在同一竖线上，标签到控件的距离恒为
-   标签列宽 - 标签本身宽度 + 16px —— 与窗口宽度无关，最大化也不会「隔很远」。 */
+   标签列宽 - 标签本身宽度 + 16px —— 与窗口宽度无关，最大化也不会“隔很远”。 */
 .row.field { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr); align-items: center; }
 .row.field > label { line-height: 1.4; }
 
 /* 动作行：按钮紧挨着排成一串（.row 不再有 space-between，这里显式声明避免回退） */
 .row.inline { justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
 
-/* 混合行：勾选框 / 前置文字 + 行内小控件 + 尾随文字（如「系统空闲 [5] 分钟后自动暂停」）。
+/* 混合行：勾选框 / 前置文字 + 行内小控件 + 尾随文字（如“系统空闲 [5] 分钟后自动暂停”）。
    与动作行同属"内容紧挨着左对齐"一类，间距收到 8px；行内数字框只占三四位数的宽度，
    不用字段行那 180px 的整宽。 */
 .row.mixed { justify-content: flex-start; gap: 8px; }
@@ -430,7 +432,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width
    注意不要改成"文字在左、勾选框被 space-between 推到行尾"的写法——那会让框与文字
    分居两端，看起来和这一行没关系；也不必为了与相邻输入框右对齐而牺牲这一点。 */
 .switch-row { display: flex; align-items: center; gap: 8px; color: var(--text) !important; }
-/* 开关行里的「?」：gap 已经隔开了，再叠 .q-mark 自带的 6px 左边距会显得脱开 */
+/* 开关行里的“?”：gap 已经隔开了，再叠 .q-mark 自带的 6px 左边距会显得脱开 */
 .switch-row > .q-mark { margin-left: 0; }
 
 .hint { font-size: 12px; color: var(--text-2); line-height: 1.6; }
@@ -460,7 +462,7 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width
 
 /* 折叠面板（提醒内容 .msg-panel ↔ 提醒时间 .slot-fixed ↔ 高级选项 details.advanced）
    共用同一套外观：相同的描边/圆角/底色（不设底色，随卡片 --panel 走）、相同的头部
-   内边距与悬停态、相同的「▸」三角箭头与展开转向；前者是 button 切 .open，后者是原生
+   内边距与悬停态、相同的“▸”三角箭头与展开转向；前者是 button 切 .open，后者是原生
    <details>，这里只统一长相，交互各自保留。 */
 .msg-panel,
 .fold-panel,
@@ -482,7 +484,7 @@ details.advanced > summary {
 }
 .msg-toggle:hover,
 details.advanced > summary:hover { background: var(--accent-weak); }
-/* 提示音标题行：折叠开关占满剩余宽度，右侧「＋」导入按钮同高同悬停态 */
+/* 提示音标题行：折叠开关占满剩余宽度，右侧“＋”导入按钮同高同悬停态 */
 .snd-music-head { display: flex; align-items: stretch; }
 .snd-music-head .msg-toggle { flex: 1; }
 .snd-music-add {
@@ -492,7 +494,7 @@ details.advanced > summary:hover { background: var(--accent-weak); }
 }
 .snd-music-add:hover { background: var(--accent-weak); color: var(--text); }
 details.advanced > summary::-webkit-details-marker { display: none; }
-/* 「▸」三角箭头：展开时转向下方（.msg-arrow 是行内元素、details 用 ::before 生成，故声明分开写） */
+/* “▸”三角箭头：展开时转向下方（.msg-arrow 是行内元素、details 用 ::before 生成，故声明分开写） */
 .msg-arrow { display: inline-block; transition: transform 0.15s ease; font-size: 11px; }
 .msg-panel.open .msg-arrow,
 .fold-panel.open .msg-arrow,
@@ -518,7 +520,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .adv-body .subhead { margin-top: 4px; }
 /* 提醒时间面板：列表贴头部一点（tk-list 自带的下外边距在面板里显松） */
 .slot-body .tk-list { margin: 10px 0 2px; }
-/* 提醒内容 / 提醒时间面板标题行：折叠开关占满剩余宽度，右侧「＋」按钮（与提示音标题行同一套） */
+/* 提醒内容 / 提醒时间面板标题行：折叠开关占满剩余宽度，右侧“＋”按钮（与提示音标题行同一套） */
 .msg-head,
 .slot-head { display: flex; align-items: stretch; }
 .msg-head .msg-toggle,
@@ -544,14 +546,14 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   padding: 0 12px 12px; border-top: 1px solid var(--border);
   overflow-y: auto;
   /* 纵向允许**滚动链**（scroll chaining）：列表滚到顶 / 到底后，继续滚同一个滚轮
-     会接着带动外层页面（#content）继续滚，而不是「卡住不动」。
+     会接着带动外层页面（#content）继续滚，而不是“卡住不动”。
      之前这里写的是 overscroll-behavior: contain —— 那会**掐断**滚动链，
      滚到边界后滚轮就没反应了，是全站唯一一处与其它内层滚动区（.msg-list /
      .rc-scroll 等都是默认 auto）行为不一致的地方。
      只放开纵向：横向不链（画廊是 auto-fill 自适应网格，本来也不会横向溢出）。 */
   overscroll-behavior-y: auto;
 }
-/* 磁贴悬停的「右键操作」提示画在磁贴边框外上方：给网格顶部留出提示高度，
+/* 磁贴悬停的“右键操作”提示画在磁贴边框外上方：给网格顶部留出提示高度，
    避免首行磁贴的提示被滚动容器裁掉（收窄至 24px，首行紧贴头部） */
 .gallery-body .role-gallery { padding-top: 24px; }
 .gallery-panel:not(.open) .gallery-body,
@@ -636,7 +638,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .role-item .role-radio.on::after {
   content: ""; position: absolute; inset: 3px; border-radius: 50%; background: #fff;
 }
-/* 对勾用「形状」画（clip-path），不用 border 拼 L 形：L 形的墨迹天生偏向盒子的
+/* 对勾用“形状”画（clip-path），不用 border 拼 L 形：L 形的墨迹天生偏向盒子的
    右下角，rotate 45° 之后左右留白不可能对称（左边一大块空白、右边贴着边框）。
    inset:0 才是内框（2px 边框已经占掉外圈，绝对定位的参照系是 padding box），
    形状左右各留 6% ≈ 0.7px，上下对称，看起来才是正的。 */
@@ -647,7 +649,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .role-cap-row { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; }
 .role-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
-/* 悬停提示浮层：磁贴边框外上方提示「右键操作」——深色实底胶囊 + 白字 + 白描边，
+/* 悬停提示浮层：磁贴边框外上方提示“右键操作”——深色实底胶囊 + 白字 + 白描边，
    明暗两套主题下都醒目；禁用磁贴同样式（提示不受置灰影响）。尺寸克制，不遮挡立绘。 */
 .role-hint {
   position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
@@ -661,16 +663,16 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .role-item:hover .role-hint,
 .role-item:focus-within .role-hint { opacity: 1; }
 
-/* 候选专员拖拽排序（顺序会落盘，也决定「顺序轮换」的出场次序）：
+/* 候选专员拖拽排序（顺序会落盘，也决定“顺序轮换”的出场次序）：
    拖起来的磁贴置灰 + 虚线（与提醒内容列表 / 提示音列表同一套观感）；
    插入位置用一条竖条画在两块磁贴的**缝隙**里 —— 画廊是多列网格，竖条比
-   「高亮某一块」说得清「插在谁前面」，也不会和「选中态」的描边混淆。 */
+   “高亮某一块”说得清“插在谁前面”，也不会和“选中态”的描边混淆。 */
 .role-item.dragging { opacity: 0.45; border-style: dashed; }
 .role-drop-marker {
   position: absolute; z-index: 5; width: 3px; border-radius: 2px;
   background: var(--accent); pointer-events: none;
 }
-/* 拖拽进行中：光标变抓手；磁贴上的「右键操作」提示收起（别挡着插入指示） */
+/* 拖拽进行中：光标变抓手；磁贴上的“右键操作”提示收起（别挡着插入指示） */
 .role-gallery.sorting,
 .role-gallery.sorting .role-item { cursor: grabbing; }
 .role-gallery.sorting .role-hint { opacity: 0 !important; }
@@ -690,8 +692,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .role-menu-item:hover { background: var(--accent); color: #fff; }
 .role-menu-item.danger:hover { background: var(--danger); }
 
-/* 末尾「＋」磁贴：导入自定义立绘。骨架与 .role-item 一致（同网格、同内边距、
-   图案区同为 92px 高），使「＋」占位与立绘磁贴等大；提示文字画在图案区上。 */
+/* 末尾“＋”磁贴：导入自定义立绘。骨架与 .role-item 一致（同网格、同内边距、
+   图案区同为 92px 高），使“＋”占位与立绘磁贴等大；提示文字画在图案区上。 */
 .role-add {
   position: relative;
   display: flex; flex-direction: column; align-items: center; gap: 6px;
@@ -757,7 +759,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   transform-origin: left bottom;
   visibility: hidden;
 }
-/* 镜像层：勾选「水平翻转」时整层 scaleX(-1)（预览面板带 sup-flip 类，见 applySupGeometry）。
+/* 镜像层：勾选“水平翻转”时整层 scaleX(-1)（预览面板带 sup-flip 类，见 applySupGeometry）。
    与休息窗口 / 外卖窗口同一条路径：只翻立绘，不动台词气泡与透明边距补偿层。 */
 .sup-preview .mirror {
   height: 100%;
@@ -792,9 +794,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   box-shadow: 0 -14px 30px rgba(0, 0, 0, 0.38);
   border-radius: 0;
 }
-/* 名字牌：与休息窗口的 .dialog-name 同款「竖排金字 + 红印泥墨块」，只是整体缩一档。
+/* 名字牌：与休息窗口的 .dialog-name 同款“竖排金字 + 红印泥墨块”，只是整体缩一档。
    规则本身必须与 break.css 那两条（.dialog-name / .dialog-name::after）逐项对齐，
-   改那边时这里同步 —— 预览的全部意义就是「所见即真机」。
+   改那边时这里同步 —— 预览的全部意义就是“所见即真机”。
    减掉的只有 JS 那条定位链：真机的位置由 layoutRoleTitle() 按立绘 alpha 剖面算出来
    （写 inline left/top），预览里改用面板百分比锚点（top 19% 取自真机 139/720 的实测比例），
    立绘被推到窗口最左边时牌面也在左侧窄缝里，观感一致。 */
@@ -868,7 +870,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   font-size: 13px;
   color: rgba(255, 255, 255, 0.72);
 }
-/* 督休专员未启用：隐藏立绘、对话框与名字牌，避免「无立绘却挂着名字/对话框」的错位观感 */
+/* 督休专员未启用：隐藏立绘、对话框与名字牌，避免“无立绘却挂着名字/对话框”的错位观感 */
 .sup-preview[data-enabled='0'] .sup-preview-fig,
 .sup-preview[data-enabled='0'] .sup-preview-content,
 .sup-preview[data-enabled='0'] .dialog-name {
@@ -907,18 +909,18 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .status-cell { background: var(--bg); border-radius: 10px; padding: 10px 14px; }
 .status-cell .k { font-size: 12px; color: var(--text-2); }
 .status-cell .v { font-size: 15px; font-weight: 600; margin-top: 3px; }
-/* 「设置窗口」卡片下方的状态 / 下次休息 / 下次提醒小卡片：每个卡片内部改为左右结构
+/* “设置窗口”卡片下方的状态 / 下次休息 / 下次提醒小卡片：每个卡片内部改为左右结构
    （标签在左、值在右），且三个卡片的标签列、值列分别上下对齐。仅作用于 #data-status。 */
 #data-status.status-grid { grid-template-columns: minmax(0, 1fr); gap: 8px; }
 /* 每个小卡片：标签在左、值在右，两端对齐。两列都强制单行 —— 侧栏只有 240px，
-   「下次报警日报提醒」+「今日已无提醒」在 12/15px 下就超出可用宽，会换行。字号由
+   “下次报警日报提醒”+“今日已无提醒”在 12/15px 下就超出可用宽，会换行。字号由
    脚本 fitStatusCells() 按实测宽度等比缩小（12→8 / 15→10，再收列间距），保证不换行、
    不截字、不把文字挤出卡片；overflow 只作为最后一道兜底。 */
 #data-status .status-cell { display: flex; align-items: baseline; justify-content: space-between; column-gap: 16px; min-width: 0; overflow: hidden; }
 #data-status .status-cell .k { font-size: 12px; color: var(--text-2); margin: 0; white-space: nowrap; min-width: 0; flex: 0 1 auto; overflow: hidden; }
 #data-status .status-cell .v { font-size: 15px; font-weight: 600; margin: 0; text-align: right; white-space: nowrap; flex: 0 0 auto; }
 
-/* 「今天」卡：上一条满宽的时间堆叠条 + 下面两块（休息动作次数条形 / 久坐时长条形）。
+/* “今天”卡：上一条满宽的时间堆叠条 + 下面两块（休息动作次数条形 / 久坐时长条形）。
    休息动作的条长只表示各自次数，不做部分-整体（推迟是中间动作，不能与其他项相加）；
    久坐的条长按 45 分钟基准归一，超基准满格标红。 */
 .comp-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -947,11 +949,11 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .comp-bars .cbar .track { height: 14px; border-radius: 4px; background: var(--border); overflow: hidden; }
 .comp-bars .cbar .track > i { display: block; height: 100%; width: 0; border-radius: 4px; transition: width 0.4s ease; }
 .comp-bars .cbar .bv { font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; }
-/* 久坐面板：标签三字（最长 / 平均 / 中位数）、值是时长（可能到「1 小时 12 分」），
+/* 久坐面板：标签三字（最长 / 平均 / 中位数）、值是时长（可能到“1 小时 12 分”），
    比次数条形要更宽的标签列与值列 */
 .comp-bars.sed .cbar { grid-template-columns: 52px 1fr 76px; }
 .comp-bars.sed .cbar .bv { font-size: 11.5px; }
-/* 休息面板：多了一行四字的「提前结束」，标签列要放宽到能放下四个字 */
+/* 休息面板：多了一行四字的“提前结束”，标签列要放宽到能放下四个字 */
 .comp-bars.br .cbar { grid-template-columns: 52px 1fr 58px; }
 .comp-note { margin-top: 10px; font-size: 11px; line-height: 1.5; color: var(--text-2); }
 .comp-note.over { color: #e05555; }
@@ -1140,7 +1142,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .tkv-post { color: #e0a23f; }
 #tk-table th { position: sticky; top: 0; z-index: 1; background: var(--panel); box-shadow: 0 1px 0 var(--border); }
 #tk-table tr:nth-child(odd):not(:first-child):not(.total) td { background: var(--bg); }
-/* 悬停浮层：与「右键操作」提示同款近黑实底，两套主题下都看得清 */
+/* 悬停浮层：与“右键操作”提示同款近黑实底，两套主题下都看得清 */
 .rc-tip {
   position: fixed; z-index: 99; display: none; pointer-events: none;
   background: rgba(22, 24, 32, 0.92); color: #fff;
@@ -1168,7 +1170,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .rc-detail table { width: 100%; font-size: 12px; }
 
 /* Toast */
-/* 只给读屏软件看的活区：#toast 平时是 display:none，屏幕阅读器不会念一个「刚被显示出来」
+/* 只给读屏软件看的活区：#toast 平时是 display:none，屏幕阅读器不会念一个“刚被显示出来”
    的新节点；常驻的 .sr-only 区域 + role=status 才是能被播报的载体。视觉上完全不可见，
    也不参与布局（绝对定位 + 1px 裁切）。 */
 .sr-only {
@@ -1204,11 +1206,11 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 #snd-music-list { display: flex; flex-direction: column; gap: 5px; }
 /* 整行可点击勾选/取消，光标提示可点 */
 #snd-music-list .snd-row { cursor: pointer; }
-/* 播放方式：单一图标按钮（点击循环切换 单曲 / 随机 / 顺序），与「＋」并排紧贴于
-   「提示音」标题行右侧，且紧贴标题、与左侧不再留空隙。两者都不带外框、直角、
-   透明底，hover 浅底，与标题栏的「▸提示音」「＋」按钮同一套观感。图标按钮与
-   「＋」等宽（同 padding:0 14px），左右各一条 1px 竖线与「＋」明显区分。图标区分
-   三种模式：单曲循环=带「1」的循环箭头、随机播放=交叉箭头、顺序循环=循环箭头；
+/* 播放方式：单一图标按钮（点击循环切换 单曲 / 随机 / 顺序），与“＋”并排紧贴于
+   “提示音”标题行右侧，且紧贴标题、与左侧不再留空隙。两者都不带外框、直角、
+   透明底，hover 浅底，与标题栏的“▸提示音”“＋”按钮同一套观感。图标按钮与
+   “＋”等宽（同 padding:0 14px），左右各一条 1px 竖线与“＋”明显区分。图标区分
+   三种模式：单曲循环=带“1”的循环箭头、随机播放=交叉箭头、顺序循环=循环箭头；
    常驻只显示图标，悬浮由浏览器原生 title 显示文字名称。 */
 .snd-music-actions {
   display: inline-flex; align-items: stretch; flex: none;
@@ -1232,7 +1234,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   font-size: 13px;
 }
-/* 试听播放条：点任意「试听」出现在声音卡底部（可暂停 / 拖进度 / 停止） */
+/* 试听播放条：点任意“试听”出现在声音卡底部（可暂停 / 拖进度 / 停止） */
 .snd-player {
   display: flex; align-items: center; gap: 8px;
   border: 1px solid var(--border); border-radius: 10px;
@@ -1295,7 +1297,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
 
-/* 实底危险按钮：只用在确认框的「删除」，比描边的 .btn.danger 更像主操作 */
+/* 实底危险按钮：只用在确认框的“删除”，比描边的 .btn.danger 更像主操作 */
 .btn.danger-solid {
   background: var(--danger); border-color: var(--danger);
   color: #ffffff; font-weight: 600;
@@ -1409,7 +1411,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* ---------------- 背景颜色选择器（预设 12 色 + 调色板） ---------------- */
 
 /* 收起态：与其他行输入框同宽同弧度的圆督休专员块，整块填充当前颜色（恢复默认在选择器弹窗里）。
-   行内与「预览」按钮并排：容器占满输入框宽度（180px），两控件各占一半。 */
+   行内与“预览”按钮并排：容器占满输入框宽度（180px），两控件各占一半。 */
 .ap-color-row {
   width: 180px; display: flex; align-items: center; gap: 8px;
 }
@@ -1526,20 +1528,20 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .tl-name { color: var(--text); }
 .tl-src { font-size: 11px; color: var(--text-2); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
 
-/* 折叠箭头（时间线卡与其余卡同一颗「▾」，收起时转向右）：**在标题左侧**。整条 card-head
+/* 折叠箭头（时间线卡与其余卡同一颗“▾”，收起时转向右）：**在标题左侧**。整条 card-head
    都是折叠热区（点标题 / 摘要 / 空白处均可），hover 行时箭头高亮给出可点暗示；
    功能按钮（删除 / 预览等）不算折叠（委托里排除）。
 
-   箭头外挂（`margin: 0 3px 0 -9px`）是把「▾」的字形墨迹左缘顶到内容对齐线上。
-   箭头是个 22×22 的圆形热区、12px 的「▾」居中其中，字形墨迹天生比热区左缘内缩一大截；
-   而内容行（勾选框 / 字段标签 / 说明 / 面板边框）的左缘一律在 0，于是看起来「选项比
-   箭头更靠左」。外挂量按 2x 截图的像素实测校正过：-6px 时墨迹还比勾选框右 2.5px，
+   箭头外挂（`margin: 0 3px 0 -9px`）是把“▾”的字形墨迹左缘顶到内容对齐线上。
+   箭头是个 22×22 的圆形热区、12px 的“▾”居中其中，字形墨迹天生比热区左缘内缩一大截；
+   而内容行（勾选框 / 字段标签 / 说明 / 面板边框）的左缘一律在 0，于是看起来“选项比
+   箭头更靠左”。外挂量按 2x 截图的像素实测校正过：-6px 时墨迹还比勾选框右 2.5px，
    -9px 时两条左缘落在同一像素上（292.5 / 293.0 CSS px，半个像素以内）。
    `font-family: inherit` 保留着做防御：这个圆有 <button>（五张卡）和 <span>（时间线卡的
    标题行）两种写法，<button> 默认不继承字体，显式继承才能保证两边度量一致
    （与 .msg-toggle 同一处理）。
    右侧那 3px 是用来补回占位宽度的：22-9+3 = 16px，加 .card-head / .tl-head 的 gap 8px
-   = 24px，正好等于勾选行的「16px 框 + 8px 缝」——所以标题文字与勾选行文字自动同列
+   = 24px，正好等于勾选行的“16px 框 + 8px 缝”——所以标题文字与勾选行文字自动同列
    （实测都是 317 CSS px）。
    整张卡只剩两条对齐线（0 / 24），不用去动任何一行的缩进。
    反方向做（把内容整体右移 22px 或 30px）会连带面板边框、说明、hint 一起缩进，
@@ -1577,7 +1579,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 ::-webkit-scrollbar-thumb:hover { background-color: var(--sb-thumb-hover); }
 ::-webkit-scrollbar-thumb:active { background-color: var(--accent); }
 
-/* 暂停休息时的处置：自绘下拉。原生 <select> 的选项里放不下「?」和逐项说明，
+/* 暂停休息时的处置：自绘下拉。原生 <select> 的选项里放不下“?”和逐项说明，
    所以用按钮 + 绝对定位面板自己画。触发器沿用输入框的底色 / 描边 / 圆角与 180px
    宽度，保证它与同列其它控件左缘对齐、高度一致。 */
 .cdrop-host { width: 180px; }
@@ -1609,7 +1611,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .cdrop-menu.hidden { display: none; }
 /* 选项文字左缘必须与同列其它控件（原生 <select> / 输入框 / 本控件按钮）的内容左缘对齐：
-   三者都是「边框 1px + 内边距 10px」= 11px。菜单自身是「1px 边框 + 4px 内边距」，
+   三者都是“边框 1px + 内边距 10px”= 11px。菜单自身是“1px 边框 + 4px 内边距”，
    所以选项左内边距取 6px → 1 + 4 + 6 = 11px。选中标识不能再占一行横向空间
    （原先左侧 10px 勾选列 + 6px 间距把文字顶到 29px），改为左侧绝对定位的竖条。 */
 .cdrop-item {
@@ -1632,12 +1634,12 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .cdrop-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cdrop-item > .q-mark { margin-left: 0; flex-shrink: 0; }
 
-/* 「显示的屏幕」多选下拉：单选那套用左侧竖条表示选中，多选要能一眼看出「勾了哪几块」，
-   所以每项前面换成方框。面板允许比触发器宽 —— 「DELL U2719DS · 2560×1440 · 主屏」
+/* “显示的屏幕”多选下拉：单选那套用左侧竖条表示选中，多选要能一眼看出“勾了哪几块”，
+   所以每项前面换成方框。面板允许比触发器宽 —— “DELL U2719DS · 2560×1440 · 主屏”
    塞不进 180px，但触发器本身仍与同列控件同宽对齐。 */
 .cdrop-multi .cdrop-menu { right: auto; width: max-content; min-width: 100%; max-width: 340px; }
 .cdrop-multi .cdrop-item[aria-selected='true']::before { display: none; }
-/* 多选里「选中」已经由方框表达了，文字不必再染色 —— 一次勾好几项时整片变蓝太吵 */
+/* 多选里“选中”已经由方框表达了，文字不必再染色 —— 一次勾好几项时整片变蓝太吵 */
 .cdrop-multi .cdrop-item[aria-selected='true'] { color: var(--text); }
 /* 型号名与分辨率之间留够间隔：最长的那一项会把面板撑到刚好放下两者，
    6px 时右侧分辨率会贴着型号名，看着像连在一起 */
@@ -1656,7 +1658,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .cdrop-hint { flex-shrink: 0; color: var(--text-2); font-size: 11.5px; }
 .cdrop-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
 
-/* 多选面板底部的「检测到 N 块 + 刷新」条：显示器是热插拔的，选项来自一次枚举快照，
+/* 多选面板底部的“检测到 N 块 + 刷新”条：显示器是热插拔的，选项来自一次枚举快照，
    没有这个按钮就只能重启软件才能看到新接上的屏。左侧说明用省略号收住（面板最宽 340px），
    完整口径放在 title 里；按钮固定在右侧不参与收缩。 */
 .cdrop-foot {
@@ -1679,9 +1681,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .cdrop-refresh:hover { border-color: var(--accent); color: var(--accent); }
 .cdrop-refresh:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* 转圈期间也要能看出「正在刷新」，否则点了没反应像坏了。
+/* 转圈期间也要能看出“正在刷新”，否则点了没反应像坏了。
    刻意不用 disabled：禁用一个正在焦点的按钮会把焦点踢到 body，面板的 focusout 逻辑
-   会立刻判定「焦点离开了」把面板收起来。所以只降不透明度 + 转图标，点击由 busy 标记拦住。 */
+   会立刻判定“焦点离开了”把面板收起来。所以只降不透明度 + 转图标，点击由 busy 标记拦住。 */
 .cdrop-refresh[disabled],
 .cdrop-refresh.busy { opacity: 0.6; cursor: progress; }
 .cdrop-refresh-icon { display: inline-block; line-height: 1; }

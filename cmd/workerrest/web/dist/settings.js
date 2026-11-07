@@ -19,7 +19,7 @@
   var SUP_GEOM_DEFAULT = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false };
   var SUP_GEOM_LIMITS = {
     sizePct: [20, 100],
-    // 距左上限 30%：再往右立绘会挤掉右侧台词的位置（右侧内容要摆在「督休专员右边缘 ↔ 窗口右边缘」中间）
+    // 距左上限 30%：再往右立绘会挤掉右侧台词的位置（右侧内容要摆在“督休专员右边缘 ↔ 窗口右边缘”中间）
     posXPct: [0, 30],
     posYPct: [0, 40]
   };
@@ -56,7 +56,7 @@
     const w = d.getDay();
     return w === 0 ? 7 : w;
   }
-  // 日期键（YYYY-MM-DD，本地日）→ 「周四」。解析失败返回空串，调用方自己决定退化成什么。
+  // 日期键（YYYY-MM-DD，本地日）→ “周四”。解析失败返回空串，调用方自己决定退化成什么。
   // 不用 new Date("2026-10-22")：那是按 UTC 解析的，东八区会退到前一天。
   function weekdayLabelOf(dateKey) {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateKey || ""));
@@ -86,7 +86,7 @@
   // 外卖两项的默认值（区间不在这里：一律读输入框自己的 min/max，见 clampNum）
   var TAKEOUT_LEAD_DEFAULT = 0;
   var TAKEOUT_POSTPONE_DEFAULT = 10;
-  // 只收「打开它基本就是在开会」的客户端（口径与 settings.go 的 appPausePresets 一致）。
+  // 只收“打开它基本就是在开会”的客户端（口径与 settings.go 的 appPausePresets 一致）。
   // 飞书 / 钉钉 / 企业微信 / WeLink 是综合办公套件：能开会，但日常是消息与审批入口，
   // 进程常驻并不等于在开会，所以不入列。
   var APP_PAUSE_PRESETS = [
@@ -119,16 +119,16 @@
     { value: "fixed", label: "固定时间", hint: "到设定的时刻提醒" }
   ];
   var CUSTOM_BREAK_PREFIX = "cb-";
-  // 「暂停休息时」下拉：三种处置，默认「推迟提醒」。每一项都带一个「?」，悬停看该项
-  // 的具体行为；行标签上的「?」解释「暂停休息」包括哪几种情况（空闲分钟数动态取，
-  // 跟着时间规划页的「空闲 N 分钟后自动暂停」走，每次保存后刷新一遍）。
+  // “暂停休息时”下拉：三种处置，默认“推迟提醒”。每一项都带一个“?”，悬停看该项
+  // 的具体行为；行标签上的“?”解释“暂停休息”包括哪几种情况（空闲分钟数动态取，
+  // 跟着时间规划页的“空闲 N 分钟后自动暂停”走，每次保存后刷新一遍）。
   var PAUSE_ACTIONS = [
     { value: "remind", label: "正常提醒",
       hint: "暂停休息期间到了提醒时间，仍照常弹出提前提示小窗和提醒窗口，不跳过也不推迟。" },
     { value: "postpone", label: "推迟提醒",
-      hint: "暂停休息期间到了提醒时间不弹窗，按本卡「可推迟（分钟）」填的时长往后推；推迟后到点若仍在暂停休息，就继续往后推，恢复后按推迟后的时刻弹出。" },
+      hint: "暂停休息期间到了提醒时间不弹窗，按本卡“可推迟（分钟）”填的时长往后推；推迟后到点若仍在暂停休息，就继续往后推，恢复后按推迟后的时刻弹出。" },
     { value: "skip", label: "跳过提醒",
-      hint: "暂停休息期间到了提醒时间，不弹提前提示小窗、也不弹提醒窗口，直接按「跳过」记一次，计入统计报表的跳过。" }
+      hint: "暂停休息期间到了提醒时间，不弹提前提示小窗、也不弹提醒窗口，直接按“跳过”记一次，计入统计报表的跳过。" }
   ];
   // 下拉实例按宿主元素记（WeakMap）：自定义提醒卡片每次重建都换新元素，
   // 用 id 记会指到已经脱离文档的旧节点。
@@ -136,12 +136,12 @@
   function pauseActionOf(v) {
     return PAUSE_ACTIONS.some((a) => a.value === v) ? v : "postpone";
   }
-  // 「暂停休息」的范围说明（挂在「暂停休息时」标签的「?」上）。只改措词、口径不变：
-  // 列的是**所有可能**导致暂停的情况，勾没勾选都照列（和以前列「勿扰」「应用占用」一致），
-  // 具体哪几条在你的机器上生效，看「自动暂停」卡片里各开关的状态。
+  // “暂停休息”的范围说明（挂在“暂停休息时”标签的“?”上）。只改措词、口径不变：
+  // 列的是**所有可能**导致暂停的情况，勾没勾选都照列（和以前列“勿扰”“应用占用”一致），
+  // 具体哪几条在你的机器上生效，看“自动暂停”卡片里各开关的状态。
   function pauseScopeHint() {
     const n = Math.max(1, Math.round(Number(S && S.idlePauseMin) || 5));
-    return "「暂停休息」指：系统空闲 " + n +
+    return "“暂停休息”指：系统空闲 " + n +
       " 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，" +
       "以及手动暂停休息。";
   }
@@ -156,8 +156,8 @@
     q.title = title;
     return q;
   }
-  // 自绘下拉：「暂停休息时」与「触发方式」共用这一套（外观见 settings.css 的 .cdrop）。
-  // 原生 <select> 的选项由浏览器绘制，缩进改不了、也放不下每项的「?」，所以自己画。
+  // 自绘下拉：“暂停休息时”与“触发方式”共用这一套（外观见 settings.css 的 .cdrop）。
+  // 原生 <select> 的选项由浏览器绘制，缩进改不了、也放不下每项的“?”，所以自己画。
   // items = [{value,label,hint}]，def = 取值非法时的兜底项，onPick = 用户选中后的回调。
   // name = 下拉的可访问名（兄弟 <label> 是纯视觉文字、不带 for，读屏念不到），
   //        挂在按钮的 aria-label 上；缺省空串表示没有独立名字（调用方应传入）。
@@ -215,7 +215,7 @@
 
     let outside = null;
     function focusItem(which) {
-      // 键盘/点击都要落到同一个「当前项」，焦点随选中项走；菜单收起时给回按钮。
+      // 键盘/点击都要落到同一个“当前项”，焦点随选中项走；菜单收起时给回按钮。
       const el = which && which.isConnected ? which : menu.children[0];
       if (el) el.focus();
     }
@@ -305,15 +305,15 @@
     render();
     return api;
   }
-  // ---- 「显示的屏幕」多选下拉 ----
+  // ---- “显示的屏幕”多选下拉 ----
   //
   // 与上面 mountDrop 的关键差别：单选点一下就收起菜单，这里要能连续勾选，所以点击只切换、不关闭。
   //
   // 取值口径与 Go 侧 display.Resolve 严格对齐：**勾选结果是具体 ID 的快照**。
-  // 刻意不提供「全部」这种动态语义 —— 让新接入的屏自动进入显示范围，等于用户接上投影仪
+  // 刻意不提供“全部”这种动态语义 —— 让新接入的屏自动进入显示范围，等于用户接上投影仪
   // 的那一刻提醒就弹到投影上，而投影仪恰恰是最不该弹的那块屏。想多屏显示请自己勾，
   // 插了新屏也请自己回来补勾（面板底部会写出当前检测到几块）。
-  // 空数组不是「全部」，而是「还没挑过」→ Go 侧兜底主屏，这里也按主屏显示勾选态。
+  // 空数组不是“全部”，而是“还没挑过”→ Go 侧兜底主屏，这里也按主屏显示勾选态。
   var displayDrop = null;   // { get, setValue }
   var displayCache = [];    // 最近一次枚举结果
 
@@ -330,13 +330,13 @@
 
   // 现场枚举一次显示器，返回下拉要的 items。
   //
-  // **枚举时机只有三个**：设置页加载完、点下拉里的「刷新」、恢复默认设置之后。
+  // **枚举时机只有三个**：设置页加载完、点下拉里的“刷新”、恢复默认设置之后。
   // 也就是说软件启动之后再插上或拔掉显示器，面板里的选项会一直是旧的，直到用户自己点刷新。
   // 不自动刷新的取舍：勾选结果要落盘，选项在用户低头看面板时自己增减，容易点到一块刚消失的屏；
-  // 而「插了新屏没看见」有一个显式按钮可以补救，比猜时机更可控。
+  // 而“插了新屏没看见”有一个显式按钮可以补救，比猜时机更可控。
   //
-  // 枚举失败（远程会话 / 无桌面 / 驱动未就绪）返回空数组 —— 调用方据此显示「未检测到显示器」，
-  // 但**绝不清空配置**：清空等于把「只显示副屏」悄悄改成「所有屏」。
+  // 枚举失败（远程会话 / 无桌面 / 驱动未就绪）返回空数组 —— 调用方据此显示“未检测到显示器”，
+  // 但**绝不清空配置**：清空等于把“只显示副屏”悄悄改成“所有屏”。
   async function fetchDisplays() {
     let list = [];
     try {
@@ -375,7 +375,7 @@
 
     var menu = document.createElement("div");
     menu.className = "cdrop-menu hidden";
-    // listbox 只包住选项本身：底部的「刷新」行不能算选项，否则读屏会把它念成一块屏，
+    // listbox 只包住选项本身：底部的“刷新”行不能算选项，否则读屏会把它念成一块屏，
     // 键盘上下键也会停到它身上。
     var optsBox = document.createElement("div");
     optsBox.className = "cdrop-opts";
@@ -407,9 +407,9 @@
     function optEls() {
       return Array.prototype.slice.call(optsBox.querySelectorAll("[role='option']"));
     }
-    // 当前「算数」的选择：没动过就是配置原值（可能含已拔掉的屏），动过就是面板上的勾选。
-    // 已经拔掉的屏保留在配置里 —— 面板上看不见的东西，不该被一次「顺手保存」悄悄抹掉；
-    // 接回去时它还在，正好符合「勾选是快照」的语义。
+    // 当前“算数”的选择：没动过就是配置原值（可能含已拔掉的屏），动过就是面板上的勾选。
+    // 已经拔掉的屏保留在配置里 —— 面板上看不见的东西，不该被一次“顺手保存”悄悄抹掉；
+    // 接回去时它还在，正好符合“勾选是快照”的语义。
     function effective() {
       if (!touched) return original.slice();
       var absent = original.filter(function (id) { return allIds.indexOf(id) < 0; });
@@ -428,7 +428,7 @@
     }
     function renderNote() {
       if (allIds.length === 0) {
-        note.textContent = "点「刷新」重新检测";
+        note.textContent = "点“刷新”重新检测";
         note.title = "枚举不到显示器：远程桌面、无桌面会话，或显卡驱动未就绪";
         return;
       }
@@ -438,7 +438,7 @@
       note.title = missing.length
         ? "已勾选但当前没接上的屏：" + missing.join("、") +
           "（脚本层面会忽略它，接回来后点一次刷新即可）"
-        : "列表来自最近一次检测。接了新屏或拔了屏，点右边「刷新」";
+        : "列表来自最近一次检测。接了新屏或拔了屏，点右边“刷新”";
     }
     function render() {
       cur.textContent = summary();
@@ -480,7 +480,7 @@
     }
 
     // 按当前 items 重算勾选：认不得的 ID（换过接口 / 屏被拔了）直接忽略，一块都不剩时兜底主屏
-    // —— 与 Go 的 Resolve 同口径（空 / 全失配 = 主屏，绝不是「所有屏」）。
+    // —— 与 Go 的 Resolve 同口径（空 / 全失配 = 主屏，绝不是“所有屏”）。
     function syncSelection() {
       var basis = effective();
       var next = new Set();
@@ -504,17 +504,17 @@
       } else {
         picked.add(id);
       }
-      // 不做「勾满就归一化成全部」：勾选结果就是快照，插新屏不该被自动带上
+      // 不做“勾满就归一化成全部”：勾选结果就是快照，插新屏不该被自动带上
       touched = true;
       render();
-      // 落盘值就是新的「已配置」基准：刷新时靠它判断哪几块已勾选但当前没接上。
-      // 不同步的话基准一直停在「刚进这一页那一刻」的配置上，第一次勾选之后
-      // 新勾上的屏被拔掉就永远算不进「未接入」，也会被下一次刷新从配置里漏掉。
+      // 落盘值就是新的“已配置”基准：刷新时靠它判断哪几块已勾选但当前没接上。
+      // 不同步的话基准一直停在“刚进这一页那一刻”的配置上，第一次勾选之后
+      // 新勾上的屏被拔掉就永远算不进“未接入”，也会被下一次刷新从配置里漏掉。
       original = value().slice();
       if (onChange) onChange(value());
     }
 
-    // 「刷新」：重新枚举后就地替换选项（面板不关、能保住的勾选都保住）。
+    // “刷新”：重新枚举后就地替换选项（面板不关、能保住的勾选都保住）。
     // 刷新本身**不写配置**：没动过的勾选原样回写，动过的等下一次 autoSave。
     var busy = false;
     function refreshToast(beforeIds) {
@@ -538,7 +538,7 @@
       if (!reload || busy) return;
       busy = true;
       // 用 class + aria-busy 而不是 disabled：disabled 会把焦点从按钮上踢掉，
-      // 面板的 focusout 逻辑随即判定「焦点离开了」，刚点的刷新反而把面板关了。
+      // 面板的 focusout 逻辑随即判定“焦点离开了”，刚点的刷新反而把面板关了。
       refresh.classList.add("busy");
       refresh.setAttribute("aria-busy", "true");
       var beforeIds = allIds.slice();
@@ -607,7 +607,7 @@
         var tail = optEls().pop();
         if (tail) { e.preventDefault(); tail.focus(); }
       } else if (e.key === "Enter" || e.key === " ") {
-        // 「刷新」是普通按钮，交给它自己处理：这里 preventDefault 会把键盘激活一起吞掉
+        // “刷新”是普通按钮，交给它自己处理：这里 preventDefault 会把键盘激活一起吞掉
         if (act === refresh) return;
         // 多选不关菜单：勾完一块接着勾下一块是常态
         e.preventDefault();
@@ -619,7 +619,7 @@
     });
     // 焦点整体离开面板才收起。用 setTimeout 而不是直接看 relatedTarget：点面板空白处时
     // relatedTarget 是 null，但焦点其实还留在面板里（document.activeElement 仍是按钮）。
-    // 这样 Tab 也能走到「刷新」上，真正退出面板时才关。
+    // 这样 Tab 也能走到“刷新”上，真正退出面板时才关。
     root.addEventListener("focusout", function () {
       setTimeout(function () {
         if (root.contains(document.activeElement)) return;
@@ -636,8 +636,8 @@
     return api;
   }
 
-  // 拉一次显示器列表并挂上多选下拉。枚举为空时触发器显示「未检测到显示器」，
-  // 但面板里的「刷新」照样能用 —— 插好屏之后不必重启软件。
+  // 拉一次显示器列表并挂上多选下拉。枚举为空时触发器显示“未检测到显示器”，
+  // 但面板里的“刷新”照样能用 —— 插好屏之后不必重启软件。
   async function refreshDisplayDrop() {
     const host = $("ap-displays");
     if (!host) return;
@@ -647,11 +647,11 @@
     displayDrop = mountMultiDrop(host, items, S.displayIds || [], function () { void autoSave(); }, "显示的屏幕", fetchDisplays);
   }
 
-  // 「暂停休息时」：选中即存盘（原生 select 的 change 原来由 bindAutoSaveEl 兜着）。
+  // “暂停休息时”：选中即存盘（原生 select 的 change 原来由 bindAutoSaveEl 兜着）。
   function mountPauseDrop(host, value) {
     return mountDrop(host, PAUSE_ACTIONS, pauseActionOf(value), "postpone", () => { void autoSave(); }, "暂停休息时");
   }
-  // 「触发方式」：切换后联动显示「间隔」/「提醒时间」，再重算摘要并存盘。
+  // “触发方式”：切换后联动显示“间隔”/“提醒时间”，再重算摘要并存盘。
   function mountBreakModeDrop(id) {
     const host = $(`${id}-mode`);
     if (!host) return null;
@@ -681,7 +681,7 @@
       durationMs: 2e4,
       notifyBeforeMs: 1e4,
       postponeMs: 2 * 6e4,
-      // 暂停休息期间到点：默认推迟（按「可推迟」时长往后推，仍暂停就继续推）
+      // 暂停休息期间到点：默认推迟（按“可推迟”时长往后推，仍暂停就继续推）
       pauseAction: "postpone",
       slots: []
     };
@@ -851,7 +851,7 @@
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
-  // 立绘「去掉透明部分后」的可见边缘（容器坐标）——与 break/takeout 同一套几何：
+  // 立绘“去掉透明部分后”的可见边缘（容器坐标）——与 break/takeout 同一套几何：
   // .trim 补偿变换 translate(-left*s%, bottom*s*fill%) scale(s)（origin: left bottom）
   // 把 img 盒（铺满立绘盒，盒左缘 x0、底缘 yB、盒宽 W、盒高 H）映射到屏幕，
   // 像素内容的四条可见边：
@@ -1000,7 +1000,7 @@
     t.textContent = msg;
     t.classList.remove("hidden");
     // 视觉提示 + 语音播报两条通道：toast 显示 2.2 s 后消失，读屏靠常驻的 #sr-status。
-    // 同一个 msg 连发两次时先进空串，否则内容没变、活区不会重新播报（「又超时了」这类）。
+    // 同一个 msg 连发两次时先进空串，否则内容没变、活区不会重新播报（“又超时了”这类）。
     const live = $("sr-status");
     if (live) {
       live.textContent = "";
@@ -1008,13 +1008,13 @@
     }
     setTimeout(() => t.classList.add("hidden"), 2200);
   }
-  // ---- 对话框焦点管理（可访问性：域8 的「role=dialog 无焦点管理证据」）----
+  // ---- 对话框焦点管理（可访问性：域8 的“role=dialog 无焦点管理证据”）----
   // 十一个 .modal 全靠 classList 加/减 hidden 开关，调用点散在二十多处。逐个改必然漏，
   // 所以用 MutationObserver 盯 class 变化，统一做三件事：
   //   · 打开 → 记住触发元素，把焦点送进对话框（[data-autofocus] 优先，其次第一个可聚焦元素）
   //   · 打开期间 → Tab / Shift+Tab 在对话框内循环（原生 <dialog> 的免费能力，这里是手写的）
   //   · 关闭 → 焦点还给触发元素；它若已被重渲染掉，退到页面里第一个可见可聚焦控件
-  // 这就是「对话框有没有焦点管理」的全部判定内容：焦点进得去、跑不出、回得来。
+  // 这就是“对话框有没有焦点管理”的全部判定内容：焦点进得去、跑不出、回得来。
   const MODAL_IDS = [
     "batch-modal", "confirm-modal", "prompt-modal", "app-pick-modal", "color-modal",
     "update-modal", "updated-modal", "stats-modal", "snd-scan-modal", "notices-modal",
@@ -1047,11 +1047,11 @@
       box.focus();
     }
   }
-  // 「打开者」必须在打开的那一刻就知道是谁 —— 不能等 MutationObserver 回调再看
+  // “打开者”必须在打开的那一刻就知道是谁 —— 不能等 MutationObserver 回调再看
   // document.activeElement：有些对话框在显示自己的同一段同步代码里就把焦点挪进去了
   // （调色弹窗 `$("cp-done").focus()`、鸣谢正文）,等回调跑起来时活动元素已经在框内，
-  // 于是 opener 记成 null，关掉之后焦点掉到页面第一个控件上（实测掉到「开机自启动」
-  // 勾选框），键盘用户当场迷路。这里用 focusin 持续记「最后一个在框外拿到焦点的元素」，
+  // 于是 opener 记成 null，关掉之后焦点掉到页面第一个控件上（实测掉到“开机自启动”
+  // 勾选框），键盘用户当场迷路。这里用 focusin 持续记“最后一个在框外拿到焦点的元素”，
   // 打开时若活动元素已在框内就退到它 —— 与打开顺序无关。
   let lastOutsideFocus = null;
   document.addEventListener("focusin", (e) => {
@@ -1137,8 +1137,8 @@
   }, true);
   // Esc 关闭对话框：十个 .modal 里五个自己带 keydown（confirm/prompt/notices/color/
   // app-pick），另外五个（批量新增、统计损坏提示、提示音体检、更新提示、更新完成）
-  // 只能点按钮关 —— 键盘用户按 Esc 毫无反应，与「Esc 取消」的通用预期不符。
-  // 这里统一兜底，且只兜「自己没有 Esc 处理」的那五个：点一下它自己的关闭按钮，
+  // 只能点按钮关 —— 键盘用户按 Esc 毫无反应，与“Esc 取消”的通用预期不符。
+  // 这里统一兜底，且只兜“自己没有 Esc 处理”的那五个：点一下它自己的关闭按钮，
   // 走原来那条关闭逻辑（不把关闭语义抄成第二份实现，避免两处将来走岔）。
   const ESC_DISMISS = {
     "batch-modal": "msg-batch-cancel",
@@ -1159,7 +1159,7 @@
     btn.click();
   }, true);
   // 统计文件损坏：Go 侧已把原文件改名成 stats_<日期_时间>.json 备份，并重建空表
-  //（见 stats.go 的 Load）。必须让用户知道——否则历史统计「凭空归零」，看起来像软件
+  //（见 stats.go 的 Load）。必须让用户知道——否则历史统计“凭空归零”，看起来像软件
   // 悄悄丢了数据。备份文件路径一并给出，用户想抢救原始数据还能找到。
   let statsNoticeShown = false;
   async function showStatsFileNotice() {
@@ -1191,7 +1191,7 @@
   }
   // 随包 sounds/ 的体检结果（见 sound_scan.go）：用户往 exe 旁的 sounds/ 丢了新音频，
   // 或删掉了已登记条目的文件。**只落一次**；两段各有自己的决策按钮，处理完一段若另一段
-  // 还有内容就继续留着，两段都完自动关。点「暂不处理」= 本次运行不再问（不写盘，
+  // 还有内容就继续留着，两段都完自动关。点“暂不处理”= 本次运行不再问（不写盘，
   // 下次启动会重新扫 —— 文件还在的话那时再问一遍）。
   var sndScanShown = false;
 
@@ -1202,7 +1202,7 @@
     return (v / 1048576).toFixed(1) + " MB";
   }
 
-  // scanSection 生成一段「标题 + 说明 + 列表 + 一个决策按钮」的区块
+  // scanSection 生成一段“标题 + 说明 + 列表 + 一个决策按钮”的区块
   function scanSection(opts) {
     const sec = document.createElement("div");
     sec.className = "ss-sec";
@@ -1247,8 +1247,8 @@
     return sec;
   }
 
-  // dismiss 为真才算「用户主动暂不」：全部处理完自动关闭时不该记这一笔，
-  // 否则日志会写着「用户选择暂不处理」，与事实相反。
+  // dismiss 为真才算“用户主动暂不”：全部处理完自动关闭时不该记这一笔，
+  // 否则日志会写着“用户选择暂不处理”，与事实相反。
   function closeSoundScanModal(dismiss) {
     $("snd-scan-modal").classList.add("hidden");
     $("ss-body").textContent = "";
@@ -1257,7 +1257,7 @@
 
   async function showSoundScanNotice() {
     if (sndScanShown) return false;
-    // 统计文件弹窗优先（它关系到「数据是不是丢了」），没关就不抢位置
+    // 统计文件弹窗优先（它关系到“数据是不是丢了”），没关就不抢位置
     if (!$("stats-modal").classList.contains("hidden")) return false;
     const n = await window.api.getSoundScanNotice();
     const newList = n && Array.isArray(n.new) ? n.new : [];
@@ -1273,7 +1273,7 @@
       body.appendChild(
         scanSection({
           title: "发现 " + newList.length + " 个新提示音",
-          hint: "sounds 目录里有尚未登记的音频。导入后可在「提示音」列表里选用（原地登记：不复制、不改名）。",
+          hint: "sounds 目录里有尚未登记的音频。导入后可在“提示音”列表里选用（原地登记：不复制、不改名）。",
           rows: newList.map((f) => ({ text: f.file, sub: fmtBytes(f.size) })),
           okText: "全部导入",
           onOk: async () => {
@@ -1356,7 +1356,7 @@
     input.value = opts.value ?? "";
     input.placeholder = opts.placeholder ?? "";
     $("pm-ok").textContent = opts.okText ?? "确定";
-    // validate(value) 返回非空文案 = 拒绝保存。命名框用它做「重名检查」：
+    // validate(value) 返回非空文案 = 拒绝保存。命名框用它做“重名检查”：
     // 拒绝时对话框**不关**，输入框里的内容原样留着，用户改个名再提交 ——
     // 而不是弹一下 toast 就把刚输入的名字丢掉（丢名字 = 用户白输一遍）。
     pmValidate = typeof opts.validate === "function" ? opts.validate : null;
@@ -1380,7 +1380,7 @@
   function closePrompt(v) {
     const box = $("prompt-modal");
     if (!box || box.classList.contains("hidden")) return;
-    // 保存进行中不接受「取消」：validate 里可能正在往磁盘写名字，
+    // 保存进行中不接受“取消”：validate 里可能正在往磁盘写名字，
     // 这时候把目录删掉，写完就把它复活成一个没有立绘的僵尸目录。
     // （等 validate 回来就好 —— 它成功会自己关框，失败会留在框里报错。）
     if (pmBusy) return;
@@ -1427,7 +1427,7 @@
     return ROLES.find((r) => r.name === key)?.geom ?? null;
   }
   // 督休专员显示名是否已被占用（与 Go 侧 roleNameTaken 同口径：忽略大小写）。
-  // excludeName 是「自己」现在的名字 —— 改名时要排除自己，否则用户不改名直接点确定
+  // excludeName 是“自己”现在的名字 —— 改名时要排除自己，否则用户不改名直接点确定
   // 会被自己的旧名字挡住。
   //
   // 数据源是内存里的 ROLES（ListRoles 的结果），不是磁盘 —— 前端要的是
@@ -1446,7 +1446,7 @@
     const n = (name ?? "").trim();
     if (!n) return "名称不能为空";
     if (roleNameTaken(n, excludeName)) {
-      return `名称「${n}」已存在，请换一个`;
+      return `名称“${n}”已存在，请换一个`;
     }
     return null;
   }
@@ -1531,7 +1531,7 @@
     void refreshSupervisorPreview();
     syncRoleSelUI();
   }
-  // 点立绘磁贴：只换「正在编辑的专员」（预览面板 / 尺寸 / 台词跟着切），不动勾选态。
+  // 点立绘磁贴：只换“正在编辑的专员”（预览面板 / 尺寸 / 台词跟着切），不动勾选态。
   // 勾选与编辑对象是两件事：我想看看某人的立绘，不等于我要把他勾上。
   function focusRole(key) {
     if (!ROLES.some((r) => r.name === key)) return;
@@ -1563,7 +1563,7 @@
       placeholder: "名称",
       okText: "确定",
       // 重名 → 拒绝保存，留在框里要求重新输入（不关对话框、不丢已输入的名字）。
-      // excludeName = key：排除自己，否则「不改名直接点确定」会被自己的旧名挡住。
+      // excludeName = key：排除自己，否则“不改名直接点确定”会被自己的旧名挡住。
       //
       // 校验与**保存**都在 validate 里做：Go 侧 SaveRole 才是权威（磁盘上可能已经
       // 多了一个同名专员，前端内存里的 ROLES 不一定知道），它返回 false 就是被拒 ——
@@ -1592,7 +1592,7 @@
     autoSave();
     await refreshSupervisorPreview();
     await renderRoleGallery();
-    toast(`已重命名为「${role.name}」`);
+    toast(`已重命名为“${role.name}”`);
   }
   // makeRolePreview 生成并保存磁贴缩略图（导入 / 换图之后调用）。
   //
@@ -1627,7 +1627,7 @@
     }
     await renderRoleGallery();
     fillSupervisorImageName();
-    toast(`已更新「${role.name}」的立绘图片`);
+    toast(`已更新“${role.name}”的立绘图片`);
   }
   // 启用/禁用菜单项已移除：随机/顺序模式改由列表复选框直接控制 role.enabled
   async function removeRole(key) {
@@ -1635,13 +1635,13 @@
     if (!role) return;
     const ok = await confirmDialog({
       title: "删除",
-      desc: `确定删除「${role.name}」？`,
+      desc: `确定删除“${role.name}”？`,
       detail: "会连同目录（配置、立绘、预览图）一并删除，且无法恢复。",
       okText: "删除"
     });
     if (!ok) return;
     // 必须看返回值：删除失败（文件被占用 / 权限不足）时若照样从 ROLES 里摘掉并提示
-    // 「已删除」，界面会说谎，而重启后这个督休专员又原样冒出来。
+    // “已删除”，界面会说谎，而重启后这个督休专员又原样冒出来。
     const done = await window.api.removeSupervisorRole(key);
     if (!done) {
       toast("删除失败：文件可能被占用，请稍后重试");
@@ -1654,7 +1654,7 @@
       S.supervisor.fixedRole = ROLES[0]?.name ?? "";
     }
     // 顺序表里也把这个 key 摘掉：留下的陈旧 key 会让配置随删随涨，
-    // 而且用户重新导入同一张图时它会「回到原来的位置」。
+    // 而且用户重新导入同一张图时它会“回到原来的位置”。
     if (Array.isArray(S.supervisor.order)) {
       S.supervisor.order = S.supervisor.order.filter((k) => k !== key);
     }
@@ -1712,7 +1712,7 @@
     autoSave();
     await refreshSupervisorPreview();
     await renderRoleGallery();
-    toast(`已添加「${name}」`);
+    toast(`已添加“${name}”`);
   }
   function closeRoleMenu() {
     document.getElementById("sup-role-menu")?.remove();
@@ -1821,7 +1821,7 @@
     applyGalleryHeight(Number(localStorage.getItem(GALLERY_H_KEY)) || null);
   }
   /* ---------- 候选专员拖拽排序 ----------
-     画廊是**多列网格**（auto-fill），落点不能照搬单列列表的「上/下半」判断：
+     画廊是**多列网格**（auto-fill），落点不能照搬单列列表的“上/下半”判断：
      必须先按行分组，再在行内按左右比较，最后换算成全局下标。
      顺序落在 config/settings.json 的 supervisor.order（role key 数组），
      Go 侧 ListRoles / 顺序轮换共用这一份 —— 拖一次，画廊顺序与轮换次序同时生效。 */
@@ -1903,7 +1903,7 @@
       top = r.top - boxRect.top;
       height = r.height;
     } else {
-      // 插到末尾 → 竖条画在最后一块右边那道缝隙里（末尾的「＋新增」磁贴在这道缝之后）
+      // 插到末尾 → 竖条画在最后一块右边那道缝隙里（末尾的“＋新增”磁贴在这道缝之后）
       const r = tiles[tiles.length - 1].getBoundingClientRect();
       left = r.right - boxRect.left + 2;
       top = r.top - boxRect.top;
@@ -1955,7 +1955,7 @@
     const fixedMode = S.supervisor.selection === "fixed";
     for (const r of ROLES) {
       // 磁贴用 div 不用 button：里面要放一个可聚焦的选择控件，交互元素不能嵌在 button 里。
-      // 磁贴只负责「切换正在编辑的专员」，勾选/取消勾选一律落到下面那个 sel 上。
+      // 磁贴只负责“切换正在编辑的专员”，勾选/取消勾选一律落到下面那个 sel 上。
       const tile = document.createElement("div");
       tile.className = "role-item";
       tile.dataset.name = r.name;
@@ -1978,7 +1978,7 @@
       sel.setAttribute("aria-label", (fixedMode ? "固定显示：" : "参与轮换：") + r.name);
       sel.tabIndex = 0;
       sel.addEventListener("click", (e) => {
-        // 别冒泡到磁贴：那一下是「切换编辑对象」，不是「再勾一次」
+        // 别冒泡到磁贴：那一下是“切换编辑对象”，不是“再勾一次”
         e.stopPropagation();
         selectRole(r.name);
       });
@@ -2046,7 +2046,7 @@
     const custom = g.sizePct !== SUP_GEOM_DEFAULT.sizePct || g.posXPct !== SUP_GEOM_DEFAULT.posXPct || g.posYPct !== SUP_GEOM_DEFAULT.posYPct || g.flip !== SUP_GEOM_DEFAULT.flip;
     el.textContent = `${custom ? "已调整 \xB7 " : ""}高度 ${g.sizePct}% \xB7 距左 ${g.posXPct}% \xB7 距底 ${g.posYPct}%` + (g.flip ? " \xB7 已翻转" : "");
     el.classList.toggle("customized", custom);
-    el.title = "点开「高级选项」可调整当前立绘的显示尺寸与位置，以及是否水平翻转";
+    el.title = "点开“高级选项”可调整当前立绘的显示尺寸与位置，以及是否水平翻转";
   }
   var supRelayout = null;
   function applySupGeometry(g) {
@@ -2089,7 +2089,7 @@
       flip: $("sup-flip").checked
     };
   }
-  // 预览面板的名字牌与真实提醒窗口同款：每次重绘随机换一枚「章」（牌底 + 碎点同下标），
+  // 预览面板的名字牌与真实提醒窗口同款：每次重绘随机换一枚“章”（牌底 + 碎点同下标），
   // 并避开上一次。档数与 web/dist 里的 seal-ink-1..6.svg、两份提醒页 JS 的
   // SEAL_VARIANTS 一致 —— 改档数要一起改（探针会红）。
   var PREVIEW_SEAL_VARIANTS = 6;
@@ -2102,7 +2102,7 @@
     el.style.setProperty("--rt-ink", 'url("seal-ink-' + i + '.svg")');
     el.style.setProperty("--rt-specks", 'url("seal-specks-' + i + '.svg")');
   }
-  // 名字牌的摆位：真机里这块固定在「立绘头部左侧的空白窄缝」，位置是 layoutRoleTitle()
+  // 名字牌的摆位：真机里这块固定在“立绘头部左侧的空白窄缝”，位置是 layoutRoleTitle()
   // 按立绘 alpha 剖面量出来的，不是写死的百分比 —— 预览必须同样按实测摆，否则立绘一靠左
   // 牌子就压到人物脸上（面板比真机窗口窄，差几个像素就是压不压脸的区别）。
   // 量的是 figureVisibleRect()（去掉透明边距后的可见边），与对话框摆位同源。
@@ -2130,8 +2130,8 @@
     box.dataset.stage = String(stage);
     box.style.setProperty("--accent", S.appearance.color);
     const off = !S.supervisor.enabled;
-    // 顶层「启用」开关：未启用时整块隐藏立绘与对话框（CSS 据 data-enabled 隐藏），
-    // 只留背景 + 中央关闭提示，避免「无立绘却挂着对话框」的错位观感
+    // 顶层“启用”开关：未启用时整块隐藏立绘与对话框（CSS 据 data-enabled 隐藏），
+    // 只留背景 + 中央关闭提示，避免“无立绘却挂着对话框”的错位观感
     box.dataset.enabled = off ? "0" : "1";
     const badge = $("sup-preview-badge");
     badge.classList.toggle("hidden", !off);
@@ -2253,7 +2253,7 @@
     if (music.length === 0) {
       const empty = document.createElement("p");
       empty.className = "hint";
-      empty.textContent = "列表已空：播放时不会再有提示音，点标题行的「＋」添加。";
+      empty.textContent = "列表已空：播放时不会再有提示音，点标题行的“＋”添加。";
       list.appendChild(empty);
       return;
     }
@@ -2370,7 +2370,7 @@
       });
     }
   }
-  /* 播放方式：三种循环策略的图标与名称。图标随当前模式切换（单曲循环=带「1」的
+  /* 播放方式：三种循环策略的图标与名称。图标随当前模式切换（单曲循环=带“1”的
      循环箭头、随机播放=交叉箭头、顺序循环=循环箭头），常驻只显示图标，悬浮由
      title 显示文字名称；点击在三者间循环切换。 */
   var SND_MODE = {
@@ -2399,7 +2399,7 @@
     const ico = btn.querySelector(".snd-mode-ico");
     if (ico) ico.innerHTML = info.icon;
   }
-  // 提醒内容 / 立绘的「显示方式」图标按钮：复用声音卡三态图标（固定显示↔单曲循环、
+  // 提醒内容 / 立绘的“显示方式”图标按钮：复用声音卡三态图标（固定显示↔单曲循环、
   // 随机显示↔随机播放、顺序循环↔顺序循环），但标签改为提醒语境；点击循环切换。
   var DISPLAY_MODE = {
     fixed: { label: "固定显示", icon: SND_MODE.single.icon },
@@ -2441,7 +2441,7 @@
   function defaultSlotTime() {
     const d = /* @__PURE__ */ new Date();
     // 向上取到下一个 10 分钟边界：保证新建的提醒时间一定在未来，
-    // 否则落在过去的默认时间会被「今日提醒时间线」过滤掉，看起来像"没刷新"。
+    // 否则落在过去的默认时间会被“今日提醒时间线”过滤掉，看起来像"没刷新"。
     const total = Math.floor((d.getHours() * 60 + d.getMinutes()) / 10) * 10 + 10;
     return { hour: Math.floor(total / 60) % 24, minute: total % 60 };
   }
@@ -2467,8 +2467,8 @@
     const plannedAt = LAST_STATE?.fixedNext?.takeout;
     const cfgNext = nextSlotAt(t.slots);
     const next = plannedAt !== void 0 ? { at: plannedAt } : cfgNext && { at: cfgNext.at };
-    // 标题栏右侧只报「类型 · 条数 · 下次时刻」：提前通知秒数是卡内设置项（下面就有
-    // 输入框），标题行不再复述一遍。分段拼接是为了 next 为空时不留下结尾的「·」。
+    // 标题栏右侧只报“类型 · 条数 · 下次时刻”：提前通知秒数是卡内设置项（下面就有
+    // 输入框），标题行不再复述一遍。分段拼接是为了 next 为空时不留下结尾的“·”。
     const parts = ["固定时间", `${active.length} 条`];
     const nx = slotNextText(next);
     if (nx) parts.push(nx);
@@ -2588,7 +2588,7 @@
   }
   function renderTakeoutList() {
     const t = S.takeout;
-    renderSlotList($("tk-list"), t.slots, "还没有外卖提醒时间，点标题行右侧的「＋」新增一条", {
+    renderSlotList($("tk-list"), t.slots, "还没有外卖提醒时间，点标题行右侧的“＋”新增一条", {
       what: "这条外卖提醒",
       onChange: () => {
         updateTakeoutSummary();
@@ -2638,7 +2638,7 @@
     actions.className = "card-actions";
     sum.replaceWith(actions);
     actions.appendChild(sum);
-    // 重命名 / 删除：图标按钮（✎ / ✕，与「提醒内容」行尾的编辑 / 删除同款），
+    // 重命名 / 删除：图标按钮（✎ / ✕，与“提醒内容”行尾的编辑 / 删除同款），
     // 重命名在左、删除在右；改名后即时同步卡片标题与今日时间线。
     const rename = mkBtn("✎", "重命名", () => void renameCustomBreak(cb.id));
     rename.classList.add("cb-rename");
@@ -2653,9 +2653,9 @@
         await previewBreak(cb.id);
       });
     }
-    // 「启用」下一行：暂停休息期间怎么处置（短 / 长休息没有这一行，保持原状）。
+    // “启用”下一行：暂停休息期间怎么处置（短 / 长休息没有这一行，保持原状）。
     // 必须跟在克隆之后插：短休息卡片本身没有这个控件，模板只作骨架。
-    // 标签后的「?」说明「暂停休息」包括哪几种情况，下拉每一项自己也带一个「?」。
+    // 标签后的“?”说明“暂停休息”包括哪几种情况，下拉每一项自己也带一个“?”。
     const pauseRow = document.createElement("div");
     pauseRow.className = "row field";
     const pauseLabel = document.createElement("label");
@@ -2681,12 +2681,12 @@
   }
   function setupCustomBreakCard(card, cb) {
     const id = cb.id;
-    // 「新增」出的卡片插在 bindAutoSave 之后，全局绑定扫不到它：卡内全部
+    // “新增”出的卡片插在 bindAutoSave 之后，全局绑定扫不到它：卡内全部
     // input/select 在这里显式补绑。漏绑的后果是触发方式/间隔/时长等改动不落盘、
-    // 调度器不重算 ——「倒计时切固定时间且无时刻」后下次提醒与今日时间线
+    // 调度器不重算 ——“倒计时切固定时间且无时刻”后下次提醒与今日时间线
     // 仍显示按倒计时算出的旧时刻（bug 实测来源）。
     for (const el of card.querySelectorAll("input, select")) bindAutoSaveEl(el);
-    // 触发方式改成自绘下拉（与「暂停休息时」同款）：整卡是克隆来的，克隆出的
+    // 触发方式改成自绘下拉（与“暂停休息时”同款）：整卡是克隆来的，克隆出的
     // 下拉节点没有事件，这里按新宿主重新挂一遍实例（选中即联动 + 存盘）。
     mountBreakModeDrop(id);
     $(`${id}-add`).addEventListener("click", async () => {
@@ -2745,7 +2745,7 @@
       return;
     }
     if (reservedReminderNames().includes(name)) {
-      toast(`提醒名称「${name}」已存在，请换一个`);
+      toast(`提醒名称“${name}”已存在，请换一个`);
       return;
     }
     const cb = {
@@ -2760,11 +2760,11 @@
     applyBreakModeUI();
     autoSave();
     refreshStatusNow();
-    toast(`已新建自定义提醒「${name}」`);
+    toast(`已新建自定义提醒“${name}”`);
   }
   // 重命名自定义提醒：复用新建时的输入弹窗（预填当前名并自动全选，直接输入即覆盖）。
   // 校验口径与新建一致：非空 / ≤24 字 / 不与内置和其他自定义提醒重名；
-  // reservedReminderNames 含自身当前名，故「原名直接确认」已在上面提前返回，不会误报重名。
+  // reservedReminderNames 含自身当前名，故“原名直接确认”已在上面提前返回，不会误报重名。
   async function renameCustomBreak(id) {
     const cb = (S.customBreaks ?? []).find((c) => c.id === id);
     if (!cb) return;
@@ -2782,7 +2782,7 @@
     }
     if (name === cb.name) return; // 没改：不落盘、不提示
     if (reservedReminderNames().includes(name)) {
-      toast(`提醒名称「${name}」已存在，请换一个`);
+      toast(`提醒名称“${name}”已存在，请换一个`);
       return;
     }
     cb.name = name;
@@ -2790,13 +2790,13 @@
     if (h3) h3.textContent = name;
     autoSave();
     refreshStatusNow();
-    toast(`已重命名为「${name}」`);
+    toast(`已重命名为“${name}”`);
   }
   async function removeCustomBreak(id) {
     const cb = (S.customBreaks ?? []).find((c) => c.id === id);
     if (!cb) return;
     const ok = await confirmDialog({
-      title: `删除自定义提醒「${cb.name}」？`,
+      title: `删除自定义提醒“${cb.name}”？`,
       desc: "删除后立即生效，无法撤销。",
       detail: cb.config.mode === "fixed" ? `固定时间 \xB7 ${cb.config.slots.length} 条时刻` : `倒计时 \xB7 每 ${Math.round(cb.config.intervalMs / 6e4)} 分钟一次`,
       okText: "删除"
@@ -2807,7 +2807,7 @@
     applyBreakModeUI();
     autoSave();
     refreshStatusNow();
-    toast(`已删除自定义提醒「${cb.name}」`);
+    toast(`已删除自定义提醒“${cb.name}”`);
   }
   function allBreakIds() {
     return ["short", "long", ...(S.customBreaks ?? []).map((c) => c.id)];
@@ -2846,7 +2846,7 @@
   function renderBreakList(id) {
     const c = breakCfg(id);
     if (!c) return;
-    renderSlotList($(`${id}-list`), c.slots, "还没有提醒时间，点标题行右侧的「＋」新增一条", {
+    renderSlotList($(`${id}-list`), c.slots, "还没有提醒时间，点标题行右侧的“＋”新增一条", {
       what: "这条休息时刻",
       onChange: () => {
         updateBreakSummary(id);
@@ -2871,7 +2871,7 @@
     $(`${id}-duration`).value = id === "long" ? String(Math.round(c.durationMs / 6e4)) : String(Math.round(c.durationMs / 1e3));
     $(`${id}-notify`).value = String(Math.round(c.notifyBeforeMs / 1e3));
     $(`${id}-postpone`).value = String(Math.round(c.postponeMs / 6e4));
-    // 「暂停休息时」只有自定义提醒卡片有（短 / 长休息的模板本身没有这行）
+    // “暂停休息时”只有自定义提醒卡片有（短 / 长休息的模板本身没有这行）
     setDropValue($(`${id}-pause`), c.pauseAction);
     renderBreakList(id);
   }
@@ -2901,13 +2901,13 @@
     $("autostart").checked = S.autostart;
     $("startMinimized").checked = S.startMinimized;
     // 自动记录窗口尺寸：老配置里可能没有 window 块（deepMerge 会补，但填表这一层
-    // 不能假设后端一定下发），缺了就当「开」——与后端 Flag(true, …) 的默认值一致
+    // 不能假设后端一定下发），缺了就当“开”——与后端 Flag(true, …) 的默认值一致
     $("win-remember").checked = !(S.window && S.window.rememberSize === false);
     $("dndPause").checked = S.dndPause !== false;
     // 老配置里可能没有 fullscreenPause；后端 deepMerge 会补上出厂 true，
     // 这里不额外兜底，避免与后端下发的实际值不一致
     $("fullscreenPause").checked = !!S.fullscreenPause;
-    // 缺键按「开」（后端 Flag(true,…) 同口径），所以判据是 !== false，不能写成 !!
+    // 缺键按“开”（后端 Flag(true,…) 同口径），所以判据是 !== false，不能写成 !!
     $("castWirelessPause").checked = S.castWirelessPause !== false;
     $("castMirrorPause").checked = S.castMirrorPause !== false;
     $("chk-update").checked = S.checkUpdateOnStart;
@@ -2926,7 +2926,7 @@
     // 显示器列表必须现场枚举（HMONITOR 每次进程启动都会变，不能缓存上次结果）。
     // 异步挂载，失败时下拉变灰、配置原样保留。
     void refreshDisplayDrop();
-    // 共享屏幕时隐藏：老配置里没有这个键，缺省按「开」——与 Go 侧 Flag(true,…) 同口径，
+    // 共享屏幕时隐藏：老配置里没有这个键，缺省按“开”——与 Go 侧 Flag(true,…) 同口径，
     // 不能写成 !!a.hideOnShare（undefined → false，老用户会被静默关掉保护）
     $("ap-hideOnShare").checked = a.hideOnShare !== false;
     $("snd-enabled").checked = S.sound.enabled;
@@ -2947,9 +2947,9 @@
     $("sc-endEarly").value = S.shortcuts.endEarly;
     $("sc-pause").value = S.shortcuts.pause;
     $("sc-nextBreak").value = S.shortcuts.nextBreak;
-    // 回填后立刻判一次：配置文件里被手改出来的「裸键 / 两个动作同键」也要显形
+    // 回填后立刻判一次：配置文件里被手改出来的“裸键 / 两个动作同键”也要显形
     markShortcuts();
-    // 「暂停休息时」行标签的「?」说明里带着当前空闲分钟数，首屏就按配置对齐
+    // “暂停休息时”行标签的“?”说明里带着当前空闲分钟数，首屏就按配置对齐
     refreshPauseHints();
   }
   function collectForm() {
@@ -3007,12 +3007,12 @@
     S.shortcuts.endEarly = $("sc-endEarly").value.trim();
     S.shortcuts.pause = $("sc-pause").value.trim();
     S.shortcuts.nextBreak = $("sc-nextBreak").value.trim();
-    // 空闲分钟数可能刚改：把「暂停休息时」行标签的「?」说明同步成新数字
+    // 空闲分钟数可能刚改：把“暂停休息时”行标签的“?”说明同步成新数字
     refreshPauseHints();
   }
   // 数值框取值：区间**只认输入框自己的 min/max**（HTML 属性是唯一真相，代码不再各写
   // 一份区间——早先 short-interval 的 DOM 是 1~240、代码钳 1~480，两边打架）。
-  // 越界或留空时钳到区间并**回写**输入框：否则会出现「框里显示 999999、配置里存 240」，
+  // 越界或留空时钳到区间并**回写**输入框：否则会出现“框里显示 999999、配置里存 240”，
   // 用户看到的值和真正生效的值不一致（P3-1）。
   // 回写发生在 change（失焦 / 回车）或别的控件触发保存时，不打断正在键入的过程。
   function clampNum(el, fallback) {
@@ -3102,13 +3102,13 @@
     if (cfg.items.length === 0) {
       const d = document.createElement("div");
       d.className = "msg-empty";
-      d.textContent = target === "takeout" ? "暂无提醒内容：外卖提醒窗口里将显示「外卖提醒」" : target === "sup" ? "暂无提醒内容：升级阶段将沿用第一阶段的台词" : "暂无提醒内容：提醒窗口里将显示该提醒的名称";
+      d.textContent = target === "takeout" ? "暂无提醒内容：外卖提醒窗口里将显示“外卖提醒”" : target === "sup" ? "暂无提醒内容：升级阶段将沿用第一阶段的台词" : "暂无提醒内容：提醒窗口里将显示该提醒的名称";
       list.appendChild(d);
       return;
     }
     for (const item of cfg.items) list.appendChild(buildMsgRow(target, item, fixedMode));
   }
-  // 退出所有「提醒内容」列表中仍处于编辑态的行（折叠 / 切页 / 关窗时调用）
+  // 退出所有“提醒内容”列表中仍处于编辑态的行（折叠 / 切页 / 关窗时调用）
   function exitAllMsgEditing() {
     document.querySelectorAll(".msg-item.editing").forEach((row) => {
       if (typeof row._cancelEdit === "function") row._cancelEdit();
@@ -3140,7 +3140,7 @@
       ctrl = document.createElement("input");
       ctrl.type = "checkbox";
       ctrl.checked = item.enabled;
-      ctrl.title = "启用/禁用：是否参与随机 / 顺序取曲";
+      ctrl.title = "启用/停用：是否参与随机 / 顺序播放";
       ctrl.addEventListener("change", () => {
         item.enabled = ctrl.checked;
         row.classList.toggle("disabled", !ctrl.checked);
@@ -3153,7 +3153,7 @@
     txt.className = "msg-text";
     txt.value = item.text;
     txt.placeholder = "提醒内容（纯文本）";
-    txt.readOnly = true; // 默认不可编辑，点「编辑」图标才进入编辑态
+    txt.readOnly = true; // 默认不可编辑，点“编辑”图标才进入编辑态
     const ICON_EDIT = "✎", ICON_DEL = "✕", ICON_SAVE = "✓", ICON_CANCEL = "↺";
     let editing = false;
     function setButtonsToEdit() {
@@ -3193,7 +3193,7 @@
       void confirmDialog({
         title: "删除这条提醒内容？",
         desc: "删除后立即生效，无法撤销。",
-        detail: item.text || "(空)",
+        detail: item.text || "（空）",
         okText: "删除"
       }).then((ok) => {
         if (!ok) return;
@@ -3259,7 +3259,7 @@
       renderMsgList(target);
       autoSave();
     });
-    // 供「折叠 / 切页 / 关窗」统一退出编辑态调用
+    // 供“折叠 / 切页 / 关窗”统一退出编辑态调用
     row._cancelEdit = cancelEdit;
     // 整行点击：非编辑态下，点行任意处（含只读文本框）勾选 / 取消勾选本行
     row.addEventListener("click", (e) => {
@@ -3341,7 +3341,7 @@
     return parts.join("+");
   }
   // 快捷键四行的 id / 显示名 / 录入提示。顺序 = Go 侧 hotkeyDefs 的注册次序：
-  // 撞车时先注册的那个能生效，后面的注册失败（所以「重复」只标后一行）。
+  // 撞车时先注册的那个能生效，后面的注册失败（所以“重复”只标后一行）。
   var SHORTCUT_IDS = ["sc-postpone", "sc-endEarly", "sc-pause", "sc-nextBreak"];
   var SHORTCUT_LABELS = {
     "sc-postpone": "推迟当前休息",
@@ -3365,13 +3365,13 @@
       if (other === id) continue;
       if (SHORTCUT_IDS.indexOf(other) > SHORTCUT_IDS.indexOf(id)) continue;
       if (($(other)?.value ?? "").trim() === acc) {
-        return `和「${SHORTCUT_LABELS[other]}」用了同一个组合键（只有它生效）`;
+        return `和“${SHORTCUT_LABELS[other]}”用了同一个组合键（只有它生效）`;
       }
     }
     return "";
   }
   // 标红 + 汇总说明。录入时、失焦改值、以及从配置回填后各跑一次：
-  // 手改过 settings.json 弄出的重复 / 裸键也能被看见，而不是「配了却没反应」。
+  // 手改过 settings.json 弄出的重复 / 裸键也能被看见，而不是“配了却没反应”。
   function markShortcuts() {
     const msgs = [];
     for (const id of SHORTCUT_IDS) {
@@ -3380,7 +3380,7 @@
       const issue = shortcutIssue(id);
       input.classList.toggle("bad", !!issue);
       input.title = issue || SHORTCUT_TITLE_OK;
-      if (issue) msgs.push(`「${SHORTCUT_LABELS[id]}」${issue}`);
+      if (issue) msgs.push(`“${SHORTCUT_LABELS[id]}”${issue}`);
     }
     const warn = $("sc-warn");
     if (warn) {
@@ -3443,7 +3443,7 @@
   }
   var LAST_STATE = null;
   // 侧栏状态格字号自适应：名称（左）与时间（右）都必须单行，但侧栏只有 240px，
-  // 「下次报警日报提醒」+「今日已无提醒」在 12/15px 下就超出卡片内宽。这里按实测宽度
+  // “下次报警日报提醒”+“今日已无提醒”在 12/15px 下就超出卡片内宽。这里按实测宽度
   // 逐档缩字号（名称 12→8px、时间 15→10px，两者同步缩以保持层级），缩到底再收窄列间距
   // （16→6px）；8px 仍放不下就中间省略 + title 显示全名（240px 装不下 20 个以上的中文字）。
   // 全程不换行、不裁半截字、不把文字挤出卡片。
@@ -3456,7 +3456,7 @@
       const v = cell.querySelector(".v");
       if (!k || !v) continue;
       // 每个节点只算一次：省略要改 textContent，改完会再触发一次 MutationObserver，
-      // 不设这道闸就会在「还原全名 → 又溢出 → 再省略」之间无限抖动（实测直接把页面卡死）。
+      // 不设这道闸就会在“还原全名 → 又溢出 → 再省略”之间无限抖动（实测直接把页面卡死）。
       // renderStatus 重建节点时标记自然消失，所以不会漏算。
       if (!force && cell.dataset.fitDone === "1") continue;
       cell.dataset.fitDone = "1";
@@ -3493,7 +3493,7 @@
       }
       if (k.scrollWidth > k.clientWidth + 1 && full.length > 3) {
         k.title = full;
-        // 中间省略：保留「下次…提醒」首尾，二分找能放下的最长长度
+        // 中间省略：保留“下次…提醒”首尾，二分找能放下的最长长度
         let lo = 2, hi = full.length - 1, best = "…";
         while (lo <= hi) {
           const mid = (lo + hi) >> 1;
@@ -3513,7 +3513,7 @@
     fitStatusCells._t = setTimeout(() => fitStatusCells(true), 120);
   });
   // 侧栏状态格的内容会随提醒名变化（renderStatus 重建节点、名称被改写），
-  // 只监听 childList 会漏掉「文本在原地变长」，所以连 characterData 一起盯。
+  // 只监听 childList 会漏掉“文本在原地变长”，所以连 characterData 一起盯。
   // options 里不放 attributes：fitStatusCells 自己会改 style，否则会自激。
   (function watchStatusCells() {
     const host = $("data-status");
@@ -3524,15 +3524,15 @@
   })();
   function renderStatus(st) {
     LAST_STATE = st;
-    // 「暂停休息/恢复休息」互斥显示：暂停中只显示「恢复休息」，否则只显示「暂停休息」
+    // “暂停休息/恢复休息”互斥显示：暂停中只显示“恢复休息”，否则只显示“暂停休息”
     const qaPause = $("qa-pause");
     if (qaPause) qaPause.textContent = st.paused ? "恢复休息" : "暂停休息";
-    // 「推迟休息」按钮：当前下次提醒的「可推迟」为 0 分钟时不显示 —— 推迟 0 分钟
-    // 等于立即再弹一次，没有意义。提前提示窗 / 外卖窗口的「推迟」按钮同样按此显隐。
-    // 休息进行中也不显示（已经在休息了，没有「再往后推」这回事）。
+    // “推迟休息”按钮：当前下次提醒的“可推迟”为 0 分钟时不显示 —— 推迟 0 分钟
+    // 等于立即再弹一次，没有意义。提前提示窗 / 外卖窗口的“推迟”按钮同样按此显隐。
+    // 休息进行中也不显示（已经在休息了，没有“再往后推”这回事）。
     const inBreak = st.phase === "break";
-    // 休息中：「立即休息」无从谈起，禁用而不是让点了没反应；
-    // 「跳过本次」在休息中等价于提前结束（与托盘「提前结束休息」同义，
+    // 休息中：“立即休息”无从谈起，禁用而不是让点了没反应；
+    // “跳过本次”在休息中等价于提前结束（与托盘“提前结束休息”同义，
     // 判定落在 scheduler.skip：休息相位直接结束本次休息）。
     const qaBreak = $("qa-break");
     if (qaBreak) qaBreak.disabled = inBreak;
@@ -3544,11 +3544,11 @@
       qaPostpone.classList.toggle("hidden", inBreak || !(cfg && cfg.postponeMs > 0));
     }
     const phaseText = st.phase === "break" ? "休息中" : st.phase === "pre" ? "即将休息" : "努力工作中";
-    // 暂停统一显示「暂停休息」：不论是手动暂停、系统空闲（人离开工位）、系统勿扰
+    // 暂停统一显示“暂停休息”：不论是手动暂停、系统空闲（人离开工位）、系统勿扰
     // 还是指定应用占用运行，状态格只给一个结论；具体原因挂到该格的 title 上悬停可看
-    // （托盘 tooltip 里照旧是「已暂停：原因」）。
+    // （托盘 tooltip 里照旧是“已暂停：原因”）。
     const phaseVal = st.paused ? "暂停休息" : phaseText;
-    // 定时暂停多一句「到 X 自动结束」：状态格只写「暂停休息」的话，过一会儿就忘了
+    // 定时暂停多一句“到 X 自动结束”：状态格只写“暂停休息”的话，过一会儿就忘了
     // 自己设过时长（托盘那边写的是剩余时间，两处口径不同，但指的是同一件事）。
     const pauseUntilText = st.paused && st.pauseDeadline > 0
       ? "；到 " + fmtClockMs(st.pauseDeadline) + " 自动结束"
@@ -3559,8 +3559,8 @@
     const now = st.paused && !(st.phase === "break" && st.breakWhilePaused) ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
     const todayOnly = (at) => dayDiffOf(at) > 0 ? "今日已无提醒" : fmtRemain(Math.max(0, at - now));
-    // 「下次提醒」取外卖/自定义里最近的一次（st.other 已合并两者）；
-    // 仅当该最近提醒落在「今天」（at 在当天剩余时间）才显示，否则隐藏整格。
+    // “下次提醒”取外卖/自定义里最近的一次（st.other 已合并两者）；
+    // 仅当该最近提醒落在“今天”（at 在当天剩余时间）才显示，否则隐藏整格。
     const otherCell = st.other && dayDiffOf(st.other.at) === 0
       ? [otherKey(st.other.name), todayOnly(st.other.at)]
       : null;
@@ -3670,9 +3670,9 @@
     return `${d} 天 ${h % 24} 小时`;
   }
   // ---------- 今天：一条堆叠条 + 两组横向条形 ----------
-  // 为什么不用三个饼图：「工作 / 休息 / 离开」互斥且加总就是今天的软件运行时长，属部分-整体；
-  // 而「推迟」是中间动作 —— 推完这次提醒还会再弹，最终仍会计入完成或跳过（外卖同理），
-  // 「完成+推迟+跳过」「点餐+取消+推迟」相加都不成立，画饼会把同一件事算成两份份额。
+  // 为什么不用三个饼图：“工作 / 休息 / 离开”互斥且加总就是今天的软件运行时长，属部分-整体；
+  // 而“推迟”是中间动作 —— 推完这次提醒还会再弹，最终仍会计入完成或跳过（外卖同理），
+  // “完成+推迟+跳过”“点餐+取消+推迟”相加都不成立，画饼会把同一件事算成两份份额。
   var COMP_TIME = [
     { k: "work", label: "工作", color: "var(--accent)" },
     { k: "break", label: "休息", color: "#34a46f" },
@@ -3686,8 +3686,8 @@
     { k: "skip", label: "跳过", color: "#e05555" },
     { k: "early", label: "提前结束", color: "#9aa3b2" }
   ];
-  // 久坐（最长一段连续工作）的判定基准：45 分钟。取健康科普里常见的「坐 45~60 分钟
-  // 该起身一次」下沿 —— 不用用户设定的休息间隔，因为间隔是提醒频率（默认才 10 分钟），
+  // 久坐（最长一段连续工作）的判定基准：45 分钟。取健康科普里常见的“坐 45~60 分钟
+  // 该起身一次”下沿 —— 不用用户设定的休息间隔，因为间隔是提醒频率（默认才 10 分钟），
   // 拿它当基准会让条形常年满格标红，反而看不出今天哪一段真的坐久了。
   var SED_REF_MS = 45 * 6e4;
   function compPct(v, total) {
@@ -3732,7 +3732,7 @@
       const row = box.querySelector(`[data-b="${group}-${r.k}"]`);
       if (!row) continue;
       const bar = row.querySelector(".track > i");
-      // 非零值给一个下限，避免「1 次 vs 20 次」时小条细到看不见
+      // 非零值给一个下限，避免“1 次 vs 20 次”时小条细到看不见
       if (bar) bar.style.width = r.v ? `${Math.max((r.v / max) * 100, 3)}%` : "0";
       const bv = row.querySelector(".bv");
       if (bv) bv.textContent = `${r.v} 次`;
@@ -3740,8 +3740,8 @@
     }
   }
   // 久坐的三个指标都来自今天的工作段分布（后端 DayStats.workSegments，末项是进行中那段）：
-  //   平均 = 各段均值；中位数 = 排序后取中间值（比平均值更不受「偶尔坐了两小时」的长尾影响）。
-  // 段数组还没攒起来时（升级当天 / 旧数据）平均退回「工作时长 ÷（休息次数 + 1）」，中位数只能给 0。
+  //   平均 = 各段均值；中位数 = 排序后取中间值（比平均值更不受“偶尔坐了两小时”的长尾影响）。
+  // 段数组还没攒起来时（升级当天 / 旧数据）平均退回“工作时长 ÷（休息次数 + 1）”，中位数只能给 0。
   function segList(t) {
     return Array.isArray(t.workSegments) ? t.workSegments.filter((v) => v > 0) : [];
   }
@@ -3767,7 +3767,7 @@
       const bar = row.querySelector(".track > i");
       const over = r.v > SED_REF_MS;
       if (bar) {
-        // 非零值给 3% 下限，避免「刚坐 1 分钟」时条形细到看不见
+        // 非零值给 3% 下限，避免“刚坐 1 分钟”时条形细到看不见
         bar.style.width = r.v ? `${Math.min(100, Math.max((r.v / SED_REF_MS) * 100, 3))}%` : "0";
         bar.style.background = over ? "#e05555" : "#34a46f";
       }
@@ -3784,7 +3784,7 @@
   function renderComposition(t) {
     const box = $("stats-comp");
     if (!box || !t) return;
-    // 日期挂在卡片标题行（原「今天」卡的指标格已删，日期随卡片搬到这里）
+    // 日期挂在卡片标题行（原“今天”卡的指标格已删，日期随卡片搬到这里）
     const dateEl = $("stats-date");
     if (dateEl && t.date) {
       const wd = weekdayLabelOf(t.date);
@@ -3820,14 +3820,14 @@
       { k: "done", v: short + long, tip: `短休息 ${short} 次 · 长休息 ${long} 次（坐满整次的；提前结束不算）` },
       { k: "post", v: t.postponeCount || 0, tip: `累计推迟 ${fmtDur(t.postponeMs || 0)}` },
       { k: "skip", v: t.skipCount || 0, tip: `被跳过休息的原定时长合计 ${fmtDur(t.skipMs || 0)}` },
-      { k: "early", v: t.endEarlyCount || 0, tip: "短 / 长休息在窗口里点「提前结束」的次数（不计入完成）" }
+      { k: "early", v: t.endEarlyCount || 0, tip: "短 / 长休息在窗口里点“提前结束”的次数（不计入完成）" }
     ]);
     fillSedentary(box, [
       { k: "max", v: t.maxStreakMs || 0 },
       { k: "avg", v: avgSegmentMs(t) },
       { k: "med", v: medianSegmentMs(t) }
     ]);
-    // 面板底部一句人话小结：把「最长」翻译成「有没有坐过头」
+    // 面板底部一句人话小结：把“最长”翻译成“有没有坐过头”
     const maxStreak = t.maxStreakMs || 0;
     const refMin = Math.round(SED_REF_MS / 6e4);
     const note = $("comp-sed-note");
@@ -3878,7 +3878,7 @@
     { id: "skip", label: "跳过次数", kind: "line", cls: "rc-l-skip" },
     { id: "postpone", label: "推迟次数", kind: "line", cls: "rc-l-post" },
     // 提前结束与休息次数**互不排斥**：休息开始了就算一次休息，提前结束只是没坐满，
-    // 所以这条线不会从「休息次数」里扣掉任何东西（今天卡的「完成」才是坐满整次的次数）。
+    // 所以这条线不会从“休息次数”里扣掉任何东西（今天卡的“完成”才是坐满整次的次数）。
     { id: "early", label: "提前结束次数", kind: "line", cls: "rc-l-early" }
   ];
   var rcUnit = rcLoadStr("unit", "wr-rc-unit") || "";
@@ -3951,7 +3951,7 @@
     }
     return { start: String(y - (RC_WINDOWS.year - 1)), end: String(y) };
   }
-  // 只有「用户手动设过」的范围才进缓存 / 落 localStorage；**默认范围每次按当前时间现算**。
+  // 只有“用户手动设过”的范围才进缓存 / 落 localStorage；**默认范围每次按当前时间现算**。
   // 否则软件连续运行跨天时，缓存里的 end 一直停在昨天，今天的桶根本不生成，
   // 今天的柱 / 折线 / 表格行永远画不出来（只有重启软件才会好）。
   var rcRangeCache = {};
@@ -4134,8 +4134,8 @@
       b.shortMs += d.shortMs;
       b.breakMs += d.breakMs;
       b.awayMs += d.awayMs ?? 0;
-      // 「休息次数」= 休息只要开始过就算一次：短 + 长 + 提前结束 + 自定义提醒。
-      // 与今天卡「完成」（坐满整次、不含提前结束）是两个口径 —— 提前结束在这里**不扣次数**。
+      // “休息次数”= 休息只要开始过就算一次：短 + 长 + 提前结束 + 自定义提醒。
+      // 与今天卡“完成”（坐满整次、不含提前结束）是两个口径 —— 提前结束在这里**不扣次数**。
       b.restCount += d.shortCount + d.longCount + (d.endEarlyCount ?? 0) + d.customCount;
       b.endEarlyCount += d.endEarlyCount ?? 0;
       b.skipCount += d.skipCount;
@@ -4419,7 +4419,7 @@
     if (view.length === 0 || withData.length === 0) {
       g += `<text class="tick" x="${(RC_M.left + iw / 2).toFixed(1)}" y="${(RC_M.top + ih / 2).toFixed(1)}" text-anchor="middle">暂无数据</text>`;
     }
-    // 「平均 x 分 x 秒」最后追加，压在所有图形之上（见上面 avgLabel 的说明）
+    // “平均 x 分 x 秒”最后追加，压在所有图形之上（见上面 avgLabel 的说明）
     g += avgLabel;
     g += `<line class="rc-cursor" x1="0" y1="${RC_M.top}" x2="0" y2="${(RC_M.top + ih).toFixed(1)}" style="display:none"/>`;
     g += `<rect class="rc-hit" x="${RC_M.left}" y="${RC_M.top}" width="${iw.toFixed(1)}" height="${ih.toFixed(1)}"/>`;
@@ -4707,8 +4707,8 @@
     startCtl?.addEventListener("change", apply);
     endCtl?.addEventListener("change", apply);
   }
-  // 重画报表时把范围标签与日期控件同步到当前范围。默认范围是「现算」的：
-  // 连续运行跨天后 end 会往前推，标签不同步就会出现「表里有今天、标签还写着昨天」。
+  // 重画报表时把范围标签与日期控件同步到当前范围。默认范围是“现算”的：
+  // 连续运行跨天后 end 会往前推，标签不同步就会出现“表里有今天、标签还写着昨天”。
   function rcSyncRangeLabel(prefix, unit, r) {
     const lab = $(`${prefix}-range-label`);
     if (lab) {
@@ -4735,7 +4735,7 @@
     const fp = rcRangeFilePart(rcUnit, rcGetRange(rcUnit));
     return `休息报表_${ul}_${fp.s}_${fp.e}.${ext}`;
   }
-  // 报表导出统一走「另存为」对话框：blob 转 base64 交给 Go 侧 ExportReport，
+  // 报表导出统一走“另存为”对话框：blob 转 base64 交给 Go 侧 ExportReport，
   // 由用户选择存储路径（上一版时代的 a.download 落点不可控，Wails 下也不可靠）。
   // 取消静默、失败 toast、成功 toast 落盘路径。
   async function saveExportFile(name, blob) {
@@ -5619,7 +5619,7 @@
       }
     }
     // 与图例、表格列对齐：**所有提醒都列**（本期 0 次的用暗色显示）。
-    // 只列 >0 的话，「这一期哪条提醒没触发」在浮层里看不出来，行数还随期数上下跳。
+    // 只列 >0 的话，“这一期哪条提醒没触发”在浮层里看不出来，行数还随期数上下跳。
     const rows = ckSeries.map((s) => {
       const v = ckVal(b, s.id);
       return v > 0
@@ -6198,11 +6198,11 @@
     void window.api.listRunningApps().then((r) => {
       if (modal.classList.contains("hidden")) return;
       if (!r || !r.supported) {
-        note.textContent = r && r.detail || "当前平台不支持读取程序列表，请改用「选择程序文件」或「手动添加」。";
+        note.textContent = r && r.detail || "当前平台不支持读取程序列表，请改用“从应用安装路径选择”或“手动输入应用名称”。";
         return;
       }
       runningApps = r.names;
-      note.textContent = `共 ${runningApps.length} 个正在运行的程序，勾选后点「添加」`;
+      note.textContent = `共 ${runningApps.length} 个正在运行的程序，勾选后点“添加”`;
       renderAppPickItems("");
       filter.focus();
     });
@@ -6211,9 +6211,8 @@
     const modal = $("app-pick-modal");
     $("app-pause-add").addEventListener("click", () => {
       void promptDialog({
-        title: "手动添加应用",
-        desc: "填可执行文件名，例如 chrome.exe；任务管理器「详细信息」里能看到。添加后就能给它起个名字。",
-        placeholder: "例如 chrome.exe",
+        title: "手动输入应用名称",
+        desc: "请输入可执行文件名，例如 WeMeetApp.exe。",
         okText: "添加"
       }).then((v) => {
         if (v === null) return;
@@ -6493,9 +6492,9 @@
     applyTheme();
     if (supPreview !== null || document.getElementById("sup-preview")) renderSupervisorPreview(curSupStage);
   }
-  // 新增 / 删除提醒时间后，立即向设置页重拉一次状态：刷新「今日提醒时间线」与
-  // 侧栏「下次外卖提醒 / 自定义提醒」迷你卡。后端 saveSettings 已会重算并推送，
-  // 这里再拉一次是为消除保存往返带来的可见延迟，确保「立即」反映。
+  // 新增 / 删除提醒时间后，立即向设置页重拉一次状态：刷新“今日提醒时间线”与
+  // 侧栏“下次外卖提醒 / 自定义提醒”迷你卡。后端 saveSettings 已会重算并推送，
+  // 这里再拉一次是为消除保存往返带来的可见延迟，确保“立即”反映。
   async function refreshStatusNow() {
     try {
       const raw = await window.api.getState();
@@ -6541,7 +6540,7 @@
         if (btn.dataset.tab === "stats") {
           void renderStats();
         }
-        // 上报当前 tab 给 Go，供自更新重启后恢复「更新前所在的页面」
+        // 上报当前 tab 给 Go，供自更新重启后恢复“更新前所在的页面”
         void window.api.setActiveTab(btn.dataset.tab);
       });
     }
@@ -6619,8 +6618,8 @@
       S.supervisor.enabled = $("sup-enabled").checked;
       renderSupervisorPreview(curSupStage);
     });
-    // 督休专员卡的「预览」：先等配置落盘（含「启用」勾选），再弹真实预览窗——
-    // 这样预览窗能如实反映当前「启用」状态（Go 侧总开关现在始终生效）
+    // 督休专员卡的“预览”：先等配置落盘（含“启用”勾选），再弹真实预览窗——
+    // 这样预览窗能如实反映当前“启用”状态（Go 侧总开关现在始终生效）
     $("sup-break-preview").addEventListener("click", async () => {
       await autoSave();
       await previewBreak("short", supEditName);
@@ -6796,15 +6795,15 @@
     // 关于页的两个纯文本弹窗（许可条款 / 开源鸣谢）走同一套逻辑：整份文本内嵌在 exe 里
     // （license.go / notices.go），首次点开才取 —— 不必占用首帧，之后复用同一份字符串
     // （同一版本内不会变）。抽成一个函数而不是复制两遍：两边只有 id 与取数函数不同，
-    // 复制出来的第二份最容易在「焦点落哪儿」「Esc 走哪条路」这类细节上悄悄跑偏。
+    // 复制出来的第二份最容易在“焦点落哪儿”“Esc 走哪条路”这类细节上悄悄跑偏。
     function mountTextModal(cfg) {
       let loaded = false;
       const body = $(cfg.body);
       const open = async () => {
         $(cfg.modal).classList.remove("hidden");
-        // 焦点移进弹窗（可访问性），但落在正文容器上而不是「关闭」按钮：
+        // 焦点移进弹窗（可访问性），但落在正文容器上而不是“关闭”按钮：
         // 脚本聚焦会触发 :focus-visible，落在蓝色主按钮上会给它描一圈显眼的环，
-        // 看起来像「关闭」是必须点的默认动作。正文容器只需键盘可滚，视觉上最安静。
+        // 看起来像“关闭”是必须点的默认动作。正文容器只需键盘可滚，视觉上最安静。
         body.focus();
         if (loaded) return;
         const text = await cfg.load();
@@ -6852,7 +6851,7 @@
     });
     $("d-quit").addEventListener("click", () => void window.api.quit());
     // 版本号规范化：确保恰好一个 v 前缀（version.json 已是 v1.2.3，不要再拼一个 v）
-    // 版本号规范成「恰好一个 v 前缀」；非数字开头的（源码占位的 dev）原样显示，
+    // 版本号规范成“恰好一个 v 前缀”；非数字开头的（源码占位的 dev）原样显示，
     // 不拼成 vdev
     const normVer = (v) => {
       if (v == null) return "";
@@ -6863,12 +6862,12 @@
     };
     const info = await window.api.appInfo();
     $("d-version-val").textContent = normVer(info.version);
-    // 发布时间：打包时由 ldflags 注入 RFC3339；源码直跑没有这个时间戳，显示「本地构建」
+    // 发布时间：打包时由 ldflags 注入 RFC3339；源码直跑没有这个时间戳，显示“本地构建”
     const rawBuild = info.buildTime || "";
     $("d-build-time").textContent = rawBuild ? rawBuild.replace("T", " ").slice(0, 16) : "本地构建";
-    // 行尾运行环境：Go 版本是「这份二进制由谁编译」的指纹，Wails 版本决定运行时行为差异，
-    // 用户报 bug 时这两项能省一轮来回。缺失时补「—」而不是留空 —— 否则会渲染成
-    // 「Go  · Wails 」这种断层，看着像页面加载坏了。
+    // 行尾运行环境：Go 版本是“这份二进制由谁编译”的指纹，Wails 版本决定运行时行为差异，
+    // 用户报 bug 时这两项能省一轮来回。缺失时补“—”而不是留空 —— 否则会渲染成
+    // “Go  · Wails ”这种断层，看着像页面加载坏了。
     $("d-runtime").textContent =
       "Go " + (info.goVersion || "—") + " · Wails " + (info.wailsVersion || "v3");
 
@@ -6876,7 +6875,7 @@
     const updatePill = $("d-update-pill");
     const updatePillText = $("d-update-pill-text");
     let updateModalShownFor = ""; // 防止同一版本重复自动弹窗
-    let checking = false; // 手动「检查更新」进行中：这段时间保持加载态，忽略事件推送
+    let checking = false; // 手动“检查更新”进行中：这段时间保持加载态，忽略事件推送
     const setPill = (kind, text) => {
       updatePill.className = `pill ${kind}`;
       updatePillText.textContent = text;
@@ -6902,21 +6901,21 @@
       $("upd-version").textContent = normVer(info.version);
       $("upd-date").textContent = info.date || "—";
       fillChanges($("upd-changes"), info.changes);
-      // 更新成功：隐藏「立即更新」按钮并复位状态条（直到下次发现新版本）
+      // 更新成功：隐藏“立即更新”按钮并复位状态条（直到下次发现新版本）
       updateGo.classList.add("hidden");
       setPill("ok", "已是最新版本");
       updateModalShownFor = "";
       $("updated-modal").classList.remove("hidden");
     };
-    // autoModal=false 时只显示「有更新」状态（按钮+状态条），不自动弹窗——
-    // 用于「未勾选自动检查更新」时打开设置页，避免把上次残留的更新提示又弹出来。
-    // force=true 只给「手动点检查更新」用：用户主动问了，只要发现有新版本就必须弹窗给出
-    // 结果，不受「同一版本本次已弹过」「该版本被忽略过」两条限制（那两条只为自动检查去重）。
+    // autoModal=false 时只显示“有更新”状态（按钮+状态条），不自动弹窗——
+    // 用于“未勾选自动检查更新”时打开设置页，避免把上次残留的更新提示又弹出来。
+    // force=true 只给“手动点检查更新”用：用户主动问了，只要发现有新版本就必须弹窗给出
+    // 结果，不受“同一版本本次已弹过”“该版本被忽略过”两条限制（那两条只为自动检查去重）。
     const renderUpdate = (st, autoModal = true, force = false) => {
       if (st.status === "update-available") {
         updateGo.classList.remove("hidden");
         setPill("warn", `发现新版本 ${normVer(st.latest)}`);
-        // 被用户忽略的版本：仍显示「立即更新」按钮，但不再自动弹窗
+        // 被用户忽略的版本：仍显示“立即更新”按钮，但不再自动弹窗
         // （直到发现比被忽略版本更大的版本号才恢复弹窗）
         if (force || (!st.ignored && autoModal && updateModalShownFor !== st.latest)) {
           updateModalShownFor = st.latest;
@@ -6933,18 +6932,18 @@
         setPill("ok", "已是最新版本");
       }
     };
-    // 设置页打开时的初始渲染：仅当勾选「自动检查更新」时才自动弹窗，
-    // 否则只显示「有更新」状态（按钮+状态条），不弹提示——避免把上次
-    // 残留的「发现新版本」又弹出来打扰用户。
+    // 设置页打开时的初始渲染：仅当勾选“自动检查更新”时才自动弹窗，
+    // 否则只显示“有更新”状态（按钮+状态条），不弹提示——避免把上次
+    // 残留的“发现新版本”又弹出来打扰用户。
     renderUpdate(await window.api.updateStatus(), S.checkUpdateOnStart);
     window.api.onUpdateStatus((st) => {
-      // 手动检查进行中：保持「正在检查更新…」，结果以 checkUpdate 的返回值为准，
+      // 手动检查进行中：保持“正在检查更新…”，结果以 checkUpdate 的返回值为准，
       // 避免后台推送的旧结果把加载态盖掉。
       if (checking) return;
       renderUpdate(st);
     });
     window.api.onSettingsHidden(() => exitAllMsgEditing());
-    // 「检查更新」：点下去必须立刻有反馈（状态条变「正在检查更新…」+ 按钮置灰改文案），
+    // “检查更新”：点下去必须立刻有反馈（状态条变“正在检查更新…”+ 按钮置灰改文案），
     // 否则联网要等几秒甚至十几秒，用户以为没点上会反复点。
     const checkBtn = $("d-checkupdate");
     const checkBtnLabel = checkBtn.textContent;
@@ -6967,7 +6966,7 @@
           else if (st.status !== "update-available")
             toast(`检查更新失败（${st.message ?? "更新源不可达"}）`);
         } catch (e) {
-          // 绑定调用本身出错（非 status=error）：也要收敛成一个明确的结果，别停在「检查中」
+          // 绑定调用本身出错（非 status=error）：也要收敛成一个明确的结果，别停在“检查中”
           setPill("err", "更新检查失败");
           toast(`检查更新失败（${e?.message ?? "未知错误"}）`);
         } finally {
@@ -6975,9 +6974,9 @@
         }
       })();
     });
-    // 「立即更新」（在「检查更新」左侧）：直接执行更新
+    // “立即更新”（在“检查更新”左侧）：直接执行更新
     // 暂停期间不拦这一下：暂停约束的是软件自己发起的自动检查，用户在机器前亲手点的
-    // 「立即更新」照常执行 —— 重启是他自己的选择，不是软件越过他做的决定。
+    // “立即更新”照常执行 —— 重启是他自己的选择，不是软件越过他做的决定。
     updateGo.addEventListener("click", () => {
       void (async () => {
         toast("正在更新，软件将重启…");
@@ -7065,15 +7064,15 @@
     })();
     window.api.onState((raw) => renderStatus(raw));
     // 统计入账（工作/休息/离开/休息次数/外卖动作）后 Go 侧会推今天的快照：
-    // 「今天」卡立刻跟着变，不用等切页、切窗口或手动刷新。
+    // “今天”卡立刻跟着变，不用等切页、切窗口或手动刷新。
     window.api.onStatsChanged((t) => renderComposition(t));
     window.api.onAutostart((v) => {
       $("autostart").checked = v;
     });
     renderStatus(await window.api.getState());
     // 连续运行跨天：页面不会自己重画，这里每秒比一次本地日期，变了就重拉统计页。
-    // 默认范围已改成「现算」（见 rcGetRange），所以只要重画，日 / 周 / 月 / 季 / 年的
-    // 最后一个桶就自然推到新的一天；「今天」卡本身靠 stats:changed 每秒推送，不受影响。
+    // 默认范围已改成“现算”（见 rcGetRange），所以只要重画，日 / 周 / 月 / 季 / 年的
+    // 最后一个桶就自然推到新的一天；“今天”卡本身靠 stats:changed 每秒推送，不受影响。
     let lastDayStr = rcDayStr(new Date());
     setInterval(async () => {
       renderStatus(await window.api.getState());
