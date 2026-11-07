@@ -1,24 +1,49 @@
-# 默认按文本处理并在仓库内统一为 LF，避免 Windows 换行符造成的噪声 diff
-* text=auto
+# ===== 换行与文本属性：一条规则管三平台 =====
+#
+# 目标：不管 clone 到 Windows / Linux / macOS，工作区拿到的都是**同一串字节**——全部 LF。
+# 三个理由：
+#   1. diff / blame / 补丁不因平台产生噪声；
+#   2. 单测与探针读到的字节一致（notices_test 要求内嵌的鸣谢清单必须是 LF）；
+#   3. Linux / macOS 上的脚本不会因为 CRLF 变成 `bad interpreter`。
+#
+# `eol=lf` **覆盖** core.autocrlf：Windows 用户不需要改任何 git 配置，
+# 哪怕 core.autocrlf=true，checkout 出来的文本仍然是 LF。
+# 唯一例外是 cmd.exe 要读的批处理，见文件末尾。
+* text=auto eol=lf
 
-# Go 源码固定 LF：gofmt 的规范形式就是 LF，工作区用 CRLF 会让 `gofmt -l` 长期报噪声
-*.go text eol=lf
+# ---------- 二进制：git 不转换、不 diff ----------
+*.png   binary
+*.webp  binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.wav   binary
+*.mp3   binary
+*.mp4   binary
+*.pdf   binary
+*.ttf   binary
+*.otf   binary
+*.woff  binary
+*.woff2 binary
+*.syso  binary
+*.exe   binary
+*.dll   binary
+*.zip   binary
 
-*.png binary
-*.webp binary
-*.ico binary
-*.wav binary
-*.syso binary
-
-# 开源鸣谢清单必须是 LF：//go:embed 内嵌的是仓库里的原始字节，checkout 转 CRLF 会让
-# 「内嵌必须 LF」这条测试变红（notices_test.go）。gen_notices.py 生成的就是 LF，禁止手改。
-THIRD-PARTY-NOTICES.txt -text
+# ---------- 必须逐字节固定的文本：-text 表示 git 完全不碰 ----------
+# 开源鸣谢清单由 gen_notices.py 生成、//go:embed 原样内嵌，checkout 一转 CRLF 就会
+# 让「内嵌必须 LF」这条测试变红（notices_test.go）。禁止手改。
+THIRD-PARTY-NOTICES.txt     -text
 scripts/build/notices/*.txt -text
 
-# 项目许可证同样固定 LF：它是「一字不改」的对外文件，谁在哪台机器上 clone 都应该拿到
-# 同一串字节（打包时原样拷进便携包，不该随平台的换行策略漂移）。
-LICENSE -text
+# 项目许可证是“一字不改”的对外文件：谁在哪台机器上 clone 都该拿到同一串字节，
+# 打包时原样拷进便携包，不随平台的换行策略漂移（license_test.go 双向钉住）。
+LICENSE                -text
+cmd/workerrest/LICENSE -text
 
-# 批处理脚本是 GBK + CRLF：cmd 按 OEM 代码页 936 读文件，换个换行或编码就满屏乱码。
-# 关掉一切换行转换（-text），谁 clone 到哪种系统上拿到的都是同一串字节。
+# ---------- 批处理：GBK + CRLF，唯一保留 CRLF 的文本 ----------
+# cmd.exe 按 OEM 代码页 936 读文件，换行或编码一变就满屏乱码；这些文件只给 Windows 用，
+# Linux / macOS 上不会被执行。因此关掉一切转换，让它在任何平台都是同一串 GBK+CRLF 字节。
 *.bat -text
+*.cmd -text

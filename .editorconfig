@@ -1,0 +1,36 @@
+# 编辑器侧的换行约定，与 .gitattributes 保持同一口径：
+# 新建文件默认就是 LF，避免“本地写完一提交就被 git 改成另一个样子”。
+# VS Code / JetBrains / Sublime 都原生支持 .editorconfig。
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+# Go 用 tab（gofmt 的唯一形式）
+[*.go]
+indent_style = tab
+indent_size = 4
+
+# Python 按 PEP 8 用 4 空格
+[*.py]
+indent_size = 4
+
+# Markdown 的行尾两空格是硬换行，不能被裁掉
+[*.md]
+trim_trailing_whitespace = false
+
+# 批处理是 GBK + CRLF，编辑器别自作主张改换行（不要在这里声明 charset：
+# GBK 不属于 editorconfig 的标准取值，声明 latin1 反而可能让编辑器按单字节显示）
+[*.{bat,cmd}]
+end_of_line = crlf
+trim_trailing_whitespace = false
+
+# 逐字节固定的对外文件
+[{LICENSE,THIRD-PARTY-NOTICES.txt}]
+insert_final_newline = true
+trim_trailing_whitespace = false
