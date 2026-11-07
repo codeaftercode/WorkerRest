@@ -69,12 +69,14 @@
         </div>
         <div class="card">
           <h3>自动暂停<span class="q-mark" title="满足以下任意条件时自动暂停">?</span></h3>
-          <!-- 空闲自动暂停始终启用、不可关闭，所以这里没有勾选框，只有分钟数（最小 1）；
-               行本身仍用 .mixed（内容紧挨着左对齐 + 行内窄数字框） -->
+          <!-- 系统空闲：与其他四条系统状态开关同一形态（勾选框 + 名称 + 行内窄数字框），
+               文字因此和下面四行落在同一条列上。未勾选时分钟框置灰不可编辑 ——
+               “不检测空闲”是整条关掉（不暂停、也不记“离开”），不是只停暂停。 -->
           <div class="row mixed">
-            <label class="lead" for="idlePauseMin">系统空闲</label>
-            <input type="number" id="idlePauseMin" min="1" max="120" />
-            <span class="tail">分钟</span>
+            <label class="switch-row"><input type="checkbox" id="idlePause" /> 系统空闲</label>
+            <input type="number" id="idlePauseMin" min="1" max="120" aria-label="系统空闲阈值（分钟）" />
+            <!-- “?”挂在句尾而不是名称后面：这一行在名称后还要接分钟数，插在中间会把句子断开 -->
+            <span class="tail">分钟<span class="q-mark" title="无鼠标动作、无键盘输入持续时间超过设置值时自动暂停">?</span></span>
           </div>
           <!-- 四条系统状态开关并排一行：选项名只留最短的辨识词，判据与边界都写在各自的“?”里 -->
           <div class="row check check-inline">
@@ -84,7 +86,7 @@
             <label class="switch-row"><input type="checkbox" id="castMirrorPause" /> 复制投影<span class="q-mark" title="投影方式为“复制”时自动暂停">?</span></label>
           </div>
           <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 运行应用</label>
+            <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 运行应用：</label>
           </div>
           <!-- 应用列表：与“提醒内容”“高级选项”共用同一套折叠外观（details.advanced），默认收起；
                卡片内顺序固定为“按钮行 → 列表 → 说明”，三个添加入口都在列表上方 -->

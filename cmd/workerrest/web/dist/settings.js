@@ -2890,6 +2890,13 @@
     const bothCountdown = S.short.mode === "countdown" && S.long.mode === "countdown";
     $("longEveryNRow")?.classList.toggle("hidden", !bothCountdown);
   }
+  // 分钟框跟着“系统空闲”勾选框走：没勾时它不该还能编辑（关掉的是整条空闲检测，
+  // 改分钟数没有意义）。只改 disabled，不另造禁用样式。
+  function syncIdlePauseUI() {
+    const on = !!$("idlePause")?.checked;
+    const min = $("idlePauseMin");
+    if (min) min.disabled = !on;
+  }
   function fillForm() {
     $("appName").value = S.appName ?? "";
     $("tb-title").textContent = S.appName || "吃饼人也敢休息？";
@@ -2897,6 +2904,9 @@
     document.querySelector(`input[name=theme][value="${themeVal}"]`).checked = true;
     S.theme = themeVal;
     $("idlePauseMin").value = String(Math.max(1, Math.round(S.idlePauseMin)));
+    // 缺键按“开”（后端 Flag(true,…) 同口径），所以判据是 !== false，不能写成 !!
+    $("idlePause").checked = S.idlePause !== false;
+    syncIdlePauseUI();
     $("longEveryNShort").value = String(S.longEveryNShort);
     $("autostart").checked = S.autostart;
     $("startMinimized").checked = S.startMinimized;
@@ -2956,6 +2966,7 @@
     S.theme = document.querySelector("input[name=theme]:checked").value;
     S.appName = ($("appName").value.trim() || "吃饼人也敢休息？").slice(0, 30);
     $("tb-title").textContent = S.appName;
+    S.idlePause = $("idlePause").checked;
     S.idlePauseMin = clampNum($("idlePauseMin"), 5);
     S.longEveryNShort = clampNum($("longEveryNShort"), 2);
     S.autostart = $("autostart").checked;
@@ -6507,6 +6518,13 @@
     for (const el of document.querySelectorAll(".tab input, .tab select")) {
       if (el.closest("#tab-stats")) continue;
       bindAutoSaveEl(el);
+    }
+    // “系统空闲”勾选框额外管一件事：分钟框的可用性。落盘仍由上面的 autoSave 负责
+    //（它排在前面，collectForm 已把新值写进 S，这边只动 DOM）。
+    const idleCb = $("idlePause");
+    if (idleCb && !idleCb.dataset.wrIdleSync) {
+      idleCb.dataset.wrIdleSync = "1";
+      idleCb.addEventListener("change", syncIdlePauseUI);
     }
   }
   // 单个控件补绑自动保存；dataset 标记防重复绑定（动态创建的卡片会和这里的

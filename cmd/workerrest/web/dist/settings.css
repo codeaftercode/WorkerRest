@@ -372,13 +372,16 @@ body {
 /* 动作行：按钮紧挨着排成一串（.row 不再有 space-between，这里显式声明避免回退） */
 .row.inline { justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
 
-/* 混合行：勾选框 / 前置文字 + 行内小控件 + 尾随文字（如“系统空闲 [5] 分钟后自动暂停”）。
-   与动作行同属"内容紧挨着左对齐"一类，间距收到 8px；行内数字框只占三四位数的宽度，
-   不用字段行那 180px 的整宽。 */
+/* 混合行：勾选框 + 名称 + 行内窄数字框 + 尾随文字（“系统空闲 [5] 分钟”）。
+   间距一律 8px：标签内部（勾选框 ↔ 名称）与行内（名称 ↔ 数字框 ↔ 单位）同距，
+   于是文字左缘正好落在下面四行勾选项的文字列上（16 + 8 = 24px），整张卡片只有一条文字列。
+   数字框只占三四位数的宽度，不用字段行那 180px 的整宽。 */
 .row.mixed { justify-content: flex-start; gap: 8px; }
-.row.mixed > input[type='number'] { width: 68px; text-align: center; }
-.row.mixed > .lead { color: var(--text); font-size: 14px; flex-shrink: 0; }
-.row.mixed > .tail { color: var(--text); font-size: 14px; }
+.row.mixed > input[type='number'] { width: 68px; flex: none; text-align: center; }
+.row.mixed > .tail { color: var(--text); font-size: 14px; white-space: nowrap; }
+/* 未勾选“系统空闲”时分钟数不可编辑：只降不透明度，框体样式照旧 —— 另造一套“禁用样式”
+   就等于在页面上多出一种输入框长相，和别处的输入框对不上。 */
+.row.mixed > input[type='number']:disabled { opacity: .45; cursor: not-allowed; }
 
 /* 属于上一行的说明：缩进到控件列起点，与它解释的字段对齐；卡片级说明仍用 .hint 全宽 */
 .hint.sub { margin-left: calc(var(--label-w) + var(--row-gap)); }

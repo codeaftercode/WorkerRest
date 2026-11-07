@@ -21,6 +21,7 @@
   "customBreaks": [],
   "longEveryNShort": 2,
   "idlePauseMin": 5,
+  "idlePause": true,
   "dndPause": true,
   "fullscreenPause": true,
   "castWirelessPause": true,

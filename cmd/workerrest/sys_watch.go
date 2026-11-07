@@ -198,11 +198,31 @@ func (a *App) watchLoop(stop <-chan struct{}, name string, intervalMs int, immed
 }
 
 // idleWatchTick 推进一次空闲判定；入参 / 返回都是“上一次有没有判成离开”。
+//
+// 开关（settings 的 idlePause）关掉时**整条判定都不做**：不判离开、不判回来，也不碰统计。
+// 关闭那一刻若正处于离开态，按“条件消失”收尾：还挂着 idle 原因牌就走完整恢复（恢复提醒 +
+// 结束离开记账 + 重锚），与“人回来了”同一条路径；期间用户已手动恢复过，就只把离开记账收尾。
+// 不收的话那段离开会一直敞着，统计里的时间再也回不来。
 func (a *App) idleWatchTick(away bool) bool {
 	if a.sched == nil || a.idle == nil {
 		return away
 	}
 	cfg := a.CfgSnapshot()
+	if !cfg.IdlePause() {
+		if away {
+			// 两种收尾：还挂着 idle 原因牌 → 走完整恢复；用户已经手动点过“恢复休息”
+			// （原因牌摘了、但离开段还开着）→ 只把记账收尾，**不重锚倒计时**，
+			// 否则用户刚恢复的那一轮剩余时间会被冲成满额。
+			if a.sched.HasPauseReason(scheduler.PauseReasonIdle) {
+				a.resumeFromIdle()
+				log.Printf("[idle] “系统空闲”已关闭：结束这次空闲暂停，回到工作计时")
+			} else {
+				a.statsStore().EndAway()
+				log.Printf("[idle] “系统空闲”已关闭：结束离开记账")
+			}
+		}
+		return false
+	}
 	threshold := int64(cfg.IdlePauseMin()) * 60_000
 	idleMs := a.idle.IdleSinceMs()
 	switch idle.DecideIdleStep(a.sched.CurrentPhase(), away, idleMs, threshold,
@@ -216,26 +236,32 @@ func (a *App) idleWatchTick(away bool) bool {
 			idleMs/1000, threshold/1000, moved)
 		return true
 	case idle.IdleStepBack:
-		// 恢复的调用分两种，取决于“紧接着的重锚会不会真的把计划推远”：
-		//   - 内置倒计时（绝大多数配置）会重锚 → 用 ResumeQuiet：恢复时先弹提示窗、
-		//     再被重锚收掉的话，右下角会闪一下，日志里还留一条“即将休息（剩余 0 ms）”；
-		//   - 固定时刻线 / 自定义提醒不会重锚 → 用 Resume：提前提示窗该照常弹回来，
-		//     静默的话这次提醒的“提前提示”就被一次离开永久吞掉了。
-		if a.sched.CountdownReanchorable() {
-			a.sched.ResumeQuiet(scheduler.PauseReasonIdle)
-		} else {
-			a.sched.Resume(scheduler.PauseReasonIdle)
-		}
-		// 人回来了 = 空闲这条的条件消失：解除“已手动恢复”，下次再离开照常暂停
-		a.clearAutoPauseIgnored(scheduler.PauseReasonIdle)
-		// 离开结束后内置倒计时重新开始计时（自定义提醒与固定时刻线不动，见 reanchorCountdown）
-		a.sched.ReanchorCountdown()
-		// 统计：这段离开到此为止，工作段从此刻重新起算
-		a.statsStore().EndAway()
+		a.resumeFromIdle()
 		log.Printf("[idle] 检测到键鼠活动：恢复提醒，内置倒计时重新开始")
 		return false
 	}
 	return away
+}
+
+// resumeFromIdle 结束一段“离开”：恢复提醒 + 解除“已手动恢复” + 重锚内置倒计时 +
+// 结束离开记账。两个入口共用：人回来了（IdleStepBack）、用户在设置里关掉“系统空闲”。
+func (a *App) resumeFromIdle() {
+	// 恢复的调用分两种，取决于“紧接着的重锚会不会真的把计划推远”：
+	//   - 内置倒计时（绝大多数配置）会重锚 → 用 ResumeQuiet：恢复时先弹提示窗、
+	//     再被重锚收掉的话，右下角会闪一下，日志里还留一条“即将休息（剩余 0 ms）”；
+	//   - 固定时刻线 / 自定义提醒不会重锚 → 用 Resume：提前提示窗该照常弹回来，
+	//     静默的话这次提醒的“提前提示”就被一次离开永久吞掉了。
+	if a.sched.CountdownReanchorable() {
+		a.sched.ResumeQuiet(scheduler.PauseReasonIdle)
+	} else {
+		a.sched.Resume(scheduler.PauseReasonIdle)
+	}
+	// 人回来了（或这条被关掉）= 空闲的条件消失：解除“已手动恢复”，下次再离开照常暂停
+	a.clearAutoPauseIgnored(scheduler.PauseReasonIdle)
+	// 离开结束后内置倒计时重新开始计时（自定义提醒与固定时刻线不动，见 reanchorCountdown）
+	a.sched.ReanchorCountdown()
+	// 统计：这段离开到此为止，工作段从此刻重新起算
+	a.statsStore().EndAway()
 }
 
 // dndWatchTick 推进一次系统状态判定：请勿打扰 / 全屏或演示。

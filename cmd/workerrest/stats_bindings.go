@@ -164,11 +164,19 @@ func (a *App) statsIsBreak() bool {
 
 // statsIsIdle 工作累加器的“这一跳归离开”判定：连续无输入已达阈值
 // （与 idleWatchTick 同一口径；手动暂停 / 勿扰 / 应用占用都不算 —— 那时人还在用电脑）
+//
+// “系统空闲”关掉之后一律不算离开：这一条本来就不检测空闲，没有离开可言。
+// 口径必须与 idleWatchTick 一致 —— 一边暂停一边记离开，或者反过来，都会让
+// “工作 + 休息 + 离开 ≈ 运行时长”这条不变式对不上。
 func (a *App) statsIsIdle() bool {
 	if a.sched == nil || a.idle == nil {
 		return false
 	}
-	return a.idle.IdleSinceMs() >= int64(a.CfgSnapshot().IdlePauseMin())*60_000
+	cfg := a.CfgSnapshot()
+	if !cfg.IdlePause() {
+		return false
+	}
+	return a.idle.IdleSinceMs() >= int64(cfg.IdlePauseMin())*60_000
 }
 
 // OnBreakPostponed / OnBreakSkipped 调度器宿主接口的实现（见 internal/scheduler 的 Host）：

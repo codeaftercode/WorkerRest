@@ -25,7 +25,14 @@ func (s *Settings) LongEveryNShort() int {
 	return int(n)
 }
 
-// IdlePauseMin 系统空闲多少分钟后自动暂停（始终启用、不可关闭；最小 1 分钟）
+// IdlePause 系统空闲是否参与自动暂停（2026-11-07 由“始终开启、不可关闭”改成可关闭）。
+// 关掉之后**整条空闲检测都不做**：既不因空闲暂停，也不把这段时间记进统计的“离开”
+// （离开时长本来就是“连续无输入达到阈值的那一段”，不检测就没有这一段）。
+// 缺键兜底取“开”，与 default_settings.json 同值 —— 自动暂停类开关出厂全开。
+func (s *Settings) IdlePause() bool { return s.Flag(true, "idlePause") }
+
+// IdlePauseMin 系统空闲多少分钟后自动暂停（最小 1 分钟）。开不开这条由 IdlePause 管，
+// 这里只管“几分钟”。
 func (s *Settings) IdlePauseMin() int {
 	n := s.Int(5, "idlePauseMin")
 	if n < 1 {
