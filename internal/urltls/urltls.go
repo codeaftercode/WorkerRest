@@ -33,7 +33,7 @@ func IsLoopbackHost(host string) bool {
 }
 
 // CheckUpdateURL 校验一个更新相关地址是否可用：只允许 https；http 仅限回环地址。
-// 返回的 error 直接展示给用户（文字要能说清「为什么不给装」）。
+// 返回的 error 直接展示给用户（文字要能说清“为什么不给装”）。
 func CheckUpdateURL(raw string) error {
 	s := strings.TrimSpace(raw)
 	if s == "" {

@@ -17,17 +17,17 @@
     <div class="figure hidden" id="figure">
       <div class="trim" id="figure-trim">
         <div class="gaze" id="gaze">
-          <!-- 镜像层：勾选「水平翻转」时整层 scaleX(-1)（与休息窗口同结构） -->
+          <!-- 镜像层：勾选“水平翻转”时整层 scaleX(-1)（与休息窗口同结构） -->
           <div class="mirror"><img id="figure-img" alt="" /></div>
         </div>
       </div>
     </div>
-    <!-- 有督休专员时 .content 变身「游戏对话画面」的底部全宽对话框（与休息窗口同款）：
+    <!-- 有督休专员时 .content 变身“游戏对话画面”的底部全宽对话框（与休息窗口同款）：
          名字标签在左上角凸出，台词大字、状态徽标/时间/按钮排进框内；
          支付红包区脱离文档流浮到立绘可见右缘的右侧（位置由脚本写入）。
          无督休专员时维持原版式：内容列居中。 -->
     <!-- 督休专员题名：竖排金色宋体，钉在立绘头部左侧的空白区（不再进对话条）。
-         位置与字号由 takeout.js 的 layoutRoleTitle() 按「零遮挡」实测后写进 inline style，
+         位置与字号由 takeout.js 的 layoutRoleTitle() 按“零遮挡”实测后写进 inline style，
          必须和 #figure 处在同一定位上下文（#app），不能留在 .content 里。 -->
     <div class="dialog-name hidden" id="dialog-name"></div>
     <div class="content">
@@ -45,7 +45,7 @@
            （字号/字重/居中/自动换行/超长自动缩字号，见 takeout.css） -->
       <div class="supervisor-line dialog-text hidden" id="supervisor-line"></div>
       <!-- 外卖优惠券：始终显示该区域；二维码指向固定领取页（不含任何本机标识），手机扫码打开。
-           红包虚线框上方的「外卖提醒」胶囊标签浮在框外（absolute，不占框内布局） -->
+           红包虚线框上方的“外卖提醒”胶囊标签浮在框外（absolute，不占框内布局） -->
       <div class="tk-redpacket hidden" id="redpacket">
         <div class="rp-title">外卖提醒</div>
         <div class="rp-qr-wrap">

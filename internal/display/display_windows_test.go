@@ -11,7 +11,7 @@ import (
 // TestDisplayLayout 钉住 Win32 结构体布局。
 //
 // 与 windnd 的投屏检测同理：布局错了 QueryDisplayConfig 只返回 ERROR_INVALID_PARAMETER，
-// 代码按「不支持」降级，功能静默失效而日志看着一切正常。
+// 代码按“不支持”降级，功能静默失效而日志看着一切正常。
 func TestDisplayLayout(t *testing.T) {
 	if got := unsafe.Sizeof(displayPathSourceInfo{}); got != 20 {
 		t.Fatalf("DISPLAYCONFIG_PATH_SOURCE_INFO 应为 20 字节，得到 %d", got)
@@ -39,7 +39,7 @@ func TestDisplayLayout(t *testing.T) {
 // TestDesktopSizeAppliesRotation 竖屏（旋转 90/270）的源模式是横的，桌面占用是竖的。
 //
 // 不折算的后果实测过：副屏竖屏时报 1920×1080，与 Wails 的 Bounds（1080×1920）
-// 四边全失配，窗口落点只能靠「中心点落在谁的矩形里」兜底，UI 上的分辨率也是错的。
+// 四边全失配，窗口落点只能靠“中心点落在谁的矩形里”兜底，UI 上的分辨率也是错的。
 func TestDesktopSizeAppliesRotation(t *testing.T) {
 	cases := []struct {
 		w, h         int
@@ -61,7 +61,7 @@ func TestDesktopSizeAppliesRotation(t *testing.T) {
 	}
 }
 
-// TestListRealDisplays 真机枚举一次，只断言「数据结构自洽」，不写死屏数
+// TestListRealDisplays 真机枚举一次，只断言“数据结构自洽”，不写死屏数
 // —— 开发机是双屏，CI 或远程会话可能是零屏，写死就会红。
 func TestListRealDisplays(t *testing.T) {
 	list, err := List()

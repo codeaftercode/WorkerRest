@@ -12,7 +12,7 @@ func TestFmtTrayAboutMin(t *testing.T) {
 		ms   int64
 		want string
 	}{
-		{0, "1 分钟"},                   // 到点未刷新的瞬间也不出「0 分钟」
+		{0, "1 分钟"},                   // 到点未刷新的瞬间也不出“0 分钟”
 		{-5_000, "1 分钟"},              // 已过期（负数）兜底
 		{20_000, "1 分钟"},              // 不足 1 分钟按 1 分钟
 		{44_000, "1 分钟"},              // 44 秒四舍五入 → 1
@@ -83,7 +83,7 @@ func TestTrayTexts(t *testing.T) {
 		if status != "状态：已暂停" {
 			t.Errorf("状态行 = %q", status)
 		}
-		// 暂停时「立即休息」必须仍有标签（曾经的 bug：actionText 留空串把菜单项清空白）
+		// 暂停时“立即休息”必须仍有标签（曾经的 bug：actionText 留空串把菜单项清空白）
 		if action != "立即休息" || pause != "恢复休息" {
 			t.Errorf("动作项 = %q / 暂停项 = %q", action, pause)
 		}

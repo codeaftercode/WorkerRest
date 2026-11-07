@@ -17,7 +17,7 @@ import (
 // 音频分两类：内置提示音（相对文件名，随包 sounds/ 目录）+ 用户导入的音乐（绝对路径，
 // 副本放在配置目录旁）。选曲口径与 sound.ts 逐字对齐：
 //   · single 模式播 singleId 指向的一条（条目停用也照播，被删/文件不可用 = 静音）；
-//   · random / sequence 只在「启用且文件存在」的条目里挑；全不可用不回退（刻意静音）。
+//   · random / sequence 只在“启用且文件存在”的条目里挑；全不可用不回退（刻意静音）。
 
 const (
 	// MaxMusicBytes 导入上限 20 MB：每次播放都要读盘，过大的文件会拖慢提醒弹出。
@@ -92,7 +92,7 @@ func FileUsable(file string) bool {
 
 // ResolveSoundFile 单曲循环要播的文件：singleId 指向的那一条。条目不存在 / 没有 file /
 // 文件不可用都返回空串 = 静音（与 sound.ts 的 resolveSoundFile 同口径）。
-// 注意「条目是否被停用」与这里无关 —— 停用只影响 random / sequence 的选池。
+// 注意“条目是否被停用”与这里无关 —— 停用只影响 random / sequence 的选池。
 // singleId 为空 = 用户没选过单曲，按契约静音（默认值由 normalizeSound 在首次种入时补上）。
 func ResolveSoundFile(cfg model.SoundCfg) string {
 	for _, m := range cfg.Music {
@@ -110,7 +110,7 @@ func ResolveSoundFile(cfg model.SoundCfg) string {
 	return ""
 }
 
-// EnabledMusicFiles 音乐列表里「启用 + 文件仍可用」的路径，按列表顺序。
+// EnabledMusicFiles 音乐列表里“启用 + 文件仍可用”的路径，按列表顺序。
 // random / sequence 只从这里挑；顺序游标也按这个顺序走。
 func EnabledMusicFiles(cfg model.SoundCfg) []string {
 	out := make([]string, 0, len(cfg.Music))

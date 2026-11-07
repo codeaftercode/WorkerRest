@@ -86,7 +86,7 @@ def prev_tag(tag):
 def commits_between(prev, cur=None):
     """prev..cur 之间的提交标题，按时间顺序（旧→新），合并提交不计。
 
-    prev 为空（首个 tag）时返回空列表 —— 没有「上一个 tag」就没有可列的范围。
+    prev 为空（首个 tag）时返回空列表 —— 没有“上一个 tag”就没有可列的范围。
     """
     if not prev:
         return []

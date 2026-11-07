@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 「暂停休息时」处置键（pauseAction）在配置层的归一化回归。
+// “暂停休息时”处置键（pauseAction）在配置层的归一化回归。
 // 默认推迟；非法值落回推迟；保存路径必须带上这个键（否则存一次就丢）。
 
 func testSettingsFromJSON(t *testing.T, js string) *Settings {
@@ -18,7 +18,7 @@ func testSettingsFromJSON(t *testing.T, js string) *Settings {
 }
 
 func TestPauseActionDefaultsToPostpone(t *testing.T) {
-	// 旧配置没有这个键：外卖与自定义提醒都应视为「推迟提醒」
+	// 旧配置没有这个键：外卖与自定义提醒都应视为“推迟提醒”
 	s := testSettingsFromJSON(t, `{"customBreaks":[{"id":"cb-a","name":"喝水","config":{"enabled":true}}]}`)
 	if got := s.TakeoutPauseAction(); got != PauseActionPostpone {
 		t.Errorf("取不到 pauseAction 时应默认推迟（外卖），得到 %q", got)
@@ -59,7 +59,7 @@ func TestNormalizeTakeoutKeepsPauseAction(t *testing.T) {
 	if got, _ := out["pauseAction"].(string); got != PauseActionRemind {
 		t.Fatalf("NormalizeTakeout 应保留 pauseAction=remind，得到 %#v", out["pauseAction"])
 	}
-	// 缺省（旧配置）应补成 postpone：前端下拉默认就是「推迟提醒」
+	// 缺省（旧配置）应补成 postpone：前端下拉默认就是“推迟提醒”
 	out = NormalizeTakeout(map[string]any{"takeout": map[string]any{"enabled": true}})
 	if got, _ := out["pauseAction"].(string); got != PauseActionPostpone {
 		t.Fatalf("旧配置归一化后应补成 postpone，得到 %#v", out["pauseAction"])

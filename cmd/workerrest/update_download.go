@@ -26,20 +26,20 @@ type updatePending struct {
 	Changes []string `json:"changes"`
 	OldExe  string   `json:"oldExe"`
 	NewExe  string   `json:"newExe"`
-	// 更新前设置窗口状态：用于在更新重启后恢复「更新前所在的页面 / 是否可见」。
+	// 更新前设置窗口状态：用于在更新重启后恢复“更新前所在的页面 / 是否可见”。
 	SettingsVisible bool   `json:"settingsVisible"`
 	ActiveTab       string `json:"activeTab"`
 }
 
 // StartUpdate 执行自动更新：下载 zip → 解压 → 增量合并配置 → 暂存新 exe →
 // 启动 self-update 子进程替换并重启。任何一步失败都在退出前返回 error 形状，
-// 只有全部就绪、子进程拉起后才 os.Exit（前端在此之前已显示「正在更新」遮罩）。
+// 只有全部就绪、子进程拉起后才 os.Exit（前端在此之前已显示“正在更新”遮罩）。
 func (a *App) StartUpdate() map[string]any {
 	if serverMode {
 		return map[string]any{"status": "error", "message": "无头模式不支持自动更新"}
 	}
-	// 这里**不**判暂停：暂停只拦软件自己发起的「自动检查更新」，不拦用户亲手点的
-	// 「立即更新」。区别在于谁在做决定 —— 自动检查是软件替用户做主，暂停期间不该
+	// 这里**不**判暂停：暂停只拦软件自己发起的“自动检查更新”，不拦用户亲手点的
+	// “立即更新”。区别在于谁在做决定 —— 自动检查是软件替用户做主，暂停期间不该
 	// 越过用户；而此刻用户就坐在机器前、亲手按下了这个按钮，重启是他自己的选择。
 	// 取最近一次检查结果（CheckUpdate 必须已跑过，且确实发现新版本）
 	a.mu.Lock()
@@ -53,7 +53,7 @@ func (a *App) StartUpdate() map[string]any {
 		return map[string]any{"status": "error", "message": "缺少下载地址"}
 	}
 	// 校验值先取出并规范化：状态可能是上个版本持久化下来的（那时还没有 sha256），
-	// 这种「没有哈希的待更新状态」一律拒绝，绝不降级成「只靠 TLS」。
+	// 这种“没有哈希的待更新状态”一律拒绝，绝不降级成“只靠 TLS”。
 	wantSHA, err := update.ParseSHA256(statusString(st, "sha256"))
 	if err != nil {
 		return map[string]any{"status": "error", "message": "更新清单缺少有效的 sha256 校验值，已拒绝更新"}
@@ -133,7 +133,7 @@ func (a *App) StartUpdate() map[string]any {
 		return map[string]any{"status": "error", "message": "启动更新程序失败：" + err.Error()}
 	}
 	log.Printf("[update] 已拉起自更新子进程，主进程即将退出")
-	// 更新即将生效：清除「有更新」的持久化状态，避免重启后旧版本号仍挂在关于页。
+	// 更新即将生效：清除“有更新”的持久化状态，避免重启后旧版本号仍挂在关于页。
 	a.clearUpdateResult()
 	// 给子进程一点时间接管后再退出
 	time.Sleep(300 * time.Millisecond)
@@ -231,7 +231,7 @@ func normalizePackageURL(raw string) string {
 // 全部失败返回最后一次的错误（空数组 / 全空白项同样报错）。
 //
 // 哈希不符时删除已下载的文件再换下一个镜像 —— 换镜像本身是安全的，因为每个镜像都要过
-// 同一道哈希；而「哈希不符但继续装」绝对不允许。
+// 同一道哈希；而“哈希不符但继续装”绝对不允许。
 func downloadPackage(urls []string, dest string, wantSHA string) error {
 	want, err := update.ParseSHA256(wantSHA)
 	if err != nil {
@@ -323,7 +323,7 @@ func extractZipLimited(archive, dest string, maxTotal int64, maxEntries int) err
 			rc.Close()
 			return err
 		}
-		// +1 是为了「多读一个字节」就能判定越界，而不是静默截断。
+		// +1 是为了“多读一个字节”就能判定越界，而不是静默截断。
 		n, err := io.Copy(out, io.LimitReader(rc, maxTotal-written+1))
 		out.Close()
 		rc.Close()

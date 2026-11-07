@@ -9,9 +9,9 @@ import (
 //
 // 便携包被用户删掉 assets/supervisors、或首次运行素材还没落地时，ScanRoles 返回 nil。
 // nil 切片经 JSON 序列化成 null，而设置页拿它直接 `for (const r of ROLES)` ——
-// 一次性抛 TypeError，整个立绘库白屏，连「添加立绘」按钮都不再响应。
+// 一次性抛 TypeError，整个立绘库白屏，连“添加立绘”按钮都不再响应。
 //
-// 「没有专员」必须是一种正常状态：绑定层统一返回空数组。
+// “没有专员”必须是一种正常状态：绑定层统一返回空数组。
 func TestListRolesEmptyDirReturnsEmptySliceNotNil(t *testing.T) {
 	a := &App{rolesRoot: t.TempDir()}
 	got := a.ListRoles()

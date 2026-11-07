@@ -37,7 +37,7 @@ func newTestStats(t *testing.T, c *statsClock) (*StatsStore, string) {
 	path := filepath.Join(t.TempDir(), "stats.json")
 	st := NewStatsStore(func() string { return path })
 	st.nowFn = c.now
-	// 与 StartWorkAccumulator 首行同口径：工作段起点以「注入的时钟」为准。
+	// 与 StartWorkAccumulator 首行同口径：工作段起点以“注入的时钟”为准。
 	// NewStatsStore 里用的是真实系统时钟，不覆盖的话 workSegStartAt 会落在未来，
 	// BeginAway 结算连续工作段时会一路算到零点（测试里是真的踩过）。
 	st.workSegStartAt = c.now()
@@ -63,7 +63,7 @@ func TestSplitByDay(t *testing.T) {
 	if len(segs) != 1 || segs[0].date != "2026-10-08" || segs[0].ms != 90_000 {
 		t.Fatalf("同一天内应切出 1 段 90s，得到 %+v", segs)
 	}
-	// 跨零点：23:58 → 次日 00:03 切成「前一天 2 分钟 + 当天 3 分钟」
+	// 跨零点：23:58 → 次日 00:03 切成“前一天 2 分钟 + 当天 3 分钟”
 	from := localTime(2026, 10, 8, 23, 58)
 	to := localTime(2026, 10, 9, 0, 3)
 	segs = SplitByDay(from.UnixMilli(), to.UnixMilli())
@@ -138,7 +138,7 @@ func TestPeriodRangeWeekKeyUsesMondayYear(t *testing.T) {
 		t.Fatalf("周键应为 2025-W01（年份取周一那年），得到 %q", r.Key)
 	}
 	if r.Label != "第 1 周" {
-		t.Fatalf("周标签应为「第 1 周」，得到 %q", r.Label)
+		t.Fatalf("周标签应为“第 1 周”，得到 %q", r.Label)
 	}
 }
 
@@ -261,7 +261,7 @@ func TestStatsLoadFlushRoundTrip(t *testing.T) {
 	}
 	// 名字快照是保留键，不进天记录
 	if got := back.CustomNames()["cb-water"]; got != "喝水提醒" {
-		t.Fatalf("名字快照应为「喝水提醒」，得到 %q", got)
+		t.Fatalf("名字快照应为“喝水提醒”，得到 %q", got)
 	}
 	if _, ok := back.Today().CustomCounts["cb-water"]; !ok {
 		t.Fatal("按 id 的计数明细应随天记录一起落盘")
@@ -305,7 +305,7 @@ func TestStatsLoadCreatesEmptyFileWhenMissing(t *testing.T) {
 		t.Fatalf("空表应带 _customNames 保留键（与 marshalLocked 同格式），得到 %q", raw)
 	}
 	if n := st.FileNotice(); n != nil {
-		t.Fatalf("首跑自建不是「文件损坏」，不该产生弹窗说明：%+v", n)
+		t.Fatalf("首跑自建不是“文件损坏”，不该产生弹窗说明：%+v", n)
 	}
 	if n := len(st.DaysInRange("", "")); n != 0 {
 		t.Fatalf("新建的空表应为 0 天，得到 %d 天", n)
@@ -390,7 +390,7 @@ func TestStatsLoadKeepsFileWhenUnreadable(t *testing.T) {
 		t.Fatalf("读取失败时不该动用户的路径（err=%v）", err)
 	}
 	if n := st.FileNotice(); n != nil {
-		t.Fatalf("读取失败不是「格式错误」，不该弹窗说明：%+v", n)
+		t.Fatalf("读取失败不是“格式错误”，不该弹窗说明：%+v", n)
 	}
 	if len(st.DaysInRange("", "")) != 0 {
 		t.Fatal("读取失败时应从空表开始用")

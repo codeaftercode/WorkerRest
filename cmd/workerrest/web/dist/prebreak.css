@@ -1,6 +1,6 @@
 /* 提前提示小窗（屏幕右下角）。
  *
- * 底色不再写死：跟随「通用配置 → 提醒窗口 → 背景颜色」，与休息窗口同一个键
+ * 底色不再写死：跟随“通用配置 → 提醒窗口 → 背景颜色”，与休息窗口同一个键
  * （appearance.color）。具体怎么从那个颜色派生底色 / 文字色 / 按钮色，见 prebreak.js
  * 的 applyPalette()。这里的一组默认值只是兜底（蓝色 + 深底浅字），由脚本按配置覆盖。
  *
@@ -54,7 +54,7 @@ html, body {
   font-size: 13px;
   color: var(--text-2);
 }
-/* 只有数字那颗 span（#pb-seconds）放大提色：后缀 #pb-post 与前面的「还有」都是普通小字，
+/* 只有数字那颗 span（#pb-seconds）放大提色：后缀 #pb-post 与前面的“还有”都是普通小字，
    别写成 .countdown span —— 那样后缀也会变成 20px 主色大字（倒计时拆成三段后就踩过） */
 .countdown #pb-seconds {
   color: var(--num);
@@ -105,6 +105,6 @@ html, body {
 .btn:disabled:hover { background: var(--btn-bg); }
 .btn.primary:disabled:hover { background: var(--btn-primary-bg); filter: none; }
 
-/* 自定义提醒的版式没有两行说明、也不提供「暂停计时」：由渲染层加 .hidden
+/* 自定义提醒的版式没有两行说明、也不提供“暂停计时”：由渲染层加 .hidden
    （窗口高度也随之小一档，见 prebreak.go 的 preBreakBounds） */
 .hidden { display: none !important; }

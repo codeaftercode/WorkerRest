@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// 这一组钉的是「后台循环真的在跑」—— 它们是断电 / 睡眠时的兜底，平时看不见，
-// 坏了也只会表现为「数据莫名少一截」，所以必须有自动化证据。
+// 这一组钉的是“后台循环真的在跑”—— 它们是断电 / 睡眠时的兜底，平时看不见，
+// 坏了也只会表现为“数据莫名少一截”，所以必须有自动化证据。
 
 // 周期落盘：脏了就在下一拍写盘；不脏就不写。
 func TestStartAutoFlushTicksAndFlushes(t *testing.T) {
@@ -58,7 +58,7 @@ func TestAutoFlushDoesNotWriteWhenClean(t *testing.T) {
 	}
 }
 
-// 睡眠 / 唤醒：睡眠整段算「离开」，醒来后工作段从零起算。
+// 睡眠 / 唤醒：睡眠整段算“离开”，醒来后工作段从零起算。
 func TestNotifySuspendAndResumeCountAway(t *testing.T) {
 	path := t.TempDir() + "/stats.json"
 	st := NewStatsStore(func() string { return path })
@@ -80,7 +80,7 @@ func TestNotifySuspendAndResumeCountAway(t *testing.T) {
 }
 
 // 工作累加器：1 秒一拍，把 [上一拍, 现在) 记成工作。
-// 用真实时钟跑两拍 —— 这是唯一能证明「计时循环本身没坏」的办法。
+// 用真实时钟跑两拍 —— 这是唯一能证明“计时循环本身没坏”的办法。
 func TestStartWorkAccumulatorCountsWork(t *testing.T) {
 	path := t.TempDir() + "/stats.json"
 	st := NewStatsStore(func() string { return path })

@@ -18,7 +18,7 @@ const cdExpandMax = 64
 // 今天剩余的每一次，供今日时间线展示（固定线/外卖早已展开全天，倒计时此前只列一跳）。
 // 推演口径与调度器逐条对齐：
 //   - 计数推进 = advanceCounter（短 +1、长清零；只有双倒计时才参与长短交替）；
-//   - 锚点 = 上一跳**开始**时刻 + 上一跳的提醒时长（调度器是「休息结束 → replan」，
+//   - 锚点 = 上一跳**开始**时刻 + 上一跳的提醒时长（调度器是“休息结束 → replan”，
 //     replan 时刻 ≈ 开始 + 时长；用落点起算会与真实节奏漂移）；
 //   - 落点 = 锚点 + 下一跳的 intervalMs；
 //   - 交替 = 双倒计时且 ssL >= longEveryNShort 时选长（与 builtinCountdownLine 同口径）。
@@ -78,9 +78,9 @@ func expandBuiltinCountdown(s *settings.Settings, now int64, shortsSinceLong int
 // expandCustomCountdown 自定义提醒倒计时链：anchor = 上一跳 at + 上一跳时长 + 自己的
 // intervalMs，同样剔已消费、今天截断、上限保护。
 //
-// 为什么加时长：调度器是「休息结束 → replan → now + interval」，replan 发生在窗口关闭
-// 那一刻（≈ 开始 + 时长）。只加 interval 会把整条链算早一个「提醒时长」，用户按今日
-// 时间线核对时会发现「写着 10:00，实际 10:05 才提醒」。
+// 为什么加时长：调度器是“休息结束 → replan → now + interval”，replan 发生在窗口关闭
+// 那一刻（≈ 开始 + 时长）。只加 interval 会把整条链算早一个“提醒时长”，用户按今日
+// 时间线核对时会发现“写着 10:00，实际 10:05 才提醒”。
 func expandCustomCountdown(now int64, skip map[string]bool, first model.PlannedBreak, intervalMs, durationMs int64) []model.PlannedBreak {
 	out := []model.PlannedBreak{first}
 	curAt := first.At
@@ -140,7 +140,7 @@ func todayTimeline(s *settings.Settings, now int64, opts TimelineOptions) []mode
 			})
 			from = hit.At + 1
 		}
-		// 被推迟的固定时刻线：上面的循环把「原时刻那一跳」跳过了，但没把「推迟后的时刻」
+		// 被推迟的固定时刻线：上面的循环把“原时刻那一跳”跳过了，但没把“推迟后的时刻”
 		// 补回来——否则推迟后该条会从今日时间线消失。这里把 shifts 里覆盖过的时刻补成
 		// 这一身份下一次实际触发（若该时刻已作为后续 slot 出现则不再重复）。
 		if shift, ok := opts.Shifts[e.ID]; ok && shift > now {

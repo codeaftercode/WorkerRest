@@ -129,13 +129,13 @@ func TestOccurrenceKeyRoundTrip(t *testing.T) {
 	if got := plan.OccurrenceKeyAt(k); got != 1_791_432_000_000 {
 		t.Fatalf("解析回不去：%q -> %d", k, got)
 	}
-	// JS 的 Number('') === 0，所以「没有 #」或后缀为空一律当 0，与 replan 的过期清理口径一致
+	// JS 的 Number('') === 0，所以“没有 #”或后缀为空一律当 0，与 replan 的过期清理口径一致
 	if got := plan.OccurrenceKeyAt("short"); got != 0 {
 		t.Fatalf("没有 # 时应为 0，得到 %d", got)
 	}
 }
 
-// 固定时刻线被推迟后：原时刻那一跳要从时间线剔除，同时要补回「推迟后的时刻」，
+// 固定时刻线被推迟后：原时刻那一跳要从时间线剔除，同时要补回“推迟后的时刻”，
 // 否则推迟后该条会从今日时间线消失（与倒计时线 / 外卖的推迟展示口径一致）。
 func TestTodayTimelineFixedPostpone(t *testing.T) {
 	s := testSettings(t, `{"short":{"enabled":true,"mode":"fixed","slots":[
@@ -158,7 +158,7 @@ func TestTodayTimelineFixedPostpone(t *testing.T) {
 
 // 自定义提醒取消勾选（config.enabled=false）后不应再被排程 / 触发：调度器的所有触发线
 // （倒计时 / 固定时刻 / 状态卡下次 / 今日时间线）都应按 config.enabled 过滤掉它。
-// 对应「自定义提醒取消勾选没有效果，仍会提醒」的回归守卫。
+// 对应“自定义提醒取消勾选没有效果，仍会提醒”的回归守卫。
 func TestDisabledCustomBreakExcluded(t *testing.T) {
 	// 仅一条被禁用的自定义倒计时提醒：不应有任何 next，挂起线也应空
 	cfg := `{"short":{"enabled":false},"long":{"enabled":false},` +
@@ -192,7 +192,7 @@ func TestDisabledCustomBreakExcluded(t *testing.T) {
 	}
 }
 
-// 外卖推迟后：设置页状态卡的「下次外卖提醒」（合并组 st.other）与 fixedNext.takeout、
+// 外卖推迟后：设置页状态卡的“下次外卖提醒”（合并组 st.other）与 fixedNext.takeout、
 // 今日时间线都要反映推迟后的时刻，而不是原定时刻。外卖的推迟不经调度器，stateForRenderer
 // 必须自己把推迟线覆盖进派生视图（与 FixedNext 同一口径）。
 func TestStateForRendererTakeoutPostpone(t *testing.T) {

@@ -11,7 +11,7 @@ import (
 	"workerrest/internal/jsonx"
 )
 
-// 导入本地图片为新的督休专员（设置页「导入立绘」背后那条路）。
+// 导入本地图片为新的督休专员（设置页“导入立绘”背后那条路）。
 //
 // 身份就是专员名，所以这里只做三件事：定一个不重名的名字、按名字建目录、
 // 写 figure 与 meta.json。没有内部 id，也没有 sha1 摘要键。
@@ -24,7 +24,7 @@ import (
 // 顺手缩一张 preview.png；Go 侧不引图像库，缩略图改由渲染层事后生成
 // （没有预览图时 ScanRoles 会让磁贴回退到原图，界面不会开天窗）。
 //
-// name 是默认名（通常是文件名）：重名时自动退让成「X (2)」，因为这条路不能弹窗问用户。
+// name 是默认名（通常是文件名）：重名时自动退让成“X (2)”，因为这条路不能弹窗问用户。
 // 返回**最终落盘的专员名**（= meta.json 的 name，也是后续所有操作的标识）；失败返回空串。
 func CreateRoleDir(rolesRoot, name, src string) string {
 	st, err := os.Stat(src)
@@ -55,7 +55,7 @@ func CreateRoleDir(rolesRoot, name, src string) string {
 		return ""
 	}
 	// 任何一步失败都把刚建的目录整个清掉：没有 meta.json 的目录会被 ScanRoles 跳过
-	// —— 用户在界面上看不见它，它却占着「名字」，下一次导入就变成 "名字 (2)" 了。
+	// —— 用户在界面上看不见它，它却占着“名字”，下一次导入就变成 "名字 (2)" 了。
 	abort := func() { _ = os.RemoveAll(dir) }
 	if err := jsonx.WriteFileAtomic(filepath.Join(dir, "figure"+ext), b); err != nil {
 		abort()

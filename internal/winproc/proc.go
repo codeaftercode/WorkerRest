@@ -1,7 +1,7 @@
-// Package winproc 枚举当前运行的进程名（Toolhelp32），供「打开即暂停」的客户端识别
+// Package winproc 枚举当前运行的进程名（Toolhelp32），供“打开即暂停”的客户端识别
 // （腾讯会议 / Teams / Zoom / Webex）。
 //
-// 非 Windows 平台走 _other 桩，返回空列表 —— 调用方必须能接受「认不出任何进程」。
+// 非 Windows 平台走 _other 桩，返回空列表 —— 调用方必须能接受“认不出任何进程”。
 package winproc
 
 // 系统进程枚举 —— 历史源码/appProcess.ts 的 Go 版。
@@ -15,7 +15,7 @@ package winproc
 //
 // 本文件是平台中立部分：结果类型定义。
 // 平台相关的枚举实现在 proc_windows.go（//go:build windows）；
-// 其它平台返回「不支持」的桩在 proc_other.go（//go:build !windows）。
+// 其它平台返回“不支持”的桩在 proc_other.go（//go:build !windows）。
 
 // AppProcessList 进程枚举结果（字段名与 appProcess.ts 的 AppProcessList 一致）
 type AppProcessList struct {

@@ -14,7 +14,7 @@ import (
 // 下面两条钉子守住这个决定 —— 谁哪天顺手把兼容加回来，测试会先拦住。
 
 // 仓库自带的 supervisors/ 里不许出现旧名：改了名还有人按老习惯放 role.json，
-// 会变成「文件在那儿、软件永远不读」的隐形坑。
+// 会变成“文件在那儿、软件永远不读”的隐形坑。
 func TestRepoSupervisorsUseMetaName(t *testing.T) {
 	root := repoRoot(t)
 	sup := filepath.Join(root, "assets", "supervisors")
@@ -71,7 +71,7 @@ func TestLegacyRoleJSONIsIgnored(t *testing.T) {
 // 仓库自带的 meta.json 里若写了 fixedId，必须指向真实存在的台词 id。
 //
 // 为什么值得钉死：id 会被 role.NormalizeRoleMessages 重编号，fixedId 靠 remapMsgID 跟着搬。
-// 一旦漏搬（或手改时写错号），「固定显示」模式会指向一条不存在的台词 —— 提醒窗口里
+// 一旦漏搬（或手改时写错号），“固定显示”模式会指向一条不存在的台词 —— 提醒窗口里
 // 没有台词，日志也不报错，只能靠肉眼发现。
 func TestRepoSupFixedIDResolves(t *testing.T) {
 	root := repoRoot(t)

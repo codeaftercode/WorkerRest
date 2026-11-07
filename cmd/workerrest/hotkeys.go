@@ -22,7 +22,7 @@ import (
 //
 // 无头 / server 模式不启动：冒烟进程不该真的抢用户的系统热键。
 // 非 Windows 平台：internal/hotkey 的 RegisterHotKey 恒返回 false，startHotkeys 里
-// 探测失败后不启动（走与「读不到热键能力」相同的降级路径）。
+// 探测失败后不启动（走与“读不到热键能力”相同的降级路径）。
 
 const (
 	hkIdPostpone  = 1

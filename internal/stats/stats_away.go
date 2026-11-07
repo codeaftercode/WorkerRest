@@ -47,8 +47,8 @@ func (st *StatsStore) BeginAway(sinceTs int64) int64 {
 
 // OnAwayTick 推进离开时长：把自上次入账以来新过去的时间记进 AwayMs。
 //
-//   - **幂等**：重复调用只入账「还没入过的那一段」；
-//   - **不跨天**：只累计「离开起点所在那天」的部分，跨过本地零点之后的时长一律不再计入
+//   - **幂等**：重复调用只入账“还没入过的那一段”；
+//   - **不跨天**：只累计“离开起点所在那天”的部分，跨过本地零点之后的时长一律不再计入
 //     （直到检测到活动、这段离开结束）。这样周末不关机的离开不会变成几十小时；
 //   - 睡眠期间定时器停摆，所以睡眠那一段是在醒来时（NotifyResume → EndAway）被一次性补记的。
 func (st *StatsStore) OnAwayTick() int64 {
@@ -115,7 +115,7 @@ func (st *StatsStore) AwayInfo() StatsAwayInfo {
 }
 
 // AwayPartOf 一段区间里属于 `day` 那天的毫秒数（冒烟断言用）。
-// 真实的「离开不跨天」过滤就发生在 BeginAway / OnAwayTick 里的 `seg.date != awayDayKey`
+// 真实的“离开不跨天”过滤就发生在 BeginAway / OnAwayTick 里的 `seg.date != awayDayKey`
 // 那一行，这里只是把同一个过滤单独暴露出来，好让断言能在不伪造系统时间的前提下验证它。
 func AwayPartOf(from, to int64, day string) int64 {
 	var ms int64
@@ -144,8 +144,8 @@ func AwayPartOf(from, to int64, day string) int64 {
 //   - 每次计入都**按本地零点切开、各记各天**（见 SplitByDay）。
 // ---------- 连续工作段（久坐指标）----------
 //
-// 「最长连续工作」= 今天最长的一段不间断工作时长。口径：
-//   - 计时 goroutine 判为「这一跳算工作」就延续当前段（起算点是这一跳的 a）；
+// “最长连续工作”= 今天最长的一段不间断工作时长。口径：
+//   - 计时 goroutine 判为“这一跳算工作”就延续当前段（起算点是这一跳的 a）；
 //   - 休息开始 / 空闲 / 睡眠 / 判为离开 / 清空统计 → 段结束；
 //   - 暂停休息（pause）不算打断 —— 人还坐在电脑前，久坐风险照样存在；
 //   - 跨零点按天切开，各天记自己那一段。
@@ -174,7 +174,7 @@ func (st *StatsStore) settleStreakLocked(to int64) {
 			d.MaxStreakMs = seg.ms
 			changed = true
 		}
-		// 最后一段是「到 to 为止的那段」= 进行中：同一天就改写末项（每跳实时涨），
+		// 最后一段是“到 to 为止的那段”= 进行中：同一天就改写末项（每跳实时涨），
 		// 跨到新的一天就在新的一天追加；更早的段是跨零点切出来的定稿段，只在还没记过
 		// 那一天时才追加（否则每跳都会把同一段重复追加一遍）。
 		last := i == len(segs)-1
@@ -283,7 +283,7 @@ func (st *StatsStore) StartWorkAccumulator(isBreak, isIdle func() bool) {
 						st.endStreakAt(now)
 						return
 					}
-					// 空闲（含「大跳时按当时的空闲值归属」这一条）：这一跳不计工作 ——
+					// 空闲（含“大跳时按当时的空闲值归属”这一条）：这一跳不计工作 ——
 					// 那段由离开段负责记进 AwayMs（App 侧的监视会调 BeginAway 搬过去）
 					if isIdle() {
 						st.endStreakAt(now)

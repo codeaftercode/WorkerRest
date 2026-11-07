@@ -40,7 +40,7 @@ func TestAutoUpdateRandWithinWindow(t *testing.T) {
 	}
 }
 
-// TestRunAutoUpdateCheckRecordsDay 真正检查出一份结论才记「今天查过」；
+// TestRunAutoUpdateCheckRecordsDay 真正检查出一份结论才记“今天查过”；
 // 网络失败不记，当天后面还会按规则再排一次。
 func TestRunAutoUpdateCheckRecordsDay(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,9 +83,9 @@ func TestRunAutoUpdateCheckRecordsDay(t *testing.T) {
 	})
 }
 
-// TestAutoUpdateLoopDispatch 把「常驻循环 → 状态机 → 真实检查 → 记录」串起来跑一遍：
+// TestAutoUpdateLoopDispatch 把“常驻循环 → 状态机 → 真实检查 → 记录”串起来跑一遍：
 // 假时钟加速（每次睡眠把虚拟时间往前推），验证首次活动后确实自动联网检查了一次，
-// 并把「今天查过」写在虚拟时钟那天的名下。
+// 并把“今天查过”写在虚拟时钟那天的名下。
 func TestAutoUpdateLoopDispatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -97,7 +97,7 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 	cfg := settings.New(settings.DefaultSettingsMap(), "")
 	cfg.SetSites([]string{srv.URL + "/version.json"})
 	if !cfg.Flag(true, "checkUpdateOnStart") {
-		t.Fatalf("出厂默认应当勾选「自动检查更新」")
+		t.Fatalf("出厂默认应当勾选“自动检查更新”")
 	}
 	idleState := idle.NewIdleState()
 	idleState.ForceIdle(0) // 0ms 空闲 = 用户正在操作
@@ -114,9 +114,9 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 	var stopped atomic.Bool
 	block := make(chan struct{})
 	// parked：循环已经彻底挂住（不再碰配置目录）的信号。
-	// 没有它就只能靠「LastUpdateCheck 非空」判断，而那一步是**先写内存再落盘**——
+	// 没有它就只能靠“LastUpdateCheck 非空”判断，而那一步是**先写内存再落盘**——
 	// 轮询看到值时 Save 可能还在写 settings.json.tmp，接着 t.TempDir 的清理会撞上
-	// 「目录非空」而偶发失败（全量跑时更容易复现）。
+	// “目录非空”而偶发失败（全量跑时更容易复现）。
 	parked := make(chan struct{}, 1)
 	autoUpdateSleep = func(d time.Duration) {
 		// 一旦真正查过一次（或测试收尾），就把循环挂住：虚拟时间不再往前走，
@@ -161,7 +161,7 @@ func TestAutoUpdateLoopDispatch(t *testing.T) {
 }
 
 // driveAutoUpdate 按固定步长把调度状态机跑一段时间，返回每次真正去检查的时刻。
-// 这里刻意用真实的 autoUpdateRand，用「区间断言」验证随机窗口没越界。
+// 这里刻意用真实的 autoUpdateRand，用“区间断言”验证随机窗口没越界。
 func driveAutoUpdate(from, to time.Time, step time.Duration,
 	active, paused func(time.Time) bool) []time.Time {
 	var st update.State
@@ -178,10 +178,10 @@ func driveAutoUpdate(from, to time.Time, step time.Duration,
 }
 
 // TestAutoUpdateTickSimulatedDay 用 1 分钟步长模拟一整天，验证：
-// 非暂停时检查点落在「首次活动后 3 小时内」；到点正在暂停则当天整天作废；
+// 非暂停时检查点落在“首次活动后 3 小时内”；到点正在暂停则当天整天作废；
 // 一整天都没等到非暂停 → 当天不查，第二天照常按自己的首次活动起算。
 //
-// 注意 tol：状态机是「到点后的第一拍才动手」，而这里步长是 1 分钟，所以真正落点最多
+// 注意 tol：状态机是“到点后的第一拍才动手”，而这里步长是 1 分钟，所以真正落点最多
 // 比随机窗末晚一个步长。断言必须带这个容差 —— 否则随机数落在窗末那一分钟内就会偶发
 // 挂（窗口 3h = 180 拍，命中 1/180，跑几十次必现）。
 func TestAutoUpdateTickSimulatedDay(t *testing.T) {
@@ -226,8 +226,8 @@ func TestAutoUpdateTickSimulatedDay(t *testing.T) {
 
 // TestAutoUpdateSkipsDayWhenPausedAtDueTime 到点那一刻正在暂停 → 当天作废：
 // 哪怕几秒后就恢复，也不再补查；第二天照常按自己的首次活动重新排期。
-// 这条钉的是「错过就错过，不差这一天两天」—— 原来的 30 分钟重试链会在暂停期间
-// 每半小时探一次，与「暂停就是别来烦我」相矛盾。
+// 这条钉的是“错过就错过，不差这一天两天”—— 原来的 30 分钟重试链会在暂停期间
+// 每半小时探一次，与“暂停就是别来烦我”相矛盾。
 func TestAutoUpdateSkipsDayWhenPausedAtDueTime(t *testing.T) {
 	base := time.Date(2026, 10, 23, 9, 0, 0, 0, time.Local)
 	const day = "2026-10-23"
@@ -245,7 +245,7 @@ func TestAutoUpdateSkipsDayWhenPausedAtDueTime(t *testing.T) {
 		t.Fatalf("暂停中到点不该检查，得到 %q", act)
 	}
 	if !st.Skipped {
-		t.Fatal("暂停中到点应记下「今天不查了」")
+		t.Fatal("暂停中到点应记下“今天不查了”")
 	}
 	// 恢复之后（暂停已解除）整天推进，一次都不该再查
 	for now := base.Add(time.Hour + time.Minute); now.Before(base.Add(24 * time.Hour)); now = now.Add(time.Minute) {
@@ -258,7 +258,7 @@ func TestAutoUpdateSkipsDayWhenPausedAtDueTime(t *testing.T) {
 	const day2 = "2026-10-24"
 	update.Tick(&st, day2, next, true, false, false, fixedRand(time.Hour))
 	if st.Skipped {
-		t.Fatal("跨天后「今天不查了」应清零")
+		t.Fatal("跨天后“今天不查了”应清零")
 	}
 	if act := update.Tick(&st, day2, next.Add(time.Hour), true, false, false, fixedRand(time.Hour)); act != update.ActCheck {
 		t.Fatalf("第二天应恢复正常检查，得到 %q", act)
@@ -283,13 +283,13 @@ func TestSkipDayStopsRestOfDay(t *testing.T) {
 	}
 }
 
-// TestStartUpdateNotGatedByPause 暂停只拦自动检查，不拦手动「立即更新」：用户亲手点的
-// 按钮照常执行、照常重启。区别在「谁在做决定」—— 自动检查是软件替用户做主，暂停期间
+// TestStartUpdateNotGatedByPause 暂停只拦自动检查，不拦手动“立即更新”：用户亲手点的
+// 按钮照常执行、照常重启。区别在“谁在做决定”—— 自动检查是软件替用户做主，暂停期间
 // 不该越过用户；而点按钮的这一刻用户就在机器前。
 //
 // 读源码断言是因为 `-tags server` 下 StartUpdate 在 serverMode 那句就返回了，单测跑不到
 // 函数体（与 TestPauseNoticePageHasNoRestWording 同一手法）：只要在下载之前出现任何暂停
-// 判据，这条就红 —— 防止有人以「和自动检查保持一致」为由把它加回来。
+// 判据，这条就红 —— 防止有人以“和自动检查保持一致”为由把它加回来。
 func TestStartUpdateNotGatedByPause(t *testing.T) {
 	src, err := os.ReadFile("update_download.go")
 	if err != nil {
@@ -312,7 +312,7 @@ func TestStartUpdateNotGatedByPause(t *testing.T) {
 	}
 }
 
-// TestMain 在整包单测里默认关掉出厂兜底更新源：否则任何「期望失败」的用例都会真的去
+// TestMain 在整包单测里默认关掉出厂兜底更新源：否则任何“期望失败”的用例都会真的去
 // 访问 goodgoodlive.com（15 秒超时，结果还依赖网络）。要验兜底行为的用例自己临时打开。
 func TestMain(m *testing.M) {
 	defaultUpdateSite, defaultPackageURL = "", ""
@@ -346,7 +346,7 @@ func TestWithFallbackSite(t *testing.T) {
 		}
 	}
 
-	// 兜底置空 → 不追加任何东西（全空则返回空链，调用方走「未配置更新源」分支）
+	// 兜底置空 → 不追加任何东西（全空则返回空链，调用方走“未配置更新源”分支）
 	defaultUpdateSite = ""
 	if got := withFallbackSite([]string{"https://a/version.json"}); !reflect.DeepEqual(got, []string{"https://a/version.json"}) {
 		t.Errorf("兜底置空后不该追加：%v", got)
@@ -361,7 +361,7 @@ func TestWithFallbackSite(t *testing.T) {
 }
 
 // TestCheckForUpdateFallsBackToDefaultSite 配置里一条更新源都没有时，仍然能靠出厂兜底源
-// 完成检查 —— 「装完没配 sites 也能更新」是兜底地址存在的意义。
+// 完成检查 —— “装完没配 sites 也能更新”是兜底地址存在的意义。
 func TestCheckForUpdateFallsBackToDefaultSite(t *testing.T) {
 	body := `{"version":"v99.0.0","date":"2026.10.23",` +
 		`"url":["https://x/pkg.zip"],"changes":["x"],` +

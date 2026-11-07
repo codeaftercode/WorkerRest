@@ -35,7 +35,7 @@ func TestSortInfos(t *testing.T) {
 		t.Fatalf("非主屏应按 X 升序，得到 %v", list)
 	}
 	if list[0].Label == "" {
-		t.Fatal("排序后应补齐 Label（EDID 名取不到时退化成「显示器 N」）")
+		t.Fatal("排序后应补齐 Label（EDID 名取不到时退化成“显示器 N”）")
 	}
 }
 
@@ -87,10 +87,10 @@ func TestResolve(t *testing.T) {
 	}
 }
 
-// TestResolveEmptyNeverMeansAll 空配置不能等于「所有屏」。
+// TestResolveEmptyNeverMeansAll 空配置不能等于“所有屏”。
 //
-// 这条钉的是产品诉求：接上投影仪的那一刻，提醒不该因为「投影仪新插进来」就弹上去。
-// 空配置只兜底主屏，多屏必须由用户亲手勾。改成「空 = all」会让这条立刻红。
+// 这条钉的是产品诉求：接上投影仪的那一刻，提醒不该因为“投影仪新插进来”就弹上去。
+// 空配置只兜底主屏，多屏必须由用户亲手勾。改成“空 = all”会让这条立刻红。
 func TestResolveEmptyNeverMeansAll(t *testing.T) {
 	all := []Info{
 		{ID: "p", IsPrimary: true, X: 0, Y: 0},

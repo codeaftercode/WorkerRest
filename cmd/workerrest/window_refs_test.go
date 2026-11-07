@@ -11,13 +11,13 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 窗口引用的几条不变量。这里全是「无窗口也能验」的那部分：
+// 窗口引用的几条不变量。这里全是“无窗口也能验”的那部分：
 // Wails 的窗口事件在无头构建里不存在，但**引用记账**的逻辑是纯 Go，可以直接测。
 
 // dropWindowRef 只删自己那一扇。
 //
-// 这是「野窗」最隐蔽的成因：关窗事件在 Wails 里异步分发（每个监听器一个 goroutine），
-// 「关旧窗 → 立刻建同名新窗」时迟到的旧回调若按名字 delete，抹掉的是新窗的引用 ——
+// 这是“野窗”最隐蔽的成因：关窗事件在 Wails 里异步分发（每个监听器一个 goroutine），
+// “关旧窗 → 立刻建同名新窗”时迟到的旧回调若按名字 delete，抹掉的是新窗的引用 ——
 // 那扇新窗再也关不掉。
 func TestDropWindowRefOnlyRemovesOwnEntry(t *testing.T) {
 	oldWin := new(application.WebviewWindow)
@@ -44,7 +44,7 @@ func TestDropWindowRefOnlyRemovesOwnEntry(t *testing.T) {
 	dropWindowRef(nilMap, "prebreak", oldWin)
 }
 
-// windowsLive 在无头（a.app == nil）下一律 false：宁可重建，也不要「复活」一个
+// windowsLive 在无头（a.app == nil）下一律 false：宁可重建，也不要“复活”一个
 // 已销毁的窗口（Wails 的 Show() 会对已销毁窗口重新 Run，等于原地造出一扇僵尸窗）。
 func TestWindowsLiveHeadlessIsFalse(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
@@ -86,7 +86,7 @@ func TestCloseWindowBreakPathUnified(t *testing.T) {
 }
 
 // 并发弹提前提示窗不许交叉建窗：两路来源（调度器 / 外卖预通知）本来就是两个 goroutine。
-// 无头下不建窗，但「加锁 → 关旧 → 建新」这条临界区必须能并发跑而不打架。
+// 无头下不建窗，但“加锁 → 关旧 → 建新”这条临界区必须能并发跑而不打架。
 func TestShowPreBreakWindowConcurrent(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	var wg sync.WaitGroup
@@ -133,7 +133,7 @@ func TestBreakWindowReuseChecksLiveness(t *testing.T) {
 	t.Fatal("没找到 breakWinReusable 的调用点 —— 测试失效，请更新")
 }
 
-// rectVisibleOnAny 决定「这扇窗还在不在能用眼睛看、用手点的世界里」。
+// rectVisibleOnAny 决定“这扇窗还在不在能用眼睛看、用手点的世界里”。
 // 拔掉外接屏后，原本建在那块屏上的提醒窗坐标落在不存在的区域，必须能被识别出来。
 func TestRectVisibleOnAny(t *testing.T) {
 	primary := &application.Screen{IsPrimary: true, WorkArea: application.Rect{X: 0, Y: 0, Width: 1920, Height: 1040}}
@@ -159,7 +159,7 @@ func TestRectVisibleOnAny(t *testing.T) {
 		}
 	}
 
-	// 只剩主屏时，原本在副屏的窗口必须被判成「看不见」
+	// 只剩主屏时，原本在副屏的窗口必须被判成“看不见”
 	if rectVisibleOnAny(application.Rect{X: -1920, Y: 0, Width: 800, Height: 600}, screens[:1]) {
 		t.Error("副屏拔掉后，留在负坐标的窗口应判为不可见（这正是要纠偏的那类）")
 	}
@@ -169,7 +169,7 @@ func TestRectVisibleOnAny(t *testing.T) {
 	}
 }
 
-// 「提前结束」在调度器已经翻篇（自然到点 / 状态已翻篇）时必须还能兜住残留窗口：
+// “提前结束”在调度器已经翻篇（自然到点 / 状态已翻篇）时必须还能兜住残留窗口：
 // 无头下建不了窗口，至少钉住它不会崩、也不会顺手把外卖会话吃掉。
 func TestSchedEndBreakOutsideBreakDoesNotTouchTakeout(t *testing.T) {
 	a, sched := newPreBreakApp(t, customWaterCfg)

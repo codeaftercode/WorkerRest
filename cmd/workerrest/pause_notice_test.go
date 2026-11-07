@@ -10,10 +10,10 @@ import (
 	"workerrest/internal/scheduler"
 )
 
-// 自动暂停期间的「已暂停多久」提示（见 pause_notice.go）。
+// 自动暂停期间的“已暂停多久”提示（见 pause_notice.go）。
 //
 // 三组用例分别钉住三件事：哪些原因不许弹（投屏 / 全屏或演示 / 请勿打扰）、什么时候弹
-// （满一小时 / 压制解除补一次 / 刚弹过不重复），以及**文案里不许出现「休息」**
+// （满一小时 / 压制解除补一次 / 刚弹过不重复），以及**文案里不许出现“休息”**
 // —— 最后这条是产品要求，不是口味问题：这扇窗可能被旁人看到。
 
 func TestPauseNoticeSuppressedMatrix(t *testing.T) {
@@ -28,7 +28,7 @@ func TestPauseNoticeSuppressedMatrix(t *testing.T) {
 		{"复制模式", map[string]bool{pauseReasonCastMirror: true}, true},
 		{"无线投放", map[string]bool{pauseReasonCastWireless: true}, true},
 		// 这两条不压制：人不在座位上时弹窗没人看；应用占用只说明某个软件在跑，
-		// 屏幕还是私人的，右下角出现一句「已暂停」不会让谁尴尬。
+		// 屏幕还是私人的，右下角出现一句“已暂停”不会让谁尴尬。
 		{"空闲", map[string]bool{scheduler.PauseReasonIdle: true}, false},
 		{"应用占用", map[string]bool{pauseReasonAppPause: true}, false},
 		// 条件已消失（登记为 false）不等于生效
@@ -56,7 +56,7 @@ func TestPauseNoticeDue(t *testing.T) {
 		{"差 1 秒满一小时", pausedAt, 0, pausedAt + hour - 1_000, false},
 		{"整满一小时", pausedAt, 0, pausedAt + hour, true},
 		{"超出一小时", pausedAt, 0, pausedAt + hour + 5_000, true},
-		// 弹过之后从「上次弹出」重新算，不是从暂停开始算 —— 否则第二小时会立刻再弹一次
+		// 弹过之后从“上次弹出”重新算，不是从暂停开始算 —— 否则第二小时会立刻再弹一次
 		{"弹过 10 分钟", pausedAt, pausedAt + hour, pausedAt + hour + 600_000, false},
 		{"距上次弹出满一小时", pausedAt, pausedAt + hour, pausedAt + 2*hour, true},
 		// 时钟被往回拨：宁可不弹，也不要在时间乱跳时连弹
@@ -75,7 +75,7 @@ func TestPauseNoticeDue(t *testing.T) {
 	}
 }
 
-// 一拍一拍地推，覆盖「压制 → 解除 → 再满一小时」的完整时序。
+// 一拍一拍地推，覆盖“压制 → 解除 → 再满一小时”的完整时序。
 func TestPauseNoticeStepTimeline(t *testing.T) {
 	const hour = int64(3600_000)
 	start := int64(10_000_000)
@@ -162,8 +162,8 @@ func TestPauseNoticeStepPlainHourly(t *testing.T) {
 
 // 换了暂停段：不继承上一段的节流与压制标记。
 //
-// 「投屏中暂停 → 用户点恢复 → 一秒后勿扰又挂起」是最容易踩到的形态：上一段残留的
-// Suppressed 会被当成「压制刚解除」，新一段的第一拍就补弹 —— 而用户刚点过恢复。
+// “投屏中暂停 → 用户点恢复 → 一秒后勿扰又挂起”是最容易踩到的形态：上一段残留的
+// Suppressed 会被当成“压制刚解除”，新一段的第一拍就补弹 —— 而用户刚点过恢复。
 func TestPauseNoticeNewSegmentStartsFresh(t *testing.T) {
 	first := int64(80_000_000)
 	show, st := pauseNoticeStep(pauseNoticeState{}, first, first, true)
@@ -180,7 +180,7 @@ func TestPauseNoticeNewSegmentStartsFresh(t *testing.T) {
 	}
 }
 
-// 文案：必须说清「已暂停多久」，且绝不出现与休息有关的字眼。
+// 文案：必须说清“已暂停多久”，且绝不出现与休息有关的字眼。
 func TestPauseNoticeTextWording(t *testing.T) {
 	cases := []struct {
 		ms   int64
@@ -205,7 +205,7 @@ func TestPauseNoticeTextWording(t *testing.T) {
 	}
 }
 
-// 页面源码也钉住：文案由主进程下发，但页面里的静态兜底文字同样可能被改出「休息」。
+// 页面源码也钉住：文案由主进程下发，但页面里的静态兜底文字同样可能被改出“休息”。
 // 这扇窗的对外可见性让它比别的文案更敏感，所以连 html / js / css / 页面标题一起扫。
 func TestPauseNoticePageHasNoRestWording(t *testing.T) {
 	for _, name := range []string{"pause.html", "pause.js", "pause.css"} {
@@ -227,7 +227,7 @@ func TestPauseNoticePageHasNoRestWording(t *testing.T) {
 }
 
 // 窗口名与 URL 的 ?win= 必须一致：CloseWindow / ensureWindowsOnScreen / 退出清理
-// 都按名字找窗口，两处漂移就会出现「关不掉的小窗」。
+// 都按名字找窗口，两处漂移就会出现“关不掉的小窗”。
 func TestPauseNoticeWindowNameMatchesURL(t *testing.T) {
 	u, err := url.Parse(pauseNoticeURL("已暂停 1 小时"))
 	if err != nil {
@@ -272,7 +272,7 @@ func TestPauseNoticeAutoPauseStartsQuiet(t *testing.T) {
 	}
 }
 
-// 「满一小时」这条在真实时间下跑不到，用 pauseNoticeAdvance 直接喂构造好的状态：
+// “满一小时”这条在真实时间下跑不到，用 pauseNoticeAdvance 直接喂构造好的状态：
 // 无头模式下 showPauseNotice 只记日志（不建窗），但弹出时刻必须记账。
 func TestPauseNoticeFiresAfterOneHour(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
@@ -335,7 +335,7 @@ func TestPauseNoticeFiresWhenCastEnds(t *testing.T) {
 	}
 }
 
-// 「只关提示、不恢复」不能顺手把节流清掉 —— 否则连点几下关闭就能把整条提示关掉一天。
+// “只关提示、不恢复”不能顺手把节流清掉 —— 否则连点几下关闭就能把整条提示关掉一天。
 // 这里用无头 App 直接驱动绑定方法，验证它只关窗、不改节流。
 func TestPauseNoticeDismissKeepsThrottle(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)

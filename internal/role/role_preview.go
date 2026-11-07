@@ -14,7 +14,7 @@ import (
 //
 // 历史与取舍：
 //   - 上一版（Electron）用 nativeImage 把立绘缩到 192 宽写 preview.png；
-//   - 迁到 Go 侧时退化成「把原图复制一份当 preview」—— 等于白占一倍磁盘，还会和真正的
+//   - 迁到 Go 侧时退化成“把原图复制一份当 preview”—— 等于白占一倍磁盘，还会和真正的
 //     立绘脱钩（用户手工换图不改 meta，磁贴就还显示旧副本），而磁贴该省的从来不是
 //     磁盘而是**解码内存**：17 张 1024×1536 原图解码要 114 MB，184 高的缩略图只要 4 MB；
 //   - 现在由**渲染层**生成（canvas + WebP 编码器，见 web/dist/role_thumb.js）：
@@ -26,7 +26,7 @@ import (
 // 缩放还得自己挑算法；渲染层是零依赖、零体积，产出还更小。
 //
 // 预览图是**可选优化**：没有 preview.* 时 ScanRoles 会让 thumb 回退到立绘原图，
-// 磁贴照样显示（只是多解码几 MB）。所以这里任何一步失败都只是「少了个优化」，
+// 磁贴照样显示（只是多解码几 MB）。所以这里任何一步失败都只是“少了个优化”，
 // 绝不能让导入 / 换图流程失败。
 
 const (
@@ -97,7 +97,7 @@ func SaveRolePreview(root, name, dataURL string) bool {
 			_ = os.Remove(m)
 		}
 	}
-	// meta.json 里记下真实的预览文件名（没有这一步，RoleAsset 只能靠「同名换扩展名」兜底）
+	// meta.json 里记下真实的预览文件名（没有这一步，RoleAsset 只能靠“同名换扩展名”兜底）
 	cfg.Preview = target
 	if err := WriteRoleFileAt(dir, cfg); err != nil {
 		log.Printf("[role] 回写 meta.json 失败 %s: %v", name, err)

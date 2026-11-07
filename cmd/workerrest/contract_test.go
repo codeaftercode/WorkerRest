@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// 本文件是「前端 ↔ Go 绑定」这条链路的安全网。
+// 本文件是“前端 ↔ Go 绑定”这条链路的安全网。
 //
 // 背景：为了把 上一版的渲染层（HTML/CSS/JS）原样复用，前端调用被改成
 // Wails v3 的**按名字调用** `Call.ByName("workerrest.App.<方法>")`。
@@ -20,7 +20,7 @@ import (
 //
 // 为什么不拿 reflect 的值来比：**`go test` 与 `go build` 下 main 包的 PkgPath 不同**
 // （测试二进制把被测包当库链接 → 返回导入路径 "workerrest"；构建产物 → "main"）。
-// 这个差异让「用测试里的反射值当真理」变成一个假信号，本项目踩过一次：
+// 这个差异让“用测试里的反射值当真理”变成一个假信号，本项目踩过一次：
 // 单元测试一路绿灯，真实二进制却 422 unknown bound method name。
 //
 // 因此这里只钉两件能钉住的事：常量本身是 "main.App."，且类型名部分与 *App 一致。
@@ -45,7 +45,7 @@ func TestContractMethodsExistOnApp(t *testing.T) {
 }
 
 // TestShimMatchesContract shim.js 与契约列表双向一致：
-//   - 契约里列为「已接通」的，shim.js 必须真的 call("<名>")（否则是登记了没接线）；
+//   - 契约里列为“已接通”的，shim.js 必须真的 call("<名>")（否则是登记了没接线）；
 //   - shim.js 里 call("<名>") 的，契约里必须有登记（否则是接线了没登记）。
 //
 // 同时校验前缀字面量一致，避免改了 Go 侧忘了改 JS。

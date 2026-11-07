@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// teeWriter 是「写文件为主 + 抄一份到控制台」的那层：文件写失败要能如实上报
+// teeWriter 是“写文件为主 + 抄一份到控制台”的那层：文件写失败要能如实上报
 // （控制台成功不能掩盖落盘失败），控制台失败则不许影响返回值。
 func TestTeeWriterPrefersFileResult(t *testing.T) {
 	var file, console bytes.Buffer
@@ -78,7 +78,7 @@ func TestAppLoggerLevel(t *testing.T) {
 }
 
 // appLogDirs 的候选顺序：先 exe 旁的 logs/，再用户缓存目录。
-// 顺序错了会让「便携包旁边可写却写进用户目录」这种问题悄悄发生。
+// 顺序错了会让“便携包旁边可写却写进用户目录”这种问题悄悄发生。
 func TestAppLogDirsOrder(t *testing.T) {
 	dirs := appLogDirs()
 	if len(dirs) == 0 {

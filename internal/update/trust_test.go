@@ -31,7 +31,7 @@ func TestSanitizeUpdateURLs(t *testing.T) {
 }
 
 // TestUpdateClientRejectsRedirectDowngrade https 地址 302 到 http 必须被拦。
-// 否则「源是 https」只是假象，实际内容仍可能走明文（或被中间人改写）。
+// 否则“源是 https”只是假象，实际内容仍可能走明文（或被中间人改写）。
 func TestUpdateClientRejectsRedirectDowngrade(t *testing.T) {
 	var target string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -88,7 +88,7 @@ func TestVerifySHA256(t *testing.T) {
 }
 
 // TestUpdateLimitsAreSane 上限本身要合理：比实际产物（约 15 MiB）宽，
-// 但不能宽到「等于没有上限」。改动这些常量时先看这里。
+// 但不能宽到“等于没有上限”。改动这些常量时先看这里。
 func TestUpdateLimitsAreSane(t *testing.T) {
 	if MaxPackageBytes < 32<<20 || MaxPackageBytes > 256<<20 {
 		t.Fatalf("更新包上限 %d 不在合理区间（32~256 MiB）", MaxPackageBytes)

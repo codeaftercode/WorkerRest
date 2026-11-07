@@ -21,7 +21,7 @@ var (
 	}
 )
 
-// startAutoUpdateCheck 实现「自动检查更新」：勾选了才跑；当天已查过则跳过（不重复联网）。
+// startAutoUpdateCheck 实现“自动检查更新”：勾选了才跑；当天已查过则跳过（不重复联网）。
 // 真正的触发时机由 autoUpdateLoop + update.Tick 决定（见那里的规则说明），
 // 失败不打扰用户（结果仍会推给设置页，由它显示）。
 func (a *App) startAutoUpdateCheck() {
@@ -43,7 +43,7 @@ func (a *App) startAutoUpdateCheck() {
 	go a.autoUpdateLoop()
 }
 
-// lastUpdateCheckLocked 持锁读取「上次检查日期」。cfg 的读写必须持 a.mu：
+// lastUpdateCheckLocked 持锁读取“上次检查日期”。cfg 的读写必须持 a.mu：
 // autoUpdateLoop 是后台 goroutine，主线程（设置页、其它 goroutine）会同时访问 cfg，
 // 直接摸 a.cfg.LastUpdateCheck() 会与 persistUpdateResult / runAutoUpdateCheck 的写
 // 竞争（race 检测已实锤），统一走这里。
@@ -57,8 +57,8 @@ func (a *App) lastUpdateCheckLocked() string {
 func (a *App) autoUpdateLoop() {
 	var st update.State
 	for {
-		// 用户中途关掉「自动检查更新」就不再排期（重新打开需重启软件才生效，
-		// 与「开关只在启动时读一次」的既有口径一致）
+		// 用户中途关掉“自动检查更新”就不再排期（重新打开需重启软件才生效，
+		// 与“开关只在启动时读一次”的既有口径一致）
 		// 读 cfg 必须持 a.mu：本循环是后台 goroutine，主线程同时会读写 cfg。
 		a.mu.Lock()
 		enabled := a.cfg.Flag(true, "checkUpdateOnStart")
@@ -74,7 +74,7 @@ func (a *App) autoUpdateLoop() {
 			a.idle != nil && a.idle.IsActive(), a.schedPaused(), done, autoUpdateRand)
 		if action == update.ActCheck {
 			// 到点与真正联网之间隔着最多一个轮询间隔（2 秒），暂停可能恰好在这期间开始。
-			// 再判一次：暂停期间不发任何网络请求 —— 这是「暂停」这个词的承诺。
+			// 再判一次：暂停期间不发任何网络请求 —— 这是“暂停”这个词的承诺。
 			if a.schedPaused() {
 				st.SkipDay()
 				log.Printf("[update] 暂停中，今天的自动检查跳过（等明天的排期）")
@@ -93,19 +93,19 @@ func (a *App) autoUpdateLoop() {
 	}
 }
 
-// schedPaused 当前是否处于「暂停休息」状态（手动暂停 / 定时暂停 / 勿扰 / 全屏 / 投屏 /
+// schedPaused 当前是否处于“暂停休息”状态（手动暂停 / 定时暂停 / 勿扰 / 全屏 / 投屏 /
 // 指定应用占用 / 空闲 自动暂停都算）。
 //
 // 暂停期间**不自动检查更新**：`update.Tick` 到点遇到暂停就当天作废（`SkipDay`），
 // 错过就错过，明天那份排期还在，不差这一天两天。
 //
-// 手动入口一概不拦：用户亲手点的「检查更新」照常联网，点「立即更新」照常执行并重启。
+// 手动入口一概不拦：用户亲手点的“检查更新”照常联网，点“立即更新”照常执行并重启。
 // 暂停约束的是软件自己发起的动作，不是用户当下的决定。
 func (a *App) schedPaused() bool {
 	return a.sched != nil && a.sched.IsPaused()
 }
 
-// runAutoUpdateCheck 真正联网检查一次，并把「今天查过」落库。
+// runAutoUpdateCheck 真正联网检查一次，并把“今天查过”落库。
 func (a *App) runAutoUpdateCheck(today string) {
 	st := a.checkForUpdate()
 	a.publishUpdateStatus(st)

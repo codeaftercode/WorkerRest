@@ -1,6 +1,6 @@
 // 单条日志闸门：把媒体内容、二进制、超长行挡在落盘之前。
 //
-// 为什么放在最外层：日志是「正式包没有控制台时唯一能看到现场」的通道，而任何一处
+// 为什么放在最外层：日志是“正式包没有控制台时唯一能看到现场”的通道，而任何一处
 // 误把立绘 DataURL、音频数据、一整段 base64 或超大字符串打进来，都会一笔写满
 // 2 MiB 的滚动文件 —— 真正的错误反而被冲掉，格式化与写盘的开销也全花在没人会看
 // 的内容上。这一层对**所有**来源生效：本项目的标准 log、Wails 运行时的 slog、
@@ -21,7 +21,7 @@ import (
 // 一条带长路径的错误，又远小于单份文件的 2 MiB —— 一条异常日志撑不爆滚动窗口。
 const logMaxLineBytes = 8 << 10
 
-// isMediaContentMinBytes 只有这么长以上的行才判「媒体内容」。
+// isMediaContentMinBytes 只有这么长以上的行才判“媒体内容”。
 // 短行里出现 "data:image/" 多半只是在描述一个错误，不是真把图片塞了进来。
 const isMediaContentMinBytes = 512
 
@@ -30,7 +30,7 @@ const isMediaContentMinBytes = 512
 const logMediaDetectMinBytes = 1024
 
 // 媒体 / DataURL 的特征串。刻意用带斜杠的前缀而不是裸 "base64"，
-// 免得把「报表数据 base64 解码失败」这种正常错误文案误判成媒体内容。
+// 免得把“报表数据 base64 解码失败”这种正常错误文案误判成媒体内容。
 var logMediaMarkers = [][]byte{
 	[]byte("data:image/"),
 	[]byte("data:audio/"),
@@ -111,7 +111,7 @@ func guardLogLine(line []byte) []byte {
 	return b
 }
 
-// isMediaLogLine 判定一行是不是「不该出现在日志里的媒体 / 二进制内容」。
+// isMediaLogLine 判定一行是不是“不该出现在日志里的媒体 / 二进制内容”。
 func isMediaLogLine(line []byte) bool {
 	if bytes.IndexByte(line, 0) >= 0 {
 		return true // 二进制数据

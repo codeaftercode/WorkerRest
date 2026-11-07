@@ -42,7 +42,7 @@ func TestBreakAccounting(t *testing.T) {
 		t.Fatalf("空结束应返回空串/0，得到 %q/%d", k, n)
 	}
 
-	// 时长为 0（点开就结束）也要记这笔「完成了一次」
+	// 时长为 0（点开就结束）也要记这笔“完成了一次”
 	st.OnBreakStart("long")
 	if k, n := st.OnBreakEnd("", false); k != "long" || n != 0 {
 		t.Fatalf("0 时长结束应报 long/0，得到 %q/%d", k, n)
@@ -63,7 +63,7 @@ func TestBreakAccounting(t *testing.T) {
 		t.Fatalf("自定义提醒不该并进短/长：%+v", d)
 	}
 	if got := st.CustomNames()["cb-water"]; got != "喝水提醒" {
-		t.Fatalf("名字快照应为「喝水提醒」，得到 %q", got)
+		t.Fatalf("名字快照应为“喝水提醒”，得到 %q", got)
 	}
 }
 
@@ -94,7 +94,7 @@ func TestBeginAwayCapsByWorkMs(t *testing.T) {
 
 	st.mu.Lock()
 	st.touchTodayLocked().WorkMs = 5 * 60_000
-	// 工作段起点挪到 10 分钟前，才可能把「已计入的那段」搬走
+	// 工作段起点挪到 10 分钟前，才可能把“已计入的那段”搬走
 	st.workSegStartAt = c.now() - 10*60_000
 	st.mu.Unlock()
 
@@ -112,7 +112,7 @@ func TestBeginAwayCapsByWorkMs(t *testing.T) {
 	}
 }
 
-// TestBeginAwayNotCrossDay 离开不跨天：只搬「离开起点所在那天」的部分
+// TestBeginAwayNotCrossDay 离开不跨天：只搬“离开起点所在那天”的部分
 func TestBeginAwayNotCrossDay(t *testing.T) {
 	c := &statsClock{}
 	c.set(localTime(2026, 10, 9, 0, 3))
@@ -388,7 +388,7 @@ func TestStatsFileForConfig(t *testing.T) {
 	}
 }
 
-// TestStatsChangeNotify 「数据变了」要真的通知出去（统计报表「今天」卡靠它实时刷新）。
+// TestStatsChangeNotify “数据变了”要真的通知出去（统计报表“今天”卡靠它实时刷新）。
 //
 // 三件事一起钉：记一笔就通知；连着记多笔不会被合并丢掉至少一次；Stop 之后不再通知。
 func TestStatsChangeNotify(t *testing.T) {
@@ -436,7 +436,7 @@ func TestStatsChangeNotify(t *testing.T) {
 		t.Fatalf("连续记账没有通知（hits 停在 %d）", n)
 	}
 
-	// 清空也是「变了」
+	// 清空也是“变了”
 	before = waitHits(1, time.Second)
 	time.Sleep(50 * time.Millisecond)
 	st.Clear()

@@ -13,24 +13,24 @@ import (
 // 上一版走 `reg.exe` 子进程是因为它拿不到别的手段；Go 有
 // golang.org/x/sys/windows/registry（已收进 internal/autostart），**直接读写键值**，于是：
 //   · 不启动子进程（限制子进程的安全策略下照样能跑）；
-//   · 没有「reg.exe 输出按 OEM 代码页（GBK）编码」的乱码问题；
+//   · 没有“reg.exe 输出按 OEM 代码页（GBK）编码”的乱码问题；
 //   · 写的是宽字符字符串，含中文与空格的路径天然正确。
 //
 // 涉及的两处键（都在 HKCU，不需要管理员）：
 //
 //	…\CurrentVersion\Run                             ← 启动项本体，值名 = AppUserModelId
-//	…\Explorer\StartupApproved\Run                    ← 「启动已批准」标记
+//	…\Explorer\StartupApproved\Run                    ← “启动已批准”标记
 //
-// 后者是任务管理器「启动」页写的：12 字节，首字节 02=启用 / 03=禁用。**只要这一项
+// 后者是任务管理器“启动”页写的：12 字节，首字节 02=启用 / 03=禁用。**只要这一项
 // 存在且是 03，Run 键里的条目再多也不会开机启动**（用户曾在这里禁用过就会踩）。
 // 所以勾选时直接删掉这一项（不存在的项 = 默认启用），取消时也一并清理，不留孤儿。
 //
-// 返回值统一为「是否成功 + 说明」，由调用方决定要不要打日志，绝不抛错影响主程序。
+// 返回值统一为“是否成功 + 说明”，由调用方决定要不要打日志，绝不抛错影响主程序。
 //
 // 注册表读写本体在 internal/autostart（Windows 实现 + 其它平台 no-op 桩），
-// 这里只保留「App 方法 + 命令行组装 + 目标状态判定」这些依赖 main 包符号的逻辑。
+// 这里只保留“App 方法 + 命令行组装 + 目标状态判定”这些依赖 main 包符号的逻辑。
 
-// autostartFlag 注册 Run 键时带在命令行末尾的参数，启动时据此判断「这次是开机自启动拉起来的」，
+// autostartFlag 注册 Run 键时带在命令行末尾的参数，启动时据此判断“这次是开机自启动拉起来的”，
 // 从而只起托盘、不弹设置窗口。与 上一版的 AUTOSTART_FLAG 同名同义。
 const autostartFlag = "--autostart"
 
@@ -56,9 +56,9 @@ func AutostartTarget() (path string, args []string, ok bool) {
 
 // ApplyAutostart 让注册表里的开机自启动与 `settings.autostart` 一致。
 //
-// 调用点**只有「用户改了开机自启动」这一种**（设置页勾选框、托盘右键勾选、
+// 调用点**只有“用户改了开机自启动”这一种**（设置页勾选框、托盘右键勾选、
 // 恢复默认、导入配置且该项确实变了）。启动路径上完全不碰注册表 —— 每次启动都去读一遍
-// 既是无谓的系统访问，也让「我根本没动它，它怎么变了」变得不可预期。
+// 既是无谓的系统访问，也让“我根本没动它，它怎么变了”变得不可预期。
 func (a *App) ApplyAutostart() {
 	cfg := a.CfgSnapshot()
 	want := cfg.Autostart()
@@ -70,7 +70,7 @@ func (a *App) ApplyAutostart() {
 	cmdline := autostart.BuildRunCommandLine(target, args)
 
 	// 无头（server）模式与冒烟同口径：**绝不碰真实注册表**。Run 键是用户的，
-	// 一次写就把开机自启动指到了构建产物上，而且很难察觉（用户只会觉得「自启动坏了」）。
+	// 一次写就把开机自启动指到了构建产物上，而且很难察觉（用户只会觉得“自启动坏了”）。
 	if serverMode {
 		log.Printf("[autostart] 无头模式不写注册表（wanted=%v cmdline=%s）", want, cmdline)
 		return
@@ -95,8 +95,8 @@ func (a *App) ApplyAutostart() {
 	} else {
 		r = autostart.RemoveRunEntry()
 	}
-	// 写完读回核验：不做这一步就只剩「reg 说成功」这句自述，而注册表里到底有没有、
-	// 「启动已批准」是不是还压着禁用标记，恰恰是用户真正能感知到的部分。
+	// 写完读回核验：不做这一步就只剩“reg 说成功”这句自述，而注册表里到底有没有、
+	// “启动已批准”是不是还压着禁用标记，恰恰是用户真正能感知到的部分。
 	exists := autostart.RunEntryExists()
 	verified := exists == want
 	if want {

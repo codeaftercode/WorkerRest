@@ -3,7 +3,7 @@ package urltls
 import "testing"
 
 // 本包是更新链路的信任边界：放行了不该放行的地址，等于允许把任意 http 源当成
-// 「官方更新」。所以这里不测「正常情况能过」，重点测**该拒的都拒了**。
+// “官方更新”。所以这里不测“正常情况能过”，重点测**该拒的都拒了**。
 
 func TestIsLoopbackHost(t *testing.T) {
 	cases := []struct {

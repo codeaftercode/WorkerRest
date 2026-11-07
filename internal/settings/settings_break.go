@@ -37,9 +37,9 @@ func (s *Settings) IdlePauseMin() int {
 	return int(n)
 }
 
-// 两条独立的「系统状态」自动暂停开关（2026-11-06 三次收敛定稿）。以前只有
+// 两条独立的“系统状态”自动暂停开关（2026-11-06 三次收敛定稿）。以前只有
 // 一个 dndPause 管着勿扰 / 忙碌 / 演示设置，关掉一条就得把三条一起关；现在各管各的：
-//   - DndPause        请勿打扰（Win11 通知中心「请勿打扰」/ Win10 专注助手档位，WNF）
+//   - DndPause        请勿打扰（Win11 通知中心“请勿打扰”/ Win10 专注助手档位，WNF）
 //   - FullScreenPause 全屏或演示（QUNS 2 / 3 / 4，见下方）
 // 出厂全开。presentationPause 已按用户口径删除：微软从未公开 QUNS 2 与 4 谁对应
 // 演示设置的判定顺序，两条独立开关在未文档化的实现细节上分家没有依据。
@@ -50,36 +50,36 @@ func (s *Settings) DndPause() bool { return s.Flag(true, "dndPause") }
 
 // FullScreenPause 全屏应用或 Windows 演示设置生效时暂停（QUNS 2 / 3 / 4）。
 // 2 = 非独占全屏或演示设置已应用，3 = D3D 独占全屏，4 = 演示设置主动屏蔽通知。
-// 缺键兜底取「开」，与 default_settings.json 的 fullscreenPause 同值
-// （2026-10-29 用户把出厂默认定为「开」，见 settings.go 的 AppearanceCfg 注释）。
+// 缺键兜底取“开”，与 default_settings.json 的 fullscreenPause 同值
+// （2026-10-29 用户把出厂默认定为“开”，见 settings.go 的 AppearanceCfg 注释）。
 func (s *Settings) FullScreenPause() bool { return s.Flag(true, "fullscreenPause") }
 
 // 投屏暂停拆成两个独立开关（2026-11-03）：两条判据的误判率差得很远，
-// 合在一个开关里只能「要么全信要么全不信」。
+// 合在一个开关里只能“要么全信要么全不信”。
 //   - 无线投放：几乎不会误判，Miracast 本身就是一种连接协议；
-//   - 复制模式：讲台场景准确，但「笔记本接显示器图省事设成复制」会被误判。
-// 缺键兜底取「开」，与 default_settings.json 同值 —— 与上面两条同一个口径：
+//   - 复制模式：讲台场景准确，但“笔记本接显示器图省事设成复制”会被误判。
+// 缺键兜底取“开”，与 default_settings.json 同值 —— 与上面两条同一个口径：
 // 自动暂停类开关出厂全开，用户觉得碍事再去关。
 
 // CastWirelessPause 检测到无线显示设备（Miracast / 无线显示适配器）时暂停。
 func (s *Settings) CastWirelessPause() bool { return s.Flag(true, "castWirelessPause") }
 
-// CastMirrorPause 检测到投影方式为「复制」（桌面被镜像到另一块屏）时暂停。
-// 「仅外接屏显示」（Win+P 第三项）不算 —— 单条外接路径无法与「盖子合着用外接显示器办公」
+// CastMirrorPause 检测到投影方式为“复制”（桌面被镜像到另一块屏）时暂停。
+// “仅外接屏显示”（Win+P 第三项）不算 —— 单条外接路径无法与“盖子合着用外接显示器办公”
 // 区分开，认了会让后者整天不弹提醒。
 func (s *Settings) CastMirrorPause() bool { return s.Flag(true, "castMirrorPause") }
 
-// TakeoutLeadSec 外卖「提前通知」秒数（0=到点提醒；提前通知只是先弹一个小窗提示，
-// 真正的外卖提醒窗口仍在「原定时刻」弹出，不会因提前通知而提前）
+// TakeoutLeadSec 外卖“提前通知”秒数（0=到点提醒；提前通知只是先弹一个小窗提示，
+// 真正的外卖提醒窗口仍在“原定时刻”弹出，不会因提前通知而提前）
 func (s *Settings) TakeoutLeadSec() int { return clampInt(s.Int(0, "takeout", "leadSec"), 0, 300) }
 
-// TakeoutPostponeMin 外卖「可推迟」分钟数（0=不显示「推迟」按钮）
+// TakeoutPostponeMin 外卖“可推迟”分钟数（0=不显示“推迟”按钮）
 func (s *Settings) TakeoutPostponeMin() int {
 	return clampInt(s.Int(10, "takeout", "postponeMin"), 0, 120)
 }
 
 // TakeoutPauseAction 暂停休息期间外卖到点的处置：
-// remind（照常弹窗）/ postpone（按「可推迟」时长往后推，缺省）/ skip（不弹窗、直接记跳过）。
+// remind（照常弹窗）/ postpone（按“可推迟”时长往后推，缺省）/ skip（不弹窗、直接记跳过）。
 func (s *Settings) TakeoutPauseAction() string {
 	return normPauseAction(s.Str(PauseActionPostpone, "takeout", "pauseAction"))
 }
@@ -183,7 +183,7 @@ func (s *Settings) BreakByID(id string) (model.BreakConfig, bool) {
 	return model.BreakConfig{}, false
 }
 
-// BreakNameByID 按身份取展示名；不认识的身份回落成「休息」
+// BreakNameByID 按身份取展示名；不认识的身份回落成“休息”
 func (s *Settings) BreakNameByID(id string) string {
 	for _, e := range s.BreakEntries() {
 		if e.ID == id {

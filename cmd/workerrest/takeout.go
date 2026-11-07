@@ -10,11 +10,11 @@ import (
 )
 
 // 外卖提醒：按固定时刻弹出（不做倒计时），显示逻辑与休息窗口一致（同一套外观配置、
-// 多屏策略、透明与圆角），区别只在内容。对应 历史源码/main.ts 的「外卖提醒」段 +
+// 多屏策略、透明与圆角），区别只在内容。对应 历史源码/main.ts 的“外卖提醒”段 +
 // 历史源码/windows/takeoutWindow.ts + raise.ts + displays.ts + reminderSync.ts。
 //
-// 与 上一版的两处**有意差异**（见 README「已知差异」）：
-//   ① z-order：上一版 用 moveTop() 在同层（screen-saver）内「谁后抬谁在上」把外卖压到
+// 与 上一版的两处**有意差异**（见 README“已知差异”）：
+//   ① z-order：上一版 用 moveTop() 在同层（screen-saver）内“谁后抬谁在上”把外卖压到
 //      休息窗口之上；Wails v3 没有暴露 z-order 抬升 API，这里降级成 SetAlwaysOnTop(true) +
 //      Focus() 近似（抬升簿记 raiseState 仍保留，供诊断 / 冒烟断言）。
 //   ② 系统级键鼠轮询：上一版有 powerMonitor.getSystemIdleTime() 可降级秒级；Go 侧只有
@@ -28,7 +28,7 @@ const (
 	// takeoutPostponeGraceMs 推迟计划有效期：到点后若一直暂停 / 睡眠，超过此宽限即作废
 	takeoutPostponeGraceMs = 5 * 60_000
 	// takeoutPreNotifyGraceMs 预通知窗过了到点后的收窗宽限：正常路径由真窗弹出时关闭，
-	// 这里只兜「真窗没能弹出」（暂停 / 跳过 / 总开关被关）时的残留
+	// 这里只兜“真窗没能弹出”（暂停 / 跳过 / 总开关被关）时的残留
 	takeoutPreNotifyGraceMs = 60_000
 )
 
@@ -43,7 +43,7 @@ const (
 )
 
 // raiseState 窗口层级簿记。休息窗口与外卖窗口都要求置顶（Windows 上是 topmost 层级）。
-// 记录抬升顺序与「休息窗口是否在场」，给诊断与冒烟自检一个可断言的状态。
+// 记录抬升顺序与“休息窗口是否在场”，给诊断与冒烟自检一个可断言的状态。
 type raiseState struct {
 	mu      sync.Mutex
 	last    raiseKind
@@ -90,18 +90,18 @@ func (r *raiseState) anyBreakActive() bool {
 // ---------- 会话构建 ----------
 
 // buildTakeoutInfo 组装一次外卖会话（对应 takeoutWindow.ts 的 showTakeoutWindows 里
-// 那个 TakeoutSessionInfo）。会话与「弹窗」分开：渲染层随后会自己再拉一次 TakeoutCurrent。
+// 那个 TakeoutSessionInfo）。会话与“弹窗”分开：渲染层随后会自己再拉一次 TakeoutCurrent。
 func (a *App) buildTakeoutInfo(slot model.TimeSlot, preview bool, postponedCount int, atOverride int64) *model.TakeoutInfo {
 	cfg := a.CfgSnapshot()
 	now := time.Now()
 	// atOverride = 这次提醒真正归属的 occurrence（提前通知跨午夜时是次日那一格、
-	// 推迟线是推迟后的到点时刻）；不传则按「当天该时刻」—— 与历史口径一致。
+	// 推迟线是推迟后的到点时刻）；不传则按“当天该时刻”—— 与历史口径一致。
 	atMs := atOverride
 	if atMs <= 0 {
 		atMs = plan.SlotAlertAt(slot, 0, now.UnixMilli())
 	}
 	// 外卖优惠券二维码：指向固定的领取页，不带任何本机标识 —— 每台机器生成的都是同一个
-	// 地址，扫码领券与「这台电脑是谁」无关。只要显示外卖提醒窗口就必须展示优惠券，因此
+	// 地址，扫码领券与“这台电脑是谁”无关。只要显示外卖提醒窗口就必须展示优惠券，因此
 	// 这里无条件带上地址（不再有开关）。
 	// t = 毫秒时间戳：每次弹窗都重新生成地址，供服务端做时效判断 / 缓存刷新。
 	redData := &model.TakeoutRedPacket{URL: "https://www.goodgoodlive.com/cps/index.html?t=" +
@@ -121,8 +121,8 @@ func (a *App) buildTakeoutInfo(slot model.TimeSlot, preview bool, postponedCount
 		Appearance:     cfg.AppearanceView(),
 		RedPacketData:  redData,
 	}
-	// 外卖提醒自己的提醒内容：每次弹窗选 1 条；一条启用的都没有时用提醒名「外卖提醒」
-	// 兜底（窗口里「本该显示提醒内容的位置」不空着）。pickMessage 返回的切片第 0 条即内容。
+	// 外卖提醒自己的提醒内容：每次弹窗选 1 条；一条启用的都没有时用提醒名“外卖提醒”
+	// 兜底（窗口里“本该显示提醒内容的位置”不空着）。pickMessage 返回的切片第 0 条即内容。
 	if msgs := a.pickMessage("takeout", plan.TAKEOUT_NAME); len(msgs) > 0 {
 		info.Message = msgs[0]
 	}

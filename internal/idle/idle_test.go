@@ -9,7 +9,7 @@ import (
 // 随 IdleState 一起下沉 —— 它们测的是 IdleState 的内部语义（私有字段 / 假时钟注入），
 // 只有放在包内才能直接构造。监视链路（App 如何用 IdleState）仍留在 main 包。
 
-// probeClock 假时钟 + 假 tick 源：GetLastInputInfo 返回的是「变化与否」，
+// probeClock 假时钟 + 假 tick 源：GetLastInputInfo 返回的是“变化与否”，
 // 这里用一个显式可改的整数完全等价地模拟它。
 type probeClock struct {
 	nowMs   int64
@@ -85,7 +85,7 @@ func TestIdleStateSamplingSemantics(t *testing.T) {
 	// 采样时 tick 没变 → 不算活动
 	s.Sample()
 	if s.IsActive() {
-		t.Fatal("tick 没变不该算「有输入」")
+		t.Fatal("tick 没变不该算“有输入”")
 	}
 	if got := s.IdleSinceMs(); got != 300_000 {
 		t.Fatalf("tick 没变时 L 应继续增长，得到 %d", got)
@@ -102,7 +102,7 @@ func TestIdleStateSamplingSemantics(t *testing.T) {
 		t.Fatalf("起点应更新为本次采样时刻，得到 %d", got)
 	}
 
-	// 去抖：必须连续 3 次采样都有输入才算「人真的回来了」
+	// 去抖：必须连续 3 次采样都有输入才算“人真的回来了”
 	p.nowMs += 1_000
 	p.tick = 300
 	s.Sample()
@@ -146,7 +146,7 @@ func TestIdleStateResetBaselineAndForce(t *testing.T) {
 		t.Fatalf("重置后起点应是现在，得到 %d", got)
 	}
 	if s.IsActive() {
-		t.Fatal("重置会清掉去抖计数，此刻不该算「已恢复活动」")
+		t.Fatal("重置会清掉去抖计数，此刻不该算“已恢复活动”")
 	}
 
 	// 强制值（冒烟 / 单测专用）
@@ -162,7 +162,7 @@ func TestIdleStateResetBaselineAndForce(t *testing.T) {
 	}
 	s.ForceIdle(-1) // 解除
 	if got := s.IdleSinceMs(); got != 0 {
-		t.Fatalf("解除强制后应回到「刚重置过」的状态，得到 %d", got)
+		t.Fatalf("解除强制后应回到“刚重置过”的状态，得到 %d", got)
 	}
 }
 
@@ -180,11 +180,11 @@ func TestDecideIdleStep(t *testing.T) {
 		{"休息窗口显示期间一律不判", "break", false, 9_999_999, thr, false, true, IdleStepNone},
 		{"休息期间即使已在离开态也不判", "break", true, 9_999_999, thr, false, true, IdleStepNone},
 		{"手动/勿扰/应用占用时不判离开", "idle", false, 9_999_999, thr, true, false, IdleStepNone},
-		{"但忙时仍要继续检测「回来了」", "idle", true, 0, thr, true, true, IdleStepBack},
+		{"但忙时仍要继续检测“回来了”", "idle", true, 0, thr, true, true, IdleStepBack},
 		{"够阈值 → 判离开", "idle", false, thr, thr, false, false, IdleStepAway},
 		{"差一毫秒不判", "idle", false, thr - 1, thr, false, false, IdleStepNone},
 		{"已在离开态且仍空闲 → 不重复动作", "idle", true, 9_999_999, thr, false, false, IdleStepNone},
-		{"空闲回落但人还没「真的回来」→ 不判", "idle", true, 1_000, thr, false, false, IdleStepNone},
+		{"空闲回落但人还没“真的回来”→ 不判", "idle", true, 1_000, thr, false, false, IdleStepNone},
 		{"空闲回落且去抖达标 → 判回来", "idle", true, 1_000, thr, false, true, IdleStepBack},
 		{"有活动但没判过离开 → 不动作", "idle", false, 0, thr, false, true, IdleStepNone},
 	}

@@ -30,10 +30,10 @@ func (s *Scheduler) advanceCounter(id string) {
 // 进度跨 replan 保留），间隔已改的立刻按新间隔重新起算（见 breakplan.go 的
 // countdownAnchor）。调用方必须已持有 s.mu。
 //
-// 暂停期间「时间冻结」：判锚点过期必须用 PausedAt 而不是真实墙钟。否则暂停中任何一次
+// 暂停期间“时间冻结”：判锚点过期必须用 PausedAt 而不是真实墙钟。否则暂停中任何一次
 // replan（保存设置 / 暂停期间结束一次自定义提醒）都会把冻结锚点当成过期、按
 // now+interval 重新起算；恢复时 resume 又整体平移 delta，等于把整段暂停算了两遍
-// （用户看到「还剩 50 分钟」，而配置是 20 分钟）。
+// （用户看到“还剩 50 分钟”，而配置是 20 分钟）。
 func (s *Scheduler) prevCountdownAnchorsLocked(now int64) map[string]plan.CdAnchor {
 	ref := now
 	frozen := false
@@ -96,8 +96,8 @@ func (s *Scheduler) replan() {
 	if len(pool) == 0 {
 		// 全部关闭、或固定模式下一刻都没配：不再安排任何休息。
 		//
-		// 类型/名字也要一起清空：留着上一轮的 NextType 会让「下次提醒是什么」与
-		// 「还有多久」自相矛盾（NextAt=0 却被问「下次是哪条」）。设置页的「推迟休息」
+		// 类型/名字也要一起清空：留着上一轮的 NextType 会让“下次提醒是什么”与
+		// “还有多久”自相矛盾（NextAt=0 却被问“下次是哪条”）。设置页的“推迟休息”
 		// 按钮就靠 nextType 判断显示，残留值会让一个没有下次提醒的状态也长出这个按钮。
 		st.NextType = ""
 		st.NextName = ""
@@ -113,7 +113,7 @@ func (s *Scheduler) replan() {
 	st.NextSource = &src
 }
 
-// refreshDerivedLocked 刷新状态卡用的派生视图（分组最近一条 + 各固定线「下次」时刻表）。
+// refreshDerivedLocked 刷新状态卡用的派生视图（分组最近一条 + 各固定线“下次”时刻表）。
 // 调用方必须已持有 s.mu。倒计时锚点从当前挂起线收集：replan 里是新池（锚点已保留），
 // startBreak 消费后是旧线（刚消费那条已到期不会混入，其余身份的进度同样不被清掉）。
 func (s *Scheduler) refreshDerivedLocked(cfg *settings.Settings, now int64) {
@@ -139,7 +139,7 @@ func (s *Scheduler) scheduleNext() {
 	s.state.Phase = "idle"
 	s.mu.Unlock()
 	s.replan()
-	// 原来就在「即将休息」、新计划又仍落在提前区间（设置保存触发的重排最常见）：
+	// 原来就在“即将休息”、新计划又仍落在提前区间（设置保存触发的重排最常见）：
 	// 把 phase 拉回来。否则窗口会被 syncPreBreakWindow 关掉、下一个 500ms tick 再弹一遍，
 	// 用户看到右下角窗口闪一下。
 	// 新计划被推远 / 被禁用 / 换成了另一条提醒时判据不成立（或窗口内容会对不上），
@@ -157,8 +157,8 @@ func (s *Scheduler) scheduleNext() {
 		}
 		s.mu.Unlock()
 	}
-	// 刚从「即将休息」阶段被重排（例如用户在设置页取消勾选了正在倒计时提醒的那条），
-	// 关闭残留的提前提示窗 —— 否则它会继续显示已失效提醒的倒计时，用户感知为「仍会提醒」。
+	// 刚从“即将休息”阶段被重排（例如用户在设置页取消勾选了正在倒计时提醒的那条），
+	// 关闭残留的提前提示窗 —— 否则它会继续显示已失效提醒的倒计时，用户感知为“仍会提醒”。
 	// 新计划若仍在提前区间内，判据成立，窗口不会被收掉。
 	s.syncPreBreakWindow()
 	s.emitState()
@@ -196,19 +196,19 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	st.BreakEndsAt = now + bcfg.DurationMs
 	// 暂停态下主动发起的休息：不参与暂停的时间冻结（见 pauseFreezesClockLocked）
 	st.BreakWhilePaused = st.Paused
-	// 这次安排已消费：无论到点触发还是「立即休息」，replan 都不再排它
+	// 这次安排已消费：无论到点触发还是“立即休息”，replan 都不再排它
 	if at > 0 {
 		s.consumed[plan.OccurrenceKey(kind, at)] = true
 	}
-	// 派生视图立即跟上：刚消费掉的那条不再出现在分组倒计时与卡片摘要的「下次」里
+	// 派生视图立即跟上：刚消费掉的那条不再出现在分组倒计时与卡片摘要的“下次”里
 	s.refreshDerivedLocked(cfg, now)
 	s.mu.Unlock()
 
 	log.Printf("[scheduler] 开始休息 %s（%d ms，%s）", kind, bcfg.DurationMs, bcfg.Mode)
-	// 休息窗口与设置页立即反映「休息中」
+	// 休息窗口与设置页立即反映“休息中”
 	id := s.host.ShowBreakSession(kind, false, "")
 	// phase 已翻到 break：提前提示窗在此刻起不该在场（App 侧建会话时已收，这里兜一道，
-	// 保证「窗口只在 phase=pre 存在」这条不变量对所有宿主成立）
+	// 保证“窗口只在 phase=pre 存在”这条不变量对所有宿主成立）
 	s.syncPreBreakWindow()
 	s.emitState()
 	return id
@@ -222,7 +222,7 @@ func (s *Scheduler) finishBreak() {
 	s.advanceCounter(kind)
 	s.mu.Unlock()
 
-	// break-end 的副作用：关休息窗口、空闲基准清零（空闲计时属下一步的「系统能力」）
+	// break-end 的副作用：关休息窗口、空闲基准清零（空闲计时属下一步的“系统能力”）
 	log.Printf("[scheduler] 结束休息 %s", kind)
 	s.host.CloseBreakWindows()
 	s.scheduleNext()
@@ -287,7 +287,7 @@ func (s *Scheduler) StateForRenderer() model.SchedulerState {
 			st.FixedNext = map[string]int64{}
 		}
 		st.FixedNext["takeout"] = pp.DueAt
-		// 合并组「下次外卖 / 自定义提醒」若当前就是外卖那条，推迟后的时刻也要跟着走
+		// 合并组“下次外卖 / 自定义提醒”若当前就是外卖那条，推迟后的时刻也要跟着走
 		// （与 FixedNext 同一口径；外卖的推迟 / 跳过不经调度器，不覆盖的话状态卡还显示旧时刻）
 		if st.Other != nil && st.Other.Name == plan.TAKEOUT_NAME {
 			st.Other = &model.PlanRef{Name: plan.TAKEOUT_NAME, At: pp.DueAt}
@@ -327,14 +327,14 @@ func (s *Scheduler) CurrentPhase() string {
 	return s.state.Phase
 }
 
-// isPaused 是否处于暂停态（外卖 watcher 用它跳过「暂停期间不弹」）
+// isPaused 是否处于暂停态（外卖 watcher 用它跳过“暂停期间不弹”）
 func (s *Scheduler) IsPaused() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.state.Paused
 }
 
-// hasPauseReason 当前是否挂着某条暂停原因（手动恢复要区分「自动暂停」与「手动暂停」：
+// hasPauseReason 当前是否挂着某条暂停原因（手动恢复要区分“自动暂停”与“手动暂停”：
 // 自动暂停的恢复走临时忽略，手动暂停的恢复走常规 toggle）
 func (s *Scheduler) HasPauseReason(reason string) bool {
 	s.mu.Lock()
@@ -342,7 +342,7 @@ func (s *Scheduler) HasPauseReason(reason string) bool {
 	return containsStr(s.state.PauseReasons, reason)
 }
 
-// pausedForBusyReason 正因「用户仍在用电脑」而暂停（手动 / 勿扰 / 指定应用占用）。
+// pausedForBusyReason 正因“用户仍在用电脑”而暂停（手动 / 勿扰 / 指定应用占用）。
 //
 // 这几种状态下不做空闲离开判定：开会、看视频、跑全屏应用时用户当然不动键鼠，
 // 那段时间照算在工作。只有 idle 自己这一条会参与空闲判定（否则离开态永远解不开）。

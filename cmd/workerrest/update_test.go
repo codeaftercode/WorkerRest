@@ -74,9 +74,9 @@ func TestFetchVersionJSONFallback(t *testing.T) {
 	}
 }
 
-// TestVersionInfoParsesPackagedManifest 钉住「打包脚本产出的清单」与 Go 侧结构的
+// TestVersionInfoParsesPackagedManifest 钉住“打包脚本产出的清单”与 Go 侧结构的
 // 字段口径一致（键名见 scripts/make_portable.py 的 write_version_json）。
-// 任何一边改名都会让线上更新瞬间失效，所以这层契约必须有测试，而不是靠「记得同步」。
+// 任何一边改名都会让线上更新瞬间失效，所以这层契约必须有测试，而不是靠“记得同步”。
 func TestVersionInfoParsesPackagedManifest(t *testing.T) {
 	doc := `{
 	  "version": "v0.9.4",
@@ -151,7 +151,7 @@ func TestCheckForUpdateURLArray(t *testing.T) {
 }
 
 // TestCheckForUpdateRejectsUntrustedManifest 清单缺 sha256 / 只给 http 源时，
-// 必须报 error 并说明原因，而不是对外宣称「有更新」再让人点进去失败。
+// 必须报 error 并说明原因，而不是对外宣称“有更新”再让人点进去失败。
 func TestCheckForUpdateRejectsUntrustedManifest(t *testing.T) {
 	const sum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 	cases := []struct {
@@ -242,7 +242,7 @@ func TestMergeConfigAdditive(t *testing.T) {
 	}
 }
 
-// TestUpdateResultPersistence 验证「发现新版本但未更新」的状态能持久化、能在重启后
+// TestUpdateResultPersistence 验证“发现新版本但未更新”的状态能持久化、能在重启后
 // 恢复、并在更新成功后清除；同时验证版本已失效（不比当前新）时恢复会被清理。
 func TestUpdateResultPersistence(t *testing.T) {
 	tmp := filepath.Join(t.TempDir(), "settings.json")
@@ -251,7 +251,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 	cfg := settings.New(settings.DefaultSettingsMap(), "")
 	a := &App{cfg: cfg, mu: sync.Mutex{}}
 
-	// 1) 发布/持久化一次「有更新」结果
+	// 1) 发布/持久化一次“有更新”结果
 	st := updateCheckResult{Status: "update-available", Current: appVersion, Latest: "9999.0.0", URLs: []string{"http://x/pkg.zip"}, Changes: []string{"新功能"}}
 	a.publishUpdateStatus(st)
 
@@ -275,7 +275,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 		t.Fatalf("落盘缺少 lastUpdateResult：%v", onDisk)
 	}
 
-	// 3) 模拟「重启」：从同一份配置重新加载并恢复
+	// 3) 模拟“重启”：从同一份配置重新加载并恢复
 	var reloaded map[string]any
 	if err := json.Unmarshal(data, &reloaded); err != nil {
 		t.Fatal(err)
@@ -284,7 +284,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 	a2 := &App{cfg: cfg2, mu: sync.Mutex{}}
 	a2.restoreUpdateStatus()
 	if a2.updateStatus == nil || a2.updateStatus["status"] != "update-available" {
-		t.Fatalf("重启后未恢复「有更新」：%v", a2.updateStatus)
+		t.Fatalf("重启后未恢复“有更新”：%v", a2.updateStatus)
 	}
 
 	// 4) 更新成功后清除
@@ -296,7 +296,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 		t.Fatalf("清除后内存态未清空：%v", a2.updateStatus)
 	}
 
-	// 5) 失效版本（不比当前新）在恢复时应被清理，避免长期残留「有更新」
+	// 5) 失效版本（不比当前新）在恢复时应被清理，避免长期残留“有更新”
 	cfg3 := settings.New(settings.DefaultSettingsMap(), "")
 	a3 := &App{cfg: cfg3, mu: sync.Mutex{}}
 	a3.persistUpdateResult(map[string]any{"status": "update-available", "current": appVersion, "latest": appVersion})
@@ -310,7 +310,7 @@ func TestUpdateResultPersistence(t *testing.T) {
 }
 
 // TestPendingUpdateReturnsSettingsState 验证自更新重启后，PendingUpdate 会把
-// 「更新前设置窗口可见 / 所在 tab」回传给前端，供其恢复页面。
+// “更新前设置窗口可见 / 所在 tab”回传给前端，供其恢复页面。
 func TestPendingUpdateReturnsSettingsState(t *testing.T) {
 	dir := t.TempDir()
 	pendingPath := filepath.Join(dir, "pending.json")
@@ -448,7 +448,7 @@ func TestDownloadPackageFallback(t *testing.T) {
 		t.Fatalf("完整 .zip 地址应直接下载: %v", err)
 	}
 
-	// 哈希不符 → 必须报错，且不留下「看起来能用」的包
+	// 哈希不符 → 必须报错，且不留下“看起来能用”的包
 	badSum := fmt.Sprintf("%x", sha256.Sum256([]byte("another-bytes")))
 	if err := downloadPackage([]string{srvOK.URL}, dest, badSum); err == nil {
 		t.Fatalf("哈希不符时应报错")

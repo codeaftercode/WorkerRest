@@ -21,7 +21,7 @@ import (
 // 窗口创建 / 多屏 / 键鼠轮询依赖原生窗口，由无头冒烟 + GUI 探针覆盖。
 
 // newTakeoutApp 造一个能跑会话构建与触发逻辑的最小 App（不碰窗口与 Wails）。
-// rolesRoot 指向空目录 → buildSupervisorSession 返回 nil（无督休专员），正好测「无督休专员」路径。
+// rolesRoot 指向空目录 → buildSupervisorSession 返回 nil（无督休专员），正好测“无督休专员”路径。
 func newTakeoutApp(t *testing.T, cfgJSON string) *App {
 	t.Helper()
 	t.Setenv("WR_STATS_PATH", filepath.Join(t.TempDir(), "stats.json"))
@@ -89,7 +89,7 @@ func TestBuildTakeoutInfo(t *testing.T) {
 	}
 }
 
-// 「可推迟」为 0：会话快照 PostponeMin=0（渲染层据此隐藏「推迟」按钮）
+// “可推迟”为 0：会话快照 PostponeMin=0（渲染层据此隐藏“推迟”按钮）
 func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]}}`
 	a := newTakeoutApp(t, cfg)
@@ -107,7 +107,7 @@ func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
 	}
 }
 
-// TakeoutPostponeMin 的下放开到 0：0 = 不显示「推迟」按钮；负值夹到 0、越界夹到 120
+// TakeoutPostponeMin 的下放开到 0：0 = 不显示“推迟”按钮；负值夹到 0、越界夹到 120
 func TestTakeoutPostponeMinClamp(t *testing.T) {
 	cases := []struct {
 		js   string
@@ -158,7 +158,7 @@ func TestBuildTakeoutInfoRedPacketAlwaysShown(t *testing.T) {
 
 func TestBuildTakeoutInfoSupervisorClearsCommand(t *testing.T) {
 	// 有督休专员时 supervisor 的 command 必须清空（外卖窗口第二段不换台词）
-	// 这里只验证「nil 时不炸」——有督休专员的路径由 GUI/对拍覆盖（需要真实立绘 data URL）
+	// 这里只验证“nil 时不炸”——有督休专员的路径由 GUI/对拍覆盖（需要真实立绘 data URL）
 	a := newTakeoutApp(t, takeoutCfg)
 	info := a.buildTakeoutInfo(model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
 	if info.Supervisor != nil {
@@ -168,7 +168,7 @@ func TestBuildTakeoutInfoSupervisorClearsCommand(t *testing.T) {
 
 // ---------- 触发 / 推迟 ----------
 
-// 固定时刻线：把 slot 设成「现在这一刻」就应立即触发
+// 固定时刻线：把 slot 设成“现在这一刻”就应立即触发
 func TestCheckTakeoutFiresOnDueSlot(t *testing.T) {
 	now := time.Now()
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":15,"slots":[` +
@@ -200,7 +200,7 @@ func TestCheckTakeoutPostponeLine(t *testing.T) {
 	a := newTakeoutApp(t, takeoutCfg)
 	a.sched = nil
 	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	// 直接注入一笔「已到点」的推迟计划
+	// 直接注入一笔“已到点”的推迟计划
 	a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: nowMs() - 1, Count: 2}
 	a.checkTakeoutReminders()
 	if a.takeoutCurrent == nil {
@@ -304,7 +304,7 @@ func TestCheckTakeoutPostponePreNotify(t *testing.T) {
 	a := newTakeoutApp(t, cfg)
 	a.sched = nil
 	slot := model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Repeat: "daily", Enabled: true}
-	// 推迟到 30 秒后（仍在 60 秒提前窗内）：此刻应弹「推迟后的提前通知」
+	// 推迟到 30 秒后（仍在 60 秒提前窗内）：此刻应弹“推迟后的提前通知”
 	due := nowMs() + 30*1000
 	a.takeoutPostponed = &model.TakeoutPostponed{Slot: slot, DueAt: due, Count: 1}
 	a.checkTakeoutReminders()
@@ -328,7 +328,7 @@ func TestCheckTakeoutPostponePreNotify(t *testing.T) {
 }
 
 // 外卖推迟后的提前通知已弹过（PreFired），到点（DueAt）应弹真窗并清掉推迟线；
-// 且用户若「立即提醒」/「跳过」也应清掉推迟线，避免到点重复弹。
+// 且用户若“立即提醒”/“跳过”也应清掉推迟线，避免到点重复弹。
 func TestCheckTakeoutPostponePreNotifyThenFire(t *testing.T) {
 	const cfg = `{"takeout":{"enabled":true,"leadSec":60,"postponeMin":15,"slots":` +
 		`[{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
@@ -406,13 +406,13 @@ func TestRaiseStateBookkeeping(t *testing.T) {
 
 // ---------- 提前通知（复用休息提前提示窗）----------
 
-// futureSlot 造一个「原定时刻在现在之后约 2 小时」的外卖条目，避免测试跑在槽位已过的时刻
+// futureSlot 造一个“原定时刻在现在之后约 2 小时”的外卖条目，避免测试跑在槽位已过的时刻
 // （真实预通知只会在原定时刻之前弹出，preTargetAt 一定是未来时刻，这里复刻该前提）。
 //
 // ⚠️ TimeSlot 只存 hour/minute，plan.SlotAlertAt 一律按**当天**解释：20:00 之后再 +2h 会跨到
-// 明天，时分落回 0 点附近，按今天算就成了「已经过去 22 小时」的时刻 —— 于是剩余被钳成 0、
-// 今日时间线也不展开，测试在晚上必红（2026-10-25 22:05 踩到）。跨天时改取「现在 → 今天
-// 23:59」的中点，保证时分仍属今天且在未来。
+// 明天，时分落回 0 点附近，按今天算就成了“已经过去 22 小时”的时刻 —— 于是剩余被钳成 0、
+// 今日时间线也不展开，测试在晚上必红（2026-10-25 22:05 踩到）。跨天时改取“现在 → 今天
+// 23:59”的中点，保证时分仍属今天且在未来。
 func futureSlot() model.TimeSlot {
 	now := time.Now()
 	ft := now.Add(2 * time.Hour)
@@ -424,7 +424,7 @@ func futureSlot() model.TimeSlot {
 }
 
 // 外卖预通知：showTakeoutPreNotify 把内容标记为 owner=takeout，PreBreakState 据此返回
-// 指向「原定时刻」的倒计时（不是提前量）；倒计时归零（原定时刻到）由 checkTakeoutReminders
+// 指向“原定时刻”的倒计时（不是提前量）；倒计时归零（原定时刻到）由 checkTakeoutReminders
 // 的真窗分支接管，预通知窗也会被关掉。
 func TestTakeoutPreNotifyState(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":300,"postponeMin":15,"slots":[` +
@@ -447,7 +447,7 @@ func TestTakeoutPreNotifyState(t *testing.T) {
 	remain, _ := st["remainMs"].(int64)
 	want := at - nowMs()
 	if want < 0 {
-		// 23:59 之后无法构造「今天、且在未来」的时刻（TimeSlot 只有时分）：剩余按 0 说
+		// 23:59 之后无法构造“今天、且在未来”的时刻（TimeSlot 只有时分）：剩余按 0 说
 		want = 0
 	}
 	if remain < want-2000 || remain > want+2000 {
@@ -455,7 +455,7 @@ func TestTakeoutPreNotifyState(t *testing.T) {
 	}
 }
 
-// 外卖预通知「立即提醒」：提前弹真窗并消费该次 occurrence（原定时刻不再重复弹）
+// 外卖预通知“立即提醒”：提前弹真窗并消费该次 occurrence（原定时刻不再重复弹）
 func TestTakeoutPreNotifyBreakNow(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":300,"postponeMin":15,"slots":[` +
 		`{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
@@ -475,7 +475,7 @@ func TestTakeoutPreNotifyBreakNow(t *testing.T) {
 	}
 }
 
-// 外卖预通知「跳过提醒」：消费该次 occurrence，真窗不再弹
+// 外卖预通知“跳过提醒”：消费该次 occurrence，真窗不再弹
 func TestTakeoutPreNotifySkip(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":300,"postponeMin":15,"slots":[` +
 		`{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
@@ -495,7 +495,7 @@ func TestTakeoutPreNotifySkip(t *testing.T) {
 	}
 }
 
-// 外卖预通知「推迟提醒」：消费原 occurrence，改走推迟线（到点重新弹）
+// 外卖预通知“推迟提醒”：消费原 occurrence，改走推迟线（到点重新弹）
 func TestTakeoutPreNotifyPostpone(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":300,"postponeMin":15,"slots":[` +
 		`{"id":"s1","hour":12,"minute":30,"repeat":"daily","days":[],"enabled":true}]}}`
@@ -515,7 +515,7 @@ func TestTakeoutPreNotifyPostpone(t *testing.T) {
 	}
 }
 
-// 时间线：外卖条目按「原定时刻」展示（不再减提前量），被消费（立即/跳过）的条目隐藏。
+// 时间线：外卖条目按“原定时刻”展示（不再减提前量），被消费（立即/跳过）的条目隐藏。
 // 用 futureSlot（原定时刻在未来）确保今日时间线会展开它。
 func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
 	slot := futureSlot()
@@ -527,7 +527,7 @@ func TestTodayTimelineTakeoutOriginalTime(t *testing.T) {
 	s := a.CfgSnapshot()
 	wantAt := plan.SlotAlertAt(slot, 0, nowMs())
 	if wantAt <= nowMs() {
-		// 23:59 之后构造不出「今天、且在未来」的槽位（TimeSlot 只有时分），今日时间线
+		// 23:59 之后构造不出“今天、且在未来”的槽位（TimeSlot 只有时分），今日时间线
 		// 本来就不展开已过去的条目 —— 这是产品语义，不是缺陷，跳过而不是误报。
 		t.Skip("当前时刻已到 23:59，无法构造今天的未来外卖槽位")
 	}

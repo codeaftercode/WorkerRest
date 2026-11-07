@@ -10,12 +10,12 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 外卖窗口集合的「替换」语义。
+// 外卖窗口集合的“替换”语义。
 //
-// 野窗事故：`showTakeoutWindowsAt` 原来直接 `a.takeoutWins = wins`，连点两下「预览」
+// 野窗事故：`showTakeoutWindowsAt` 原来直接 `a.takeoutWins = wins`，连点两下“预览”
 // 时后一批把前一批的引用整批顶掉 —— 屏幕上那扇旧的再没有任何代码持有它，用户点
-// 「知道了」关的是新窗，旧窗谁也关不下。现在替换只走 `replaceTakeoutWins`，
-// 由它把旧集合交还给调用方去 Close。这两条测试钉住「交还」与「唯一写入点」。
+// “知道了”关的是新窗，旧窗谁也关不下。现在替换只走 `replaceTakeoutWins`，
+// 由它把旧集合交还给调用方去 Close。这两条测试钉住“交还”与“唯一写入点”。
 
 func TestReplaceTakeoutWinsHandsBackStale(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
@@ -101,7 +101,7 @@ func TestTakeoutWinsAssignedOnlyThroughReplace(t *testing.T) {
 }
 
 // 用户 Alt+F4 关掉最后一扇外卖窗：会话必须跟着结束。
-// 不清的话 realTakeoutActive 永远为真（它按会话判定），设置页「预览」会被永久拒绝。
+// 不清的话 realTakeoutActive 永远为真（它按会话判定），设置页“预览”会被永久拒绝。
 func TestRemoveTakeoutWindowClearsCurrentSession(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 

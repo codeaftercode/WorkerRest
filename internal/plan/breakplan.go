@@ -1,4 +1,4 @@
-// Package plan 是休息计划层：给定配置与当前时刻，算出「下一次休息在什么时候、是什么类型」。
+// Package plan 是休息计划层：给定配置与当前时刻，算出“下一次休息在什么时候、是什么类型”。
 //
 // 全部是纯函数 —— 不读时钟、不写文件、不碰窗口，时间一律由调用方以毫秒时间戳传入，
 // 所以同一个输入永远得到同一个输出，单测不需要任何环境准备。调度器（internal/scheduler）
@@ -18,7 +18,7 @@ const (
 
 // ---------- 常量 ----------
 
-// TAKEOUT_NAME 外卖提醒的展示名。它不在 BreakEntries 里（不是一种「休息」），
+// TAKEOUT_NAME 外卖提醒的展示名。它不在 BreakEntries 里（不是一种“休息”），
 // 但窗口与提前提示都要用它，所以单独给一个常量。
 const TAKEOUT_NAME = "外卖提醒"
 
@@ -53,8 +53,8 @@ func takeoutMealLabel(hour int) string {
 	}
 }
 
-// preBreakTitle 提前提示弹窗的标题：自定义提醒用「XX时间到」。
-// 名称本身就以「时间」结尾时把这俩字去掉，避免「喝水时间时间到」这种叠字。
+// preBreakTitle 提前提示弹窗的标题：自定义提醒用“XX时间到”。
+// 名称本身就以“时间”结尾时把这俩字去掉，避免“喝水时间时间到”这种叠字。
 func preBreakTitle(name string) string {
 	base := name
 	if strings.HasSuffix(base, "时间") {
@@ -64,7 +64,7 @@ func preBreakTitle(name string) string {
 }
 
 // preBreakCountdownTail 自定义提醒提前弹窗里倒计时的后半句：`还有 10 秒显示 XX 提醒`。
-// 名称后缀已经是「提醒」时不再补一次。返回值带前导空格 —— 它接在数字后面。
+// 名称后缀已经是“提醒”时不再补一次。返回值带前导空格 —— 它接在数字后面。
 func preBreakCountdownTail(name string) string {
 	base := name
 	if strings.HasSuffix(base, "提醒") {

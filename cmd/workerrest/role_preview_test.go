@@ -9,7 +9,7 @@ import (
 	"workerrest/internal/role"
 )
 
-// fakeWebP 造一段「魔数合法」的 WebP 字节。
+// fakeWebP 造一段“魔数合法”的 WebP 字节。
 //
 // 只验落盘与格式嗅探（role.SniffImageExt 本来就只认魔数，不负责解码 —— 真正的像素由渲染层
 // 生产），所以这里不需要一张真能解码的图；长度给够 32 字节以满足 role.DecodeImageDataURL
@@ -35,7 +35,7 @@ func webpDataURL(b []byte) string {
 
 // 磁贴缩略图缺失时，thumb 必须回退到立绘原图 —— 否则磁贴就是一片空白。
 //
-// 这是「preview 从必需品降级为可选优化」的核心保证：用户删掉 preview.*、
+// 这是“preview 从必需品降级为可选优化”的核心保证：用户删掉 preview.*、
 // 或把专员目录手工拷进来，界面都不能开天窗。
 func TestScanRolesThumbFallsBackToFigure(t *testing.T) {
 	root := t.TempDir()
@@ -53,7 +53,7 @@ func TestScanRolesThumbFallsBackToFigure(t *testing.T) {
 	}
 }
 
-// 有 preview.webp 时优先用它（这才是「磁贴省解码内存」的收益所在）。
+// 有 preview.webp 时优先用它（这才是“磁贴省解码内存”的收益所在）。
 func TestScanRolesThumbPrefersPreview(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "有预览", map[string]any{
@@ -150,7 +150,7 @@ func TestSaveRolePreviewAcceptsPNG(t *testing.T) {
 	}
 }
 
-// 换图后旧预览必须清空：留着就会显示上一张图（这正是「preview 复制原图」时代的毛病）。
+// 换图后旧预览必须清空：留着就会显示上一张图（这正是“preview 复制原图”时代的毛病）。
 func TestReplaceRoleImageDropsStalePreview(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "督休专员", map[string]any{

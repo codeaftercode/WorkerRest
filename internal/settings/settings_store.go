@@ -32,7 +32,7 @@ func normalizeRoleOrder(v any) []string {
 }
 
 // NormalizeRoleOrder 归一化候选专员顺序（跨包导出，供 main 的会话构建复用：
-// 表单传来的 order 也走同一套「只保留非空字符串项并去重」的口径）。
+// 表单传来的 order 也走同一套“只保留非空字符串项并去重”的口径）。
 func NormalizeRoleOrder(v any) []string { return normalizeRoleOrder(v) }
 
 // normalizeSupervisorMessages 督休专员配置归一化（与 config.ts 同义）：
@@ -137,9 +137,9 @@ func seedPresetEntries(raw map[string]any) bool {
 
 // normalizeLoad 加载路径的归一化，**顺序逐条对应 config.ts 的 loadSettingsFrom**。
 //
-// 返回值只有三件事需要立刻落盘：「种入了预置条目」「提醒内容条目 id 被收敛成序号」
-// 「出厂空的 displayIds 被补成主屏 ID」。其余归一化结果（越界夹紧）**不主动回写** ——
-// 每次启动都改写用户配置会把键序和格式一起动掉，而且在「验证脚本误指真实配置」时会留下
+// 返回值只有三件事需要立刻落盘：“种入了预置条目”“提醒内容条目 id 被收敛成序号”
+// “出厂空的 displayIds 被补成主屏 ID”。其余归一化结果（越界夹紧）**不主动回写** ——
+// 每次启动都改写用户配置会把键序和格式一起动掉，而且在“验证脚本误指真实配置”时会留下
 // 副作用；这些夹紧结果会在用户下一次保存时一并落盘。
 func normalizeLoad(raw map[string]any) (presetSeeded, idsRenumbered, displayFilled bool) {
 	// ① 休息触发方式与固定时刻表
@@ -159,7 +159,7 @@ func normalizeLoad(raw map[string]any) (presetSeeded, idsRenumbered, displayFill
 	// ⑥ 开关类字段
 	normalizeToggles(raw)
 	// ⑥·1 出厂 displayIds 是空的：枚举一次，把主屏 ID 记进配置（首次启动就落盘，
-	// 之后用户看到的是「主屏已勾」；枚举不可用时保持空，运行时兜底主屏）
+	// 之后用户看到的是“主屏已勾”；枚举不可用时保持空，运行时兜底主屏）
 	displayFilled = fillPrimaryDisplayID(raw)
 	// ⑦ 设置窗口尺寸（window 块，缺就按出厂默认补一块）
 	normalizeWindow(raw)
@@ -210,10 +210,10 @@ func mapOf(v any) map[string]any {
 // settingsCandidates 候选配置文件路径（按优先级）。
 // 只有一个真实落点：exe 旁的 config/settings.json —— 数据与程序同目录，整目录
 // 分发（打包 / 拷贝 / 删除）时配置跟着走。不再检查 %APPDATA%（老版本的历史目录
-// 已放弃兼容，见 README「数据落点」）。
+// 已放弃兼容，见 README“数据落点”）。
 //
 // 环境变量 WR_SETTINGS_PATH 可**独占**指定一份配置：验证脚本用它在隔离副本上跑
-// 「保存 / 恢复默认 / 迁移」这些写路径，绝不碰用户的真实配置。
+// “保存 / 恢复默认 / 迁移”这些写路径，绝不碰用户的真实配置。
 func settingsCandidates(resourcesRoot string) []string {
 	if p := strings.TrimSpace(os.Getenv("WR_SETTINGS_PATH")); p != "" {
 		return []string{p}
@@ -228,7 +228,7 @@ func Candidates(resourcesRoot string) []string { return settingsCandidates(resou
 // （缺失字段不会整体退回默认，数组整体替换），再过一遍归一化与迁移。
 //
 // 督休专员目录（supervisors/）不在本函数内扫描：它由 App 在启动时按需读，配置里只存
-// 名字（fixedRole / order），见 README「督休专员」。
+// 名字（fixedRole / order），见 README“督休专员”。
 func loadSettings(resourcesRoot string) *Settings {
 	base := defaultSettingsMap()
 	for _, p := range settingsCandidates(resourcesRoot) {
@@ -260,7 +260,7 @@ func loadSettings(resourcesRoot string) *Settings {
 		}
 		return s
 	}
-	// 一份都读不到 = 首次运行：走与「读到文件」完全相同的归一化管线（种入预置条目），
+	// 一份都读不到 = 首次运行：走与“读到文件”完全相同的归一化管线（种入预置条目），
 	// 并落盘 —— 与 上一版的 firstRun 分支一致
 	fresh := defaultSettingsMap()
 	presetSeeded, idsRenumbered, displayFilled := normalizeLoad(fresh)
@@ -277,7 +277,7 @@ func loadSettings(resourcesRoot string) *Settings {
 func Load(resourcesRoot string) *Settings { return loadSettings(resourcesRoot) }
 
 // Save 落盘：写到配置实际来源的文件；来源为空时按便携/安装形态推导一个目标路径。
-// 用「先写临时文件再改名」保证不会写出半截 JSON（写一半被杀 = 配置全丢）。
+// 用“先写临时文件再改名”保证不会写出半截 JSON（写一半被杀 = 配置全丢）。
 func (s *Settings) Save() error {
 	target := s.path
 	if target == "" {
@@ -311,7 +311,7 @@ func (s *Settings) Save() error {
 	return nil
 }
 
-// resourcesRootHint 落盘目标在「还没有配置文件」时的推导依据。
+// resourcesRootHint 落盘目标在“还没有配置文件”时的推导依据。
 // 由 App 在启动时注入（避免 Settings 反向依赖 App）。
 var resourcesRootHintFn func() string
 

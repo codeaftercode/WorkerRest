@@ -1,18 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""「请勿打扰」/「全屏或演示」两条判据的只读诊断（仅 Windows）。
+"""“请勿打扰”/“全屏或演示”两条判据的只读诊断（仅 Windows）。
 
-为什么要它：Win11 通知中心手动开「请勿打扰」、以及「开始专注」启动专注会话，
+为什么要它：Win11 通知中心手动开“请勿打扰”、以及“开始专注”启动专注会话，
 都**不改变** SHQueryUserNotificationState 的返回值（QUNS 恒为 5）。软件改读
 WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED 的勿扰档位，本脚本把两条原始信号
-并排打出来，用于人工核对「用户按了勿扰 → 档位确实变了」。
+并排打出来，用于人工核对“用户按了勿扰 → 档位确实变了”。
 
 用法：
     python scripts/probe/probe_dnd_wnf.py              # 采一次
     python scripts/probe/probe_dnd_wnf.py --watch 20   # 连续 20 秒，每秒一行
 
-验证步骤：先跑 --watch，期间在通知中心点开「请勿打扰」再点关，观察
-「勿扰档位」在 0 ↔ 1/2 之间变化；QUNS 列可因全屏窗口同时变化，但勿扰判定不依赖它。
+验证步骤：先跑 --watch，期间在通知中心点开“请勿打扰”再点关，观察
+“勿扰档位”在 0 ↔ 1/2 之间变化；QUNS 列可因全屏窗口同时变化，但勿扰判定不依赖它。
 只读，不修改任何系统设置。
 """
 
@@ -79,7 +79,7 @@ def sample():
     flags = []
     if p:
         flags.append("勿扰=开")
-    # QUNS 2 / 3 / 4 合并为一条「全屏或演示」开关；具体成因看左边 QUNS 列。
+    # QUNS 2 / 3 / 4 合并为一条“全屏或演示”开关；具体成因看左边 QUNS 列。
     if q in (2, 3, 4):
         flags.append("全屏或演示=开")
     return "QUNS=%-28s 勿扰档位=%-18s 判定：%s" % (
@@ -87,7 +87,7 @@ def sample():
 
 
 def main():
-    ap = argparse.ArgumentParser(description="只读诊断「请勿打扰」/「全屏或演示」判据")
+    ap = argparse.ArgumentParser(description="只读诊断“请勿打扰”/“全屏或演示”判据")
     ap.add_argument("--watch", type=int, default=0, metavar="SEC",
                     help="连续采样指定的秒数（每秒一行），用于手动切换勿扰时观察")
     args = ap.parse_args()
@@ -97,7 +97,7 @@ def main():
         return
     end = time.time() + args.watch
     prev = None
-    print("连续采样 %d 秒；现在可以去通知中心开关「请勿打扰」……" % args.watch)
+    print("连续采样 %d 秒；现在可以去通知中心开关“请勿打扰”……" % args.watch)
     while time.time() < end:
         line = sample()
         mark = "  <== 变化" if prev is not None and line != prev else ""

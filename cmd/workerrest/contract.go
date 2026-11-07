@@ -7,7 +7,7 @@ import (
 
 // 前端调用契约：web/dist/shim.js 会按名字调用的绑定方法。
 //
-// 为什么单独列一份：Wails v3 的前端调用是「按全限定名调用」
+// 为什么单独列一份：Wails v3 的前端调用是“按全限定名调用”
 // （`Call.ByName("main.App.<方法名>", ...)`，见 shim.js），方法一旦改名，
 // 前端只会在运行时静默失败——JS 里拼错的名字没有任何编译期检查。
 // 这里把契约显式化，并由 contract_test.go 做三重校验：
@@ -18,7 +18,7 @@ import (
 // 新增前端调用的绑定方法时，务必同步这个列表（以及 web/dist/shim.js）。
 
 // wiredCalls 已接通的绑定：前端真的会调、Go 侧有实现。
-// 「已接通」= 名字与签名对得上、调用不会断；所有方法都已是真实现（含文件选择框 /
+// “已接通”= 名字与签名对得上、调用不会断；所有方法都已是真实现（含文件选择框 /
 // 导出报表 / 检查更新，见 bindings_settings.go / filedialog.go / update.go）。
 var wiredCalls = []string{
 	// ---- 休息窗口 ----
@@ -98,7 +98,7 @@ var wiredCalls = []string{
 	"PreBreakState",
 	"PreBreakAction",
 
-	// ---- 自动暂停期间的「已暂停多久」提示（见 pause_notice.go） ----
+	// ---- 自动暂停期间的“已暂停多久”提示（见 pause_notice.go） ----
 	"PauseNoticeResume",
 	"PauseNoticeDismiss",
 

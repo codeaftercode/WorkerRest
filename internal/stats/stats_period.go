@@ -42,8 +42,8 @@ type PeriodStats struct {
 	TakeoutSkipped   int64  `json:"takeoutSkipped"`
 	TakeoutPostponed int64  `json:"takeoutPostponed"`
 	// EndEarlyCount 提前结束的休息次数（只统计短 / 长休息）。注意它与休息次数**互不排斥**：
-	// 休息报表的「休息次数」= 短 + 长 + 提前结束 + 自定义（休息只要开始就算一次），
-	// 与今天卡「完成」（坐满整次，不含提前结束）是两个口径。
+	// 休息报表的“休息次数”= 短 + 长 + 提前结束 + 自定义（休息只要开始就算一次），
+	// 与今天卡“完成”（坐满整次，不含提前结束）是两个口径。
 	EndEarlyCount int64 `json:"endEarlyCount"`
 }
 
@@ -69,7 +69,7 @@ func ISOWeekNumber(d time.Time) int {
 }
 
 // PeriodRangeOf 以 now 所在周期为基准、偏移 offset 个周期（负数=过去）的区间。
-// 这是周期查询的唯一区间来源：「周期报表」（offset=0）与「历史查询」（任意 offset）共用。
+// 这是周期查询的唯一区间来源：“周期报表”（offset=0）与“历史查询”（任意 offset）共用。
 //
 // 注意 JS 的月份是 0-based、Go 是 1-based，偏移一律在 0-based 上算再转回来 ——
 // time.Date 与 new Date 一样会正规化越界的月 / 日，所以负偏移不用特判。
@@ -139,7 +139,7 @@ func (st *StatsStore) aggregateRangeLocked(startKey, endKey string) DayStats {
 		for _, k := range StatNumKeys {
 			*NumPtr(&out, k) += *NumPtr(d, k)
 		}
-		// 最长连续工作是「取最长」而不是累加（周期汇总不展示它，这里只保证聚合结果
+		// 最长连续工作是“取最长”而不是累加（周期汇总不展示它，这里只保证聚合结果
 		// 这个字段本身不是错的）
 		if d.MaxStreakMs > out.MaxStreakMs {
 			out.MaxStreakMs = d.MaxStreakMs

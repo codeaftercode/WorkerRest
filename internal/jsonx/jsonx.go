@@ -2,11 +2,11 @@
 //
 // 这些函数最初散在 main 包的 settings_time.go / settings_msg.go / role.go 里，
 // 被 settings / breakplan / role / sound / takeout 等多个域共享 —— 任何域要下沉，
-// 都绕不开这套「把 JS 语义的 JSON 值读成 Go 类型」的基础设施，于是先把它单独抽出。
+// 都绕不开这套“把 JS 语义的 JSON 值读成 Go 类型”的基础设施，于是先把它单独抽出。
 //
 // 口径约定：这些函数逐字复刻前端 types.ts / config.ts / supervisor.ts 里对应的
 // JS 语义（String(v)、Number(v)、Array.isArray 等），因为配置字段可能被用户手改成
-// 品类不符的值，Go 侧必须与前端同口径兜住，否则会出现「老配置里 name 是数字」这类
+// 品类不符的值，Go 侧必须与前端同口径兜住，否则会出现“老配置里 name 是数字”这类
 // 边角差异。
 package jsonx
 
@@ -148,7 +148,7 @@ func ItemID(v any) string {
 
 // NextSeqID 列表内可用的最短 id：现有 id 里最大的十进制整数 +1（没有数字 id 就从 "1" 起）。
 //
-// 条目 id 只需要「本列表内唯一且稳定」——固定模式靠它选中一条，删除 / 拖动靠它定位，
+// 条目 id 只需要“本列表内唯一且稳定”——固定模式靠它选中一条，删除 / 拖动靠它定位，
 // 跨列表、跨文件都不要求唯一。取最大值而不是最小空位：删掉中间某条后新增不会复用刚被
 // 删掉的号，fixedId 更不容易指错。
 func NextSeqID(ids []string) string {
@@ -161,7 +161,7 @@ func NextSeqID(ids []string) string {
 	return strconv.Itoa(max + 1)
 }
 
-// IsSeqID 判断 id 是否已经是「列表内序号」形态（十进制正整数）。
+// IsSeqID 判断 id 是否已经是“列表内序号”形态（十进制正整数）。
 func IsSeqID(s string) bool {
 	n, err := strconv.Atoi(s)
 	return err == nil && n > 0
@@ -176,8 +176,8 @@ func SeqIDFor(old string, ids []string, seen map[string]bool) string {
 	return NextSeqID(ids)
 }
 
-// RemapMsgID 按「旧 id → 新 id」把 fixedId 搬到重编号后的那一条上；
-// 映射不到就原样返回，交给调用方按「指向真实条目」的规则再校验一次。
+// RemapMsgID 按“旧 id → 新 id”把 fixedId 搬到重编号后的那一条上；
+// 映射不到就原样返回，交给调用方按“指向真实条目”的规则再校验一次。
 func RemapMsgID(remap map[string]string, id string) string {
 	if id == "" {
 		return ""

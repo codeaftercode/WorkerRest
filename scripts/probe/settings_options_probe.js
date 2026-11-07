@@ -1,12 +1,12 @@
 "use strict";
-// 设置页「控制器 → 配置键」全量接线矩阵。
+// 设置页“控制器 → 配置键”全量接线矩阵。
 //
-// 已有的三层探针各有分工：settings_ui_probe 扫「有哪些控件、名字对不对、有没有溢出」，
+// 已有的三层探针各有分工：settings_ui_probe 扫“有哪些控件、名字对不对、有没有溢出”，
 // settings_modals_probe 验弹窗焦点，settings_flow_probe 验几条写入链路。
 // 缺的是**逐个操作**：一个复选框接错配置键、或者根本没接（死控件），上面三层都发现不了。
 //
 // 这一支对六个 tab 里每个可见且可逆的控件做三步：
-//   ① 操作它 → 配置必须有变化（死控件会报「没有变化」）
+//   ① 操作它 → 配置必须有变化（死控件会报“没有变化”）
 //   ② 记录变化落在哪些叶子（打印成接线表，也是本轮验证的产物）
 //   ③ 操作回去 → 配置必须逐字还原（不可逆的控件说明它有隐藏副作用）
 // 不可逆 / 需要确认框的控件（清空统计、恢复默认、删除专员…）不在这一支里硬点：
@@ -34,7 +34,7 @@ function check(ok, label, detail) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 深比较，产出「路径: 旧 → 新」的清单
+// 深比较，产出“路径: 旧 → 新”的清单
 function diffPaths(a, b, prefix = "") {
   const out = [];
   const isObj = (v) => v && typeof v === "object" && !Array.isArray(v);
@@ -77,11 +77,11 @@ async function waitSettled(page, tries = 24) {
   return JSON.parse(last);
 }
 
-// 把某个控件「操作一下再操作回去」：返回 { changedPaths, restorePaths, openedModal }
+// 把某个控件“操作一下再操作回去”：返回 { changedPaths, restorePaths, openedModal }
 async function poke(page, handle, kind) {
   const before = await readCfg(page);
-  // 单选组的「原状态」不在被点的那枚上，而在组里当下选中的那枚上。
-  // 记下来才能真还原：只记「我这枚该不该选中」会把上一个用例选中的值留在组里。
+  // 单选组的“原状态”不在被点的那枚上，而在组里当下选中的那枚上。
+  // 记下来才能真还原：只记“我这枚该不该选中”会把上一个用例选中的值留在组里。
   const radioBefore = await page.evaluate((sel) => {
     const el = document.querySelector(sel);
     if (!el || el.type !== "radio") return null;
@@ -92,9 +92,9 @@ async function poke(page, handle, kind) {
     const el = document.querySelector(sel);
     if (!el) return "missing";
     if (el.tagName === "INPUT" && el.type === "radio") {
-      // 单选组：点「已选中」的那枚不会触发 change（状态没变），天真地 click 一下
-      // 只会得到「配置无变化」的假失败。已选中时先点同组另一枚——由「操作回去」
-      // 那一步点回本枚，于是这一对动作仍然完整验证了「点它 → 配置就是它」。
+      // 单选组：点“已选中”的那枚不会触发 change（状态没变），天真地 click 一下
+      // 只会得到“配置无变化”的假失败。已选中时先点同组另一枚——由“操作回去”
+      // 那一步点回本枚，于是这一对动作仍然完整验证了“点它 → 配置就是它”。
       if (!el.checked) el.click();
       else {
         const other = [...document.querySelectorAll(`input[name="${el.name}"]`)].find(
@@ -108,7 +108,7 @@ async function poke(page, handle, kind) {
       const min = el.min === "" ? -1e9 : Number(el.min);
       const max = el.max === "" ? 1e9 : Number(el.max);
       const cur = Number(el.value);
-      // 挑一个「与原值明显不同、又落在合法区间内」的值
+      // 挑一个“与原值明显不同、又落在合法区间内”的值
       let next = cur + (max - min) / 10;
       if (next > max) next = cur - (max - min) / 10;
       next = Math.max(min, Math.min(max, next));
@@ -126,7 +126,7 @@ async function poke(page, handle, kind) {
   const after = await waitSettled(page);
   const changedPaths = diffPaths(before, after);
 
-  // 有确认框弹出的控件（例如「关闭提醒」要确认）：取消它，按「需人工确认」处理
+  // 有确认框弹出的控件（例如“关闭提醒”要确认）：取消它，按“需人工确认”处理
   const modal = await page.evaluate(() => {
     const m = [...document.querySelectorAll(".modal")].find((x) => !x.classList.contains("hidden"));
     if (!m) return null;
@@ -142,7 +142,7 @@ async function poke(page, handle, kind) {
     const el = document.querySelector(sel);
     if (!el) return;
     if (el.tagName === "INPUT" && el.type === "radio") {
-      // 还原到「这轮开始前组里选中的那枚」；已选中就别点（点了也不发 change）
+      // 还原到“这轮开始前组里选中的那枚”；已选中就别点（点了也不发 change）
       const want = radioBefore
         ? document.querySelector(`input[name="${radioBefore.name}"][value="${radioBefore.value}"]`)
         : el;
@@ -166,7 +166,7 @@ async function poke(page, handle, kind) {
 }
 
 // 督休专员的尺寸 / 位置 / 翻转：改的是 supervisor/<专员>/meta.json 的 geom，
-// 不是 settings.json。用 listSupervisorRoles() 读回来验「接到了没 / 可不可逆」。
+// 不是 settings.json。用 listSupervisorRoles() 读回来验“接到了没 / 可不可逆”。
 async function verifyGeomControls(page) {
   console.log("  ---- 立绘尺寸与位置（写 meta.json 的 geom，不走 settings）");
   // 高级选项是折叠面板，展开才能量到元素
@@ -194,7 +194,7 @@ async function verifyGeomControls(page) {
 
   const base = await readGeom();
   if (!base) {
-    check(false, "立绘几何控件：读不回「" + roleName + "」的 geom");
+    check(false, "立绘几何控件：读不回“" + roleName + "”的 geom");
     return;
   }
   const baseObj = JSON.parse(base);
@@ -221,7 +221,7 @@ async function verifyGeomControls(page) {
         // 这两个事件在真实交互里都发生，缺一个就验不到整条链路：
         //   input  → readGeomFromForm + applySupGeometry + commitGeomToRole（改内存、刷预览）
         //   change → bindAutoSaveEl 全量绑的 autoSave → collectForm + persistRole（写 meta.json）
-        // 只发 input 时 meta.json 不会变，看起来像「死控件」，实际是少走了一步。
+        // 只发 input 时 meta.json 不会变，看起来像“死控件”，实际是少走了一步。
         el.dispatchEvent(new Event("input", { bubbles: true }));
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }
@@ -275,7 +275,7 @@ async function main() {  const browser = await chromium.launch({ channel: "msedg
     await sleep(600);
 
     // 预热保存一次：第一次 autoSave 会顺带把若干缺省值写进配置，
-    // 不先「跑熟」的话，第一个控件的 diff 会混进一堆无关字段。
+    // 不先“跑熟”的话，第一个控件的 diff 会混进一堆无关字段。
     await page.evaluate(() => {
       const el = document.getElementById("idlePauseMin");
       el.value = String(Number(el.value));
@@ -332,7 +332,7 @@ async function main() {  const browser = await chromium.launch({ channel: "msedg
 
       let okCount = 0;
       for (const h of handles) {
-        // 记下原值，供「操作回去」用
+        // 记下原值，供“操作回去”用
         await page.evaluate((sel) => {
           const el = document.querySelector(sel);
           if (el && el.type !== "checkbox" && el.type !== "radio") el.dataset.wrOrig = el.value;
@@ -356,14 +356,14 @@ async function main() {  const browser = await chromium.launch({ channel: "msedg
       }
       console.log("  ---- " + tab + " 覆盖控件 " + okCount + " / " + handles.length);
 
-      // 督休专员的「尺寸 / 位置 / 翻转」不写 settings，而是写 supervisor/<专员>/meta.json：
-      // 用同一套 diff 会误判成「死控件」。这里改成按专员读回来验（口径与设置页一致）。
+      // 督休专员的“尺寸 / 位置 / 翻转”不写 settings，而是写 supervisor/<专员>/meta.json：
+      // 用同一套 diff 会误判成“死控件”。这里改成按专员读回来验（口径与设置页一致）。
       if (tab === "supervisor") {
         await verifyGeomControls(page);
       }
     }
 
-    // 统计页：图表与表格由数据驱动，控件都是「导出 / 清空」这类不可逆动作，
+    // 统计页：图表与表格由数据驱动，控件都是“导出 / 清空”这类不可逆动作，
     // 这里只验渲染，不点按钮（按钮由绑定级探针覆盖）。
     //
     // 三张图都是 DOM/SVG 折线（.rc-plot 里由 setupRestChart 画 svg），**没有 canvas**：
@@ -403,7 +403,7 @@ async function main() {  const browser = await chromium.launch({ channel: "msedg
     // 全流程零 JS 报错
     check(errors.length === 0, "全程无 JS 报错", errors.slice(0, 3).join(" ; ") || "干净");
 
-    // 接线表（写进日志，便于人工核对「这个开关到底改了哪个键」）
+    // 接线表（写进日志，便于人工核对“这个开关到底改了哪个键”）
     console.log("\n---- 接线表 ----");
     for (const w of wiring) console.log("  " + w.tab + "/" + w.id + " → " + w.paths.join(" , "));
     console.log("\n---- 未计入的控件 ----");

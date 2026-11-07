@@ -70,7 +70,7 @@ func FixedNextMap(s *settings.Settings, now int64, skip map[string]bool) map[str
 // SameLocalDay 两个时间戳是否落在本地的同一天。
 func SameLocalDay(a, b int64) bool { return sameLocalDay(a, b) }
 
-// SlotAlertAt 提前量下「实际弹出提醒的时刻」。
+// SlotAlertAt 提前量下“实际弹出提醒的时刻”。
 func SlotAlertAt(slot model.TimeSlot, leadMs, dayMs int64) int64 {
 	return slotAlertAt(slot, leadMs, dayMs)
 }

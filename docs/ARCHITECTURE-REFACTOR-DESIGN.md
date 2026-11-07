@@ -4,9 +4,9 @@
 > 目标：为跨平台（Windows / Linux / macOS / 非 x86 的银河麒麟）发布与未来功能扩展，重新设计源码分层与平台隔离。
 > 日期：2026-11-01
 >
-> **后续（2026-11-01 晚）**：本文第 3 节的目标结构是「main.go 平铺在根」的形态，实际落地时
+> **后续（2026-11-01 晚）**：本文第 3 节的目标结构是“main.go 平铺在根”的形态，实际落地时
 > 改为标准 Go 布局 `cmd/workerrest/` + `internal/`（main 包下沉，`frontend/dist` 随包改为
-> `cmd/workerrest/web/dist`，随包资源收进 `assets/`）。最终结构以 README 的「目录结构」为准，
+> `cmd/workerrest/web/dist`，随包资源收进 `assets/`）。最终结构以 README 的“目录结构”为准，
 > 本文保留为重构决策的历史记录。
 
 ---
@@ -32,16 +32,16 @@
 
 ### 1.3 已有成果（上一轮 internal/ 拆分）
 
-`internal/winproc`（进程枚举）、`internal/windnd`（勿扰/全屏）、`internal/winpower`（睡眠检测）已拆出，验证了「纯工具抽到 internal 子包」的路径可行。本轮是这条路径的系统化扩展。
+`internal/winproc`（进程枚举）、`internal/windnd`（勿扰/全屏）、`internal/winpower`（睡眠检测）已拆出，验证了“纯工具抽到 internal 子包”的路径可行。本轮是这条路径的系统化扩展。
 
 ---
 
 ## 2. 设计目标
 
 1. **平台隔离**：所有平台专属能力（快捷键、托盘、自启动、空闲检测、进程枚举、文件对话框、WebView2 预检、弹窗）收敛到明确的平台抽象层，跨平台编译时不触碰 Windows API。
-2. **解耦巨型文件**：把 1000+ 行的单文件按「领域 + 纯函数 vs 绑定方法」切分，让每块职责单一、可独立测试。
+2. **解耦巨型文件**：把 1000+ 行的单文件按“领域 + 纯函数 vs 绑定方法”切分，让每块职责单一、可独立测试。
 3. **不破坏绑定契约**：`App` 留在 main 包，200+ 绑定方法不动名字（契约测试 `contract_test.go` 钉住）。
-4. **渐进可落地**：分阶段执行，每阶段结束都能 `go build` + `go test` 全绿，不出现「大爆炸式」重构。
+4. **渐进可落地**：分阶段执行，每阶段结束都能 `go build` + `go test` 全绿，不出现“大爆炸式”重构。
 
 ---
 
@@ -157,7 +157,7 @@ func (linuxProvider) HotkeysSupported() bool    { return false } // 银河麒麟
 | `hotkeys.go` | `RegisterHotKey`/`GetMessageW`/`GetCurrentThreadId` | 抽成接口 `internal/hotkey`，Windows 实现 + 其它平台 no-op | `internal/hotkey/` |
 | `sys_idle.go` | `GetLastInputInfo`（user32） | 抽成接口，Linux 用 `xprintidle`/`XScreenSaver`，macOS 用 IOKit | `internal/sysinfo/idle` |
 | `sys_autostart.go` | `registry` 读写 | 抽成接口，Linux 写 `~/.config/autostart/*.desktop`，macOS 用 launchd | `internal/autostart/` |
-| `sys_dnd.go`（已拆） | `Shell_NotifyIcon`/QUERY_USER_NOTIFICATION_STATE | 已有 `internal/windnd`，保留 Windows 实现，其它平台返回「不支持」 | `internal/windnd/` |
+| `sys_dnd.go`（已拆） | `Shell_NotifyIcon`/QUERY_USER_NOTIFICATION_STATE | 已有 `internal/windnd`，保留 Windows 实现，其它平台返回“不支持” | `internal/windnd/` |
 | `webview2_check.go` | `MessageBoxW`/`ShellExecuteW`/registry | WebView2 是 Windows-only；抽 `internal/notifier`（MessageBox），Linux/macOS 走 WebKitGTK/WKWebView（Wails 处理） | `internal/notifier/` |
 | `recoverguard.go` | `MessageBoxW` | 复用 `internal/notifier` | `internal/notifier/` |
 | `filedialog.go` | COM / `syscall.SyscallN` | 抽 `internal/dialog`，封装 wails Dialog（本身已跨平台） | `internal/dialog/` |
@@ -224,7 +224,7 @@ internal/model/
 └── settings.go    # Settings（或单独 internal/settings）
 ```
 
-**依赖方向必须单向**：`model` 不依赖任何包 → `domain/*`、`internal/*` 依赖 `model` → `main` 依赖所有。这是打破当前「全在 main 一个包互相引用」的关键。
+**依赖方向必须单向**：`model` 不依赖任何包 → `domain/*`、`internal/*` 依赖 `model` → `main` 依赖所有。这是打破当前“全在 main 一个包互相引用”的关键。
 
 ---
 
@@ -271,10 +271,10 @@ internal/model/
 
 ## 9. 风险与难点（诚实评估）
 
-1. **Wails 绑定契约不可动**：`App` 留 main 是硬约束，重构只能「变薄」不能「搬走」。契约测试 `contract_test.go` 是最后防线。
+1. **Wails 绑定契约不可动**：`App` 留 main 是硬约束，重构只能“变薄”不能“搬走”。契约测试 `contract_test.go` 是最后防线。
 2. **锁语义是重灾区**：当前 `a.mu` 保护几乎所有共享状态，拆分时每个字段搬走都要重新确认锁的归属（`stats.go` 曾有 `a.mu` 自死锁坑）。**拆分过程最容易引入并发回归**，需 `-race`（本机当前缺 gcc，需先补 C 工具链）。
 3. **共享类型层是最大工程量**：`BreakInfo`/`TimeSlot` 等类型被几十个文件引用，迁移到 `internal/model` 需要逐个改 import，是全项目最大的一次改动，极易出错。
-4. **跨平台「真能跑」≠「能编译」**：`GOOS=linux go build` 通过只证明「没 Windows API 泄漏」，不代表 Linux 下托盘/自启动/空闲检测**行为正确**。银河麒麟的非 x86 架构还涉及 `unsafe` 指针、字节序等。**编译通过只是第一步，真机验证是另一座山**（当前无 Linux/macOS 测试环境）。
+4. **跨平台“真能跑”≠“能编译”**：`GOOS=linux go build` 通过只证明“没 Windows API 泄漏”，不代表 Linux 下托盘/自启动/空闲检测**行为正确**。银河麒麟的非 x86 架构还涉及 `unsafe` 指针、字节序等。**编译通过只是第一步，真机验证是另一座山**（当前无 Linux/macOS 测试环境）。
 5. **wails v3 平台差异**：`application.Options`、`WindowsWindow`、`SystemTray`、`Dialog` 在不同平台的字段/行为不同（如 Linux 需 WebKitGTK 依赖、macOS 需 WKWebView），`main.go` 的窗口/托盘创建代码可能也要按平台拆分。
 6. **`-race` 工具链缺失**：本机无 gcc/clang，`CGO_ENABLED=0`，race 检测跑不了。跨平台重构涉及共享状态，强烈建议先补 mingw gcc（之前 summary 提到装过 msys2，需确认）。
 
@@ -282,22 +282,22 @@ internal/model/
 
 ## 10. 需要你拍板的决策点
 
-1. **平台支持范围**：先支持到「能编译 + Windows 行为不变」，还是要求 Linux/macOS/银河麒麟「真机可用」？前者是重构，后者是完整移植（工作量和测试环境要求完全不同）。
+1. **平台支持范围**：先支持到“能编译 + Windows 行为不变”，还是要求 Linux/macOS/银河麒麟“真机可用”？前者是重构，后者是完整移植（工作量和测试环境要求完全不同）。
 2. **共享类型层命名**：`internal/model` vs `domain/model`（Go 社区惯例：`internal/` 表示私有，`domain/` 表示领域层，两者都行，看你的偏好）。
-3. **是否引入 Linux/macOS 第三方库**：如 `godbus`（Linux autostart/DBus）、`go-ole` 替代等。现阶段建议先用「接口 + no-op 桩」保证跨平台编译，真机适配时再逐个填实现。
+3. **是否引入 Linux/macOS 第三方库**：如 `godbus`（Linux autostart/DBus）、`go-ole` 替代等。现阶段建议先用“接口 + no-op 桩”保证跨平台编译，真机适配时再逐个填实现。
 4. **银河麒麟架构**：具体是 ARM64 还是龙芯 LoongArch？这决定 build tag 的架构表达方式。
-5. **CI 矩阵**：要不要现在就搭 GitHub Actions 的多平台编译矩阵（linux/amd64、linux/arm64、darwin）？这能在无真机的情况下至少保证「编译不断」。
+5. **CI 矩阵**：要不要现在就搭 GitHub Actions 的多平台编译矩阵（linux/amd64、linux/arm64、darwin）？这能在无真机的情况下至少保证“编译不断”。
 
 ---
 
 ## 11. 建议的推进方式
 
-**我建议先做「阶段 1 + 阶段 2」（平台抽象层 + 系统能力接口化）**，这两步：
-- 收益最大（真正解决「跨平台编译」这个核心诉求）；
+**我建议先做“阶段 1 + 阶段 2”（平台抽象层 + 系统能力接口化）**，这两步：
+- 收益最大（真正解决“跨平台编译”这个核心诉求）；
 - 风险最低（只搬平台代码，不碰 `App` 绑定契约和共享锁语义）；
-- 不依赖「共享类型层」这个最大工程量的前置。
+- 不依赖“共享类型层”这个最大工程量的前置。
 
-**阶段 3-5（共享类型层 + 领域拆分）** 是「解耦巨型文件」的部分，工程量大、风险高，建议在阶段 1-2 稳定后，**单独评估**是否值得做（可能「解耦」的收益不如「平台隔离」大）。
+**阶段 3-5（共享类型层 + 领域拆分）** 是“解耦巨型文件”的部分，工程量大、风险高，建议在阶段 1-2 稳定后，**单独评估**是否值得做（可能“解耦”的收益不如“平台隔离”大）。
 
 ---
 

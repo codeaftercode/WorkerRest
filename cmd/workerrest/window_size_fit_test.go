@@ -8,7 +8,7 @@ import (
 
 // 缩放 / 小屏下窗口尺寸夹紧的回归（2026-11-05）。
 //
-// 起因：probe_dpi_layout.py 按「物理分辨率 × 缩放」跑了 25 种组合，发现 8 种组合下
+// 起因：probe_dpi_layout.py 按“物理分辨率 × 缩放”跑了 25 种组合，发现 8 种组合下
 // 窗口高度 600（最小高度兜底）**超过工作区 DIP 高度** —— 窗口底部落到任务栏后面，
 // 用户怎么拖都看不到最后一块内容，连 #content 的滚动条都拖不到底。
 // 最典型的是 1366×768 @125%：工作区只有 574 DIP，窗口却开 600。
@@ -76,7 +76,7 @@ func TestFitSizeInWorkAreaClampsHeightButNotBelowUsable(t *testing.T) {
 //
 // 这是**刻意的取舍**（见 fitSizeInWorkArea 的注释）：工作区窄到 760 以下只出现在
 // 200%+ 缩放的极端配置里，那时窗口宽出屏幕一部分，好过把输入框挤到不可用。
-// 钉住这个行为，避免以后有人「顺手对称一下」把宽度也改成让位。
+// 钉住这个行为，避免以后有人“顺手对称一下”把宽度也改成让位。
 func TestFitSizeInWorkAreaWidthFloorIsDeliberate(t *testing.T) {
 	w, _ := fitSizeInWorkArea(874, 857, 683, 344, 760)
 	if w != 760 {
@@ -99,7 +99,7 @@ func TestFitSizeInWorkAreaTinyWorkArea(t *testing.T) {
 
 // TestSettingsWindowMinHeightFallsBackToScreen settingsWindowMinHeight 在矮屏上必须让位。
 //
-// 它只依赖屏信息，取不到屏时返回设计下限；这里只能验「无 app / 无屏」这条分支，
+// 它只依赖屏信息，取不到屏时返回设计下限；这里只能验“无 app / 无屏”这条分支，
 // 真实屏的分支由 probe_dpi_layout.py 的矩阵覆盖（需要真窗口）。
 func TestSettingsWindowMinHeightWithoutScreen(t *testing.T) {
 	a := &App{} // a.app == nil

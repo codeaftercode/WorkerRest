@@ -9,10 +9,10 @@ import (
 	"workerrest/internal/settings"
 )
 
-// 导入 / 删除自设立绘的回归（2026-10-26 起；2026-10-28 改成「名字即身份」后重写）。
+// 导入 / 删除自设立绘的回归（2026-10-26 起；2026-10-28 改成“名字即身份”后重写）。
 //
 // 背景：立绘 = supervisors/<专员名>/(meta.json + 立绘 + 预览图)，**没有内部 id**。
-// 所以「同一张图导入两次」必须得到两个不同的名字（我的图 / 我的图 (2)）与两个独立目录 ——
+// 所以“同一张图导入两次”必须得到两个不同的名字（我的图 / 我的图 (2)）与两个独立目录 ——
 // 名字重复意味着 fixedRole / order / 台词游标会指向两个人，删一个还会删错。
 
 // writeImgSrc 造一张源图片文件，返回路径
@@ -83,7 +83,7 @@ func TestRemoveOneDuplicateKeepsTheOther(t *testing.T) {
 	}
 }
 
-// 命名对话框点「取消」时的清理只能删掉**本次新建**的那个，不能误删之前导入成功的。
+// 命名对话框点“取消”时的清理只能删掉**本次新建**的那个，不能误删之前导入成功的。
 func TestCancelNamingKeepsPreviouslyImported(t *testing.T) {
 	root := t.TempDir()
 	src := writeImgSrc(t, t.TempDir(), "我的图.png", "same-bytes")
@@ -223,7 +223,7 @@ func TestRemoveRoleClearsFixedRoleAndOrder(t *testing.T) {
 // 换图写失败时，**旧立绘必须还在**。
 //
 // 反例（修复前）：role.ReplaceRoleImage 先把 figure.* / preview.* 全删了再写新的，
-// 写失败就落进「既没有立绘也没有预览图」的状态 —— FigurePath 为空 →
+// 写失败就落进“既没有立绘也没有预览图”的状态 —— FigurePath 为空 →
 // 这个督休专员永远出不了场，而 meta.json 还指着已经不存在的旧文件名。
 // 模拟写失败的办法：在目标位置放一个**同名目录**，让改名落不下去。
 func TestReplaceRoleImageKeepsOldImageOnWriteFailure(t *testing.T) {
@@ -235,7 +235,7 @@ func TestReplaceRoleImageKeepsOldImageOnWriteFailure(t *testing.T) {
 
 	dir := filepath.Join(root, "督休专员")
 	// 让新图（figure.webp）的落盘失败：在目标位置放一个**非空目录**占位。
-	// 必须非空 —— 空目录会被 os.Remove 顺手删掉（旧代码「先删后写」那一步），
+	// 必须非空 —— 空目录会被 os.Remove 顺手删掉（旧代码“先删后写”那一步），
 	// 注入就失效了；非空目录删不掉，写入必然失败。
 	if err := os.MkdirAll(filepath.Join(dir, "figure.webp", "占位"), 0o755); err != nil {
 		t.Fatal(err)
@@ -258,7 +258,7 @@ func TestReplaceRoleImageKeepsOldImageOnWriteFailure(t *testing.T) {
 }
 
 // 导入失败不能留下半成品目录：没有 meta.json 的目录会被 role.ScanRoles 跳过 ——
-// 用户在界面上看不见它，它却占着「名字」，下一次导入就变成 "名字 (2)" 了。
+// 用户在界面上看不见它，它却占着“名字”，下一次导入就变成 "名字 (2)" 了。
 func TestCreateRoleDirLeavesNoLitterOnFailure(t *testing.T) {
 	root1 := t.TempDir()
 	bad := writeImgSrc(t, t.TempDir(), "图.bmp", "bmp-bytes")

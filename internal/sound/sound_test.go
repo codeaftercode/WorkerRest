@@ -62,7 +62,7 @@ func TestIsLegacyMusicName(t *testing.T) {
 	}
 }
 
-// 序号取「现有最大 +1」，删掉中间一条也不会把已有序号复用给新导入。
+// 序号取“现有最大 +1”，删掉中间一条也不会把已有序号复用给新导入。
 func TestFreeMusicPathIncrements(t *testing.T) {
 	dir := t.TempDir()
 	if got := filepath.Base(FreeMusicPath(dir, "mp3")); got != "music-1.mp3" {

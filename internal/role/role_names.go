@@ -12,11 +12,11 @@ import (
 
 // RoleNameTaken 判断显示名 name 是否已被**其它**督休专员占用。
 //
-// excludeName 是「自己」的当前名字（改名时要排除自己 —— 否则用户不改名直接点确定
+// excludeName 是“自己”的当前名字（改名时要排除自己 —— 否则用户不改名直接点确定
 // 会被自己的旧名字挡住）。
 //
-// 「重名」的危害不是显示层的小瑕疵，而是 name ↔ 目录 ↔ fixedRole/order 三者失配：
-// 目录名靠 UniqueRoleDir 去重成「X (2)」，meta.json 里却还是「X」，于是同一个名字在
+// “重名”的危害不是显示层的小瑕疵，而是 name ↔ 目录 ↔ fixedRole/order 三者失配：
+// 目录名靠 UniqueRoleDir 去重成“X (2)”，meta.json 里却还是“X”，于是同一个名字在
 // 画廊 / 台词气泡 / 提醒面板标题里指向两个不同的人，删一个还会删错。
 func RoleNameTaken(root, name, excludeName string) bool {
 	n := strings.TrimSpace(name)
@@ -70,12 +70,12 @@ func ScanRoleNames(root string) []string {
 	return out
 }
 
-// UniqueRoleName 给显示名去重：name 已被占用时依次试「name (2)」「name (3)」。
+// UniqueRoleName 给显示名去重：name 已被占用时依次试“name (2)”“name (3)”。
 //
 // 用于**软件自己起名**的地方（导入时用文件名当默认名）——这类场景不能弹窗问用户，
 // 就自动退让一位。用户**主动**改名（SaveRole）不走这里：那条路要拒绝保存、要求重新输入。
 //
-// excludeName 是「自己」的当前名字：改名时把自己算进去，会把「不改名直接确定」
+// excludeName 是“自己”的当前名字：改名时把自己算进去，会把“不改名直接确定”
 // 误判成重名。
 func UniqueRoleName(root, name, excludeName string) string {
 	base := strings.TrimSpace(name)

@@ -67,7 +67,7 @@ func TestGuardWriterRejectsMediaContent(t *testing.T) {
 
 func TestGuardWriterTruncatesLongLine(t *testing.T) {
 	var buf bytes.Buffer
-	// 每个「错误」6 字节，8192 不是 6 的倍数 —— 顺带验证不切在 UTF-8 字符中间。
+	// 每个“错误”6 字节，8192 不是 6 的倍数 —— 顺带验证不切在 UTF-8 字符中间。
 	line := "[x] " + strings.Repeat("错误", 6000)
 	p := []byte(line + "\n")
 	if _, err := wrapGuarded(&buf).Write(p); err != nil {
@@ -104,7 +104,7 @@ func TestGuardWriterKeepsLineStructure(t *testing.T) {
 	}
 }
 
-// 短行里只是「提到」data:image/ 或 base64 的正常错误文案，不能被当成媒体内容吃掉 ——
+// 短行里只是“提到”data:image/ 或 base64 的正常错误文案，不能被当成媒体内容吃掉 ——
 // 它们是排查时最需要留下的那类信息。
 func TestGuardWriterKeepsShortErrorText(t *testing.T) {
 	for _, line := range []string{
@@ -325,7 +325,7 @@ func TestPruneOldLogsOnlyRemovesStaleLogParts(t *testing.T) {
 	}
 }
 
-// 异常超大的分包即使「今天刚写」也要删 —— 只按时间判据，历史遗留的
+// 异常超大的分包即使“今天刚写”也要删 —— 只按时间判据，历史遗留的
 // 11 MB 巨无霸会一直赖在盘上。
 func TestPruneOldLogsRemovesOversizedPart(t *testing.T) {
 	dir := t.TempDir()

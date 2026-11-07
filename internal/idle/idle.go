@@ -1,20 +1,20 @@
-// Package idle 是软件侧维护的「连续无输入时长」空闲状态机 —— 历史源码/idleState.ts 的移植。
+// Package idle 是软件侧维护的“连续无输入时长”空闲状态机 —— 历史源码/idleState.ts 的移植。
 //
-// 为什么不直接问系统「空闲多少秒」：产品的口径是「休息窗口关闭后空闲从 0 重新计算」，
+// 为什么不直接问系统“空闲多少秒”：产品的口径是“休息窗口关闭后空闲从 0 重新计算”，
 // 而系统的输入计时器不会因为软件关掉一个窗口就归零。所以这里自己维护：
 //
 //		L = 现在 − max(最后一次输入时刻, 重置点)
 //
 //	  - **最后一次输入时刻**：读 `user32!GetLastInputInfo`（已收进 internal/platform 的
 //	    LastInputTick）。它返回的是 GetTickCount 域的 tick，与墙钟不同源、不能相减 ——
-//	    所以靠「两次采样 tick 变了」推定「这段采样窗口里有过键鼠输入」，再把**墙钟**
+//	    所以靠“两次采样 tick 变了”推定“这段采样窗口里有过键鼠输入”，再把**墙钟**
 //	    记下来（与 systemInput.ts 的口径逐字一致）。
 //	  - **重置点**：休息窗口关闭时由 endBreak 流程调 ResetBaseline() 置为当时。
-//	  - **存活去抖**：连续 ActiveMs 都采到输入才算「人真的回来了」。猫踩一下鼠标
+//	  - **存活去抖**：连续 ActiveMs 都采到输入才算“人真的回来了”。猫踩一下鼠标
 //	    不会把一段离开切成 离开 / 工作 1 秒 / 离开。
 //
 // 未调 Start()（或系统读不到 tick）时 L 恒为 0 —— 与 idleState.ts 的 `started` 同义，
-// 冒烟下不会因为「无人操作」被一路判成离开。
+// 冒烟下不会因为“无人操作”被一路判成离开。
 package idle
 
 import (
@@ -30,7 +30,7 @@ import (
 const (
 	// SampleMs 采样间隔：L 的精度就是这个值（1 秒够用）
 	SampleMs = 1000
-	// ActiveMs 连续输入多久才算「人真的回来了」（去抖）
+	// ActiveMs 连续输入多久才算“人真的回来了”（去抖）
 	ActiveMs = 3000
 )
 
@@ -44,8 +44,8 @@ func init() {
 	SampleInterval.Store(int64(SampleMs) * int64(time.Millisecond))
 }
 
-// lastInputTick 读系统「最后一次键鼠输入」的毫秒 tick；第二个返回值表示是否读到。
-// 只用它做「两次采样是否相同」的比较，**绝不与墙钟相减**（零点在开机时刻）。
+// lastInputTick 读系统“最后一次键鼠输入”的毫秒 tick；第二个返回值表示是否读到。
+// 只用它做“两次采样是否相同”的比较，**绝不与墙钟相减**（零点在开机时刻）。
 // 平台实现见 internal/platform.LastInputTick。
 func lastInputTick() (int64, bool) { return platform.LastInputTick() }
 
@@ -90,7 +90,7 @@ func NewIdleState() *IdleState {
 // Start 启动采样。与 idleState.ts 的 startIdleState 同义，但**多一步探测**：
 // 读不到 tick（user32 调用失败）时保持未启动状态并返回 false —— 上一版 那边还有
 // `powerMonitor.getSystemIdleTime()` 可以退化成秒级，Go 侧没有第二来源，
-// 假装有活动会让 L 一路变大、把用户误判成离开，所以这里选择明确地「不启用」。
+// 假装有活动会让 L 一路变大、把用户误判成离开，所以这里选择明确地“不启用”。
 func (s *IdleState) Start() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -189,7 +189,7 @@ func (s *IdleState) LastInputAtMs() int64 {
 	return max(s.lastInputAt, s.resetAt)
 }
 
-// IsActive 人是不是「真的回来了」：连续 ActiveMs 都有输入（去抖）
+// IsActive 人是不是“真的回来了”：连续 ActiveMs 都有输入（去抖）
 func (s *IdleState) IsActive() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -202,8 +202,8 @@ func (s *IdleState) IsActive() bool {
 	return s.activeStreakMs >= ActiveMs
 }
 
-// ResetBaseline 把空闲基准清零 —— 休息窗口关闭时调用（「窗口关闭后空闲从 0 重新计算」）。
-// 置成「此刻刚有输入」，于是要再等满 N 分钟才会判下一次离开。
+// ResetBaseline 把空闲基准清零 —— 休息窗口关闭时调用（“窗口关闭后空闲从 0 重新计算”）。
+// 置成“此刻刚有输入”，于是要再等满 N 分钟才会判下一次离开。
 func (s *IdleState) ResetBaseline() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -269,25 +269,25 @@ type IdleStep int
 
 const (
 	IdleStepNone IdleStep = iota
-	IdleStepAway          // 刚判定为「离开」→ 暂停提醒
-	IdleStepBack          // 刚判定为「回来了」→ 恢复提醒 + 重锚内置倒计时
+	IdleStepAway          // 刚判定为“离开”→ 暂停提醒
+	IdleStepBack          // 刚判定为“回来了”→ 恢复提醒 + 重锚内置倒计时
 )
 
-// DecideIdleStep 把空闲读数翻成「该做什么」。抽成纯函数是为了能脱离窗口与时钟做表驱动单测
+// DecideIdleStep 把空闲读数翻成“该做什么”。抽成纯函数是为了能脱离窗口与时钟做表驱动单测
 // —— 这段顺序写反了不会报错，只会让休息窗口永远不关（见下面第一条）。
 //
 //	phase      调度器当前阶段（"break" 时一律不判）
 //	away       上一次判定结果
 //	busyPaused 因手动 / 勿扰 / 应用占用而暂停（用户仍在用电脑）
 func DecideIdleStep(phase string, away bool, idleMs, thresholdMs int64, busyPaused, active bool) IdleStep {
-	// 休息窗口显示期间一律不判：这段时间算「休息」，窗口关闭时会把空闲基准清零。
+	// 休息窗口显示期间一律不判：这段时间算“休息”，窗口关闭时会把空闲基准清零。
 	// 而且必须**在暂停之前**就拦住 —— 休息期间若被判成离开而 pause('idle')，
 	// 调度器的休息计时在暂停态直接 return，窗口就永远不会自动关闭。
 	if phase == "break" {
 		return IdleStepNone
 	}
 	// 手动暂停 / 勿扰 / 应用占用：用户仍在用电脑（开会、看视频、跑全屏应用），
-	// 这段时间不做离开判定。已经判过离开的话仍要继续检测「回来了」。
+	// 这段时间不做离开判定。已经判过离开的话仍要继续检测“回来了”。
 	if !away && busyPaused {
 		return IdleStepNone
 	}

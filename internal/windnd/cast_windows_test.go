@@ -9,8 +9,8 @@ import (
 
 // TestDisplayPathLayout 钉住三个 Win32 结构体的内存布局。
 //
-// 这是整条投屏检测里唯一「错了也不报错」的地方：字段顺序或大小写错，QueryDisplayConfig
-// 只会返回 ERROR_INVALID_PARAMETER，代码按「API 不可用」降级，功能静默失效而日志里看着
+// 这是整条投屏检测里唯一“错了也不报错”的地方：字段顺序或大小写错，QueryDisplayConfig
+// 只会返回 ERROR_INVALID_PARAMETER，代码按“API 不可用”降级，功能静默失效而日志里看着
 // 一切正常。所以大小必须逐字节对上 wingdi.h：
 //
 //	DISPLAYCONFIG_PATH_SOURCE_INFO = LUID(8) + id(4) + modeInfoIdx(4) + statusFlags(4) = 20
@@ -34,7 +34,7 @@ func TestDisplayPathLayout(t *testing.T) {
 }
 
 // displaySourceMode DISPLAYCONFIG_SOURCE_MODE 的头部。只取桌面坐标，
-// 用来看「这几条路径画的是同一个画面还是各自独立的桌面」。
+// 用来看“这几条路径画的是同一个画面还是各自独立的桌面”。
 type displaySourceMode struct {
 	width       uint32
 	height      uint32
@@ -95,7 +95,7 @@ func activeSourceOrigins(flags uint32) ([][2]int32, bool) {
 
 // TestCastMirrorAgreesWithDesktopOrigins 用桌面坐标反证镜像判定。
 //
-// 这是唯一能发现「结构体字段理解错了」的自动化手段：镜像（复制模式）下所有路径画的是
+// 这是唯一能发现“结构体字段理解错了”的自动化手段：镜像（复制模式）下所有路径画的是
 // 同一个画面，桌面坐标必然全部重合；扩展模式下每块屏的坐标各不相同。两者不可能同时成立，
 // 所以坐标与 Mirror 不一致就说明判据（或位域解析）有问题。
 //
@@ -124,7 +124,7 @@ func TestCastMirrorAgreesWithDesktopOrigins(t *testing.T) {
 	t.Logf("交叉验证通过：桌面坐标=%v 与 Mirror=%v 一致", origins, st.Mirror)
 }
 
-// TestCastProbeShape 真机调一次，只断言「不 panic + 有说明」。
+// TestCastProbeShape 真机调一次，只断言“不 panic + 有说明”。
 // 具体返回什么取决于这台机器现在有没有接第二块屏，不能写死。
 func TestCastProbeShape(t *testing.T) {
 	st := GetCastStatus()

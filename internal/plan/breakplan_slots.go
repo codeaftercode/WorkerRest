@@ -51,7 +51,7 @@ func sameLocalDay(a, b int64) bool {
 	return ta.Year() == tb.Year() && ta.Month() == tb.Month() && ta.Day() == tb.Day()
 }
 
-// slotAlertAt 提前量下「实际弹出提醒的时刻」：条目时刻减去提前量（跨天时自动落到前一天）
+// slotAlertAt 提前量下“实际弹出提醒的时刻”：条目时刻减去提前量（跨天时自动落到前一天）
 func slotAlertAt(slot model.TimeSlot, leadMs, dayMs int64) int64 {
 	d := time.UnixMilli(dayMs)
 	at := time.Date(d.Year(), d.Month(), d.Day(), slot.Hour, slot.Minute, 0, 0, d.Location())
@@ -60,9 +60,9 @@ func slotAlertAt(slot model.TimeSlot, leadMs, dayMs int64) int64 {
 
 // slotOccurrenceAt 提前线所属的 occurrence 时刻（提醒**真正发生**的那一次）。
 //
-// 提前量会把「进入提前区间」的那一刻推到前一天（00:10 的提醒提前 20 分钟 → 23:50 就要
+// 提前量会把“进入提前区间”的那一刻推到前一天（00:10 的提醒提前 20 分钟 → 23:50 就要
 // 弹提前通知），但 occurrence 仍归属 00:10 那一次。基准取 now+leadMs 再构造当天时刻，
-// 跨午夜时自然落到次日；直接用 slotAlertAt(slot, lead, now) 会得到「前一天 00:10」，
+// 跨午夜时自然落到次日；直接用 slotAlertAt(slot, lead, now) 会得到“前一天 00:10”，
 // 与次日同一条目的去重键相撞（提前通知被吞），预通知窗的倒计时也会指向过去（进窗即 0 秒）。
 func slotOccurrenceAt(slot model.TimeSlot, leadMs, nowMs int64) int64 {
 	return slotAlertAt(slot, 0, nowMs+leadMs)
@@ -108,7 +108,7 @@ func findDueTimeSlots(slots []model.TimeSlot, nowMs int64, fired map[string]bool
 	return out
 }
 
-// pruneFiredSlotKeys 只保留「当前这一天」的键：跨天后旧键没有意义，长期运行也不会把集合撑大
+// pruneFiredSlotKeys 只保留“当前这一天”的键：跨天后旧键没有意义，长期运行也不会把集合撑大
 func pruneFiredSlotKeys(fired map[string]bool, nowMs int64) {
 	today := "#" + localDateKey(time.UnixMilli(nowMs)) + "#"
 	for k := range fired {
@@ -118,7 +118,7 @@ func pruneFiredSlotKeys(fired map[string]bool, nowMs int64) {
 	}
 }
 
-// describeTimeSlot 条目描述：界面与日志共用的中文摘要（如「每天 12:00」「每周 一、三 09:30」）
+// describeTimeSlot 条目描述：界面与日志共用的中文摘要（如“每天 12:00”“每周 一、三 09:30”）
 func describeTimeSlot(slot model.TimeSlot) string {
 	txt := slotTimeText(slot)
 	if slot.Repeat != "weekly" {

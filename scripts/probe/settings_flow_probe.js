@@ -1,5 +1,5 @@
 /**
- * 设置页「写了什么就存什么」的功能流探针（Playwright 驱动系统 Edge）。
+ * 设置页“写了什么就存什么”的功能流探针（Playwright 驱动系统 Edge）。
  *
  * 已覆盖的三层分工：
  *   · settings_ui_probe.js     —— 广度：六个 tab 的控件、可访问名、溢出、静态契约；
@@ -35,7 +35,7 @@ function check(ok, label, detail = "") {
   return ok;
 }
 
-// autoSave 有防抖，落盘不是同步的：读配置前等一会儿，别把「还没存」当成没生效。
+// autoSave 有防抖，落盘不是同步的：读配置前等一会儿，别把“还没存”当成没生效。
 const SAVE_WAIT = 900;
 
 async function main() {
@@ -71,10 +71,10 @@ async function main() {
     };
 
     // ---------- 零、自动暂停 · 两个投屏开关 ----------
-    // 两个开关各测一遍「UI → 配置」：拆开之后最容易出的错是两行绑到同一个键上，
+    // 两个开关各测一遍“UI → 配置”：拆开之后最容易出的错是两行绑到同一个键上，
     // 只测其中一个的话，这种错在界面上看起来完全正常。
     // 后端一启动就会探测投屏：本机若正好在复制模式 / 接了无线屏，调度器会直接处于暂停状态。
-    // F0 只验「界面 → 配置」链路，不依赖调度器状态；需要「到点必弹」的探针自己在播种时关掉两个键。
+    // F0 只验“界面 → 配置”链路，不依赖调度器状态；需要“到点必弹”的探针自己在播种时关掉两个键。
     // 注：2026-11-03 修正镜像判据后，扩展双屏不再误触发（旧判据比 sourceInfo.id，
     // 双显卡机器上两个适配器的 source 0 撞车），但播种保持不动——探针要能在任何真机上跑。
     console.log("\n[F0] 自动暂停 · 两个投屏开关：点击 → 落盘 → 复原");
@@ -102,7 +102,7 @@ async function main() {
 
     // ---------- 零·一、请勿打扰 / 全屏或演示：两条独立开关 ----------
     // 2026-11-06 从一条合并开关拆出来：最容易出的错是两行绑到同一个键、或改一条
-    // 顺带把另一条也写了。每条都验「翻转落盘 + 另一条的配置与界面都不动 + 翻回复原」。
+    // 顺带把另一条也写了。每条都验“翻转落盘 + 另一条的配置与界面都不动 + 翻回复原”。
     console.log("\n[F0·1] 请勿打扰 / 全屏或演示：两条开关互不牵连");
     const pair = [
       ["#dndPause", "dndPause", "请勿打扰"],
@@ -131,7 +131,7 @@ async function main() {
     }
 
     // ---------- 零·二、显示的屏幕（多选下拉） ----------
-    // 单屏机器也能测「最后一块不许取消」——那是最容易被改坏的一条保护：
+    // 单屏机器也能测“最后一块不许取消”——那是最容易被改坏的一条保护：
     // 全不勾 = 提醒窗口一块屏都不弹，用户只会以为软件坏了。
     console.log("\n[F0·2] 显示的屏幕：多选勾选 → 落盘，最后一块不给取消");
     await page.waitForFunction(() => {
@@ -160,8 +160,8 @@ async function main() {
       check(opened.opts === dispN, "面板选项数 == ListDisplays 返回的屏数",
         `opts=${opened.opts} n=${dispN}`);
 
-      // 面板底部的「刷新」：显示器列表只在页面加载时枚举一次，热插拔之后靠它补救。
-      // 断言「刷新本身不写配置」——它只是重新枚举，勾选归用户。
+      // 面板底部的“刷新”：显示器列表只在页面加载时枚举一次，热插拔之后靠它补救。
+      // 断言“刷新本身不写配置”——它只是重新枚举，勾选归用户。
       const refreshBefore = JSON.stringify((await cfg()).displayIds || []);
       await page.click("#ap-displays .cdrop-refresh");
       await page.waitForFunction(() => {
@@ -174,7 +174,7 @@ async function main() {
         open: !document.querySelector("#ap-displays .cdrop-menu").classList.contains("hidden"),
         note: (document.querySelector("#ap-displays .cdrop-foot-note") || {}).textContent || "",
       }));
-      check(afterRefresh.opts === dispN, "点「刷新」重新枚举后选项数仍 == ListDisplays 的屏数",
+      check(afterRefresh.opts === dispN, "点“刷新”重新枚举后选项数仍 == ListDisplays 的屏数",
         `opts=${afterRefresh.opts} n=${dispN}`);
       check(afterRefresh.open, "刷新后面板不收起（就地替换选项）", String(afterRefresh.open));
       check(afterRefresh.note.includes(String(dispN)), "刷新后底部说明同步为本次检测结果",
@@ -194,10 +194,10 @@ async function main() {
           `${dispBefore} → ${JSON.stringify(keep)}`);
       } else {
         // 面板里的勾选态来自用户配置，**不能按位置猜**：出厂只有主屏被勾，但接过副屏
-        // 并勾选过的机器会两块都勾着。早先这里硬点「第 1 个选项」（单屏时代写法，点它
-        // 等于取消最后一块），改成「第 2 个选项」之后又栽在双屏全勾的机器上——第一步
+        // 并勾选过的机器会两块都勾着。早先这里硬点“第 1 个选项”（单屏时代写法，点它
+        // 等于取消最后一块），改成“第 2 个选项”之后又栽在双屏全勾的机器上——第一步
         // 同样等于取消，后面五条断言连锁误报。两次都是同一个根因：拿位置当前置。
-        // 现在先归一化成「只勾一块」，再按「已勾的第一块」keepIdx /「未勾的第一块」addIdx 定位。
+        // 现在先归一化成“只勾一块”，再按“已勾的第一块”keepIdx /“未勾的第一块”addIdx 定位。
         const readSel = () => page.evaluate((sel) =>
           [...document.querySelectorAll(sel)].map(o => o.getAttribute("aria-selected") === "true"), OPT);
 
@@ -271,16 +271,16 @@ async function main() {
     }
 
     // ---------- 零·二b、刷新能反映热插拔（桩模拟，不依赖真拔线） ----------
-    // 真机拔线没法自动化，所以把 listDisplays 换成一个「多一块假屏 / 少一块真屏」的桩，
+    // 真机拔线没法自动化，所以把 listDisplays 换成一个“多一块假屏 / 少一块真屏”的桩，
     // 钉住四条口径：
-    //   ① 点「刷新」后选项跟着变；
+    //   ① 点“刷新”后选项跟着变；
     //   ② 新出现的屏默认**未勾选**（快照语义，插新屏不该被自动带上）；
     //   ③ 被拔掉的屏从面板消失，但**配置里仍然保留**（接回去还在）；
     //   ④ 刷新本身不写配置。
     if (dispN === 0) {
       console.log("  [skip] 本机枚举不到显示器，热插拔桩模拟跳过");
     } else {
-      console.log("\n[F0·2b] 点「刷新」能反映热插拔（桩模拟）");
+      console.log("\n[F0·2b] 点“刷新”能反映热插拔（桩模拟）");
       const fake = { id: "__fake_display__", label: "FAKE 测试屏", width: 1024, height: 768,
                      x: 9999, y: 9999, isPrimary: false };
       const cfgBeforeHotplug = JSON.stringify((await cfg()).displayIds || []);
@@ -319,19 +319,19 @@ async function main() {
       check(JSON.stringify((await cfg()).displayIds || []) === cfgBeforeHotplug,
         "刷新本身不写配置", cfgBeforeHotplug);
 
-      // ② 拔掉一块「配置里勾着」的真屏（配置为空时没有可拔的对象，跳过这一段）
+      // ② 拔掉一块“配置里勾着”的真屏（配置为空时没有可拔的对象，跳过这一段）
       const cfgIds = JSON.parse(cfgBeforeHotplug);
-      // 「拔屏」的前提是这块屏此刻确实在枚举结果里。隔离配置从别处拷来、或换了接口、
+      // “拔屏”的前提是这块屏此刻确实在枚举结果里。隔离配置从别处拷来、或换了接口、
       // 重装驱动后 ID 变了时，勾着的 ID 可能一块都不在当前列表里 —— 按 ID 过滤删不到
       // 任何东西，opts-1 的期望根本不成立。这属于场景不适用，不是断言失败。
       const listedIds = await page.evaluate(async () =>
         (await window.__wrRealListDisplays()).map((d) => d.id));
       const ticked = cfgIds.find((id) => listedIds.includes(id));
       if (cfgIds.length === 0) {
-        console.log("  [skip] 配置里没有具体屏 ID（本机只补了空数组），跳过「拔屏保留」断言");
+        console.log("  [skip] 配置里没有具体屏 ID（本机只补了空数组），跳过“拔屏保留”断言");
       } else if (!ticked) {
         console.log(`  [skip] 配置勾着的 ${cfgIds.length} 块都不在当前枚举里` +
-          `（当前 ${listedIds.join(",") || "无"}），跳过「拔屏保留」断言`);
+          `（当前 ${listedIds.join(",") || "无"}），跳过“拔屏保留”断言`);
       } else {
       await page.evaluate(async (drop) => {
         const all = await window.__wrRealListDisplays();
@@ -348,15 +348,15 @@ async function main() {
       }, ticked);
       check(removed.gone, "被拔掉的屏从选项里消失", JSON.stringify(removed));
       check(removed.opts === dispN - 1, "选项数 -1", `opts=${removed.opts} n=${dispN}`);
-      // 只剩一块屏的机器上「拔掉唯一一块」会拔到 0 个选项：此时没有「未接入」可言，
-      // 底部该给的是可重试的「点刷新重新检测」。按剩余数量分支断言，两种机器都成立。
+      // 只剩一块屏的机器上“拔掉唯一一块”会拔到 0 个选项：此时没有“未接入”可言，
+      // 底部该给的是可重试的“点刷新重新检测”。按剩余数量分支断言，两种机器都成立。
       check(
         removed.opts === 0
           ? removed.note.includes("刷新")
           : removed.note.includes("未接入"),
         removed.opts === 0
-          ? "拔到 0 块时底部提示改为「点刷新重新检测」"
-          : "底部提示「勾选的 N 块未接入」",
+          ? "拔到 0 块时底部提示改为“点刷新重新检测”"
+          : "底部提示“勾选的 N 块未接入”",
         removed.note,
       );
       const cfgAfterRemove = JSON.parse(JSON.stringify((await cfg()).displayIds || []));
@@ -395,7 +395,7 @@ async function main() {
     await page.keyboard.press("Control+Alt+KeyK");
     await delay(150);
     const v1 = await page.inputValue("#sc-pause");
-    check(v1 === "Ctrl+Alt+K", "Ctrl+Alt+K 录入到「暂停 / 恢复休息」", v1);
+    check(v1 === "Ctrl+Alt+K", "Ctrl+Alt+K 录入到“暂停 / 恢复休息”", v1);
     await delay(SAVE_WAIT);
     const c1 = (await cfg()).shortcuts || {};
     check(c1.pause === "Ctrl+Alt+K", "快捷键 pause 已落盘", c1.pause);
@@ -418,7 +418,7 @@ async function main() {
     const v3 = await page.inputValue("#sc-postpone");
     check(v3 === keep, "裸键 F5 被拒收，录入框保持原值", `${JSON.stringify(keep)} → ${JSON.stringify(v3)}`);
 
-    // 4) 重复键，两个方向都要测（判定是「只在靠后那一栏标红/拒收」，见 shortcutIssue）：
+    // 4) 重复键，两个方向都要测（判定是“只在靠后那一栏标红/拒收”，见 shortcutIssue）：
     //    a. 往**靠后**的栏（跳转下一次休息）录一个和前面相同的键 → 整条拒收、保持原值；
     //    b. 往**靠前**的栏（推迟）录一个和后面相同的键 → 写入，但后面那栏被标红并给出说明。
     //    配置里写的是 Ctrl / Super，Playwright 的键名是 Control / Meta，先映射
@@ -441,13 +441,13 @@ async function main() {
       // a. 靠后的栏录成和靠前相同的键 → 拒收
       await pressCombo("#sc-nextBreak", postponeKey);
       const vNext = await page.inputValue("#sc-nextBreak");
-      check(vNext === nextKey, `靠后的「跳转下一次休息」录成 ${postponeKey}（与推迟撞车）被拒收`,
+      check(vNext === nextKey, `靠后的“跳转下一次休息”录成 ${postponeKey}（与推迟撞车）被拒收`,
         `${JSON.stringify(nextKey)} → ${JSON.stringify(vNext)}`);
 
       // b. 靠前的栏录成和靠后相同的键 → 接受，但后面那栏标红 + 出现汇总说明
       await pressCombo("#sc-postpone", nextKey);
       const vPost = await page.inputValue("#sc-postpone");
-      check(vPost === nextKey, `靠前的「推迟」录成 ${nextKey} 会被接受（判定归到靠后那一栏）`, vPost);
+      check(vPost === nextKey, `靠前的“推迟”录成 ${nextKey} 会被接受（判定归到靠后那一栏）`, vPost);
       const mark = await page.evaluate((otherId) => {
         const el = document.getElementById(otherId);
         const warn = document.getElementById("sc-warn");
@@ -459,7 +459,7 @@ async function main() {
         };
       }, "sc-nextBreak");
       check(mark.bad, "重复键把靠后那一栏标红（.bad）", `title=${mark.title}`);
-      check(!mark.warnHidden && /同一个组合键/.test(mark.warnText), "页面给出「和某某用了同一个组合键」的说明",
+      check(!mark.warnHidden && /同一个组合键/.test(mark.warnText), "页面给出“和某某用了同一个组合键”的说明",
         mark.warnText.slice(0, 40));
 
       // 复原：把推迟写回原键，红框与说明都应消失
@@ -578,7 +578,7 @@ async function main() {
       await tkLead.dispatchEvent("change");
       await delay(SAVE_WAIT);
     } else {
-      check(false, "找不到可用的「外卖提前通知」输入框（#tk-lead）");
+      check(false, "找不到可用的“外卖提前通知”输入框（#tk-lead）");
     }
 
     // ---------- 五、恢复默认设置：取消后一字未改 ----------
@@ -594,7 +594,7 @@ async function main() {
         for (const el of m) if (!el.classList.contains("hidden")) return el.id;
         return "";
       });
-      check(opened === "confirm-modal", "点「恢复默认设置」弹出确认框", opened || "（没弹）");
+      check(opened === "confirm-modal", "点“恢复默认设置”弹出确认框", opened || "（没弹）");
       if (opened === "confirm-modal") {
         await page.click("#cf-cancel");
         await delay(400);
@@ -603,7 +603,7 @@ async function main() {
       check(after === snap, "取消后配置没有任何字段被改（快照逐字相同）",
         after === snap ? "相同" : "有差异");
     } else {
-      check(false, "关于页有「恢复默认设置」按钮（#d-reset）");
+      check(false, "关于页有“恢复默认设置”按钮（#d-reset）");
     }
 
     // ---------- 六、全程无 JS 错误 ----------

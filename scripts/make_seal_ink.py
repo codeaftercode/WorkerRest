@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 """印泥墨块 SVG 生成器（生成 web/dist/seal-ink-N.svg + seal-specks-N.svg）
 
-对照参考图（朱红印泥「端午节」）后确定的几条：
-  1) 内部要「实」：不做大面积飞白，只有极淡纸纹 + 边沿零星小孔
-  2) 轮廓要「手按感」：大块低频隆起 + 少量深咬口 + 高频位移把边撕毛
+对照参考图（朱红印泥“端午节”）后确定的几条：
+  1) 内部要“实”：不做大面积飞白，只有极淡纸纹 + 边沿零星小孔
+  2) 轮廓要“手按感”：大块低频隆起 + 少量深咬口 + 高频位移把边撕毛
   3) 色要饱：基色 #a5261a（金 P10 对比 ≈4.0:1，够 26px 大字也够 17px 小字）
-  4) 印泥没吃到纸上的地方要有「细小断裂」（mask 里挖空，透出窗口背景）
+  4) 印泥没吃到纸上的地方要有“细小断裂”（mask 里挖空，透出窗口背景）
 
 为什么要一组变体：同一枚章连盖两次也不会一模一样。每次出现由 JS 随机挑一张写进
 --rt-ink / --rt-specks，轮廓胖瘦、咬口位置、撕裂走向、断裂、碎点全都不同。
@@ -65,8 +65,8 @@ def catmull(pts):
 def cuts(seed, a, b):
     """mask 里挖掉的东西：细小断裂（线）+ 缺墨小孔（点）。
 
-    断裂短、带折、偶有分叉，第一条从边沿咬进去；这些都画成 mask 里的「黑」，
-    挖空处透出的是窗口背景 —— 与真实印章「缺墨」一致。金色笔画是另一层
+    断裂短、带折、偶有分叉，第一条从边沿咬进去；这些都画成 mask 里的“黑”，
+    挖空处透出的是窗口背景 —— 与真实印章“缺墨”一致。金色笔画是另一层
     background-clip:text，压在墨块之上，所以断裂不会伤到字。
     """
     rng = random.Random(seed + 71)
@@ -136,7 +136,7 @@ def build(seed, a=41.0, b=93.0, p=5.0, lumps=0.024, bites=3,
       <feComponentTransfer><feFuncA type="discrete"
         tableValues="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1"/></feComponentTransfer>
     </filter>
-    <!-- 纸纹：低频、极淡，只负责「不是纯色块」 -->
+    <!-- 纸纹：低频、极淡，只负责“不是纯色块” -->
     <filter id="grain" x="0" y="0" width="100%" height="100%">
       <feTurbulence type="fractalNoise" baseFrequency="{grain_freq}" numOctaves="2" seed="4"/>
       <feColorMatrix type="saturate" values="0"/>
@@ -167,7 +167,7 @@ def build(seed, a=41.0, b=93.0, p=5.0, lumps=0.024, bites=3,
       <rect x="0" y="0" width="100" height="200" fill="url(#shadeA)"/>
       <rect x="0" y="0" width="100" height="200" fill="url(#shadeB)"/>
       <rect x="0" y="0" width="100" height="200" fill="url(#hi)"/>
-      <!-- 边沿一线压深：让轮廓「吃」进背景，不做外发光 -->
+      <!-- 边沿一线压深：让轮廓“吃”进背景，不做外发光 -->
       <use href="#blob" fill="none" stroke="{edge}" stroke-opacity="0.5" stroke-width="2.0"/>
       <rect x="0" y="0" width="100" height="200" filter="url(#grain)" opacity="{grain_op}"
             style="mix-blend-mode:multiply"/>
@@ -183,7 +183,7 @@ def build_specks(seed, base="#a5261a"):
     点位只落在画布外缘这一圈：::after 比牌子盒子大 9%，牌子的红色边缘还要
     再往里 ~9 个单位，所以这一圈恒在印泥外，碎点永远飘在红块外面/边沿上。
 
-    尺度的唯一判据是「1x 下看不看得见」——不能按画布单位凭感觉给：
+    尺度的唯一判据是“1x 下看不看得见”——不能按画布单位凭感觉给：
       牌子 35px 宽时 1 单位 = 0.41px，r=0.7 的圆点直径只有 0.58px（实测看不见）
       → 圆点半径取 1.5~2.6（偶尔 2.8~3.6），1x 直径 2.5~3.0px，才是一粒印泥渣
     同理半径越大越要离画布边远一点，否则被 SVG 视口裁成直边（d 的下限跟着 r 走）。
@@ -226,7 +226,7 @@ def build_specks(seed, base="#a5261a"):
 
 
 def variant_params(i):
-    """第 i 个变体（1 起）。a/b 由 safe_ab 兜底，p 只改「方的程度」不动中轴。"""
+    """第 i 个变体（1 起）。a/b 由 safe_ab 兜底，p 只改“方的程度”不动中轴。"""
     rng = random.Random(90210 + i * 7919)
     return dict(
         seed=100000 * i + rng.randint(1, 99999),
@@ -244,7 +244,7 @@ def variant_params(i):
 
 
 def safe_ab(params, a=41.0, b=93.0):
-    """把 a/b 微调（只缩不放）到「旋转 + 位移之后仍不顶出 viewBox」为止。
+    """把 a/b 微调（只缩不放）到“旋转 + 位移之后仍不顶出 viewBox”为止。
 
     顶出去会被 SVG 视口裁成直边 —— 那是唯一会让墨块瞬间破功的情况，
     所以宁可让个别变体小一圈（内缩 5~8 单位，字照样完全包住）。

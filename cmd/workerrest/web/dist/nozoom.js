@@ -15,8 +15,8 @@
  *      两层叠加：即使某天脚本没加载到，浏览器进程那一层也已经关掉了捏合。
  *   2) Ctrl + 滚轮 / 触控板捏合、Ctrl + '+'/'-'/'0'（页面缩放 / ZoomFactor）：
  *      这类事件可取消，preventDefault 即可。**只拦带 Ctrl 的**，普通滚轮照旧
- *      放行 —— break.js / takeout.js 还靠 wheel 记「用户活动」，拦死会把
- *      活动上报一起断掉，休息倒计时会被误判成「离开」。
+ *      放行 —— break.js / takeout.js 还靠 wheel 记“用户活动”，拦死会把
+ *      活动上报一起断掉，休息倒计时会被误判成“离开”。
  *   3) 多指触摸的原始事件（兜底）：万一某个 WebView2 版本不认 touch-action，
  *      两指同时按下的 touchstart / touchmove 一律拦下。单指不动，点击、拖动、
  *      滚动都照常可用。
@@ -57,7 +57,7 @@
 
   // 3) Ctrl + '+' / '=' / '-' / '_' / '0'（WebView2 的浏览器级缩放快捷键）。
   //    只 preventDefault，**不** stopPropagation：页面自己的快捷键（break.js
-  //    的「跳过 / 推迟」等可配置组合键）也要照常收到事件，否则用户把快捷键
+  //    的“跳过 / 推迟”等可配置组合键）也要照常收到事件，否则用户把快捷键
   //    配成 Ctrl+0 时会莫名失效。
   document.addEventListener("keydown", function (e) {
     if (!(e.ctrlKey || e.metaKey) || e.altKey) return;

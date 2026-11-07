@@ -1,8 +1,8 @@
 // 设置页对话框焦点管理的行为探针（只读，不改任何数据）。
 //
-// 为什么需要它：静态 DOM 审计（build/a11y_audit.js）只能证明「有 role / aria-modal /
-// aria-labelledby」，证明不了「焦点真的进得去、跑不出、回得来」—— 那三条正是审计
-// 域8「8 个 role=dialog 无焦点管理证据」要的证据。这里用系统 Edge 打开 settings.html，
+// 为什么需要它：静态 DOM 审计（build/a11y_audit.js）只能证明“有 role / aria-modal /
+// aria-labelledby”，证明不了“焦点真的进得去、跑不出、回得来”—— 那三条正是审计
+// 域8“8 个 role=dialog 无焦点管理证据”要的证据。这里用系统 Edge 打开 settings.html，
 // 把 /wails/runtime.js 换成只回 null 的桩（不连真实后端、不碰配置），再逐个对话框验证：
 //
 //   1) 打开后焦点在 .modal-box 内（不是还留在触发按钮上）
@@ -93,7 +93,7 @@ export default { Call, Events };
 
   console.log('[a11y] 焦点：进得去 / 跑不出 / 回得来');
   for (const id of MODALS) {
-    // 触发元素用一个临时插入的可见按钮：真实页面里由「点它的那个控件」扮演这个角色，
+    // 触发元素用一个临时插入的可见按钮：真实页面里由“点它的那个控件”扮演这个角色，
     // 而页面上现成的按钮大多在未激活的 tab / 折叠区里（display:none 收不了焦点）。
     const opened = await page.evaluate((modalId) => {
       let opener = document.getElementById('probe-opener');

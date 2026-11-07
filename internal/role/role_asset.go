@@ -18,7 +18,7 @@ var windowsReservedNames = map[string]bool{
 
 // SanitizeRoleDirName 把专员名收敛成合法目录名。
 //
-// 目录名是身份的文件系统投影，所以这里多做几件「不处理就会静默撞车」的事：
+// 目录名是身份的文件系统投影，所以这里多做几件“不处理就会静默撞车”的事：
 //   - 剔除 Windows 非法字符；
 //   - 去掉尾随的点与空格（系统会吞掉它们，"abc." 与 "abc" 会指向同一个目录）；
 //   - 保留名（CON / PRN / COM1 …）加下划线前缀，否则 mkdir 直接失败；

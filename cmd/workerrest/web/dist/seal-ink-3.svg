@@ -17,7 +17,7 @@
       <feComponentTransfer><feFuncA type="discrete"
         tableValues="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1"/></feComponentTransfer>
     </filter>
-    <!-- 纸纹：低频、极淡，只负责「不是纯色块」 -->
+    <!-- 纸纹：低频、极淡，只负责“不是纯色块” -->
     <filter id="grain" x="0" y="0" width="100%" height="100%">
       <feTurbulence type="fractalNoise" baseFrequency="0.42" numOctaves="2" seed="4"/>
       <feColorMatrix type="saturate" values="0"/>
@@ -53,7 +53,7 @@
       <rect x="0" y="0" width="100" height="200" fill="url(#shadeA)"/>
       <rect x="0" y="0" width="100" height="200" fill="url(#shadeB)"/>
       <rect x="0" y="0" width="100" height="200" fill="url(#hi)"/>
-      <!-- 边沿一线压深：让轮廓「吃」进背景，不做外发光 -->
+      <!-- 边沿一线压深：让轮廓“吃”进背景，不做外发光 -->
       <use href="#blob" fill="none" stroke="#6b1510" stroke-opacity="0.5" stroke-width="2.0"/>
       <rect x="0" y="0" width="100" height="200" filter="url(#grain)" opacity="0.05432682279190387"
             style="mix-blend-mode:multiply"/>

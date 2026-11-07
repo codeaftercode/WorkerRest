@@ -159,7 +159,7 @@
     const nameEl = document.getElementById("dialog-name");
     if (nameEl) {
       delete nameEl.dataset.rt;
-      // 每次出场换一枚「章」：牌底轮廓/断裂与四周碎点一起换（同一下标）
+      // 每次出场换一枚“章”：牌底轮廓/断裂与四周碎点一起换（同一下标）
       pickSealInk(nameEl);
       if (sup.name) {
         nameEl.textContent = sup.name;
@@ -220,7 +220,7 @@
       window.addEventListener("touchstart", () => noteActivity(3, true), { passive: true });
       // 系统级键鼠活动：Go 侧轮询 user32!GetLastInputInfo，用户在**任意应用**里敲键 /
       // 动鼠标都会广播过来（与窗口焦点无关）。页面侧留一个诊断计数，探针据此确认
-      // 「全局事件真的到达本页」，而不是靠 data-stage 反推（窗口内事件也会升级，会掩盖）。
+      // “全局事件真的到达本页”，而不是靠 data-stage 反推（窗口内事件也会升级，会掩盖）。
       supApi?.onSupActivity?.(() => {
         window.__WR_SUP_ACTIVE = (window.__WR_SUP_ACTIVE || 0) + 1;
         noteActivity(3, false);
@@ -238,9 +238,9 @@
     });
     // 题名牌要跟着立绘一起动，但它不能搬进 .gaze 那条 DOM 链：.trim 的补偿缩放
     // （立绘可见区越窄放得越大，1.0~2.0）会把牌面文字一起放大，而牌面位置是按
-    // 「渲染后的像素」反解出来的，进去就全错。所以把同一套变换镜像一份写过去：
+    // “渲染后的像素”反解出来的，进去就全错。所以把同一套变换镜像一份写过去：
     // 同一个原点（立绘盒底边中点 = 双脚，见 layoutRoleTitle 写的 --rt-ox/--rt-oy）、
-    // 同一组函数、同一顺序 ⇒ 数学上等价于「牌面焊在立绘上」：立绘怎么偏，牌面就怎么偏，
+    // 同一组函数、同一顺序 ⇒ 数学上等价于“牌面焊在立绘上”：立绘怎么偏，牌面就怎么偏，
     // 中间那条缝一个像素都不变。
     // 唯一要换算的是平移量 —— .gaze 的位移发生在 .trim 的缩放空间里，渲染出来是 scale
     // 倍，所以镜像时乘上它（skew 的角度、scaleY 的比值都不受均匀缩放影响）。
@@ -281,8 +281,8 @@
 
   // renderer/supervisorLayout.ts —— 游戏对话画面版式
   // .content 已是底部全宽对话框（CSS 定版），这里只负责把倒计时环浮到
-  // 「立绘可见右缘~窗口右缘」与「立绘可见上缘~对话框上边缘」两个中点的交点上
-  // （环中心对准；「提前结束」已固定在窗口顶部，不参与这里的摆位）。
+  // “立绘可见右缘~窗口右缘”与“立绘可见上缘~对话框上边缘”两个中点的交点上
+  // （环中心对准；“提前结束”已固定在窗口顶部，不参与这里的摆位）。
   // 摆位结果写入 supMetrics 供探针断言。
   var CD_EDGE = 10;
   var frozenFig = null;          // 立绘可见边（去透明）的冻结锚点（窗口坐标）
@@ -290,7 +290,7 @@
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
-  // 立绘「去掉透明部分后」的可见边缘（窗口坐标）——摆位锚点的唯一来源。
+  // 立绘“去掉透明部分后”的可见边缘（窗口坐标）——摆位锚点的唯一来源。
   // DOM 链：figure(绝对定位盒) > .trim(透明边距补偿) > .gaze > .mirror > img，
   // img 盒撑满 .trim/.figure（height:100%，宽度由 shrink-to-fit 链决定）。
   // .trim 的补偿变换 = translate(-left*s%, bottom*s*fill%) scale(s)，
@@ -332,21 +332,21 @@
     };
   }
   // ── 督休专员题名（竖排金色宋体）─────────────────────────────────────────
-  // 立绘的「alpha 逐列剖面」。包围盒在这里不够用：立绘底部常有刀鞘/衣袍向左探出
+  // 立绘的“alpha 逐列剖面”。包围盒在这里不够用：立绘底部常有刀鞘/衣袍向左探出
   // （始皇帝包围盒左缘 44px，而头部那一段的最左不透明列在 148px），照包围盒摆名字
   // 会一头撞在人物身上。所以单独量一份 minY[x]（每列最上面的不透明像素行号）。
-  // 「头部段」= 图片顶部这一段。不能只看头顶那 16%：题名是竖排的，长一点的会向下
+  // “头部段”= 图片顶部这一段。不能只看头顶那 16%：题名是竖排的，长一点的会向下
   // 伸到下颌/肩线附近，那里的内容（散落的发丝、肩甲）比头顶更靠左。按 16% 定的右缘
-  // 到下面就会贴上去（竖屏「温柔学姐」实测 hit=1）。26% 能盖住题名的实际下探深度。
+  // 到下面就会贴上去（竖屏“温柔学姐”实测 hit=1）。26% 能盖住题名的实际下探深度。
   var HEAD_BAND = 0.26;
   var PROFILE_W = 360;    // 剖面采样宽度：只用来找列，不需要高清
   // 题名避让用**实质遮挡**阈值：ALPHA_MIN(8) 太敏感，会把发丝边缘的抗锯齿（≈5%
-  // 不透明度，压上去肉眼无感）也算成「有人」，于是把字号一路压到下限。32/255≈12.5%。
+  // 不透明度，压上去肉眼无感）也算成“有人”，于是把字号一路压到下限。32/255≈12.5%。
   var PROFILE_ALPHA = 32;
   var profileCache = new WeakMap();
 
   function measureHeadProfile(img) {
-    // complete 必须一起判：dataURL/webp 在「数据到齐但还没解码」时 naturalWidth 就
+    // complete 必须一起判：dataURL/webp 在“数据到齐但还没解码”时 naturalWidth 就
     // 已经有值了，此时 drawImage 画出来是空的或残缺的，会量出一个假剖面。
     if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return null;
     const hit = profileCache.get(img);
@@ -395,14 +395,14 @@
     return profile;
   }
 
-  var RT_GAP = 12;      // 题名右缘距「头部段最左列」的留白
+  var RT_GAP = 12;      // 题名右缘距“头部段最左列”的留白
   var RT_EDGE = 6;      // 题名离窗口左缘的最小留白
   var RT_MIN_FS = 15;   // 字号下限：1x 屏 14px 已发虚，15 是能读的底线
   var RT_MAX_FS = 26;
   var RT_STEP = 0.5;
 
   // 印泥变体：同一枚章连盖两次也不该一模一样。每次出场随机挑一组（牌子 + 周围碎点
-  // 用同一个下标，保证「牌子和溅出来的碎点属于同一枚章」），并避开上一次用过的那张。
+  // 用同一个下标，保证“牌子和溅出来的碎点属于同一枚章”），并避开上一次用过的那张。
   // 变体由 scripts/make_seal_ink.py 生成，CSS 里的 url("seal-ink-1.svg") 只是兜底。
   var SEAL_VARIANTS = 6;
   var lastSeal = 0;
@@ -416,9 +416,9 @@
     nameEl.style.setProperty("--rt-specks", 'url("seal-specks-' + i + '.svg")');
   }
 
-  // 把题名钉到「立绘头部左侧的空白区」，并按零遮挡反解字号。
-  // 只有先钉住右缘（= headPx - RT_GAP）再一路缩字号，才能同时保证「不压人」和
-  // 「不出窗」——固定字号再找位置，长名字必然二选一失败。
+  // 把题名钉到“立绘头部左侧的空白区”，并按零遮挡反解字号。
+  // 只有先钉住右缘（= headPx - RT_GAP）再一路缩字号，才能同时保证“不压人”和
+  // “不出窗”——固定字号再找位置，长名字必然二选一失败。
   function layoutRoleTitle(figure, nameEl, box) {
     if (!figure || !nameEl || nameEl.classList.contains("hidden")) return null;
     if (!nameEl.textContent) return null;
@@ -435,7 +435,7 @@
     const flip = !!(t && t.flip);
 
     // 与 figureVisibleRect() 同一套映射（见该函数上方注释），这里只是需要
-    // 「图片绘制区在页面里的绝对位置」，好把剖面坐标反算回去。
+    // “图片绘制区在页面里的绝对位置”，好把剖面坐标反算回去。
     const drawW = s * box.width;
     const drawH = s * fill * box.height;
     const imgLeft = box.left - drawW * l;
@@ -451,15 +451,15 @@
     const appEl = document.getElementById("app") || document.body;
     const appRect = appEl.getBoundingClientRect();
 
-    // 零遮挡求解：从 RT_MAX_FS 起每档 −0.5px，直到「一个不透明像素都不压 +
-    // 整块没被 RT_EDGE 钳住」。capH > 0 时给整块一个最大高度 —— vertical-rl
+    // 零遮挡求解：从 RT_MAX_FS 起每档 −0.5px，直到“一个不透明像素都不压 +
+    // 整块没被 RT_EDGE 钳住”。capH > 0 时给整块一个最大高度 —— vertical-rl
     // 据此折出第二列（右→左，中文竖排的读序），长名就能留在头部左侧的同一片
     // 空白里，不必一路缩到发虚。capH 生效时同时限制列数（maxCols）：实测 13 字名
-    // 在 26px 会折成 3 列 98px 宽的金字块，压过头顶、读起来像「一块招牌」；
+    // 在 26px 会折成 3 列 98px 宽的金字块，压过头顶、读起来像“一块招牌”；
     // 限 2 列后整块是 40px 上下的一条窄带，与 3~4 字名的观感才连得上。
     // 注意 order：每次都要先把 left/top 钉回 0 再量，shrink-to-fit 元素否则
     // 量到的是上一轮的字号（74 当 35 那种）。
-    // 题名现在带红牌（padding 来自 CSS），所以要先用「不折列」量出一列的自然尺寸，
+    // 题名现在带红牌（padding 来自 CSS），所以要先用“不折列”量出一列的自然尺寸，
     // 再自己算列数与宽度：Chromium 的 shrink-to-fit 在竖排 + max-height 下**只按
     // 一列算宽**，溢出列会整列漏到红底外面（实测 13 字名有 6 个字露在牌外）。
     const cs0 = getComputedStyle(nameEl);
@@ -483,7 +483,7 @@
         cw = 0;
         if (capH > 0) {
           const innerH = Math.max(1, capH - padY * 2);
-          // 列数不能拿「总高 / 段高」折算：每列只排得下整数个字。必须先用
+          // 列数不能拿“总高 / 段高”折算：每列只排得下整数个字。必须先用
           // 单字推进量（oneH / 字数）算出每列容量，再算需要几列 —— 否则 13 字在
           // 21px 会算成 2 列，实际要 3 列，整整一列漏到牌外（实测 scrollWidth 89 > 68）。
           const adv = oneH / Math.max(1, nChars);
@@ -504,12 +504,12 @@
         }
         if (!wpx || !hpx) break;
         l = Math.max(RT_EDGE, rightPx - wpx);
-        // 题名矩形 → 剖面列区间；数「该区间内比题名底更靠上的不透明像素」
+        // 题名矩形 → 剖面列区间；数“该区间内比题名底更靠上的不透明像素”
         // ⚠️ minY 是按**原图列序**量的（canvas 直接 drawImage，没有翻转），而
         // imgLeft/drawW 是**显示方向**的映射。立绘水平翻转时（flip），屏幕 x 增大
         // = 原图列减小，列区间必须镜像 —— 漏掉这一步就去查了图片的另半边：牌面
-        // 明明落在人物左侧的空白里，判据却在右侧对称位置数到一堆像素，于是「每列
-        // 都算遮挡」（实测魔法师 hit=34，正好等于区间列数 34；字号被一路压到 15px
+        // 明明落在人物左侧的空白里，判据却在右侧对称位置数到一堆像素，于是“每列
+        // 都算遮挡”（实测魔法师 hit=34，正好等于区间列数 34；字号被一路压到 15px
         // 下限，而实拍牌面底下是纯背景）。bandX 早就按 flip 取过头部左缘，这里
         // 是同一件事的另一半，漏了就成了两套坐标系混用。
         let cx0 = Math.max(0, Math.floor(((l - imgLeft) / drawW) * pf.w));
@@ -530,7 +530,7 @@
     }
 
     // 先按单列解（短名的常态，绝不能给它折列）。只有单列撑不住时才允许折 2 列重解：
-    //   · 单列在下限字号都压到人（实测 12 字的「图书馆角落的温柔学姐」15px 仍 hit=7）
+    //   · 单列在下限字号都压到人（实测 12 字的“图书馆角落的温柔学姐”15px 仍 hit=7）
     //   · 单列虽然零遮挡，但已被逼到下限附近（13 字名 → 15px，太小）
     let sol = solve(0, 0);
     if (!sol.ok || sol.fs <= RT_MIN_FS + 1) {
@@ -555,7 +555,7 @@
     // 缩放原点 = 立绘**渲染后**盒子的底边中点（双脚），换算到牌子自身的坐标系
     //（牌子的 border-box 左上角就是它的 inline left/top）。二阶段的凑近 / 脉动是
     // CSS 的 scale 属性（img 的原点是 50% 100%），牌子必须绕同一个点放大 —— 否则
-    // 8% 的缩放会让牌面往人物身上挪十几像素，「头部左侧空白区」当场失效。
+    // 8% 的缩放会让牌面往人物身上挪十几像素，“头部左侧空白区”当场失效。
     // ⚠️ 直接量渲染后的 rect，不要用上面那套 trim 反算：反算只要有一项输入过期
     //（trim 还没到、换过图、盒宽与 paint 宽不等），原点就整体偏掉 —— 实测外卖窗口
     // 曾偏 13.5px，牌面放大时肉眼可见地往人物身上靠。量 rect 的话，每次重排都自愈。
@@ -563,7 +563,7 @@
     const ib = img.getBoundingClientRect();
     nameEl.style.setProperty("--rt-ox", (ib.left + ib.width / 2 - (appRect.left + plateX)).toFixed(1) + "px");
     nameEl.style.setProperty("--rt-oy", (ib.bottom - (appRect.top + plateY)).toFixed(1) + "px");
-    // 探针读这两个值做「零遮挡 / 字号达标」断言，不写死像素位置
+    // 探针读这两个值做“零遮挡 / 字号达标”断言，不写死像素位置
     nameEl.dataset.rtHit = String(sol.hits);
     nameEl.dataset.rtFs = sol.fs.toFixed(1);
     // 定位成功才放出来（CSS 里 .dialog-name 默认 visibility:hidden）
@@ -583,7 +583,7 @@
     const haveTrim = !!(figImg && figImg.dataset.trim);
     const nameEl = document.getElementById("dialog-name");
     // 锚点重算条件：窗口尺寸 / 立绘盒（含 left/top 位置）/ trim 是否就绪。
-    // 位置进 key 是必须的：用户可拖动「立绘尺寸/水平/垂直」滑条、更换立绘、
+    // 位置进 key 是必须的：用户可拖动“立绘尺寸/水平/垂直”滑条、更换立绘、
     // 上传新图，都表现为 figure 盒变化，锚点必须跟着重算（不能写死）。
     // 二阶段只是对 img 做 scale 变换——后代变换不改 figure 布局盒，也不改
     // cRect 与 trim 存在性 → 不触发重算 → 倒计时位置在二阶段保持不动。
@@ -604,8 +604,8 @@
       vis = frozenFig || figureVisibleRect(figure, figBox.top);
     }
     // 题名位置依赖立绘的 alpha 剖面（循环里要反复改字号再强制布局）。若跟着 vis 一起
-    // 只在 key 变化时算，会赶上「图还没解码完」那一轮——那时量不到剖面，属于「没算出来」
-    // 而不是「算出没有」，缓存住就再也不重试，名字会一直不显示（竖屏实测踩到）。所以
+    // 只在 key 变化时算，会赶上“图还没解码完”那一轮——那时量不到剖面，属于“没算出来”
+    // 而不是“算出没有”，缓存住就再也不重试，名字会一直不显示（竖屏实测踩到）。所以
     // 定位成功（写 data-rt）之前每轮都重试；成功后只在 key 变化时重算。
     if (nameEl && (keyChanged || !nameEl.dataset.rt)) {
       layoutRoleTitle(figure, nameEl, figBox);
@@ -635,13 +635,13 @@
       const barW = bar.offsetWidth || 84;
       const ringH = (ringWrap && ringWrap.offsetHeight) || 84;
       const barH = bar.offsetHeight || ringH;
-      // bar 是 column flex：提醒名称在环上（「提前结束」已经移出 bar、固定到窗口顶部）。
-      // 用 ring-wrap 的实际布局位置（距 bar 顶的 offsetTop）反推「环中心距 bar 底」，
+      // bar 是 column flex：提醒名称在环上（“提前结束”已经移出 bar、固定到窗口顶部）。
+      // 用 ring-wrap 的实际布局位置（距 bar 顶的 offsetTop）反推“环中心距 bar 底”，
       // 这样无论环上下各放了什么，环中心都能精确落在 midY 上（名称移到环上方后，
-      // 旧式「barH - ringH 当作环下占位」会把环整体抬高，故改为实测 offsetTop）。
+      // 旧式“barH - ringH 当作环下占位”会把环整体抬高，故改为实测 offsetTop）。
       const ringFromTop = (ringWrap ? ringWrap.offsetTop : 0) + ringH / 2;
       const ringFromBottom = Math.max(0, barH - ringFromTop);
-      // clamp 的合法区间是「bar 相对对话框」的坐标：窗口坐标的边界先算好再减去内缩量
+      // clamp 的合法区间是“bar 相对对话框”的坐标：窗口坐标的边界先算好再减去内缩量
       cdX = clamp(
         midX - boxLeft - barW / 2,
         CD_EDGE - boxLeft,
@@ -668,12 +668,12 @@
       src: haveTrim ? "trim" : "figure"
     });
     // 台词 / 提醒内容的垂直居中由 .content 的 flex（justify-content: center）负责，
-    // 不再用 translateY 二次「对中」：那条老公式把文字挪到对话框的几何中心，与 CSS
-    // 里「上边距小、下边距大」刻意的视觉偏上相互抵消，还会把文字推进下方内边距
+    // 不再用 translateY 二次“对中”：那条老公式把文字挪到对话框的几何中心，与 CSS
+    // 里“上边距小、下边距大”刻意的视觉偏上相互抵消，还会把文字推进下方内边距
     // （实测自定义提醒被推下 3px，看着像溢出）。
   }
 
-  // ---- 对话框内「提醒内容」的统一自适应（短休 / 长休 / 外卖 / 自定义共用）----
+  // ---- 对话框内“提醒内容”的统一自适应（短休 / 长休 / 外卖 / 自定义共用）----
   // break.js 与 takeout.js 里的这一段必须逐字相同：四个窗口的提醒内容是一套排版。
   // JS 只负责两件 CSS 做不到的事：
   //   1) 装不下就逐级缩字号（下限 --dlg-fs-min = 15px，再小就看不清了）；
@@ -703,8 +703,8 @@
     var cst = getComputedStyle(content);
     var padY = parseFloat(cst.paddingTop) + parseFloat(cst.paddingBottom);
     // 文字可用高度 = 对话框应有高度 − 上下内边距。四个窗口共用这一个公式：外卖框里
-    // 还有徽标/按钮，它们照样占高，框会自己长高 —— 但那不影响「同一段文字在哪个
-    // 窗口里字号都一样」，这正是「保持相同样式」要的（扣掉按钮高度反而会让外卖
+    // 还有徽标/按钮，它们照样占高，框会自己长高 —— 但那不影响“同一段文字在哪个
+    // 窗口里字号都一样”，这正是“保持相同样式”要的（扣掉按钮高度反而会让外卖
     // 的同一句话比休息窗口小 5px，且长文本白缩一次、框照样长高）。
     var boxH = cssLenPx(cst.getPropertyValue("--dlg-h")) || 0.22 * window.innerHeight;
     var budget = boxH - padY;
@@ -742,7 +742,7 @@
     // 题名的定位要读立绘的 alpha 剖面，立绘还没解码完时量不到 → 那一轮等于白跑。
     // ResizeObserver/MutationObserver 未必会再响一次（figure 高度是 vh 百分比，图片
     // 就绪并不改变它），所以除了监听 img 的 load，再补一串短定时兜底重排：只在
-    // 「题名还没定位成功」时走，定位成功即刻停，不会常态轮询。
+    // “题名还没定位成功”时走，定位成功即刻停，不会常态轮询。
     const im = figure.querySelector("img");
     if (im) {
       if (im.complete && im.naturalWidth > 0) relayout();
@@ -765,9 +765,9 @@
 
   // renderer/break.ts
   var api = window.api;
-  // 把「设置 → 快捷键」录入的组合键字符串（如 "Ctrl+Alt+X" / "Super+Shift+F1" /
+  // 把“设置 → 快捷键”录入的组合键字符串（如 "Ctrl+Alt+X" / "Super+Shift+F1" /
   // "Ctrl+ "）解析成匹配器，让休息窗口的本地 keydown 与全局快捷键完全一致。
-  // 解析失败（格式非法 / 缺修饰键）返回 null —— 对应「未配置」，本地不再兜底触发。
+  // 解析失败（格式非法 / 缺修饰键）返回 null —— 对应“未配置”，本地不再兜底触发。
   function parseAccelerator(acc) {
     if (!acc || typeof acc !== "string") return null;
     const parts = acc.split("+");
@@ -798,7 +798,7 @@
     p.textContent = text;
     return p;
   }
-  // 粒子层：倒计时周围轻柔上浮的光点，渲染「放松」氛围。仅无督休专员模式启用
+  // 粒子层：倒计时周围轻柔上浮的光点，渲染“放松”氛围。仅无督休专员模式启用
   // （督休专员模式由 CSS 隐藏画布）。纯装饰、不参与信息呈现，低透明度、低速。
   function startParticles(canvas, color) {
     try {
@@ -843,7 +843,7 @@
       tick();
     } catch (e) { /* 装饰层异常不影响倒计时主体 */ }
   }
-  // 蓄能容器：把倒计时当作一只「储存能量的空心容器」——
+  // 蓄能容器：把倒计时当作一只“储存能量的空心容器”——
   // 起始为空，随着休息推进（剩余时间流逝 = 蓄能累积），内部液态能量自下而上
   // 上涨、表面波动，直至蓄满整个容器；容器壁外缘有能量溢出（光丝迸发 + 扩散脉冲）。
   var SVGNS = "http://www.w3.org/2000/svg";
@@ -961,7 +961,7 @@
       p.el.setAttribute("opacity", (0.5 * (1 - kk) * intensity).toFixed(3));
     }
   }
-  // 液体颜色随背景（--accent）自动适配：同色相保证「协调」，提亮 + 高饱和保证「明显」。
+  // 液体颜色随背景（--accent）自动适配：同色相保证“协调”，提亮 + 高饱和保证“明显”。
   // 把推导出的提亮同源色写进 --liquid-accent（汲取光丝 / 吸收涟漪 / 液面高光共用），
   // 并直接改写液态渐变与气泡渐变的色标。
   function hexToRgb(hex) {
@@ -1020,7 +1020,7 @@
     }
   }
 
-  // 外界能量汲取：从四面八方径向射向容器壁，撞壁后迸出吸收涟漪并被「吸进」容器。
+  // 外界能量汲取：从四面八方径向射向容器壁，撞壁后迸出吸收涟漪并被“吸进”容器。
   // 强度随蓄能反向变化：越空吸得越猛，将满时收束。
   function resetIntake(w, init) {
     w.angle = Math.random() * Math.PI * 2;
@@ -1114,7 +1114,7 @@
   }
 
   async function main() {
-    // 一次性揭示窗口：消除「先无立绘、后有立绘」闪烁——启用督休专员时整窗先透明，
+    // 一次性揭示窗口：消除“先无立绘、后有立绘”闪烁——启用督休专员时整窗先透明，
     // 立绘就绪（load/error）后淡入；无立绘时立即显示。超时兜底防异常卡透明。
     let revealed = false;
     const reveal = () => {
@@ -1122,10 +1122,10 @@
       revealed = true;
       document.documentElement.style.opacity = "1";
     };
-    // 会话拉取要能扛住「窗口已建、会话还在路上」的空档：主进程是**先写会话再建窗**，
+    // 会话拉取要能扛住“窗口已建、会话还在路上”的空档：主进程是**先写会话再建窗**，
     // 但若上一次预览的窗口正在关闭、或主进程正在换会话，首帧这一次可能读到 nil。
     // 此前直接 reveal + return，窗口就停在只剩背景的空壳上 —— 用户看到的就是
-    // 「预览窗口不显示督休专员」，再点一次预览又好（那次读到了会话）。
+    // “预览窗口不显示督休专员”，再点一次预览又好（那次读到了会话）。
     // 所以这里重试几次，真读不到才退回空窗（并保留兜底揭示）。
     let data = await api.breakCurrent();
     for (let i = 0; i < 5 && !data; i++) {
@@ -1147,13 +1147,13 @@
       nameEl.textContent = data.name || "";
       if (data.name) nameEl.classList.remove("hidden");
     }
-    // 环内两行直排铭文「整理思绪 / 积蓄能量」已静态写在 break.html 的
+    // 环内两行直排铭文“整理思绪 / 积蓄能量”已静态写在 break.html 的
     // #inscribe-lines 中（进度百分数下方，非弧形），无需在此设置。
     if (data.supervisor) {
       const isCustom = typeof data.type === "string" && data.type.indexOf("cb-") === 0;
       if (isCustom) {
         // 自定义提醒：督休专员只作背景立绘，不显示其台词（提醒内容）、不进入第二阶段；
-        // 对话区只展示自定义提醒自己的「提醒内容」（messages 保持可见，不被隐藏）。
+        // 对话区只展示自定义提醒自己的“提醒内容”（messages 保持可见，不被隐藏）。
         setupSupervisor(data.supervisor, "", { showLine: false, allowEscalate: false });
       } else {
         msgBox.classList.add("hidden");
@@ -1177,7 +1177,7 @@
     const countdown = document.getElementById("countdown");
     const pctEl = document.getElementById("progress-pct");
     const total = data.durationMs;
-    // 环内数字字号按「本次倒计时最多能有几位」定（系数表见 break.css 的 --cd-w）。
+    // 环内数字字号按“本次倒计时最多能有几位”定（系数表见 break.css 的 --cd-w）。
     // 必须用**总秒数的位数**、不是当前数字的位数：否则 100→99 会突然放大一档，
     // 读数每秒都在变胖变瘦。JS 没写这个属性时 CSS 按 2 位兜底。
     const ringWrap = document.querySelector(".ring-wrap");
@@ -1185,7 +1185,7 @@
       const digits = String(Math.ceil(total / 1000)).length;
       ringWrap.dataset.cdDigits = String(Math.min(5, Math.max(1, digits)));
     }
-    // 生成「蓄能容器」几何：液态能量、气泡、外壁溢出光丝与脉冲
+    // 生成“蓄能容器”几何：液态能量、气泡、外壁溢出光丝与脉冲
     buildEnergy(document.querySelector(".ring-wrap svg"));
     // 启动液态能量动画（独立于倒计时 tick，保证液面波动丝滑）
     energyRunning = true;
@@ -1203,7 +1203,7 @@
         void countdown.offsetWidth;
         countdown.classList.add("tick");
       }
-      // 蓄能进度 = 流逝占比（容器从空到满）；中心「进度」与此同步增长
+      // 蓄能进度 = 流逝占比（容器从空到满）；中心“进度”与此同步增长
       targetFill = total > 0 ? 1 - remain / total : 0;
       if (pctEl && total > 0) pctEl.textContent = Math.round(targetFill * 100) + "%";
       if (remain <= 0) {
@@ -1226,15 +1226,15 @@
       }
     }
     if (data.preview) {
-      // 预览也复刻真实「满罐多停留 1 秒」的体验
+      // 预览也复刻真实“满罐多停留 1 秒”的体验
       window.setTimeout(() => api.closeWindow(), Math.max(0, data.endsAt - Date.now()) + 1000);
     }
     const skip = document.getElementById("skip-link");
-    // 顶部那个位置留给「预览模式 · 点击任意处关闭」：预览本来就点任意处关闭，再挂一个
-    // 「提前结束」既重复、又会和 badge 叠在同一处。
+    // 顶部那个位置留给“预览模式 · 点击任意处关闭”：预览本来就点任意处关闭，再挂一个
+    // “提前结束”既重复、又会和 badge 叠在同一处。
     if (!data.preview) skip.classList.remove("hidden");
-    // 文案随「设置 → 快捷键」的 endEarly 走：配置了就显示「提前结束（Ctrl+Alt+X）」，
-    // 没配置（禁用）就只显示「提前结束」。
+    // 文案随“设置 → 快捷键”的 endEarly 走：配置了就显示“提前结束（Ctrl+Alt+X）”，
+    // 没配置（禁用）就只显示“提前结束”。
     skip.textContent = data.endEarlyShortcut
       ? `提前结束（${data.endEarlyShortcut}）`
       : "提前结束";
@@ -1257,7 +1257,7 @@
     // 兜底：任何异常导致立绘既没 load 也没 error 时，最多 4s 后强制揭示，
     // 避免窗口一直透明不可见。
     // 为什么不是 1.5s：1.5s 到点时立绘（webp + data URL）常常还在解码，窗口会先以
-    // 「没有督休专员」的样子露出来 —— 正是用户报的「有时候预览窗里没有督休专员」。
+    // “没有督休专员”的样子露出来 —— 正是用户报的“有时候预览窗里没有督休专员”。
     // 宁可变透明多等一会儿，也不要露出空窗。
     window.setTimeout(reveal, 4000);
   }

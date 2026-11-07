@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// 这一组补的是「督休专员这份软件资产」的读写口径：图能不能找到、能不能转 data URL、
+// 这一组补的是“督休专员这份软件资产”的读写口径：图能不能找到、能不能转 data URL、
 // 按名字写配置会不会建出空壳。都是真实文件系统操作，全部落在 t.TempDir() 里。
 
 // 造一个最小督休专员目录：<root>/<dir>/meta.json + 立绘图
@@ -47,7 +47,7 @@ func TestRoleAssetFallsBackToOtherExtensions(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "figure.png"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	// meta.json 写的是 webp、磁盘上只有 png：必须靠扩展名兜底找到，否则「图在却不显示」
+	// meta.json 写的是 webp、磁盘上只有 png：必须靠扩展名兜底找到，否则“图在却不显示”
 	if got := RoleAsset(dir, "figure.webp", RoleFigureBase); got != "figure.png" {
 		t.Fatalf("应回落到 png，得到 %q", got)
 	}
@@ -172,7 +172,7 @@ func TestScanRolesSkipsBrokenDirectories(t *testing.T) {
 	}
 	roles := ScanRoles(root)
 	if len(roles) != 1 || roles[0].Name != "好的" {
-		t.Fatalf("只该扫到「好的」，得到 %+v", roles)
+		t.Fatalf("只该扫到“好的”，得到 %+v", roles)
 	}
 	if ScanRoles(filepath.Join(root, "不存在")) != nil {
 		t.Fatal("根目录不存在时应给 nil")
@@ -219,7 +219,7 @@ func TestWriteRoleFileCreatesThenOverwrites(t *testing.T) {
 	if got, _ := ReadRoleFile(root, "新专员"); got.Enabled {
 		t.Fatal("覆盖写没生效（enabled 还是 true）")
 	}
-	// 名字全空 → 明确报错，不建「督休专员」这种默认目录
+	// 名字全空 → 明确报错，不建“督休专员”这种默认目录
 	if err := WriteRoleFile(root, "  ", RoleFile{}); err == nil {
 		t.Fatal("名字全空时应报错")
 	}

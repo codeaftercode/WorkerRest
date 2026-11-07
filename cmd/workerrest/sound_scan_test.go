@@ -13,10 +13,10 @@ import (
 // 随包提示音目录体检（sound_scan.go）的回归。
 //
 // 这里钉三件在真实使用里最容易被误判的事：
-//   - 内置 4 条不能因为「配置里没登记」就被当成用户的新文件（它们由内置音逻辑直接使用）；
+//   - 内置 4 条不能因为“配置里没登记”就被当成用户的新文件（它们由内置音逻辑直接使用）；
 //   - 不可播放的文件（0 字节 / 非音频扩展名 / 子目录 / 隐藏文件）不能进候选，
 //     否则用户点了导入还是播不出来，比不提示更糟；
-//   - 写配置走的是「深拷贝 → 改 → 落盘 → 整体替换」，不能顺手把别的条目改了。
+//   - 写配置走的是“深拷贝 → 改 → 落盘 → 整体替换”，不能顺手把别的条目改了。
 
 // withBuiltinSoundDir 把随包提示音目录指到临时目录（生产是 <resourcesRoot>/sounds）
 func withBuiltinSoundDir(t *testing.T, dir string) {
@@ -73,7 +73,7 @@ func TestScanSoundDirDoesNotTreatBuiltinAsNew(t *testing.T) {
 	for _, b := range settings.BuiltinSounds() {
 		writeSoundFile(t, filepath.Join(dir, b.File), 32)
 	}
-	// 配置里一条都没登记：4 个内置音仍不算「新发现」，也不该报任何待办
+	// 配置里一条都没登记：4 个内置音仍不算“新发现”，也不该报任何待办
 	a, _ := newSoundApp(t, soundCfgJSON("single", ""))
 	n := a.scanSoundDir()
 	if len(n.New) != 0 {

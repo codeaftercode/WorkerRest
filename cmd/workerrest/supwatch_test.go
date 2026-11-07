@@ -11,7 +11,7 @@ import (
 // 这一组钉的是：**休息会话一开局就要盯系统级输入**。曾经的实现只在 ShowTakeoutWindow
 // 里启动轮询，于是短 / 长休息窗口在场时，督休专员的二阶段只能靠窗口内的本地
 // mousemove / keydown 触发 —— 用户切到别的应用继续敲键、动鼠标，窗口毫无反应，
-// 这就是「不能只在提醒窗口上检测，要在整个操作系统层面做全局检测」那条报障。
+// 这就是“不能只在提醒窗口上检测，要在整个操作系统层面做全局检测”那条报障。
 //
 // 窗口与广播本身依赖原生窗口（由无头冒烟 + GUI 探针覆盖），这里只验启停时机：
 // 会话在 → 轮询在；会话与窗口都没了 → 轮询收掉；重复调用不会留下两个 goroutine。
@@ -61,7 +61,7 @@ func TestBreakSessionStartsGlobalActivityWatch(t *testing.T) {
 		t.Fatalf("休息会话开局就该有全局键鼠轮询，得到 %+v", info)
 	}
 
-	// 预览窗口「点任意处关闭」走的就是这条：会话与窗口一起清掉
+	// 预览窗口“点任意处关闭”走的就是这条：会话与窗口一起清掉
 	a.CloseWindow("break")
 	if info := a.supActivityWatchInfo(); info.Running || info.Mode != "off" {
 		t.Fatalf("关掉休息窗口后轮询应收掉，得到 %+v", info)

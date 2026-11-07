@@ -2,7 +2,7 @@
 // 结构体都是这里的类型。字段名与 JSON 形状必须与渲染层（web/dist 的 JS）一致，
 // 改一个键名等于改前端契约。
 //
-// 本包零依赖（不 import 任何 internal 包），是依赖图的最底层；任何需要「一个类型」
+// 本包零依赖（不 import 任何 internal 包），是依赖图的最底层；任何需要“一个类型”
 // 的地方都可以引它，它不引任何人。
 package model
 
@@ -45,7 +45,7 @@ type SupLines struct {
 // SupStageInfo 督休专员在提醒窗口里的出场信息。
 // 字段与 历史源码/supervisor.ts 的 SupervisorSessionInfo 逐字对齐 ——
 // 设置页的预览面板直接读它（supPreview.geom / supPreview.lines.urge / .command），
-// 少一个字段就是「Cannot read properties of undefined」把预览打断。
+// 少一个字段就是“Cannot read properties of undefined”把预览打断。
 type SupStageInfo struct {
 	Image    string   `json:"image"` // data URL
 	RoleName string   `json:"roleName,omitempty"`
@@ -66,21 +66,21 @@ type BreakInfo struct {
 	Appearance Appearance    `json:"appearance"`
 	Messages   []string      `json:"messages"`
 	Supervisor *SupStageInfo `json:"supervisor"`
-	// EndEarlyShortcut 提前结束休息的全局快捷键（与「设置 → 快捷键」的 endEarly 一致）。
-	// 窗口据此显示「提前结束（Ctrl+Alt+X）」提示；空串 = 未配置（只显示「提前结束」）。
+	// EndEarlyShortcut 提前结束休息的全局快捷键（与“设置 → 快捷键”的 endEarly 一致）。
+	// 窗口据此显示“提前结束（Ctrl+Alt+X）”提示；空串 = 未配置（只显示“提前结束”）。
 	EndEarlyShortcut string `json:"endEarlyShortcut"`
 }
 
 // TakeoutInfo 外卖提醒会话（与 历史源码/types.ts 的 TakeoutSessionInfo 逐字对齐）。
 // 渲染层 takeout.ts 读 id / at / hour / minute / firedAt / preview / meal / leadSec /
 // postponeMin / postponedCount / message / appearance / supervisor / redPacketData；
-// slot 额外保留给主进程「推迟」记账（takeout:action 按 cur.slot 重弹），渲染层不读也无妨。
+// slot 额外保留给主进程“推迟”记账（takeout:action 按 cur.slot 重弹），渲染层不读也无妨。
 type TakeoutInfo struct {
 	ID     string `json:"id"`
 	At     int64  `json:"at"` // 预定时刻（当天的 hour:minute，Unix 毫秒）
 	Hour   int    `json:"hour"`
 	Minute int    `json:"minute"`
-	// Slot 触发本次提醒的时间条目（点「推迟」后按同一条目重新弹出）
+	// Slot 触发本次提醒的时间条目（点“推迟”后按同一条目重新弹出）
 	Slot TimeSlot `json:"slot"`
 	// FiredAt 本次弹出时间（Unix 毫秒）
 	FiredAt int64  `json:"firedAt"`
@@ -88,9 +88,9 @@ type TakeoutInfo struct {
 	Meal    string `json:"meal"` // 餐段文案：早餐 / 午餐 / 下午茶 / 晚餐 / 夜宵
 	// LeadSec 提前通知秒数（生成会话时的配置快照）：只用于诊断，真实窗口始终按原定时刻弹出
 	LeadSec int `json:"leadSec"`
-	// PostponeMin 可推迟的分钟数（「推迟」按钮文案与主进程推迟时长共用）
+	// PostponeMin 可推迟的分钟数（“推迟”按钮文案与主进程推迟时长共用）
 	PostponeMin int `json:"postponeMin"`
-	// PostponedCount 本次是第几次推迟：0=到点正常弹出，>0 显示「已推迟 N 次」
+	// PostponedCount 本次是第几次推迟：0=到点正常弹出，>0 显示“已推迟 N 次”
 	PostponedCount int `json:"postponedCount"`
 	// Message 本次展示的提醒内容（外卖提醒自己的那一套配置；空串窗口不显示）
 	Message    string        `json:"message"`

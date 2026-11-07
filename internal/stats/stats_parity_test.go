@@ -11,7 +11,7 @@ import (
 // 统计层对拍：把场景矩阵喂给 Go 侧的统计函数，导出成与 scripts/gen_stats_ref.mjs
 // 完全相同的 JSON 形状，交由 scripts/verify_stats_parity.py 逐字段比对。
 //
-// 为什么比对放在 Python 而不在这里：那边的 walk() 已经会分辨「Go 缺键 / 多键 / 值不同」，
+// 为什么比对放在 Python 而不在这里：那边的 walk() 已经会分辨“Go 缺键 / 多键 / 值不同”，
 // 报告比 t.Errorf 拼出来的更好读，也能和配置层 / 计划层对拍共用同一套报告格式。
 //
 // 单独跑 `go test` 时本用例自动跳过（没有环境变量），所以它不会给日常回归添麻烦。
@@ -52,7 +52,7 @@ func TestDumpStatsForParity(t *testing.T) {
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		t.Fatalf("解析参考失败：%v", err)
 	}
-	// 时区必须一致：两边都用本地时区解释「几点几分」，跨时区跑这份参考没有意义
+	// 时区必须一致：两边都用本地时区解释“几点几分”，跨时区跑这份参考没有意义
 	if _, off := time.Now().Zone(); off/60 != doc.TZOffsetMin {
 		t.Skipf("时区不一致（本地 %d 分钟 / 参考 %d 分钟），跳过", off/60, doc.TZOffsetMin)
 	}

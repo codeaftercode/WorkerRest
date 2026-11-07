@@ -12,24 +12,24 @@ import (
 // 开源鸣谢清单：整份文件嵌进 exe。
 //
 // 为什么嵌进二进制，而不是打包目录里散放一个 txt：
-//   - MIT / BSD-3 的义务是「随二进制分发时复现版权声明与许可全文」。最常见的分发
+//   - MIT / BSD-3 的义务是“随二进制分发时复现版权声明与许可全文”。最常见的分发
 //     方式是用户把 rest.exe 单独拷给同事 —— 散放的文件当场就丢了，嵌进 exe 才随行。
 //   - 但声明**必须可读**：只把文本编译进机器码、没有任何读取入口，等于没复现。
-//     所以同时给了「关于页 → 开源鸣谢」入口与本文件的另存为导出。
+//     所以同时给了“关于页 → 开源鸣谢”入口与本文件的另存为导出。
 //   - 真源仍是仓库根这份 txt（scripts/gen_notices.py 生成；打包脚本先跑 --check，
 //     依赖一升版本就失败），exe 里是它的逐字节副本。
 //
-// 收录范围与「为什么是这些组件」见生成器 docstring：只列实际参与本次构建的模块 +
+// 收录范围与“为什么是这些组件”见生成器 docstring：只列实际参与本次构建的模块 +
 // Go 运行时 + 内联进前端产物的库。未链接的 go.sum 条目不在其列。
 //
 //go:embed THIRD-PARTY-NOTICES.txt
 var thirdPartyNotices string
 
 // noticesFileName 导出的默认文件名：与仓库、便携包里的名字保持一致，
-// 用户拿到手不会出现「同内容三个名字」。
+// 用户拿到手不会出现“同内容三个名字”。
 const noticesFileName = "THIRD-PARTY-NOTICES.txt"
 
-// GetThirdPartyNotices 返回随包的开源鸣谢全文（关于页「开源鸣谢」弹窗用）。
+// GetThirdPartyNotices 返回随包的开源鸣谢全文（关于页“开源鸣谢”弹窗用）。
 //
 // 返回整份字符串而不是分段结构：它就是给人读的纯文本，前端用 textContent 写进
 // <pre> 即可（不走 innerHTML，零注入面）。大小约 18 KB，一次传输可以忽略。
@@ -37,9 +37,9 @@ func (a *App) GetThirdPartyNotices() string {
 	return thirdPartyNotices
 }
 
-// ExportThirdPartyNotices 把开源鸣谢清单另存为纯文本文件（L3：让「可复现」成为可验证动作）。
+// ExportThirdPartyNotices 把开源鸣谢清单另存为纯文本文件（L3：让“可复现”成为可验证动作）。
 //
-// 与「只内嵌」的区别：内嵌证明「随程序带着」，导出证明「用户随时能取出一份完整副本」——
+// 与“只内嵌”的区别：内嵌证明“随程序带着”，导出证明“用户随时能取出一份完整副本”——
 // 审计或法务要一份声明时，不必去翻安装目录、也不必从 exe 里扒资源。
 // 写盘用 CRLF（Windows 记事本的兼容性），内容与内嵌文本语义相同。
 //
@@ -80,8 +80,8 @@ func toCRLF(s string) string {
 
 // noticesPayload 导出的字节内容。
 //
-// 单独抽出来是为了可测：导出要弹原生「另存为」对话框，自动化点不到，
-// 但「到底写什么字节」是这条义务的核心，必须能被单测钉住（见 notices_test.go）。
+// 单独抽出来是为了可测：导出要弹原生“另存为”对话框，自动化点不到，
+// 但“到底写什么字节”是这条义务的核心，必须能被单测钉住（见 notices_test.go）。
 func noticesPayload() []byte {
 	return []byte(toCRLF(thirdPartyNotices))
 }

@@ -15,11 +15,11 @@ import (
 
 // 归一化的快速回归。
 //
-// 钉的是「规则写错了」：类型不对的开关回退默认、越界数值夹紧、非法枚举回落缺省值、
+// 钉的是“规则写错了”：类型不对的开关回退默认、越界数值夹紧、非法枚举回落缺省值、
 // 非对象条目剔除、种子条目幂等。
 //
 // 这里刻意只放**当前格式**的配置：软件还没发布，不存在需要迁移的旧版本文件，
-// 归一化只负责把「手改坏了 / 导入带了脏值」的配置收口。
+// 归一化只负责把“手改坏了 / 导入带了脏值”的配置收口。
 
 func TestNormalizeLoadCoercesBadValues(t *testing.T) {
 	raw := map[string]any{
@@ -110,7 +110,7 @@ func TestNormalizeLoadCoercesBadValues(t *testing.T) {
 		t.Errorf("应种入 %d 条内置提示音，得到 %d", len(builtinMusic), len(music))
 	}
 
-	// takeout：leadSec 0–300、postponeMin 0–120（0 = 不显示「推迟」按钮）
+	// takeout：leadSec 0–300、postponeMin 0–120（0 = 不显示“推迟”按钮）
 	tk := raw["takeout"].(map[string]any)
 	if tk["leadSec"] != float64(300) || tk["postponeMin"] != float64(120) {
 		t.Errorf("外卖提前通知秒数应夹到 300，得到 %v / %v", tk["leadSec"], tk["postponeMin"])
@@ -208,7 +208,7 @@ func TestDeepMergeReplacesArrays(t *testing.T) {
 }
 
 // TestSaveFirstRunPortableFirst 首次运行（无来源配置）Save 时，落点必须是便携优先候选
-// （<运行目录>/config/settings.json），而不是 APPDATA 兜底。这是便携目录「数据跟着程序走」
+// （<运行目录>/config/settings.json），而不是 APPDATA 兜底。这是便携目录“数据跟着程序走”
 // 的关键 —— 若落到 APPDATA，解压到别处的便携目录会各写各的、互不认账。
 func TestSaveFirstRunPortableFirst(t *testing.T) {
 	root := t.TempDir()
@@ -282,7 +282,7 @@ func TestUpdateSites(t *testing.T) {
 	}
 }
 
-// TestSetSitesReplacesLocal 验证远程 version.json 下发的 sites 是「整体替换」本地 sites，
+// TestSetSitesReplacesLocal 验证远程 version.json 下发的 sites 是“整体替换”本地 sites，
 // 而不是合并追加；且落盘形状为 []any 字符串，UpdateSites 能原样读回。
 func TestSetSitesReplacesLocal(t *testing.T) {
 	// 本地原本有一组 sites
@@ -324,8 +324,8 @@ func TestSetSitesReplacesLocal(t *testing.T) {
 	}
 }
 
-// 全新 / 老配置 singleId 为空时，normalizeSound 应兜底指向第一首「启用」的提示音。
-// 否则默认 single 模式下会「列表里有音、真休息却静音、只有试听能响」（用户报过的坑）。
+// 全新 / 老配置 singleId 为空时，normalizeSound 应兜底指向第一首“启用”的提示音。
+// 否则默认 single 模式下会“列表里有音、真休息却静音、只有试听能响”（用户报过的坑）。
 func TestNormalizeSoundDefaultsSingleId(t *testing.T) {
 	// 1) 全新配置：sound 段只有 mode，没 music / singleId / seeded
 	raw := map[string]any{"sound": map[string]any{"mode": "single"}}
@@ -391,7 +391,7 @@ func TestAppearanceTransparencyDefault(t *testing.T) {
 	}
 }
 
-// TestAppearanceGeometryDefaults 提醒窗口宽高百分比与「全屏显示」的出厂默认：
+// TestAppearanceGeometryDefaults 提醒窗口宽高百分比与“全屏显示”的出厂默认：
 // 95% / 95% / 关（用户 2026-10-29 定的口径）。与透明度同理，代码兜底与内嵌 JSON 必须同值。
 func TestAppearanceGeometryDefaults(t *testing.T) {
 	for i, raw := range []map[string]any{{}, defaultSettingsMap()} {
@@ -400,14 +400,14 @@ func TestAppearanceGeometryDefaults(t *testing.T) {
 			t.Fatalf("第 %d 组：宽高缺省应为 95%%/95%%，得到 %v%%/%v%%", i+1, cfg.WidthPct, cfg.HeightPct)
 		}
 		if cfg.Fullscreen {
-			t.Fatalf("第 %d 组：「全屏显示」缺省应为关", i+1)
+			t.Fatalf("第 %d 组：“全屏显示”缺省应为关", i+1)
 		}
 	}
 }
 
-// TestSupervisorSelectionDefault 立绘显示方式缺省为「随机显示」。
+// TestSupervisorSelectionDefault 立绘显示方式缺省为“随机显示”。
 // 三处口径：读取兜底（SupervisorCfg）、归一化非法值（normalizeSupervisorMessages）、
-// 出厂 JSON。任一处走「固定显示」，新装用户看到的就与预期不符。
+// 出厂 JSON。任一处走“固定显示”，新装用户看到的就与预期不符。
 func TestSupervisorSelectionDefault(t *testing.T) {
 	if got := (&Settings{raw: map[string]any{}}).SupervisorCfg().Selection; got != "random" {
 		t.Fatalf("缺键时显示方式应为 random，得到 %q", got)
@@ -430,11 +430,11 @@ func TestSupervisorSelectionDefault(t *testing.T) {
 	}
 }
 
-// TestAppearanceHideOnShareDefault 「共享屏幕时隐藏提醒窗口」缺省必须是开。
+// TestAppearanceHideOnShareDefault “共享屏幕时隐藏提醒窗口”缺省必须是开。
 //
-// 这个键是「开会共享屏幕时别被同事看见」的兜底：默认关就等于没装 —— 用户不会
+// 这个键是“开会共享屏幕时别被同事看见”的兜底：默认关就等于没装 —— 用户不会
 // 为一件自己不知道会发生的事预先去勾开关。所以三处口径必须一致：代码兜底 true、
-// 出厂 JSON true、前端 fillForm 把「缺键」也当成勾选（见 settings.js 的
+// 出厂 JSON true、前端 fillForm 把“缺键”也当成勾选（见 settings.js 的
 // `a.hideOnShare !== false`，此处只钉 Go 侧两条）。
 func TestAppearanceHideOnShareDefault(t *testing.T) {
 	// 1) 缺键（老配置）→ 开
@@ -450,7 +450,7 @@ func TestAppearanceHideOnShareDefault(t *testing.T) {
 	if s := (&Settings{raw: raw}); s.AppearanceCfg().HideOnShare {
 		t.Fatal("显式 hideOnShare=false 应被尊重")
 	}
-	// 4) 类型坏了（手改成字符串）→ 回到默认「开」，不是「关」
+	// 4) 类型坏了（手改成字符串）→ 回到默认“开”，不是“关”
 	//    方向很重要：坏数据不能把保护关掉
 	bad := map[string]any{"appearance": map[string]any{"hideOnShare": "nope"}}
 	if s := (&Settings{raw: bad}); !s.AppearanceCfg().HideOnShare {
@@ -461,9 +461,9 @@ func TestAppearanceHideOnShareDefault(t *testing.T) {
 // TestEmbeddedDefaultMatchesFile 内嵌的出厂默认必须与本包的 default_settings.json 逐项一致。
 //
 // 全仓只有一份出厂默认：internal/settings/default_settings.json。它同时是
-// `//go:embed` 的数据源（「恢复默认设置」用）和 make_portable.py 复制成便携包
+// `//go:embed` 的数据源（“恢复默认设置”用）和 make_portable.py 复制成便携包
 // config/settings.json 的那份（新装首跑读它）。两份若分叉，用户首装看到的值与点
-// 「恢复默认」后的值就不一样，界面上完全看不出来。
+// “恢复默认”后的值就不一样，界面上完全看不出来。
 //
 // go:embed 取的是编译那一刻的快照，这条用例把快照钉回磁盘文件上：改了 json 没重编译、
 // 或者 .gitattributes 把文件换行改掉导致 embed 字节变化，都会在这里立刻红。
@@ -485,15 +485,15 @@ func TestEmbeddedDefaultMatchesFile(t *testing.T) {
 	}
 }
 
-// TestDefaultFixedRolePointsAtRealRole 出厂配置的「固定显示」专员必须能对上磁盘上的真人。
+// TestDefaultFixedRolePointsAtRealRole 出厂配置的“固定显示”专员必须能对上磁盘上的真人。
 //
-// 首装与「恢复默认设置」后，固定模式按这个名字取人。写错一个字（比如给专员改名只动了
-// meta.json，忘了 sync 这里）不会报错，只会静默落到「第一个可用专员」——界面上完全看不出
+// 首装与“恢复默认设置”后，固定模式按这个名字取人。写错一个字（比如给专员改名只动了
+// meta.json，忘了 sync 这里）不会报错，只会静默落到“第一个可用专员”——界面上完全看不出
 // 异常，只有用户发现出场的人不是自己要的那个。这里的名字比对走 resolveRoleDir，口径与
 // 运行时一致（读 meta.json 的 name，EqualFold）。
 //
-// 存在性**不写死具体是谁**（换人只改 default_settings.json，不用改用例），但「这一个
-// 必须真的在仓库里」是硬的：出厂素材是随包分发的，发出去的包里缺了这个目录，首装就
+// 存在性**不写死具体是谁**（换人只改 default_settings.json，不用改用例），但“这一个
+// 必须真的在仓库里”是硬的：出厂素材是随包分发的，发出去的包里缺了这个目录，首装就
 // 静默换成别人。用户运行期自己删专员是另一回事，与仓库里该有什么无关。
 func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
 	raw, err := os.ReadFile("default_settings.json")
@@ -510,7 +510,7 @@ func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
 	}
 	fixed := strings.TrimSpace(cfg.Supervisor.FixedRole)
 	if fixed == "" {
-		t.Fatal("出厂默认必须指定一个固定督休专员：留空会让首装落到「第一个可用」，不同机器可能不一样")
+		t.Fatal("出厂默认必须指定一个固定督休专员：留空会让首装落到“第一个可用”，不同机器可能不一样")
 	}
 	// 牙齿在这：名字必须是内置清单里的人。写成别的（拼错、或写了个清单外的名字）直接红，
 	// 而且不碰磁盘，用户删专员也不会误报。
@@ -525,12 +525,12 @@ func TestDefaultFixedRolePointsAtRealRole(t *testing.T) {
 		t.Fatalf("出厂固定专员 %q 不在 defaultRoleOrder 里：写错了名字，或者它不是内置专员", fixed)
 	}
 	// 仓库自带的出厂素材里必须真有这个人。ResolveRoleDir 是按 meta.json 的 name
-	// 匹配的（不是目录名），所以「找得到」本身就等于「目录名与 meta 名字没打架」。
+	// 匹配的（不是目录名），所以“找得到”本身就等于“目录名与 meta 名字没打架”。
 	// 找不到就红：fixedRole 指向不存在的专员时，首装会静默回退到列表第一个，
 	// 用户看到的人与 default_settings.json 写的那位不一致 —— 这种降级没有任何报错。
 	//
 	// 路径是 ../../assets/supervisors（本包在 internal/settings/ 下）。这里曾经写成
-	// ../../supervisors —— 资产挪进 assets/ 后它恒为空，用例于是每次都走「跳过」分支
+	// ../../supervisors —— 资产挪进 assets/ 后它恒为空，用例于是每次都走“跳过”分支
 	// 假装通过，等于这条牙齿整年没咬过人。
 	dir, ok := role.ResolveRoleDir("../../assets/supervisors", fixed)
 	if !ok {
@@ -590,7 +590,7 @@ func TestFillPrimaryDisplayID(t *testing.T) {
 	}
 }
 
-// 出厂配置本身必须是空数组（这是「首次启动才去探测」的前提），且加载后必须变成具体 ID。
+// 出厂配置本身必须是空数组（这是“首次启动才去探测”的前提），且加载后必须变成具体 ID。
 func TestDefaultDisplayIDsEmptyThenFilled(t *testing.T) {
 	var def map[string]any
 	if err := json.Unmarshal([]byte(DefaultSettingsJSON()), &def); err != nil {

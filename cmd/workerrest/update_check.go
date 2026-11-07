@@ -12,7 +12,7 @@ import (
 	"workerrest/internal/urltls"
 )
 
-// checkForUpdate 按「配置里的 sites + 出厂兜底源」依次容错拉取 version.json 并比对版本。
+// checkForUpdate 按“配置里的 sites + 出厂兜底源”依次容错拉取 version.json 并比对版本。
 // 兜底源永远排在最后，配置被改坏 / 被远程换成别的源也不会失去官方通道。
 // latest 严格大于 current 才算有新版。
 func (a *App) checkForUpdate() updateCheckResult {
@@ -31,7 +31,7 @@ func (a *App) checkForUpdate() updateCheckResult {
 	}
 	// 远程 version.json 可下发更新源 sites：非空则覆盖（替换）本地配置里的 sites，
 	// 让更新源可由服务端集中管控；空则保留本地原有值（避免误清空唯一更新源）。
-	// 下发值同样过 https 白名单 —— 否则「远程改源」就是绕开协议约束的后门。
+	// 下发值同样过 https 白名单 —— 否则“远程改源”就是绕开协议约束的后门。
 	if len(info.Sites) > 0 {
 		if cleaned := update.SanitizeUpdateURLs(info.Sites); len(cleaned) > 0 {
 			a.cfg.SetSites(cleaned)
@@ -47,12 +47,12 @@ func (a *App) checkForUpdate() updateCheckResult {
 		return updateCheckResult{Status: "error", Current: current, Message: "响应里没有版本号"}
 	}
 	if update.IsNewerVersion(current, latest) {
-		// 有新版却拿不到下载地址：直接报错，别等用户点「立即更新」才失败
+		// 有新版却拿不到下载地址：直接报错，别等用户点“立即更新”才失败
 		if len(info.URL) == 0 {
 			return updateCheckResult{Status: "error", Current: current, Message: "响应里没有下载地址"}
 		}
-		// 地址先过协议白名单：清单里全是 http 源时，不对外宣称「有更新」——
-		// 让用户看到「有新版但装不了」再失败，比直接说清原因更糟。
+		// 地址先过协议白名单：清单里全是 http 源时，不对外宣称“有更新”——
+		// 让用户看到“有新版但装不了”再失败，比直接说清原因更糟。
 		urls := update.SanitizeUpdateURLs(info.URL)
 		if len(urls) == 0 {
 			return updateCheckResult{
@@ -88,7 +88,7 @@ func (a *App) checkForUpdate() updateCheckResult {
 			Changes: info.Changes,
 		}
 		// 忽略版本处理：被忽略的版本只抑制弹窗、不抑制按钮；
-		// 但一旦发现「比被忽略版本更大」的版本，自动解除忽略并恢复弹窗。
+		// 但一旦发现“比被忽略版本更大”的版本，自动解除忽略并恢复弹窗。
 		if ig := a.cfg.IgnoredVersion(); ig != "" {
 			if update.IsNewerVersion(ig, latest) {
 				a.cfg.SetIgnoredVersion("")
@@ -124,7 +124,7 @@ func fetchVersionJSON(sites []string) (versionInfo, error) {
 
 func fetchOneVersionJSON(client *http.Client, url string) (versionInfo, error) {
 	// 协议白名单在这一层也走一遍：配置里的 sites 已经过滤过，但 reachable
-	// 的第二道（重定向）在 client 里，这里管「原始地址」。
+	// 的第二道（重定向）在 client 里，这里管“原始地址”。
 	if err := urltls.CheckUpdateURL(url); err != nil {
 		return versionInfo{}, err
 	}

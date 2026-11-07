@@ -1,8 +1,8 @@
-// Package stats 是使用统计：把「休息/跳过/推迟/离开」这些事件记进 data/stats.json，
+// Package stats 是使用统计：把“休息/跳过/推迟/离开”这些事件记进 data/stats.json，
 // 再按今日与区间算出报表（完成率、次数、连续记录）。
 //
 // 三条口径容易踩错，都写在这里：只统计内置的短休/长休（自定义与外卖不计入完成），
-// 提前结束不算完成，报表里的次数不等于「今天完成」。文件损坏时不动原文件、改名备份后
+// 提前结束不算完成，报表里的次数不等于“今天完成”。文件损坏时不动原文件、改名备份后
 // 从空表开始。
 package stats
 
@@ -43,15 +43,15 @@ type DayStats struct {
 	// AwayMs 离开时长（毫秒）：连续无键鼠输入超过阈值的那段 + 系统睡眠整段
 	// （**不跨天** —— 一段离开最多记到它起点那天的本地零点）
 	AwayMs int64 `json:"awayMs"`
-	// ShortMs 实际短休息时长（毫秒）：休息报表堆叠柱的「短休息」层
+	// ShortMs 实际短休息时长（毫秒）：休息报表堆叠柱的“短休息”层
 	ShortMs int64 `json:"shortMs"`
-	// LongMs 实际长休息时长（毫秒）：休息报表堆叠柱的「长休息」层
+	// LongMs 实际长休息时长（毫秒）：休息报表堆叠柱的“长休息”层
 	LongMs int64 `json:"longMs"`
 	// ShortCount 完成的短休息次数
 	ShortCount int64 `json:"shortCount"`
 	// LongCount 完成的长休息次数
 	LongCount int64 `json:"longCount"`
-	// CustomCount 完成的自定义提醒次数（与短/长分开记，免得混进「短休息 N 次」里）
+	// CustomCount 完成的自定义提醒次数（与短/长分开记，免得混进“短休息 N 次”里）
 	CustomCount int64 `json:"customCount"`
 	// CustomCounts 按提醒 id 分的触发次数（自定义提醒报表按提醒拆系列用）
 	CustomCounts map[string]int64 `json:"customCounts"`
@@ -65,22 +65,22 @@ type DayStats struct {
 	SkipMs int64 `json:"skipMs"`
 	// TakeoutOrdered 点外卖次数
 	TakeoutOrdered int64 `json:"takeoutOrdered"`
-	// TakeoutSkipped 取消点外卖次数（窗口上点「不点了」）
+	// TakeoutSkipped 取消点外卖次数（窗口上点“不点了”）
 	TakeoutSkipped int64 `json:"takeoutSkipped"`
 	// TakeoutPostponed 推迟点外卖次数
 	TakeoutPostponed int64 `json:"takeoutPostponed"`
-	// MaxStreakMs 今日最长的一段「连续工作时长」（毫秒）：「今天卡」久坐面板用。
-	// 与 WorkMs 的关系是「max 不是 sum」—— 它不进 StatNumKeys，周期汇总不做累加
+	// MaxStreakMs 今日最长的一段“连续工作时长”（毫秒）：“今天卡”久坐面板用。
+	// 与 WorkMs 的关系是“max 不是 sum”—— 它不进 StatNumKeys，周期汇总不做累加
 	//（跨天聚合取 max 没有业务意义，所以 PeriodStats 里也不带这个字段）。
 	MaxStreakMs int64 `json:"maxStreakMs"`
 	// WorkSegments 今日各段连续工作时长（毫秒）。**最后一项是正在进行中的那段**，每跳实时
 	// 更新；被休息 / 离开 / 睡眠打断后定稿，下一次工作再追加新的一项。
-	// 久坐面板的「平均 / 中位数」靠它算 —— 中位数必须有分布，只有 max 是算不出来的。
+	// 久坐面板的“平均 / 中位数”靠它算 —— 中位数必须有分布，只有 max 是算不出来的。
 	WorkSegments []int64 `json:"workSegments,omitempty"`
 	// EndEarlyCount 提前结束休息的次数：**只统计短休息 / 长休息**，不含自定义提醒与外卖。
 	// 与两个口径同时相关，别混：
-	//   - 今天卡「完成」= 坐满整次的，**不含**提前结束（见 OnBreakEnd 的 early 分支）；
-	//   - 休息报表「休息次数」= 休息只要开始过就算一次，**包含**提前结束（前端再相加）。
+	//   - 今天卡“完成”= 坐满整次的，**不含**提前结束（见 OnBreakEnd 的 early 分支）；
+	//   - 休息报表“休息次数”= 休息只要开始过就算一次，**包含**提前结束（前端再相加）。
 	EndEarlyCount int64 `json:"endEarlyCount"`
 }
 
@@ -238,7 +238,7 @@ type daySeg struct {
 
 // SplitByDay 把一段时间 `[from, to)` 按本地零点切成若干段，每段带自己所属的本地日期。
 //
-// 跨零点时返回多段：23:58 → 次日 00:03 切成「前一天 2 分钟 + 当天 3 分钟」，各记各天的账。
+// 跨零点时返回多段：23:58 → 次日 00:03 切成“前一天 2 分钟 + 当天 3 分钟”，各记各天的账。
 // 正常 1 秒一跳的累加只会得到单段，只有跨零点那一跳才真正切开；休息跨零点（含睡眠跨零点）
 // 则可能一次切出多段。
 //
@@ -263,10 +263,10 @@ func SplitByDay(from, to int64) []daySeg {
 
 // ---------- 统计存储 ----------
 
-// StatsFileNotice 「统计文件损坏，已备份并重建空表」的说明（给渲染层弹窗用）。
+// StatsFileNotice “统计文件损坏，已备份并重建空表”的说明（给渲染层弹窗用）。
 //
 // 只在**这次启动**里存在一份：Load 判定文件读取 / 解析失败时产生，用户点掉弹窗后由
-// AckStatsFileNotice 清掉。它是「已经发生的处置」的告知，不是错误状态，不影响记账。
+// AckStatsFileNotice 清掉。它是“已经发生的处置”的告知，不是错误状态，不影响记账。
 type StatsFileNotice struct {
 	// File 统计文件路径（重建后的空表位置）
 	File string `json:"file"`
@@ -304,12 +304,12 @@ type StatsStore struct {
 	// 本工作段的起点：软件启动 / 上一次休息结束 / 上一次离开结束时置为当时。用途只有一个
 	// —— 把工作搬去离开（BeginAway）时，检索区间不越过它，免得把上一段的账一起搬走。
 	workSegStartAt int64
-	// streakStartMs 当前「连续工作段」的起点（0 = 当前没有连续工作在进行）。
-	// 只在计时 goroutine 判为「这一跳算工作」时起算，被休息 / 空闲 / 睡眠 / 离开打断时清零。
+	// streakStartMs 当前“连续工作段”的起点（0 = 当前没有连续工作在进行）。
+	// 只在计时 goroutine 判为“这一跳算工作”时起算，被休息 / 空闲 / 睡眠 / 离开打断时清零。
 	// 每跳把它到现在的长度与当天 MaxStreakMs 取最长（不累加），所以跨天也各归各天。
 	streakStartMs int64
 	// streakDayKey 进行中那段在 WorkSegments 里已经占位的那一天（空 = 还没占位）。
-	// 跨零点时会从「更新末项」切换成「在新的一天追加一项」，靠它判断。
+	// 跨零点时会从“更新末项”切换成“在新的一天追加一项”，靠它判断。
 	streakDayKey string
 	// sleepStartedAt 系统睡眠开始的时刻（0 = 当前没在睡眠）
 	sleepStartedAt int64
@@ -336,19 +336,19 @@ type StatsStore struct {
 	stopCh   chan struct{}
 	stopOnce sync.Once
 
-	// notifyCh 「统计数据已变」的合并通知通道（容量 1）：工作时长每秒都在涨，
-	// 连续的多次改动合并成一次通知 —— 渲染层只需要知道「后来变了」，中间态没意义。
+	// notifyCh “统计数据已变”的合并通知通道（容量 1）：工作时长每秒都在涨，
+	// 连续的多次改动合并成一次通知 —— 渲染层只需要知道“后来变了”，中间态没意义。
 	notifyCh chan struct{}
-	// onChange 由 App 注入：把「已变」转成发给渲染层的事件（见 StartNotify）。
+	// onChange 由 App 注入：把“已变”转成发给渲染层的事件（见 StartNotify）。
 	// 在独立的 notifier goroutine 里调用，调用时不持 mu，可以放心再读 Today()。
 	onChange func()
 
-	// loadOnce 让「首次读盘」只发生一次：App.statsStore 会在**不持自己的锁**的情况下调
+	// loadOnce 让“首次读盘”只发生一次：App.statsStore 会在**不持自己的锁**的情况下调
 	// LoadOnce —— Load 里要回读配置路径，而那条路径需要 App 的锁，持锁调用会自死锁
 	//（本项目踩过一次：idleWatchTick → statsStore → Load → appStatsFile → cfgSnapshot）。
 	loadOnce sync.Once
 
-	// loadNotice 本次启动里「文件损坏 → 已备份 → 重建空表」的说明（nil = 没发生过）。
+	// loadNotice 本次启动里“文件损坏 → 已备份 → 重建空表”的说明（nil = 没发生过）。
 	// 用户点掉弹窗后由 AckFileNotice 清掉；只在 Load 里写、在锁内读写。
 	loadNotice *StatsFileNotice
 }
@@ -373,7 +373,7 @@ func NewStatsStore(fileFn func() string) *StatsStore {
 	}
 }
 
-// Load 读统计文件，并把落点修成「一定有一份可用的空表」。四情形：
+// Load 读统计文件，并把落点修成“一定有一份可用的空表”。四情形：
 //
 //	① 文件存在且能解析 → 正常读入（走 NormalizeDay，旧数据 / 手改都不会炸）；
 //	② 文件不存在（新装 / 用户删了 data 目录）→ **建目录 + 写一份空表**，
@@ -454,7 +454,7 @@ func (st *StatsStore) Load() {
 }
 
 // createEmptyLocked 把内存里的空表写到 path（调用方需持锁）。
-// 内容与 marshalLocked 同源，所以「打包预置的空表」与「首跑自建的空表」字节等价。
+// 内容与 marshalLocked 同源，所以“打包预置的空表”与“首跑自建的空表”字节等价。
 func (st *StatsStore) createEmptyLocked(path string) {
 	text, err := st.marshalLocked()
 	if err != nil {
@@ -498,7 +498,7 @@ func RenameBrokenStatsFile(path string) (string, error) {
 	return "", fmt.Errorf("同一秒内备份文件过多，放弃改名")
 }
 
-// FileNotice 本次启动的「文件损坏已备份重建」说明（没有则 nil）
+// FileNotice 本次启动的“文件损坏已备份重建”说明（没有则 nil）
 func (st *StatsStore) FileNotice() *StatsFileNotice {
 	st.mu.Lock()
 	defer st.mu.Unlock()

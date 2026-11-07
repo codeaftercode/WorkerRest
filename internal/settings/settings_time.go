@@ -67,7 +67,7 @@ func slotInt(v any, min, max, fallback int) int {
 
 // normalizeTimeSlot 夹紧一条时间配置；结构不成立返回 nil（调用方过滤）。
 // 与 types.ts 的 normalizeTimeSlot 同义：每周模式至少要有一天，缺了就补工作日，
-// 避免「设置了却没反应」。
+// 避免“设置了却没反应”。
 func normalizeTimeSlot(raw any) (model.TimeSlot, bool) {
 	m, ok := raw.(map[string]any)
 	if !ok {

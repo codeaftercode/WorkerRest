@@ -35,7 +35,7 @@ func BuiltinSounds() []BuiltinSound {
 }
 
 // BuiltinSoundFiles 内置提示音的文件名（相对名，跨包导出，供 main 的随包目录扫描
-// 判断「哪些文件名已登记」用）。
+// 判断“哪些文件名已登记”用）。
 func BuiltinSoundFiles() []string {
 	out := make([]string, 0, len(builtinMusic))
 	for _, b := range builtinMusic {
@@ -126,8 +126,8 @@ func normalizeSound(raw map[string]any) {
 		snd["singleId"] = ""
 	}
 	// singleId 兜底：上面校验后若仍为空（全新的音乐列表 / 被用户清空），且列表里
-	// 至少有「启用」的条目，默认指向第一首启用的提示音——否则默认 single 模式下会「列表
-	// 里有音、真休息却静音」（只有试听能响），与用户预期相悖。全部停用时尊重用户选择，静音。
+	// 至少有“启用”的条目，默认指向第一首启用的提示音——否则默认 single 模式下会“列表
+	// 里有音、真休息却静音”（只有试听能响），与用户预期相悖。全部停用时尊重用户选择，静音。
 	if jsonx.JsStr(snd["singleId"]) == "" {
 		for _, it := range snd["music"].([]any) {
 			if m, ok := it.(map[string]any); ok && m["enabled"] != false {
@@ -142,7 +142,7 @@ func normalizeSound(raw map[string]any) {
 
 // normalizeTakeout 归一化整份外卖配置（对应 types.ts 的 normalizeTakeout）：
 // **重建**对象，只留这 5 个键；leadSec 夹到 0–300、postponeMin 夹到 0–120
-// （0 = 不显示「推迟」按钮，见 takeout.js 的显隐）。
+// （0 = 不显示“推迟”按钮，见 takeout.js 的显隐）。
 func normalizeTakeout(raw map[string]any) map[string]any {
 	var o map[string]any
 	if m, ok := raw["takeout"].(map[string]any); ok {
@@ -171,7 +171,7 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 		"enabled":     o["enabled"] != false,
 		"leadSec":     pick(leadVal, 0, 300, 0),
 		"postponeMin": pick(o["postponeMin"], 0, 120, 10),
-		// 暂停休息时的处置：三个合法值之外一律落回「推迟提醒」（默认）
+		// 暂停休息时的处置：三个合法值之外一律落回“推迟提醒”（默认）
 		"pauseAction": normPauseAction(o["pauseAction"]),
 		"slots":       slotsToAny(normalizeTimeSlots(o["slots"])),
 	}
@@ -182,8 +182,8 @@ func NormalizeTakeout(raw map[string]any) map[string]any { return normalizeTakeo
 
 // appPausePreset 内置的常用视频会议软件（与 web/dist/settings.js 的 APP_PAUSE_PRESETS 逐字一致）。
 //
-// **只收「打开它基本就是在开会」的客户端**。飞书 / 钉钉 / 企业微信 / WeLink 刻意不入列：
-// 它们当然也能开会，但日常更多是看消息、批流程、写文档，拿「进程在不在」判断「正在开会」
+// **只收“打开它基本就是在开会”的客户端**。飞书 / 钉钉 / 企业微信 / WeLink 刻意不入列：
+// 它们当然也能开会，但日常更多是看消息、批流程、写文档，拿“进程在不在”判断“正在开会”
 // 会大面积误伤 —— 一整天挂着企业微信的人会被判成一直在开会，休息提醒永远不响。
 // 清单之外的程序（含飞书 / 钉钉 / 企业微信 / WeLink）只能由用户手工添加。
 type appPausePreset struct{ exe, label string }
@@ -267,7 +267,7 @@ func normalizeAppPause(raw map[string]any) map[string]any {
 	}
 }
 
-// seedAppPause 把内置的常用会议软件并入列表（只补缺、按进程名去重），并打上「已种过」标记
+// seedAppPause 把内置的常用会议软件并入列表（只补缺、按进程名去重），并打上“已种过”标记
 func seedAppPause(cfg map[string]any) map[string]any {
 	have := map[string]bool{}
 	items := jsonx.AnySlice(cfg["items"])
@@ -293,8 +293,8 @@ func seedAppPause(cfg map[string]any) map[string]any {
 
 // normalizeToggles 开关类字段的归一化
 //
-//   - displayIds 只认非空字符串组成的数组；空数组**不等于「所有屏」**，
-//     它表示「还没挑过」→ 加载时补成主屏 ID，运行时 Resolve 也兜底主屏；
+//   - displayIds 只认非空字符串组成的数组；空数组**不等于“所有屏”**，
+//     它表示“还没挑过”→ 加载时补成主屏 ID，运行时 Resolve 也兜底主屏；
 //   - idlePauseMin 只认 ≥1 的整数，非法回退 5；
 //   - startMinimized 只认布尔值，非法回退 false。
 func normalizeToggles(raw map[string]any) {
@@ -336,11 +336,11 @@ func normalizeDisplayIDs(v any) []any {
 // fillPrimaryDisplayID 出厂 displayIds 是空数组（= 还没挑过屏）。启动加载时补一次：
 // 枚举当前所有显示器，把主屏的稳定 ID 写进配置，并回报 true 让磁盘一起落盘。
 //
-// 为什么写「具体 ID」而不是某个「跟随主屏」的哨兵值：这一格在界面上就是「勾了哪几块屏」
+// 为什么写“具体 ID”而不是某个“跟随主屏”的哨兵值：这一格在界面上就是“勾了哪几块屏”
 // 的快照，写完配置与勾选一一对应，换接法后也不会自己漂到别的屏上。
 //
 // 枚举不可用（远程会话 / 无桌面）时保持空数组 —— 运行时 display.Resolve 照样兜底主屏，
-// 行为不变，下次启动再补一次；不在这里写一个「看不见屏」时猜出来的怪值。
+// 行为不变，下次启动再补一次；不在这里写一个“看不见屏”时猜出来的怪值。
 func fillPrimaryDisplayID(raw map[string]any) bool {
 	if ids, ok := raw["displayIds"].([]any); ok && len(ids) > 0 {
 		return false
@@ -358,7 +358,7 @@ func fillPrimaryDisplayID(raw map[string]any) bool {
 }
 
 // primaryIDOf 主屏的稳定 ID；一块都没标主屏（个别虚拟显示驱动）时退回第一块
-// —— 与 display.Resolve 的 primaryOf 同口径，绝不因为「没标主屏」就返回空。
+// —— 与 display.Resolve 的 primaryOf 同口径，绝不因为“没标主屏”就返回空。
 func primaryIDOf(list []display.Info) string {
 	for _, d := range list {
 		if d.IsPrimary && d.ID != "" {
@@ -373,15 +373,15 @@ func primaryIDOf(list []display.Info) string {
 	return ""
 }
 
-// normalizeWindow 归一化「设置窗口尺寸」块（window）。
+// normalizeWindow 归一化“设置窗口尺寸”块（window）。
 //
 // 逐条对应用户可能手改出来的坏值：
 //   - width / height 夹进 [最小尺寸, 上限]，非法（缺失 / 非数字 / 越界）回落实测默认值。
 //     比最小尺寸还小的窗口会把卡片里的字段行横向裁掉，这种值不能交给用户去排查；
-//   - lastWidth / lastHeight 只认「两个都 ≥ 最小尺寸」的一对，否则整对归零
+//   - lastWidth / lastHeight 只认“两个都 ≥ 最小尺寸”的一对，否则整对归零
 //     （0 = 还没记录过，打开时回落到默认尺寸）。一边合法一边 0 是最坑的：
 //     拿它去开窗会得到一扇高度 0 的窗；
-//   - rememberSize 只认布尔，缺省 true（出厂就是「自动记录」）。
+//   - rememberSize 只认布尔，缺省 true（出厂就是“自动记录”）。
 func normalizeWindow(raw map[string]any) {
 	cfg, ok := raw["window"].(map[string]any)
 	if !ok {
@@ -403,7 +403,7 @@ func normalizeWindow(raw map[string]any) {
 	}
 }
 
-// NormalizeWindow 归一化「设置窗口尺寸」块（跨包导出，供测试复用）。
+// NormalizeWindow 归一化“设置窗口尺寸”块（跨包导出，供测试复用）。
 func NormalizeWindow(raw map[string]any) { normalizeWindow(raw) }
 
 // normalizeRoleOrder 归一化候选专员顺序：只保留非空字符串项并去重。

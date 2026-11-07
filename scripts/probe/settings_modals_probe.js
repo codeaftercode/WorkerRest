@@ -5,7 +5,7 @@
  * aria-labelledby / 有可聚焦项 / 宽度在视口内）；本脚本管**打开与关闭的整条动作**：
  *
  *   1. 真触发：点页面上真实存在的按钮把对话框打开（不是直接改 class），
- *      断言「可见 + 焦点落进 .modal-box」；
+ *      断言“可见 + 焦点落进 .modal-box”；
  *   2. Esc 关闭：十个都必须能关（其中五个历史上只能点按钮关，见 settings.js 的
  *      ESC_DISMISS 兜底表）；
  *   3. 焦点归位：关掉之后焦点必须回到打开它的那个元素，不能掉到 <body>；
@@ -16,9 +16,9 @@
  * 分两类覆盖，如实标注：
  *   · 有真实触发器的六个 → 走真点击；
  *   · 没有触发器的四个（统计损坏提示 / 提示音体检 / 更新提示 / 更新完成 —— 它们的
- *     打开条件是 Go 侧的通知或联网检查结果，无头环境造不出来）→ 用「改 class」打开，
+ *     打开条件是 Go 侧的通知或联网检查结果，无头环境造不出来）→ 用“改 class”打开，
  *     这本身也是 settings.js 里唯一的开关方式（焦点管理就挂在 class 的 MutationObserver
- *     上），所以断言同样有意义，只是标注为「class 开关」。
+ *     上），所以断言同样有意义，只是标注为“class 开关”。
  *
  * 运行：由 probe_settings_ui.py 起好无头服务后 `node settings_modals_probe.js` 拉起。
  * 环境变量：WR_BASE（服务地址）、WR_OUT（截图目录）。
@@ -46,7 +46,7 @@ function note(label, detail = "") {
   console.log("  ·    " + label + (detail ? "  | " + detail : ""));
 }
 
-// 有真实触发器的六个。trigger 是「点它就能打开」的选择器；pre 是展开折叠容器用的。
+// 有真实触发器的六个。trigger 是“点它就能打开”的选择器；pre 是展开折叠容器用的。
 const TRIGGERED = [
   { id: "color-modal", tab: "general", trigger: "#ap-color-open", what: "外观色块" },
   {
@@ -58,7 +58,7 @@ const TRIGGERED = [
     pre: "#app-advanced summary",
   },
   {
-    // 提醒内容面板在「时间规划」tab 里（不是通用 tab），批量按钮在面板标题行、默认就可见
+    // 提醒内容面板在“时间规划”tab 里（不是通用 tab），批量按钮在面板标题行、默认就可见
     id: "batch-modal", tab: "timing",
     trigger: '.msg-panel[data-kind="short"] .msg-add', what: "批量新增提醒内容",
   },
@@ -155,7 +155,7 @@ async function main() {
         check(false, `对话框 ${m.id}（${m.what}）能找到可见触发控件 ${m.trigger}`);
         continue;
       }
-      // 先把焦点放到触发控件上：dialog 关闭后要「回到打开它的那个元素」
+      // 先把焦点放到触发控件上：dialog 关闭后要“回到打开它的那个元素”
       await trg.focus();
       const trgKey = await page.evaluate((sel) => {
         const el = document.querySelector(sel);
@@ -193,7 +193,7 @@ async function main() {
     await page.locator('.nav-item[data-tab="about"]').click();
     await delay(200);
     for (const m of CLASS_ONLY) {
-      // 先让页面上有个确定的焦点作为「打开者」
+      // 先让页面上有个确定的焦点作为“打开者”
       const openerOk = await page.evaluate(() => {
         const el = document.getElementById("d-notices");
         if (!el) return false;
@@ -221,7 +221,7 @@ async function main() {
       await closeAll(page);
     }
 
-    // ---------- 三、Esc 不会漏到「自己有 Esc 处理」的对话框之外 ----------
+    // ---------- 三、Esc 不会漏到“自己有 Esc 处理”的对话框之外 ----------
     console.log("\n[C] Esc 的边界：没有对话框时是空操作");
     await page.locator('.nav-item[data-tab="general"]').click();
     await delay(200);

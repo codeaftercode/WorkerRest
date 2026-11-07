@@ -10,8 +10,8 @@ import (
 )
 
 // 设置窗口尺寸的应用层策略。出厂数字与归一化（window 块 → WindowSizeConfig）已随
-// settings 域下沉到 internal/settings（settings_window.go），这里只保留「按屏幕工作区
-// 夹紧 / 应用到窗口 / 记录上次尺寸」这些需要碰 Wails 窗口与 App 状态的部分。
+// settings 域下沉到 internal/settings（settings_window.go），这里只保留“按屏幕工作区
+// 夹紧 / 应用到窗口 / 记录上次尺寸”这些需要碰 Wails 窗口与 App 状态的部分。
 
 // winSizeSaveDelay 拖拽改尺寸的落盘防抖。拖一次会连发几十个 resize 事件，
 // 每个都写一遍 settings.json 既慢又费磁盘；停手 1 秒再写一次就够。
@@ -44,7 +44,7 @@ func (a *App) fitSizeToScreen(width, height int) (int, int) {
 // primaryWorkAreaDip 主屏工作区折算成 DIP（取不到屏信息时 ok=false）。
 //
 // WorkArea 是物理像素、窗口尺寸是 DIP，两者不换算就没法比较：1.5 倍屏上 1040 物理
-// 像素的工作区只有 693 DIP，而 857 的默认高度在 DIP 里看是「放得下」的假象。
+// 像素的工作区只有 693 DIP，而 857 的默认高度在 DIP 里看是“放得下”的假象。
 func (a *App) primaryWorkAreaDip() (w, h int, ok bool) {
 	if a.app == nil || a.app.Screen == nil {
 		return 0, 0, false
@@ -88,11 +88,11 @@ const settingsWindowTinyHeight = 240
 // fitSizeInWorkArea 把窗口尺寸夹进工作区（全部是 DIP）。纯函数，单测直接验。
 //
 // 两条下限的处理**不对称**，这是刻意的：
-//   - 宽度不低于 minW：再窄字段行就横向裁切，「内容被切掉」比「窗口宽出屏幕」更难用，
+//   - 宽度不低于 minW：再窄字段行就横向裁切，“内容被切掉”比“窗口宽出屏幕”更难用，
 //     而且窄到 760 以下的工作区只有 200%+ 缩放的极端配置；
 //   - 高度让位给工作区：内容本来就能滚动，窗口比屏幕高才是真的看不全。
 //
-// 注意 maxH 的兜底不再是 minH —— 那正是「窗口比屏幕还高」的来源。
+// 注意 maxH 的兜底不再是 minH —— 那正是“窗口比屏幕还高”的来源。
 func fitSizeInWorkArea(width, height, waW, waH, minW int) (int, int) {
 	maxW := waW - 16
 	maxH := waH - 40
@@ -116,7 +116,7 @@ func fitSizeInWorkArea(width, height, waW, waH, minW int) (int, int) {
 
 // applySettingsWindowSize 按配置给设置窗口换尺寸（每次 Show 之前调用）。
 //
-// 只有**尺寸真的不同**才动窗口：勾了「自动记录」且这次记录的尺寸就是当前尺寸时，
+// 只有**尺寸真的不同**才动窗口：勾了“自动记录”且这次记录的尺寸就是当前尺寸时，
 // 不该顺手把用户挪过的窗口位置也拽回屏幕中央。
 func (a *App) applySettingsWindowSize(w application.Window) {
 	if w == nil || w.IsMaximised() || w.IsFullscreen() {
@@ -137,7 +137,7 @@ func (a *App) applySettingsWindowSize(w application.Window) {
 	log.Printf("[window] 设置窗口 %dx%d → %dx%d", curW, curH, width, height)
 }
 
-// keepWindowLastSize 把 prev 里的「上次尺寸」覆盖到 next 上（SaveSettings 用）。
+// keepWindowLastSize 把 prev 里的“上次尺寸”覆盖到 next 上（SaveSettings 用）。
 // lastWidth / lastHeight 只由 Go 写（窗口 resize 时记录），设置页送回来的是打开页面
 // 那一刻的旧快照，不许覆盖；prev 没有这两个键时连键一起删，避免残留半对数。
 func keepWindowLastSize(prev, next map[string]any) {
@@ -161,9 +161,9 @@ func keepWindowLastSize(prev, next map[string]any) {
 
 // rememberSettingsWindowSize 记录当前窗口尺寸（防抖后落盘）。
 //
-// 没勾「自动记录窗口尺寸」时直接返回：那种情况下尺寸永远用默认值，记了也不会被读，
+// 没勾“自动记录窗口尺寸”时直接返回：那种情况下尺寸永远用默认值，记了也不会被读，
 // 白写磁盘。最大化 / 最小化 / 全屏态不记 —— 记下来的是屏幕尺寸而不是用户的窗口尺寸，
-// 下次打开会开出一扇「假最大化」的窗。
+// 下次打开会开出一扇“假最大化”的窗。
 func (a *App) rememberSettingsWindowSize() {
 	a.mu.Lock()
 	remember := a.cfg.WindowSizeCfg().Remember
@@ -203,14 +203,14 @@ func (a *App) flushSettingsWindowSize() {
 	a.saveWindowLastSize(size[0], size[1])
 }
 
-// validWindowSize 一对尺寸是否可用作「上次尺寸」：两边都得 ≥ 最小值。
+// validWindowSize 一对尺寸是否可用作“上次尺寸”：两边都得 ≥ 最小值。
 // 只有一边合法（手改坏 / 旧版本残留）时整对作废 —— 拿一个合法 + 一个 0 去开窗
 // 会得到一扇高度 0 的窗口。
 func validWindowSize(w, h int) bool {
 	return w >= settings.SettingsWindowMinWidth && h >= settings.SettingsWindowMinHeight
 }
 
-// saveWindowLastSize 落盘「上次尺寸」；值没变就不写（拖拽期间的重复调用靠它挡住）。
+// saveWindowLastSize 落盘“上次尺寸”；值没变就不写（拖拽期间的重复调用靠它挡住）。
 //
 // 与其它配置写入同一条路：深拷贝一份 → 打补丁 → Save 成功才整体替换 a.cfg，
 // 绝不原地改 a.cfg.Raw()（那边可能正被设置页的 GetSettings 读着）。

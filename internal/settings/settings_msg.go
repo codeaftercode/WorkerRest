@@ -68,7 +68,7 @@ func normalizeOrder(v any) string {
 }
 
 // normalizeMsgItems 归一化一组提醒内容条目：丢掉没有文本的、把 id 收敛成列表内序号、
-// enabled 只认非 false。返回的 remap 是「旧 id → 新 id」（只含真被改过的），
+// enabled 只认非 false。返回的 remap 是“旧 id → 新 id”（只含真被改过的），
 // 调用方必须拿它把 fixedId 搬到新号上，否则固定模式会指空。
 func normalizeMsgItems(v any) ([]any, map[string]string) {
 	arr := jsonx.AnySlice(v)
@@ -114,7 +114,7 @@ func itemsHaveID(items []any, id string) bool {
 
 // normalizeCustomBreaks 自定义提醒归一化（对应 config.ts 的 normalizeCustomBreaks）：
 // 丢弃非法条目、配置按短休息的默认值补齐、缺 id / id 重复的补一枚新 id。**整体替换** ——
-// 重建后多余的键会被丢掉。返回「有提醒内容条目被重编号」（调用方据此决定要不要回写）。
+// 重建后多余的键会被丢掉。返回“有提醒内容条目被重编号”（调用方据此决定要不要回写）。
 func normalizeCustomBreaks(raw map[string]any) bool {
 	arr := jsonx.AnySlice(raw["customBreaks"])
 	seen := map[string]bool{}

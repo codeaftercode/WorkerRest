@@ -12,10 +12,10 @@ import (
 
 // 督休专员会话构建的纯逻辑回归（脱离窗口与 Wails）。
 //
-// 这里钉的是「固定显示」的选人规则：固定显示只看磁贴点选（fixedRole），
+// 这里钉的是“固定显示”的选人规则：固定显示只看磁贴点选（fixedRole），
 // **不看** meta.json 里的单条 enabled —— 复选框只在随机 / 顺序模式下出现，
 // 若固定路径仍拿 enabled 当门槛，随包 meta.json 里 enabled=false 的督休专员
-// 就会出现「立绘列表看得到、休息时不显示」的劈叉（真机发布踩过）。
+// 就会出现“立绘列表看得到、休息时不显示”的劈叉（真机发布踩过）。
 
 // newSupTestApp 造一个最小 App，rolesRoot 指向 t.TempDir()
 func newSupTestApp(t *testing.T, cfgJSON string) *App {
@@ -96,13 +96,13 @@ func TestSupervisorTopLevelSwitchStillGates(t *testing.T) {
 	}
 }
 
-// ---------- 预览窗「有时不显示督休专员」的回归（2026-10-25） ----------
+// ---------- 预览窗“有时不显示督休专员”的回归（2026-10-25） ----------
 //
-// 真机现象：在立绘库里切换督休专员后点「预览」，偶尔出现的预览窗没有督休专员，
-// 不改任何配置再点一次又能显示。根因是这条链路上的几处「会话 ↔ 窗口」没有绑定：
+// 真机现象：在立绘库里切换督休专员后点“预览”，偶尔出现的预览窗没有督休专员，
+// 不改任何配置再点一次又能显示。根因是这条链路上的几处“会话 ↔ 窗口”没有绑定：
 //   · 设置页传来过期的 forceName（列表刚重排 / 刚改名）时，会话构建直接返回 nil；
 //   · 首选立绘读不出来时同样直接返回 nil（窗口只剩背景）；
-//   · ShowBreakWindow「有窗口就复用」把上一次会话的页面留下来；
+//   · ShowBreakWindow“有窗口就复用”把上一次会话的页面留下来；
 //   · 上一次会话的窗口迟到一步 WindowClosing，把刚建好的新会话清掉。
 // 下面把可直接验的四条钉住。
 
@@ -159,7 +159,7 @@ func TestPickRoleWithImageSkipsUnreadableFigure(t *testing.T) {
 	}
 }
 
-// 现有窗口能不能复用：只有「就是为当前会话建的」才行 —— 否则会把上一次会话的
+// 现有窗口能不能复用：只有“就是为当前会话建的”才行 —— 否则会把上一次会话的
 // 页面（旧立绘 / 旧倒计时）留在屏幕上。
 func TestBreakWinReusable(t *testing.T) {
 	cases := []struct {
@@ -167,7 +167,7 @@ func TestBreakWinReusable(t *testing.T) {
 		n                int
 		want             bool
 	}{
-		{"s1", "s1", 1, true},  // 同一会话：复用（重复点「立即休息」不叠窗）
+		{"s1", "s1", 1, true},  // 同一会话：复用（重复点“立即休息”不叠窗）
 		{"s1", "s2", 1, false}, // 会话已换：必须重建，否则看到的是上一次的页面
 		{"", "s1", 1, false},   // 没记录会话：保守重建
 		{"s1", "s1", 0, false}, // 没有窗口：当然谈不上复用
@@ -203,7 +203,7 @@ func TestBreakSessEndsOn(t *testing.T) {
 
 // 关于页的 Wails 版本不能是空串：升级到正式版后这里要真的显示 v3.0.0，
 // 而不是老早写死的 "v3"（beta 与正式版在界面上必须能分辨）。
-// 只钉「非空 + v3 打头」：具体小版本会随依赖走，写死等于每次升级都要改测试。
+// 只钉“非空 + v3 打头”：具体小版本会随依赖走，写死等于每次升级都要改测试。
 func TestWailsVersionReported(t *testing.T) {
 	v := wailsVersion()
 	t.Logf("关于页将显示 Wails %s", v)

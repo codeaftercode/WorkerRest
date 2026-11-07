@@ -6,10 +6,10 @@
  *      bounds 走 absoluteToRelativeDipPoint，与 CSS px 同尺度），所以 874×857 的
  *      窗口在 125% / 150% 下 CSS 视口仍是 874×857 个 CSS px。这里用不同的
  *      devicePixelRatio 渲染同一个视口，把每页的布局指纹抓下来对比 —— 如果指纹
- *      一致，说明「缩放不改布局」这个前提是真的，而不是我们假设出来的。
+ *      一致，说明“缩放不改布局”这个前提是真的，而不是我们假设出来的。
  *   2) 缩放**间接**改了什么？—— fitSizeToScreen 把窗口夹进主屏工作区时用的是
  *      WorkArea / ScaleFactor。缩放越大、屏幕越小，夹出来的窗口越矮。这里按
- *      fitSizeToScreen 的公式复算常见「分辨率 × 缩放」组合，再在夹出来的尺寸上
+ *      fitSizeToScreen 的公式复算常见“分辨率 × 缩放”组合，再在夹出来的尺寸上
  *      量每页的真实溢出量与横向裁切。
  *
  * 只测量，不写配置、不改源码。由 probe_dpi_layout.py 起无头服务后注入 WR_BASE。
@@ -25,7 +25,7 @@ const DEF_W = 874;
 const DEF_H = 857;
 const MIN_W = 760;
 // 设计下限 600 **不再参与夹紧**：工作区比它矮时窗口跟着矮（见 fitSizeInWorkArea）。
-// 留着它只是为了让下面的报表能说清「窗口比设计下限矮了多少」。
+// 留着它只是为了让下面的报表能说清“窗口比设计下限矮了多少”。
 const MIN_H = 600;
 
 async function clickTab(page, tab) {
@@ -40,12 +40,12 @@ async function clickTab(page, tab) {
 /**
  * 当前激活标签页的布局指纹。
  *
- * hSum / elems 是「所有可见元素矩形高度之和」：任何字体度量、行高、换行的变化都会
+ * hSum / elems 是“所有可见元素矩形高度之和”：任何字体度量、行高、换行的变化都会
  * 让它漂移，比只量 #content.scrollHeight 灵敏得多（后者可能刚好落在同一个整数上）。
  *
- * 横向裁切只算「真正会画到盒子外」的元素：自身或祖先带 overflow-x:auto/scroll 的
+ * 横向裁切只算“真正会画到盒子外”的元素：自身或祖先带 overflow-x:auto/scroll 的
  * 属于刻意的滚动容器（统计页数据表），不算裁切。走到 #content 就停 —— 它自己的
- * overflow-x 被 overflow-y:auto 带成 auto，算进去会让所有元素都被判成「在滚动容器里」。
+ * overflow-x 被 overflow-y:auto 带成 auto，算进去会让所有元素都被判成“在滚动容器里”。
  */
 async function metrics(page) {
   return await page.evaluate(() => {
@@ -90,8 +90,8 @@ async function metrics(page) {
 /**
  * 滚到底，检查最后一个块是否完整可见。
  *
- * 「需要滚动」和「滚了也看不全」是两件事：底部 padding / border 吃掉一截时，
- * 用户滚到底仍然看不到最后一行。这一条才是「内容能不能显示全」的真正判据。
+ * “需要滚动”和“滚了也看不全”是两件事：底部 padding / border 吃掉一截时，
+ * 用户滚到底仍然看不到最后一行。这一条才是“内容能不能显示全”的真正判据。
  */
 async function tailReachable(page) {
   return await page.evaluate(() => {
@@ -138,7 +138,7 @@ function fitToScreen(physW, physH, taskbarPhys, scale) {
   };
 }
 
-// 常见的「物理分辨率 × 缩放」组合。taskbar 取 Windows 默认的 40 物理像素 @100%，
+// 常见的“物理分辨率 × 缩放”组合。taskbar 取 Windows 默认的 40 物理像素 @100%，
 // 实际会随缩放一起放大，这里按 40×scale 折（Win11 任务栏高度跟着 DPI 走）。
 const SCREENS = [
   { name: "1920×1080", w: 1920, h: 1080 },

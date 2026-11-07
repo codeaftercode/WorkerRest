@@ -80,7 +80,7 @@
 
   /**
    * 尚未迁移接口的占位：返回约定的空值，保证页面加载不报错。
-   * 每次首调打一条日志——避免把「占位」误当成「已实现」。
+   * 每次首调打一条日志——避免把“占位”误当成“已实现”。
    */
   function stub(method, value) {
     var warned = false;
@@ -104,8 +104,8 @@
     saveSettings: function (s) {
       return call("SaveSettings", [s]);
     },
-    // 枚举当前接入的显示器（设置页「显示的屏幕」多选下拉）。
-    // 枚举不可用（远程会话 / 无桌面）时 Go 侧返回空数组，页面据此显示「未检测到显示器」。
+    // 枚举当前接入的显示器（设置页“显示的屏幕”多选下拉）。
+    // 枚举不可用（远程会话 / 无桌面）时 Go 侧返回空数组，页面据此显示“未检测到显示器”。
     listDisplays: function () {
       return call("ListDisplays");
     },
@@ -133,7 +133,7 @@
     startBreak: function (type) {
       return call("StartBreak", [str(type) || "short"]);
     },
-    // 设置页的「预览」：返回一次**会话对象**（不是弹窗、也不是布尔值）。
+    // 设置页的“预览”：返回一次**会话对象**（不是弹窗、也不是布尔值）。
     // 设置页直接读它的 geom / lines.urge / lines.command 来铺预览面板，
     // 返回布尔值会让 fillGeomControls(undefined) 当场抛错、预览整块停摆。
     previewSupervisor: function (sup, key) {
@@ -159,8 +159,8 @@
       return call("PreBreakAction", [str(a)]);
     },
 
-    // ---- 自动暂停期间的「已暂停多久」提示（右下角小窗，见 pause_notice.go）----
-    // 只有两个动作：恢复（与托盘「恢复休息」同一个入口）与「只关提示、不恢复」。
+    // ---- 自动暂停期间的“已暂停多久”提示（右下角小窗，见 pause_notice.go）----
+    // 只有两个动作：恢复（与托盘“恢复休息”同一个入口）与“只关提示、不恢复”。
     pauseNoticeResume: function () {
       return call("PauseNoticeResume");
     },
@@ -211,11 +211,11 @@
     importScannedSounds: function (files) {
       return call("ImportScannedSounds", [arr(files)]);
     },
-    // 把「文件已不在」的条目从配置里删掉（只删条目，不删文件）
+    // 把“文件已不在”的条目从配置里删掉（只删条目，不删文件）
     dropMissingSounds: function (ids) {
       return call("DropMissingSounds", [arr(ids)]);
     },
-    // 用户选了「暂不 / 保留」：本次运行不再询问
+    // 用户选了“暂不 / 保留”：本次运行不再询问
     dismissSoundScan: function () {
       return call("DismissSoundScan");
     },
@@ -325,12 +325,12 @@
     onUpdateStatus: function (cb) {
       on("update:status-changed", cb);
     },
-    // 统计数据变了（Go 侧每次入账后推送今天的快照）：统计报表「今天」卡据此实时刷新。
+    // 统计数据变了（Go 侧每次入账后推送今天的快照）：统计报表“今天”卡据此实时刷新。
     // 回调拿到的就是 DayStats（字段与 GetStats().today 相同）。
     onStatsChanged: function (cb) {
       on("stats:changed", cb);
     },
-    // 设置窗口被隐藏（关闭到托盘 / 切换）时前端退出所有提醒内容的编辑态
+    // 设置窗口被隐藏（隐藏到托盘 / 切换）时前端退出所有提醒内容的编辑态
     onSettingsHidden: function (cb) {
       on("settings:hidden", cb);
     },
@@ -342,6 +342,6 @@
     e.preventDefault();
   });
 
-  // 冒烟/排查用标记：确认 shim 已生效（同时也是「这页跑在 Go 后端上」的判据）
+  // 冒烟/排查用标记：确认 shim 已生效（同时也是“这页跑在 Go 后端上”的判据）
   window.__WR_SHIM = "go";
 })();

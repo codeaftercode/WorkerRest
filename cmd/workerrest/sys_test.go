@@ -21,12 +21,12 @@ import (
 //   - **纯逻辑**（空闲状态机、空闲判定、命令行拼装）在这里逐条钉死（IdleState 本体
 //     已下沉 internal/idle，纯逻辑测试随包下沉到 internal/idle/idle_test.go）；
 //   - **系统调用**（进程枚举、GetLastInputInfo、勿扰查询）在本机真跑，断言的是
-//     「能读到且有合理结果」，不是某个固定值；
+//     “能读到且有合理结果”，不是某个固定值；
 //   - **注册表**在**临时键**上做真实写入 / 读回 / 删除往返，绝不碰用户真实的 Run 键。
 
 // ---------- 监视链路（接到真实调度器上） ----------
 
-// newWatchApp 造一个「配置 + 调度器 + 空闲状态机」的最小 App（不碰窗口与 Wails）
+// newWatchApp 造一个“配置 + 调度器 + 空闲状态机”的最小 App（不碰窗口与 Wails）
 func newWatchApp(t *testing.T, cfgJSON string) (*App, *scheduler.Scheduler) {
 	t.Helper()
 	a, s, _ := newWatchAppWithHost(t, cfgJSON)
@@ -85,7 +85,7 @@ func TestIdleWatchPausesThenResumesAndReanchors(t *testing.T) {
 	if st.Phase != "idle" {
 		t.Fatalf("回来应处于 idle，得到 %q", st.Phase)
 	}
-	// 重锚 = 内置倒计时从「现在」重新起算（阈值 10 分钟）
+	// 重锚 = 内置倒计时从“现在”重新起算（阈值 10 分钟）
 	want := nowMs() + 600_000
 	if diff := st.NextAt - want; diff < -2000 || diff > 2000 {
 		t.Fatalf("重锚后应≈现在+10 分钟，want=%d got=%d（原值 %d）", want, st.NextAt, firstNext)
@@ -108,7 +108,7 @@ func TestIdleWatchSkippedWhileBreakShowing(t *testing.T) {
 }
 
 // 休息窗口关闭（break-end 的唯一真实调用点 closeBreakWindows）必须清零空闲基准：
-// 否则「刚休息完、还没动鼠标」进入 idle 后，第一次空闲判定会立刻把状态判成离开并暂停。
+// 否则“刚休息完、还没动鼠标”进入 idle 后，第一次空闲判定会立刻把状态判成离开并暂停。
 func TestIdleResetBaselineOnBreakEnd(t *testing.T) {
 	a, _ := newWatchApp(t, shortCountdown)
 	if a.idle == nil {
@@ -145,10 +145,10 @@ func TestAppPauseWatchRealProcessHitAndRelease(t *testing.T) {
 	a.appPauseWatchTick()
 	st := s.StateCopy()
 	if len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonAppPause {
-		t.Fatalf("应因「%s」暂停，得到 %v", pauseReasonAppPause, st.PauseReasons)
+		t.Fatalf("应因“%s”暂停，得到 %v", pauseReasonAppPause, st.PauseReasons)
 	}
 
-	// 命中期间视为「用户仍在用电脑」：即使空闲到天荒地老也不判离开
+	// 命中期间视为“用户仍在用电脑”：即使空闲到天荒地老也不判离开
 	a.idle.ForceIdle(24 * 3_600_000)
 	if away := a.idleWatchTick(false); away {
 		t.Fatal("忙原因暂停期间不该判空闲离开")
@@ -167,7 +167,7 @@ func TestAppPauseWatchRealProcessHitAndRelease(t *testing.T) {
 	}
 }
 
-// appPauseCfg 拼一份「命中本测试进程」的 appPause 配置（enabledItem 控制条目开关，
+// appPauseCfg 拼一份“命中本测试进程”的 appPause 配置（enabledItem 控制条目开关，
 // 用来在单测里模拟目标应用退出 / 再次运行——条目关了 = 进程不在了，走的同一条
 // hit=false 路径）
 func appPauseCfg(t *testing.T, enabledItem bool) string {
@@ -213,7 +213,7 @@ func TestAppPauseManualResumeIgnoresUntilExitOrManualPause(t *testing.T) {
 		t.Fatalf("前置：应因应用占用暂停，得到 %v", st.PauseReasons)
 	}
 
-	// ② 用户点「恢复休息」→ 立即恢复 + 进入忽略会话
+	// ② 用户点“恢复休息”→ 立即恢复 + 进入忽略会话
 	a.schedPauseToggle()
 	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
 		t.Fatalf("手动恢复应立即生效，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
@@ -282,7 +282,7 @@ func jsonStr(s string) string {
 
 func TestDndWatchIsIdempotent(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
-	// 真机上此刻的勿扰档位 / QUNS 都不确定：喂一份确定的「两条都不成立」采样，
+	// 真机上此刻的勿扰档位 / QUNS 都不确定：喂一份确定的“两条都不成立”采样，
 	// 连推两拍，验证不会凭空叠出暂停原因。真机探测形状由 windnd 自己的用例覆盖。
 	none := windnd.BusyStatus{QunsSupported: true, Quns: 5, WnfSupported: true, QuietProfile: 0}
 	a.dndApply(none, true, true)
@@ -292,14 +292,14 @@ func TestDndWatchIsIdempotent(t *testing.T) {
 	}
 }
 
-// 两条原因各自有独立的「已手动恢复」忽略表：为勿扰点过恢复，不该把随后成立的
+// 两条原因各自有独立的“已手动恢复”忽略表：为勿扰点过恢复，不该把随后成立的
 // 全屏或演示一起静音（这正是把勿扰从 QUNS 里拆出来的理由）。
 func TestSplitPauseReasonsHaveSeparateIgnoreTables(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
 	dndOn := windnd.BusyStatus{QunsSupported: true, Quns: 5, WnfSupported: true, QuietProfile: 1}
 	a.dndApply(dndOn, true, true)
 	a.dndApply(dndOn, true, true)
-	a.schedPauseToggle() // 用户为「勿扰」点恢复休息
+	a.schedPauseToggle() // 用户为“勿扰”点恢复休息
 	if !a.isAutoPauseIgnored(pauseReasonDnd) {
 		t.Fatal("前置：勿扰条件仍成立，点恢复应记忽略")
 	}
@@ -307,7 +307,7 @@ func TestSplitPauseReasonsHaveSeparateIgnoreTables(t *testing.T) {
 		t.Fatal("忽略表不该串到全屏或演示")
 	}
 
-	// QUNS=4（演示设置）合并后归「全屏或演示」，仍要能独立触发。
+	// QUNS=4（演示设置）合并后归“全屏或演示”，仍要能独立触发。
 	screenOn := windnd.BusyStatus{QunsSupported: true, Quns: 4, WnfSupported: true, QuietProfile: 0}
 	a.dndApply(screenOn, true, true)
 	a.dndApply(screenOn, true, true)
@@ -317,7 +317,7 @@ func TestSplitPauseReasonsHaveSeparateIgnoreTables(t *testing.T) {
 }
 
 // 全屏或演示支路：只读写它自己那条暂停原因，进入 / 退出各打一行日志（边沿触发），
-// 中间反复「仍然活跃」不重复暂停、也不产生第二条原因。
+// 中间反复“仍然活跃”不重复暂停、也不产生第二条原因。
 func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
 
@@ -327,7 +327,7 @@ func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 		t.Fatalf("不活跃时不该暂停，得到 %v", st.PauseReasons)
 	}
 	if a.fsActiveLogged {
-		t.Fatal("不活跃时不该留下「已记录」标记")
+		t.Fatal("不活跃时不该留下“已记录”标记")
 	}
 
 	// ② 只活跃一拍：进入侧去抖，攒满两拍前不暂停、不打日志（单次采样尖峰到此为止）
@@ -336,17 +336,17 @@ func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 		t.Fatalf("单拍活跃不该暂停（去抖），得到 paused=%v %v", st.Paused, st.PauseReasons)
 	}
 	if a.fsActiveLogged {
-		t.Fatal("单拍活跃不该留下「已记录」标记")
+		t.Fatal("单拍活跃不该留下“已记录”标记")
 	}
 
-	// ③ 第二拍仍活跃：确认，暂停原因恰好是「全屏或演示」，且标记置位
+	// ③ 第二拍仍活跃：确认，暂停原因恰好是“全屏或演示”，且标记置位
 	a.applyAutoPause(true, pauseReasonFullScr, &a.fsActiveLogged, "in", "out")
 	st := s.StateCopy()
 	if !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != pauseReasonFullScr {
-		t.Fatalf("两拍活跃应停在「全屏或演示」上，得到 paused=%v %v", st.Paused, st.PauseReasons)
+		t.Fatalf("两拍活跃应停在“全屏或演示”上，得到 paused=%v %v", st.Paused, st.PauseReasons)
 	}
 	if !a.fsActiveLogged {
-		t.Fatal("确认暂停时该置位「已记录」标记（否则每 3 秒刷一行日志）")
+		t.Fatal("确认暂停时该置位“已记录”标记（否则每 3 秒刷一行日志）")
 	}
 
 	// ④ 仍然活跃：幂等，不能叠出第二条原因
@@ -365,13 +365,13 @@ func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 		t.Fatal("条件已消失，autoReasonActive 应登记为 false")
 	}
 	if a.fsActiveLogged {
-		t.Fatal("标记应清零：它是「上一跳条件是否成立」，留着会让退出日志每 3 秒重打一遍")
+		t.Fatal("标记应清零：它是“上一跳条件是否成立”，留着会让退出日志每 3 秒重打一遍")
 	}
 	if !a.allAutoReasonsCleared() {
-		t.Fatal("挂着的自动原因条件都消失了，托盘该提示「可以恢复了」")
+		t.Fatal("挂着的自动原因条件都消失了，托盘该提示“可以恢复了”")
 	}
 
-	// ⑥ 用户点「恢复休息」：这时才真的结束，且**不为已消解的这条记忽略** ——
+	// ⑥ 用户点“恢复休息”：这时才真的结束，且**不为已消解的这条记忽略** ——
 	// 记了下一场会议就不会再自动暂停，那比误弹一次糟得多
 	a.schedPauseToggle()
 	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
@@ -385,7 +385,7 @@ func TestApplyAutoPauseFullScreenEdgeOnly(t *testing.T) {
 // ---------- 开机自启动（目标判定，注册表读写本体已迁 internal/autostart） ----------
 
 func TestAutostartTargetSkipsDevBuild(t *testing.T) {
-	// 测试二进制必然落在 go-build 临时目录里 → 必须被判定为「不可注册」
+	// 测试二进制必然落在 go-build 临时目录里 → 必须被判定为“不可注册”
 	_, _, ok := AutostartTarget()
 	if ok {
 		t.Fatal("开发构建（落在临时 go-build 目录里的 exe）不该被注册成开机自启动，否则就是一条死路径")
@@ -395,7 +395,7 @@ func TestAutostartTargetSkipsDevBuild(t *testing.T) {
 // ---------- 真机系统调用 ----------
 
 // 自动暂停开关的默认值：勿扰、全屏或演示、无线投放、复制模式都默认开。
-// 全屏应用原本默认关（新增能力不替用户决定），2026-10-29 用户要求「以当前配置为出厂默认」
+// 全屏应用原本默认关（新增能力不替用户决定），2026-10-29 用户要求“以当前配置为出厂默认”
 // 后改为开 —— 出厂默认与代码兜底必须同值，否则老配置（缺键走兜底）与新装表现不一致。
 // 投屏（2026-11-03 新增，同日拆成无线 / 复制两个）沿用同一个口径：出厂即勾选，代码兜底同为 true。
 func TestAutoPauseFlagDefaults(t *testing.T) {
@@ -422,12 +422,12 @@ func TestAutoPauseFlagDefaults(t *testing.T) {
 	}
 }
 
-// 「信不信某条判据」本身是纯逻辑，用构造的探测结果钉住四种命中形态 × 四种开关组合。
-// 真机测试只能验证「不该暂停时确实没暂停」，验证不到「该暂停时真暂停了」——
+// “信不信某条判据”本身是纯逻辑，用构造的探测结果钉住四种命中形态 × 四种开关组合。
+// 真机测试只能验证“不该暂停时确实没暂停”，验证不到“该暂停时真暂停了”——
 // 那取决于跑测试的机器当下接了几块屏，在单屏机器上永远走不到命中分支。
 //
-// 拆成两条原因之后，矩阵要断言的是「各自是否命中」，不再是合成的一个布尔：
-// 合成布尔时代「两条都命中、只开复制」与「只有复制」返回的是同一个 true，看不出区别。
+// 拆成两条原因之后，矩阵要断言的是“各自是否命中”，不再是合成的一个布尔：
+// 合成布尔时代“两条都命中、只开复制”与“只有复制”返回的是同一个 true，看不出区别。
 func TestCastPauseWantedMatrix(t *testing.T) {
 	states := []struct {
 		name string
@@ -459,8 +459,8 @@ func TestCastPauseWantedMatrix(t *testing.T) {
 
 // 投屏支路：两条判据各受自己的开关管，开哪条信哪条，且各自成为一条独立原因。
 //
-// 不写死「本机一定在投屏」：以 GetCastStatus() 当预期，任何机器上都成立。
-// 四种开关组合逐个过，才真正证明「拆开了」—— 只测全开和全关的话，
+// 不写死“本机一定在投屏”：以 GetCastStatus() 当预期，任何机器上都成立。
+// 四种开关组合逐个过，才真正证明“拆开了”—— 只测全开和全关的话，
 // 两个开关在代码里串成一个 AND、或者共用一条原因名，都照样是绿的。
 func TestCastWatchRespectsEachSwitch(t *testing.T) {
 	live := windnd.GetCastStatus()
@@ -507,7 +507,7 @@ func TestCastWatchRespectsEachSwitch(t *testing.T) {
 			t.Fatalf("%s：暂停原因数应为 %d，得到 %v", c.name, wantLen, st.PauseReasons)
 		}
 		if gotMirror != a.castMirrorLogged || gotWireless != a.castWirelessLogged {
-			t.Fatalf("%s：「已记录」标记应与暂停状态一致（mirror=%v/%v wireless=%v/%v）",
+			t.Fatalf("%s：“已记录”标记应与暂停状态一致（mirror=%v/%v wireless=%v/%v）",
 				c.name, a.castMirrorLogged, gotMirror, a.castWirelessLogged, gotWireless)
 		}
 	}
@@ -515,7 +515,7 @@ func TestCastWatchRespectsEachSwitch(t *testing.T) {
 		live.Active, live.Mirror, live.Wireless, live.Detail)
 }
 
-// 自动原因共用的「恢复休息」语义（本表覆盖除「应用占用」外那几条；应用占用走自己的
+// 自动原因共用的“恢复休息”语义（本表覆盖除“应用占用”外那几条；应用占用走自己的
 // appPauseWatchTick，由 TestAppPauseWatch* 一组单独覆盖）：
 //
 //	因某原因暂停 → 点恢复休息 → 条件还在也不再因它暂停 → 条件消失后解除 → 再次达成照常暂停。
@@ -527,7 +527,7 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 	cases := []struct {
 		name   string
 		reason string
-		other  string                // 用来验证「其他原因照常生效」的另一条原因
+		other  string                // 用来验证“其他原因照常生效”的另一条原因
 		on     func(a *App, on bool) // 条件成立 / 消失各推一跳
 	}{
 		{
@@ -595,16 +595,16 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 			// ① 条件成立 → 因该原因暂停
 			c.on(a, true)
 			if !s.IsPaused() || !hasReason(c.reason) {
-				t.Fatalf("前置：应因「%s」暂停，得到 %v", c.reason, s.StateCopy().PauseReasons)
+				t.Fatalf("前置：应因“%s”暂停，得到 %v", c.reason, s.StateCopy().PauseReasons)
 			}
 
-			// ② 用户点「恢复休息」→ 立即恢复
+			// ② 用户点“恢复休息”→ 立即恢复
 			a.schedPauseToggle()
 			if s.IsPaused() || len(s.StateCopy().PauseReasons) != 0 {
 				t.Fatalf("点恢复休息应立即生效，得到 %v", s.StateCopy().PauseReasons)
 			}
 			if !a.isAutoPauseIgnored(c.reason) {
-				t.Fatalf("恢复后应把「%s」记为已手动恢复", c.reason)
+				t.Fatalf("恢复后应把“%s”记为已手动恢复", c.reason)
 			}
 
 			// ③ 条件仍在：连推两跳也不再挂回来
@@ -614,11 +614,11 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 				t.Fatalf("忽略期间条件仍成立，不该重新暂停，得到 %v", s.StateCopy().PauseReasons)
 			}
 
-			// ④ 别的原因照常生效（恢复的是「当时那几条」，不是一刀切静音）
+			// ④ 别的原因照常生效（恢复的是“当时那几条”，不是一刀切静音）
 			a.applyAutoPause(true, c.other, new(bool), "", "")
 			a.applyAutoPause(true, c.other, new(bool), "", "") // 进入侧去抖：第二拍才确认
 			if !hasReason(c.other) {
-				t.Fatalf("「%s」被忽略时，「%s」仍应照常暂停，得到 %v",
+				t.Fatalf("“%s”被忽略时，“%s”仍应照常暂停，得到 %v",
 					c.reason, c.other, s.StateCopy().PauseReasons)
 			}
 			a.applyAutoPause(false, c.other, new(bool), "", "")
@@ -626,23 +626,23 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 			// 空闲与应用占用自动恢复；勿扰 / 全屏或演示 / 两条投屏保留暂停，等用户手动点。
 			if autoResumeOnClear(c.other) {
 				if s.IsPaused() {
-					t.Fatalf("「%s」条件消失后应自动恢复，得到 %v", c.other, s.StateCopy().PauseReasons)
+					t.Fatalf("“%s”条件消失后应自动恢复，得到 %v", c.other, s.StateCopy().PauseReasons)
 				}
 			} else {
 				if !hasReason(c.other) {
-					t.Fatalf("「%s」条件消失后应保持暂停（等用户手动恢复），得到 %v",
+					t.Fatalf("“%s”条件消失后应保持暂停（等用户手动恢复），得到 %v",
 						c.other, s.StateCopy().PauseReasons)
 				}
 				a.schedPauseToggle()
 				if s.IsPaused() {
-					t.Fatalf("手动恢复「%s」后应结束暂停，得到 %v", c.other, s.StateCopy().PauseReasons)
+					t.Fatalf("手动恢复“%s”后应结束暂停，得到 %v", c.other, s.StateCopy().PauseReasons)
 				}
 			}
 
 			// ⑤ 条件消失 → 忽略解除（下次达成照常触发）
 			c.on(a, false)
 			if a.isAutoPauseIgnored(c.reason) {
-				t.Fatalf("「%s」的条件已消失，忽略应解除", c.reason)
+				t.Fatalf("“%s”的条件已消失，忽略应解除", c.reason)
 			}
 
 			// ⑥ 再次达成 → 重新暂停
@@ -654,7 +654,7 @@ func TestAutoPauseManualResumeIgnoresUntilConditionClears(t *testing.T) {
 	}
 }
 
-// 用户主动「暂停休息」清空所有忽略：他明确要求回到常规判定，之后各原因该暂停就暂停。
+// 用户主动“暂停休息”清空所有忽略：他明确要求回到常规判定，之后各原因该暂停就暂停。
 func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
 
@@ -665,7 +665,7 @@ func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
 		t.Fatal("前置：恢复后应处于忽略状态")
 	}
 
-	// 此刻既没暂停也没自动原因 → 这里是「手动暂停」
+	// 此刻既没暂停也没自动原因 → 这里是“手动暂停”
 	a.schedPauseToggle()
 	if !s.IsPaused() {
 		t.Fatal("应进入手动暂停")
@@ -688,15 +688,15 @@ func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
 	}
 }
 
-// 「离开恰好从提前提示区间里开始」时，回来不该先弹一个提示窗再被重锚收掉。
+// “离开恰好从提前提示区间里开始”时，回来不该先弹一个提示窗再被重锚收掉。
 //
 // 时序：倒计时剩 2.9 秒时弹出提前提示窗 → 用户此刻离开 → 5 分钟后回来。
 // 恢复会把 NextAt 按暂停时长整体平移（仍在原来的提前区间内），于是旧实现会调一次
-// OnPreNotify 弹出提示窗，紧接着 ReanchorCountdown 把 NextAt 推到「现在 + 整个间隔」
+// OnPreNotify 弹出提示窗，紧接着 ReanchorCountdown 把 NextAt 推到“现在 + 整个间隔”
 // 又把窗收掉 —— 用户看到右下角闪一下。空闲链路改用 ResumeQuiet 后不再弹。
 //
 // 对照组故意直接调公开的 Resume（= 旧实现那一条），证明差别来自这一次调用，
-// 而不是「这个场景本身弹不出来」。
+// 而不是“这个场景本身弹不出来”。
 func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
 	// 4 秒一次短休息、提前 3 秒提示：提前区间 = [t0+1s, t0+4s]
 	const tight = `{"short":{"enabled":true,"mode":"countdown","intervalMs":4000,"durationMs":2000,` +
@@ -706,7 +706,7 @@ func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
 	// 对照组与实验组共用一个时间轴，只睡一次（对照组的 App 本身用不上，只要调度器与宿主）
 	_, sOld, hostOld := newWatchAppWithHost(t, tight)
 
-	// 让「现在」落进提前区间
+	// 让“现在”落进提前区间
 	time.Sleep(1100 * time.Millisecond)
 
 	// 实验组：走真实空闲链路
@@ -716,7 +716,7 @@ func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
 	a.idleAway = a.idleWatchTick(a.idleAway)
 
 	// 对照组：手动暂停（恢复时按剩余时间平移、仍落在提前区间 → 弹一次提示窗），
-	// 紧接着重锚把它收掉 —— 这正是自动暂停统一重锚之前的行为，用来证明「闪一下」
+	// 紧接着重锚把它收掉 —— 这正是自动暂停统一重锚之前的行为，用来证明“闪一下”
 	// 这个场景确实构造得出来，实验组的 0 次不是场景没搭成。
 	// 2026-11-05 起自动原因（含空闲）在 resume 内部就会重锚，无法再用 idle 复刻旧路径。
 	sOld.Pause(scheduler.PauseReasonManual)
@@ -738,14 +738,14 @@ func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
 	if s.IsPaused() {
 		t.Fatalf("回来应已恢复，得到 reasons=%v", s.StateCopy().PauseReasons)
 	}
-	// 重锚仍要发生：内置倒计时从「现在」重新计时（4 秒），不是残留的 2.9 秒
+	// 重锚仍要发生：内置倒计时从“现在”重新计时（4 秒），不是残留的 2.9 秒
 	if remain := s.RemainingMs(); remain < 3500 || remain > 4200 {
 		t.Fatalf("回来应把内置倒计时重锚到满间隔，得到剩余 %d ms", remain)
 	}
 }
 
 // 固定时刻线不会重锚，所以空闲回来时必须照常把提前提示窗弹回来 ——
-// 静默恢复会把「这次提醒的提前提示」永久吞掉（休息仍准点弹，但少了提前那一下）。
+// 静默恢复会把“这次提醒的提前提示”永久吞掉（休息仍准点弹，但少了提前那一下）。
 // 与上一条配对：同一处代码，倒计时线要静默、固定线不能静默。
 func TestIdleReturnKeepsPreWindowForFixedLine(t *testing.T) {
 	// 下一个整分钟触发、提前 3 分钟提示 → 现在必然已在提前区间内
@@ -778,7 +778,7 @@ func TestIdleReturnKeepsPreWindowForFixedLine(t *testing.T) {
 	}
 }
 
-// C：忙碌型自动暂停期间统计仍记「工作」。
+// C：忙碌型自动暂停期间统计仍记“工作”。
 //
 // 统计的三态只看两件事：休息窗在不在场（statsIsBreak）、连续无输入有没有超阈值
 // （statsIsIdle）。自动暂停不改这两条 —— 开会 / 投屏 / 全屏时人还在电脑前，这段

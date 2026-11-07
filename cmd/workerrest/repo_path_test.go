@@ -10,7 +10,7 @@ import (
 // （assets/supervisors/、assets/sounds/ 等）用。
 //
 // 为什么需要它：main 包下沉到 cmd/workerrest/ 之后，`go test` 的 cwd 是这个包目录，
-// 而 assets/ 这些「随包但不进 exe 的素材」留在模块根 —— 它们不属于 main 包源码，
+// 而 assets/ 这些“随包但不进 exe 的素材”留在模块根 —— 它们不属于 main 包源码，
 // 不该跟着挪。测试要读它们就得向上定位到 go.mod。
 //
 // 实现从 cwd 逐级向上找 go.mod，而不是写死 "../.."：万一有人用 `go test` 的

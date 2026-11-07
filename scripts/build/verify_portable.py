@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """便携打包产物验证：解包目录在干净环境下首次运行，数据必须落在 exe 同目录。
 
-验证的核心语义（README「数据与配置落点」里 Go 版的约定）：
+验证的核心语义（README“数据与配置落点”里 Go 版的约定）：
   数据与程序同目录 —— 配置/统计/音频都在 exe 旁的 config/ 与 data/，绝不碰 %APPDATA%。
   打包交付的便携目录自带预置两件套（sounds/ + config/settings.json），首跑直接在预置
   文件上继续写（补种提醒内容条目 / 指定应用 / 提示音，并把结果回写）。**data/ 与 stats.json 不进包**（统计是用户
@@ -162,7 +162,7 @@ def main():
     shutil.rmtree(iso, ignore_errors=True)
     shutil.copytree(src, iso)
     exe = os.path.join(iso, "rest.exe")
-    # 隔离 APPDATA：干净、空，确保「便携优先」不是靠 APPDATA 里恰好有配置才成立
+    # 隔离 APPDATA：干净、空，确保“便携优先”不是靠 APPDATA 里恰好有配置才成立
     iso_appdata = os.path.join(TEMP, "wr_portable_verify_appdata")
     shutil.rmtree(iso_appdata, ignore_errors=True)
     os.makedirs(iso_appdata, exist_ok=True)
@@ -206,7 +206,7 @@ def main():
 
     # 1. 进程活着、无 panic
     # 附注用 alive_rc 而不是 proc.poll()：后者在 terminate 之后取，永远是非 0，
-    # 读报告的人会以为「进程明明退出了却判活着」。
+    # 读报告的人会以为“进程明明退出了却判活着”。
     check(alive, "便携版进程观察期内一直活着", "rc=%s" % alive_rc)
     check("panic" not in text.lower(), "日志里没有 panic", "")
 
@@ -218,11 +218,11 @@ def main():
     check(os.path.isfile(preset_cfg), "预置 config/settings.json 随包存在", preset_cfg)
     # 许可文本：两份都内嵌进 exe（notices.go / license.go），便携目录里**不该**有同名文件。
     # 目录里那份从首装那天起就不再变（更新包 rest.zip 只换 exe），留着只会让人读到过期快照。
-    # 反向断言比「存在」更值钱：以后谁把拷贝逻辑加回来，这条会立刻红。
+    # 反向断言比“存在”更值钱：以后谁把拷贝逻辑加回来，这条会立刻红。
     stray = [n for n in ("THIRD-PARTY-NOTICES.txt", "LICENSE")
              if os.path.exists(os.path.join(iso, n))]
     check(not stray, "许可文本不散放在目录里（已内嵌进 exe）", "stray=%s" % stray)
-    # 首跑自建的空表（不再是「预置文件」）：Load 见文件缺失就建目录 + 写空表
+    # 首跑自建的空表（不再是“预置文件”）：Load 见文件缺失就建目录 + 写空表
     runtime_stats = os.path.join(iso, "data", "stats.json")
     check(os.path.isfile(runtime_stats), "首跑自动创建 data/stats.json", runtime_stats)
     if os.path.isfile(runtime_stats):
@@ -256,7 +256,7 @@ def main():
 
     # 3b. 出厂默认更新源：预置配置的 sites 必须与同版本 version.json 的 sites 一致。
     #     version.json 下发的 sites 会整体覆盖客户端本地 sites，两边不一致就会出现
-    #     「装完查 A、检查一次更新后又跳回 B」。
+    #     “装完查 A、检查一次更新后又跳回 B”。
     vj = os.path.join(os.path.dirname(src), "version.json")  # release/WorkerRest-<tag>/
     cfg_sites = []
     try:
@@ -273,7 +273,7 @@ def main():
                   "预置配置的 sites == version.json 的 sites（发布更新源不漂移）",
                   "%s vs %s" % (cfg_sites, vj_sites))
             # 3b-2. 清单里的 sha256 必须真的是同目录 rest.zip 的哈希：客户端只认它，
-            #       写错（或改了包没重算）会让所有用户卡在「校验失败，已拒绝更新」。
+            #       写错（或改了包没重算）会让所有用户卡在“校验失败，已拒绝更新”。
             pkg = os.path.join(os.path.dirname(vj), "rest.zip")
             want = str(vj_doc.get("sha256") or "").strip().lower()
             if os.path.isfile(pkg):
@@ -293,8 +293,8 @@ def main():
     else:
         check(False, "同版本 version.json 在便携目录的上级目录里", vj)
 
-    # 3c. 「恢复默认设置」用的 exe 内嵌默认，必须与随包的预置配置一致。
-    #     不一致时，新装看到的是预置文件的值、点「恢复默认」跳回 exe 里的旧值，
+    # 3c. “恢复默认设置”用的 exe 内嵌默认，必须与随包的预置配置一致。
+    #     不一致时，新装看到的是预置文件的值、点“恢复默认”跳回 exe 里的旧值，
     #     界面上完全看不出来（--no-build 用上一轮 exe 时就会这样）。
     #     比的是**原始**预置文件（src/ 下那份），不是 iso 里已被首跑改写的副本。
     try:
@@ -312,7 +312,7 @@ def main():
         check(False, "能取出 exe 内嵌出厂默认并与预置配置比对", repr(e))
 
     # 3d. 构建路径卫生：exe 里不能带构建机的绝对源码路径（`-trimpath` 的意义）。
-    #     判据不写死本机路径，而用「盘符绝对路径 + .go 结尾」这个特征：
+    #     判据不写死本机路径，而用“盘符绝对路径 + .go 结尾”这个特征：
     #     未加 -trimpath 时每个源文件都会以 D:/.../xxx.go 的形式进二进制（panic 栈、
     #     运行时符号），加了之后统一变成 workerrest/xxx.go，不可能再出现盘符。
     try:
@@ -337,7 +337,7 @@ def main():
     # 4. 没往 APPDATA 写**配置**（隔离 APPDATA 里不该出现任何 settings.json）。
     #    注意：WebView2 会自己在 APPDATA 下建 <exe名>/EBWebView 浏览器缓存目录，
     #    那是浏览器引擎的固有行为（上一版同样会在 APPDATA 建缓存），
-    #    与「配置数据落点」无关 —— 所以这里只查 settings.json，不查「目录为空」。
+    #    与“配置数据落点”无关 —— 所以这里只查 settings.json，不查“目录为空”。
     wrote_cfg = False
     for root, _dirs, files in os.walk(iso_appdata):
         if "settings.json" in files:
@@ -351,7 +351,7 @@ def main():
     check(bool(role_meta) and os.path.isfile(role_meta),
           "supervisors/ 随包完整（眼镜主管 在）", role_meta or "(未找到)")
 
-    # 6. 清启动项脚本：便携版没有卸载器，用户「卸载」= 删文件夹，注册表里那一项就成死路径。
+    # 6. 清启动项脚本：便携版没有卸载器，用户“卸载”= 删文件夹，注册表里那一项就成死路径。
     #    脚本丢了等于只能自己手改注册表；值名不一致等于屏幕上说删掉了、开机照样启动。
     cleaner = os.path.join(src, CLEANER_NAME)
     if check(os.path.isfile(cleaner), "随包清除开机自启动项脚本在", cleaner):

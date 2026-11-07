@@ -7,17 +7,17 @@ import (
 	"workerrest/internal/role"
 )
 
-// 督休专员**名字唯一性**的回归（2026-10-26 起；2026-10-28 改成「名字即身份」后重写）。
+// 督休专员**名字唯一性**的回归（2026-10-26 起；2026-10-28 改成“名字即身份”后重写）。
 //
 // 背景：一个督休专员 = supervisors/<目录>/{meta.json, 立绘, 预览图}，没有内部 id。
-// 名字重复会让「名字 ↔ 目录 ↔ fixedRole / order」四者失配：目录名靠 role.UniqueRoleDir
-// 去重成「X (2)」，meta.json 里却还是「X」—— 同一个名字在画廊磁贴 / 台词气泡 /
+// 名字重复会让“名字 ↔ 目录 ↔ fixedRole / order”四者失配：目录名靠 role.UniqueRoleDir
+// 去重成“X (2)”，meta.json 里却还是“X”—— 同一个名字在画廊磁贴 / 台词气泡 /
 // 提醒面板标题里指向两个不同的人，删一个还会删错。
 //
 // 三层防线，逐层钉住：
 //   ① 前端 promptDialog 的 validate：重名 → 拒绝保存、留在框里要求重新输入；
 //   ② Go 侧 SaveRole：重名 → 返回 false，零副作用（不改目录、不写 meta.json）；
-//   ③ Go 侧 role.CreateRoleDir：软件自己起名 → 自动退让成「X (2)」。
+//   ③ Go 侧 role.CreateRoleDir：软件自己起名 → 自动退让成“X (2)”。
 //
 // ⚠️ 判据是 role.RoleIdentity（**目录名口径**），不是字符串相等：名字里带 `/`、大小写不同、
 // 尾随点空格，都会落到同一个目录上，必须算重名。见 TestRoleNameTakenDirNameIdentity。
@@ -58,7 +58,7 @@ func TestRoleNameTakenBasics(t *testing.T) {
 	}
 }
 
-// 判据是「目录名口径」：会被 sanitize 抹平的差异必须算重名。
+// 判据是“目录名口径”：会被 sanitize 抹平的差异必须算重名。
 //
 // 反例：只比字符串的话，"A/B" 与 "AB" 判为不重名 → 两个专员争同一个目录，
 // 后写的那份 meta.json 覆盖前一份，界面上只剩一个人（文件还在，最难查的那种）。
@@ -92,7 +92,7 @@ func TestRoleNameTakenDirNameIdentity(t *testing.T) {
 	}
 }
 
-// role.SanitizeRoleDirName 的几处「不处理就会静默撞车」的边界。
+// role.SanitizeRoleDirName 的几处“不处理就会静默撞车”的边界。
 func TestSanitizeRoleDirName(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"医生", "医生"},
@@ -150,7 +150,7 @@ func TestScanRoleNamesLightweight(t *testing.T) {
 	}
 }
 
-// role.UniqueRoleName：被占用时依次退让「X (2)」「X (3)」；排除自己不误判。
+// role.UniqueRoleName：被占用时依次退让“X (2)”“X (3)”；排除自己不误判。
 func TestUniqueRoleNameFallsBack(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "医生", map[string]any{
@@ -161,9 +161,9 @@ func TestUniqueRoleNameFallsBack(t *testing.T) {
 		t.Fatalf("没人用的名字不该被改：%q", got)
 	}
 	if got := role.UniqueRoleName(root, "医生", ""); got != "医生 (2)" {
-		t.Fatalf("重名应退让成「医生 (2)」：%q", got)
+		t.Fatalf("重名应退让成“医生 (2)”：%q", got)
 	}
-	// 自己就叫「医生」时不能把自己算进去
+	// 自己就叫“医生”时不能把自己算进去
 	if got := role.UniqueRoleName(root, "医生", "医生"); got != "医生" {
 		t.Fatalf("排除自己时不该退让：%q", got)
 	}
@@ -172,14 +172,14 @@ func TestUniqueRoleNameFallsBack(t *testing.T) {
 		"name": "医生 (2)", "enabled": true, "image": "figure.webp",
 	}, map[string]string{"figure.webp": "w"})
 	if got := role.UniqueRoleName(root, "医生", ""); got != "医生 (3)" {
-		t.Fatalf("应退让到「医生 (3)」：%q", got)
+		t.Fatalf("应退让到“医生 (3)”：%q", got)
 	}
 }
 
 // SaveRole 遇到重名 → 返回 false，且**零副作用**：目录没改名、meta.json 没被改写。
 //
 // 零副作用很重要：拒绝发生在写盘之前，所以磁盘状态完全不变 ——
-// 用户换个名字重试即可，不会留下「名字改了但目录没改」的半成品。
+// 用户换个名字重试即可，不会留下“名字改了但目录没改”的半成品。
 func TestSaveRoleRejectsDuplicateName(t *testing.T) {
 	root := t.TempDir()
 	writeRoleDir(t, root, "医生", map[string]any{
@@ -191,7 +191,7 @@ func TestSaveRoleRejectsDuplicateName(t *testing.T) {
 
 	a := &App{rolesRoot: root}
 
-	// 学姐改成「医生」→ 拒绝
+	// 学姐改成“医生”→ 拒绝
 	if a.SaveRole("学姐", map[string]any{"name": "医生"}) {
 		t.Fatal("重名必须被拒绝（SaveRole 应返回 false）")
 	}
@@ -223,7 +223,7 @@ func TestSaveRoleRejectsDuplicateName(t *testing.T) {
 	}
 }
 
-// 改名后立绘不能丢：这是「改名 = 换身份」最容易踩的坑 ——
+// 改名后立绘不能丢：这是“改名 = 换身份”最容易踩的坑 ——
 // 按新名反查不到旧目录会新建空壳，原来的立绘就被丢在旧目录里。
 func TestSaveRoleRenameKeepsFigure(t *testing.T) {
 	root := t.TempDir()
@@ -255,7 +255,7 @@ func TestSaveRoleRenameKeepsFigure(t *testing.T) {
 	}
 	// 扫描结果里也只有一个人
 	if roles := role.ScanRoles(root); len(roles) != 1 || roles[0].Name != "值班医生" {
-		t.Fatalf("扫描结果应只有「值班医生」，实际 %v", roleNames(roles))
+		t.Fatalf("扫描结果应只有“值班医生”，实际 %v", roleNames(roles))
 	}
 }
 
@@ -275,8 +275,8 @@ func TestSaveRoleAllowsUnchangedName(t *testing.T) {
 	}
 }
 
-// role.CreateRoleDir 落盘时显示名也要唯一：同名导入两次 → 第二个是「X (2)」，
-// 而不是两个都叫「X」（那会让画廊 / 台词气泡分不清谁是谁）。
+// role.CreateRoleDir 落盘时显示名也要唯一：同名导入两次 → 第二个是“X (2)”，
+// 而不是两个都叫“X”（那会让画廊 / 台词气泡分不清谁是谁）。
 func TestCreateRoleDirDisplayNameUnique(t *testing.T) {
 	root := t.TempDir()
 	src := writeImgSrc(t, t.TempDir(), "我的图.png", "bytes-a")
@@ -290,10 +290,10 @@ func TestCreateRoleDirDisplayNameUnique(t *testing.T) {
 	c1, _ := role.ReadRoleFile(root, n1)
 	c2, _ := role.ReadRoleFile(root, n2)
 	if c1.Name != "我的图" {
-		t.Fatalf("第一个应叫「我的图」：%q", c1.Name)
+		t.Fatalf("第一个应叫“我的图”：%q", c1.Name)
 	}
 	if c2.Name != "我的图 (2)" {
-		t.Fatalf("第二个应自动退让成「我的图 (2)」：%q", c2.Name)
+		t.Fatalf("第二个应自动退让成“我的图 (2)”：%q", c2.Name)
 	}
 	// 目录名与名字一致
 	d2, _ := role.ResolveRoleDir(root, n2)

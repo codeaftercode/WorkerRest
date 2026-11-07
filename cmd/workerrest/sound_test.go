@@ -17,16 +17,16 @@ import (
 // 提示音这一层的回归。
 //
 // 分工：
-//   - 这里拦「选曲规则写错」：单曲与启停无关、随机 / 顺序的选池、游标推进、
+//   - 这里拦“选曲规则写错”：单曲与启停无关、随机 / 顺序的选池、游标推进、
 //     静音语义、资源路由的白名单、导入副本的删除边界。
-//   - scripts/smoke_server.py 拦「接进绑定后还对不对」：SoundFileURL 的实际返回值、
+//   - scripts/smoke_server.py 拦“接进绑定后还对不对”：SoundFileURL 的实际返回值、
 //     休息开始 / 结束真的播了、无头模式下退化成日志。
 //   - 真发声只有 GUI 下才验得到（宿主窗口 + WebView2 解码），那一段在
 //     scripts/probe_gui_boot.py 的日志断言里。
 
 // ---------- 脚手架 ----------
 
-// newSoundApp 造一个「配置落在临时目录」的最小 App：音频目录因此是 <临时目录>/sounds
+// newSoundApp 造一个“配置落在临时目录”的最小 App：音频目录因此是 <临时目录>/sounds
 func newSoundApp(t *testing.T, cfgJSON string) (*App, string) {
 	t.Helper()
 	dir := t.TempDir()
@@ -35,7 +35,7 @@ func newSoundApp(t *testing.T, cfgJSON string) (*App, string) {
 	return &App{cfg: s}, dir
 }
 
-// soundCfgFromJSON 从「含外层 sound 键」的整份配置里取出声音配置视图
+// soundCfgFromJSON 从“含外层 sound 键”的整份配置里取出声音配置视图
 // （settings.SoundCfgOf 收的是 sound 对象本身，别直接喂整份配置）
 func soundCfgFromJSON(t *testing.T, js string) model.SoundCfg {
 	t.Helper()
@@ -46,7 +46,7 @@ func soundCfgFromJSON(t *testing.T, js string) model.SoundCfg {
 	return s.SoundCfg()
 }
 
-// writeSoundFile 造一个「看起来可播」的文件（大小与扩展名过关即可，内容不解析）
+// writeSoundFile 造一个“看起来可播”的文件（大小与扩展名过关即可，内容不解析）
 func writeSoundFile(t *testing.T, path string, size int) string {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -62,7 +62,7 @@ func writeSoundFile(t *testing.T, path string, size int) string {
 	return path
 }
 
-// soundCfgJSON 造一段「完整配置」JSON（外层带 sound 键，与真实配置同构）
+// soundCfgJSON 造一段“完整配置”JSON（外层带 sound 键，与真实配置同构）
 func soundCfgJSON(mode, singleID string, items ...string) string {
 	music := "["
 	for i, it := range items {
@@ -92,8 +92,8 @@ func injectBuiltinSoundDir(t *testing.T, dir string) {
 	t.Cleanup(func() { sound.SetBuiltinDirFn(func() string { return old }) })
 }
 
-// 四个内置提示音必须真的能被判为可用 —— 它们是「默认配置的 singleId 指向的那一条」，
-// 少一个就会出现「用户什么都没动，休息时却没声音」这种查不出来的问题。
+// 四个内置提示音必须真的能被判为可用 —— 它们是“默认配置的 singleId 指向的那一条”，
+// 少一个就会出现“用户什么都没动，休息时却没声音”这种查不出来的问题。
 // 判定逻辑在临时目录上验（不依赖仓库布局）；真实源文件在不在仓库里由
 // TestBuiltinSoundSourceFilesOnDisk 单独验。
 func TestBuiltinSoundsPresent(t *testing.T) {
@@ -117,7 +117,7 @@ func TestBuiltinSoundsPresent(t *testing.T) {
 	if sound.BuiltinExists("nope.wav") {
 		t.Error("不存在的内置音不该被判为可用")
 	}
-	// 空文件与「同扩展名的目录」也不算可用
+	// 空文件与“同扩展名的目录”也不算可用
 	writeSoundFile(t, filepath.Join(dir, "empty.wav"), 0)
 	if sound.BuiltinExists("empty.wav") {
 		t.Error("0 字节的内置音不该被判为可用")
@@ -230,7 +230,7 @@ func TestEnabledMusicFilesSkipsDisabledAndMissing(t *testing.T) {
 	))
 	got := sound.EnabledMusicFiles(cfg)
 	if len(got) != 1 || got[0] != ok1 {
-		t.Fatalf("只应留下「启用且文件存在」的那一条，得到 %v", got)
+		t.Fatalf("只应留下“启用且文件存在”的那一条，得到 %v", got)
 	}
 }
 

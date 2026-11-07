@@ -74,7 +74,7 @@ def parse_header(lines):
 def import_entries(import_lines):
     """从 import 块提取 (path, pkg, raw) 列表。
 
-    pkg 是默认包名（用于判断「是否被使用」），raw 是原始 import 语句文本
+    pkg 是默认包名（用于判断“是否被使用”），raw 是原始 import 语句文本
     （含别名，如 `_ "embed"`），生成时原样写出。
     """
     entries = []

@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// 这一组补的是「类型化视图」与加载路径的外围：取值方法有没有兜住坏配置、候选路径
+// 这一组补的是“类型化视图”与加载路径的外围：取值方法有没有兜住坏配置、候选路径
 // 与保存落点是否只有一处真源。归一化细节在 settings_test.go / msg_item_id_test.go 里。
 
 func rawOf(t *testing.T, js string) map[string]any {
@@ -25,7 +25,7 @@ func TestSliceAndMapTypeGuards(t *testing.T) {
 	if got := s.Slice("arr"); len(got) != 2 {
 		t.Fatalf("数组应原样返回，得到 %#v", got)
 	}
-	// 品类不符一律给 nil：调用方据此回落到默认，不能返回一个空切片让它以为「配置就是空」
+	// 品类不符一律给 nil：调用方据此回落到默认，不能返回一个空切片让它以为“配置就是空”
 	for _, k := range []string{"obj", "str", "missing"} {
 		if got := s.Slice(k); got != nil {
 			t.Fatalf("Slice(%q) 应为 nil，得到 %#v", k, got)
@@ -50,7 +50,7 @@ func TestIgnoredVersionSetAndClear(t *testing.T) {
 	if got := s.IgnoredVersion(); got != "v1.2.3" {
 		t.Fatalf("得到 %q", got)
 	}
-	// 清空 = 删键（不是存空串）：空串会让「有没有忽略过」的判据含糊
+	// 清空 = 删键（不是存空串）：空串会让“有没有忽略过”的判据含糊
 	s.SetIgnoredVersion("")
 	if _, ok := s.Raw()["ignoredVersion"]; ok {
 		t.Fatal("清空忽略时该把键删掉")
@@ -63,7 +63,7 @@ func TestDisplayIDsFiltersJunk(t *testing.T) {
 	if len(got) != 2 || got[0] != "DEL41#1" || got[1] != "DEL41#2" {
 		t.Fatalf("只留非空字符串并保持顺序，得到 %#v", got)
 	}
-	// 出厂值 / 坏值都是空数组：**语义是「还没挑过屏」**，运行时兜底主屏
+	// 出厂值 / 坏值都是空数组：**语义是“还没挑过屏”**，运行时兜底主屏
 	for _, js := range []string{`{"displayIds":[]}`, `{"displayIds":"x"}`, `{}`} {
 		if got := New(rawOf(t, js), "").DisplayIDs(); len(got) != 0 {
 			t.Fatalf("%s 应得到空（或 nil），得到 %#v", js, got)
@@ -123,7 +123,7 @@ func TestSaveUsesResourcesRootHint(t *testing.T) {
 	}
 }
 
-// NormalizeLoad 是「恢复默认」与启动管线共用的归一化入口：两条路径必须得到同一份形状，
+// NormalizeLoad 是“恢复默认”与启动管线共用的归一化入口：两条路径必须得到同一份形状，
 // 否则恢复默认之后界面会与重启后长得不一样。
 func TestNormalizeLoadProducesSameShapeAsLoad(t *testing.T) {
 	raw := rawOf(t, `{

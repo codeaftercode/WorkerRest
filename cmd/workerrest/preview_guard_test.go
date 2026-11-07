@@ -8,9 +8,9 @@ import (
 
 // 预览不许打扰真实提醒。
 //
-// 改前的毛病：真实休息窗口在场时点「预览」→ PreviewBreak 建一个 preview 会话覆盖
+// 改前的毛病：真实休息窗口在场时点“预览”→ PreviewBreak 建一个 preview 会话覆盖
 // a.sess，ShowBreakWindow 发现会话 id 变了、把旧窗口当 stale 关掉 —— 用户看到的是
-// 「点了预览，正在进行的休息窗被关掉」，且那次休息的统计、结束判定全乱。
+// “点了预览，正在进行的休息窗被关掉”，且那次休息的统计、结束判定全乱。
 // 外卖更糟：showTakeoutWindowsAt 直接换掉 a.takeoutWins，真实窗口的引用就此丢掉、
 // 再也关不掉。这里把两条都钉住。
 
@@ -42,7 +42,7 @@ func TestPreviewBreakRejectedWhileRealBreakRunning(t *testing.T) {
 		t.Fatal("真实会话被预览顶掉了（preview=true）")
 	}
 
-	// 真实休息收掉之后必须恢复可预览 —— 拦的是「进行中」，不是永久禁用
+	// 真实休息收掉之后必须恢复可预览 —— 拦的是“进行中”，不是永久禁用
 	a.CloseBreakWindows()
 	if a.realBreakActive() {
 		t.Fatal("休息结束后 realBreakActive 应为 false")
@@ -66,7 +66,7 @@ func TestPreviewTakeoutRejectedWhileRealTakeoutRunning(t *testing.T) {
 		t.Fatalf("真实外卖窗口在场时预览应被拒（返回 %q），实际返回 %q", previewBusyReply, got)
 	}
 
-	// 预览态不算「真实在场」：预览覆盖预览仍是预览（不受这条拦截影响）
+	// 预览态不算“真实在场”：预览覆盖预览仍是预览（不受这条拦截影响）
 	a.mu.Lock()
 	a.takeoutCurrent = &model.TakeoutInfo{Preview: true}
 	a.mu.Unlock()

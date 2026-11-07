@@ -5,11 +5,11 @@ import (
 	"time"
 )
 
-// 提前提示窗「在场判据」的回归（对应真实反馈：还有 1200 秒就弹出提前通知窗）。
+// 提前提示窗“在场判据”的回归（对应真实反馈：还有 1200 秒就弹出提前通知窗）。
 //
 // 窗口是**状态的影子**：只有 phase=pre 且剩余 ≤ 提前量时才该在屏幕右下角。
 // 计划被重锚 / 推迟 / 跳过 / 开始休息之后，窗口必须立刻退场 —— 否则它会带着
-// 新一轮的整段倒计时留在屏幕上，用户看到的就是「倒计时刚起就弹提示窗」。
+// 新一轮的整段倒计时留在屏幕上，用户看到的就是“倒计时刚起就弹提示窗”。
 
 // recHost 记录型宿主：记录每次提前通知时的剩余毫秒，以及收窗次数。
 type recHost struct {
@@ -44,10 +44,10 @@ func newRecSched(t *testing.T) (*Scheduler, *recHost) {
 }
 
 // 空闲暂停 → 回来：resume 在提前区间内会弹窗（此时剩余是对的），紧接着
-// reanchorCountdown 把计划推回「现在 + 整轮间隔」—— 窗口必须跟着收掉。
+// reanchorCountdown 把计划推回“现在 + 整轮间隔”—— 窗口必须跟着收掉。
 func TestPreWindowClosedWhenCountdownReanchored(t *testing.T) {
 	s, r := newRecSched(t)
-	// 「暂停在最后 5 秒」：冻结的剩余 = NextAt - PausedAt = 5s
+	// “暂停在最后 5 秒”：冻结的剩余 = NextAt - PausedAt = 5s
 	s.mu.Lock()
 	s.state.Paused = true
 	s.state.PausedAt = nowMs() - 60_000
@@ -77,7 +77,7 @@ func TestPreWindowClosedWhenCountdownReanchored(t *testing.T) {
 	}
 }
 
-// 托盘 / 设置页侧栏 / 快捷键点「推迟休息」直接调调度器，不经过 PreBreakAction。
+// 托盘 / 设置页侧栏 / 快捷键点“推迟休息”直接调调度器，不经过 PreBreakAction。
 func TestPreWindowClosedWhenPostponedFromTray(t *testing.T) {
 	s, r := newRecSched(t)
 	s.mu.Lock()
@@ -95,7 +95,7 @@ func TestPreWindowClosedWhenPostponedFromTray(t *testing.T) {
 }
 
 // 判据本身：phase=pre 但计划已被推远（剩余远超提前量）时不该在场 —— 这是
-// 「窗口带着满格倒计时」的直接成因。
+// “窗口带着满格倒计时”的直接成因。
 func TestPreBreakWantedRequiresNotifyHorizon(t *testing.T) {
 	s, _ := newRecSched(t)
 	s.mu.Lock()

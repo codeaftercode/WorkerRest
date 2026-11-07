@@ -27,7 +27,7 @@ func SetHeadless(v bool) { headless.Store(v) }
 // 但本项目有十几条自建 goroutine：调度 tick（500 ms）、空闲 / 勿扰 / 应用占用监视、
 // 托盘刷新、外卖检查、统计落盘、自动更新排期…… 它们不在框架保护范围内。任何一个
 // nil deref 都会让 Go 运行时直接终止进程，而发布版是 -H windowsgui 子系统：
-// 用户看到的就是「窗口和托盘图标一起消失」，没有任何提示，日志里也什么都没有。
+// 用户看到的就是“窗口和托盘图标一起消失”，没有任何提示，日志里也什么都没有。
 //
 // 三层防护：
 //  1. guardRun  一轮后台逻辑：panic 只丢这一轮，记日志后继续跑；
@@ -37,11 +37,11 @@ func SetHeadless(v bool) { headless.Store(v) }
 //  3. main 顶层 recover（见 main.go）兜住主 goroutine。
 //
 // ⚠️ 约定：临界区里不放会 panic 的业务调用。recover 无法代你解锁（sync.Mutex 没有
-// 「外部释放」），panic 落在锁段中间时这一层救不回来 —— 那种情况由熔断兜住。锁段保持
-// 「只读字段 / 只赋值」的短小形状，是这套兜底能成立的前提。
+// “外部释放”），panic 落在锁段中间时这一层救不回来 —— 那种情况由熔断兜住。锁段保持
+// “只读字段 / 只赋值”的短小形状，是这套兜底能成立的前提。
 
 const (
-	// panicBurstWindow 判定「连炸」的时间窗：两轮 tick 的正常间隔远小于它
+	// panicBurstWindow 判定“连炸”的时间窗：两轮 tick 的正常间隔远小于它
 	panicBurstWindow = 2 * time.Second
 	// PanicBurstLimit 窗口内达到这个次数就熔断
 	PanicBurstLimit = 3
@@ -85,9 +85,9 @@ func GuardRun(name string, fn func()) {
 
 // GuardRunOK 与 GuardRun 相同，但告诉调用方这一轮是否完整跑完（false = 被 panic 打断）。
 //
-// 需要它的是「失败后立刻重试会变成连炸」的场景：例如自动更新检查 panic 后，外层若
+// 需要它的是“失败后立刻重试会变成连炸”的场景：例如自动更新检查 panic 后，外层若
 // 直接 continue 就会在一秒内重来三次，正好撞上熔断阈值 —— 而一次网络解析异常远不到
-// 「不可恢复」的程度。拿到 false 后改成退避，才是对的处置。
+// “不可恢复”的程度。拿到 false 后改成退避，才是对的处置。
 func GuardRunOK(name string, fn func()) (ok bool) {
 	ok = true
 	defer func() {
@@ -102,7 +102,7 @@ func GuardRunOK(name string, fn func()) (ok bool) {
 
 // panicDecision 一次 panic 的处置决定。
 //
-// 抽成纯函数是因为「熔断」那条路会 os.Exit —— 不能靠跑测试去验证它，
+// 抽成纯函数是因为“熔断”那条路会 os.Exit —— 不能靠跑测试去验证它，
 // 只能把决策与实际动作分开，单测把决策表打满。
 type panicDecision struct {
 	total int  // 这个位置累计第几次
@@ -168,13 +168,13 @@ func panicTallyFor(name string) *panicTally {
 // fatalPanicExit 连续 panic 后收尾：落盘 → 提示用户（GUI）/ 退出（无头）。
 //
 // 为什么不静默退出：静默退出正是本文件要消灭的现象。用户至少要看到一句人话
-// 和日志位置，否则他只记得「软件自己关了」。
+// 和日志位置，否则他只记得“软件自己关了”。
 func fatalPanicExit(name string, burst int) {
 	log.Printf("[panic] %s 在 %s 内连续 %d 次 panic，判定为不可恢复，退出进程（日志：%s）",
 		name, panicBurstWindow, burst, logPathForUserMessage())
 
 	if headless.Load() {
-		// 无头 / 探针：不弹窗（会卡住自动化），但退出码要反映「崩了」
+		// 无头 / 探针：不弹窗（会卡住自动化），但退出码要反映“崩了”
 		os.Exit(PanicExitCode)
 	}
 	PromptPanicExit(name)
@@ -187,7 +187,7 @@ func fatalPanicExit(name string, burst int) {
 // 能可靠显示的只有系统原生框。
 func PromptPanicExit(name string) {
 	const title = "吃饼人也敢休息？— 遇到内部错误"
-	// 不放栈、不放技术细节：用户要看的是「发生了什么、日志在哪、重开会不会好」。
+	// 不放栈、不放技术细节：用户要看的是“发生了什么、日志在哪、重开会不会好”。
 	text := "程序内部出错，已停止运行。\r\n\r\n" +
 		"错误位置：" + name + "\r\n" +
 		"日志文件：" + logPathForUserMessage() + "\r\n\r\n" +

@@ -12,7 +12,7 @@
 //	go run scripts/probe/display_ids.go
 //
 // 输出：{"ok":true,"displays":[{"id":"DEL41A9#...","label":"DELL U2719DS",...}]}
-// 枚举不可用时 {"ok":false,"error":"..."} 且退出码 3（= 无法测量，与「失败」区分）。
+// 枚举不可用时 {"ok":false,"error":"..."} 且退出码 3（= 无法测量，与“失败”区分）。
 package main
 
 import (

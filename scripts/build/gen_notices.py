@@ -1,14 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""生成 THIRD-PARTY-NOTICES.txt —— 软件「关于页 → 开源鸣谢」里那份清单（致谢 + 组件表 + 许可全文）。
+"""生成 THIRD-PARTY-NOTICES.txt —— 软件“关于页 → 开源鸣谢”里那份清单（致谢 + 组件表 + 许可全文）。
 
-产物结构只有三块，不放任何说明性文字（用户要的是「我用到了什么、谁的、什么许可」）：
+产物结构只有三块，不放任何说明性文字（用户要的是“我用到了什么、谁的、什么许可”）：
   1) 致谢 + 组件清单：名称 / 版本 / 协议，三列对齐；
   2) 逐组件的许可全文，每段用 78 字符横线封口做分隔；
   3) 段内保持上游原文，只统一换行与行尾空白。
 
 为什么要有这个脚本（而不是手抄一份清单）：
-  · MIT / BSD-3 的义务是「随二进制分发时复现版权声明与许可全文」。手抄的清单一旦
+  · MIT / BSD-3 的义务是“随二进制分发时复现版权声明与许可全文”。手抄的清单一旦
     依赖升级就过期，而**过期比没有更糟**（声明与实物不符，等于虚假声明）。
   · 所以清单从**构建事实**推导：Go 模块取 `go list -deps`（与 `go version -m` 读出的
     内嵌依赖一致），Go 标准库取 $GOROOT，前端内联库取 web/dist 产物里的库。
@@ -76,14 +76,14 @@ def find_go():
 def declared_toolchain():
     """发布工具链的唯一真源：go.mod 里的 `toolchain` 指令（缺省退回 `go` 指令版本）。
 
-    为什么不再从 `go env GOVERSION` 现算：后者返回的是「正在运行的工具链」，它随
-    本机装的 go、GOTOOLCHAIN 环境变量漂移。清单里那行「Go standard library & runtime」
+    为什么不再从 `go env GOVERSION` 现算：后者返回的是“正在运行的工具链”，它随
+    本机装的 go、GOTOOLCHAIN 环境变量漂移。清单里那行“Go standard library & runtime”
     的版本号一旦跟着漂，同一份源码在不同机器上会生成不同清单，`--check` 与打包门禁
-    就会随机红 —— 这不是「声明与实物一致」，而是「构建工具链版本没固定」的伪随机。
+    就会随机红 —— 这不是“声明与实物一致”，而是“构建工具链版本没固定”的伪随机。
 
     有了 `toolchain` 指令，任何机器上 `go build`（默认 GOTOOLCHAIN=auto）都会切到同一
     版本，`go env GOVERSION` 也确定性地返回它。这里读 go.mod 里声明的那一个，作为
-    「应当使用的版本」；再与实际运行版本比对（见 build()），不一致就明确报错。
+    “应当使用的版本”；再与实际运行版本比对（见 build()），不一致就明确报错。
     """
     go_mod = os.path.join(ROOT, "go.mod")
     with open(go_mod, "r", encoding="utf-8", errors="replace") as f:
@@ -166,8 +166,8 @@ def read_license_files(dir_path):
 def render_section(idx, total, title, blocks):
     """一个组件段：封口标题行 + 许可正文。
 
-    段与段之间只靠这组 78 字符横线分隔 —— 不再插入「来源：…」这类说明行，
-    读者要的是「这是我用到的组件，这是它的许可全文」，其余都是噪音。
+    段与段之间只靠这组 78 字符横线分隔 —— 不再插入“来源：…”这类说明行，
+    读者要的是“这是我用到的组件，这是它的许可全文”，其余都是噪音。
     """
     lines = [LINE, "  %d / %d  %s" % (idx, total, title), LINE, ""]
     for i, (name, body) in enumerate(blocks):
@@ -197,7 +197,7 @@ def build():
 
     # 版本来源 = go.mod 的 toolchain/go 指令（唯一真源），而非 `go env GOVERSION`。
     # 但必须与实际运行的工具链一致：不一致说明本机用了别的 go 在构建，清单一旦按
-    # 声明版本写，就会和实际链接进 exe 的运行时版本对不上。这里是「声明==实物」的
+    # 声明版本写，就会和实际链接进 exe 的运行时版本对不上。这里是“声明==实物”的
     # 最后一道防线 —— 漂移时明确报错，而不是静默写错。
     gover = declared_toolchain()
     actual = go(go_bin, "env", "GOVERSION").strip()  # 形如 go1.27.3
@@ -241,10 +241,10 @@ def build():
 
     total = len(sections)
     # 组件清单做成列对齐（名称 / 版本 / 协议三列），列宽按当期最长项现算 ——
-    # 固定列宽会在「github.com/mattn/go-colorable」这种长路径上错位。
+    # 固定列宽会在“github.com/mattn/go-colorable”这种长路径上错位。
     name_w = max(len(s["name"]) for s in sections)
     ver_w = max(len(s["version"]) for s in sections)
-    # 不写文件级标题：「开源鸣谢」已经是弹窗标题，正文再顶一遍等于重复。
+    # 不写文件级标题：“开源鸣谢”已经是弹窗标题，正文再顶一遍等于重复。
     # 文件开头直接就是致谢，随后组件清单，再逐段许可全文。
     head = [
         "本程序使用了下列开源项目与第三方库。",

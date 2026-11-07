@@ -11,12 +11,12 @@ import (
 	"testing"
 )
 
-// 清单必须覆盖「实际链接进发布二进制」的每一个第三方模块，且不能多声明已经不在
-// 其中的模块 —— 两个方向都查，才叫「声明与实物一致」。
+// 清单必须覆盖“实际链接进发布二进制”的每一个第三方模块，且不能多声明已经不在
+// 其中的模块 —— 两个方向都查，才叫“声明与实物一致”。
 //
 // 正向核对用 `go list -deps`（与打包构建同一个口径），**不用** debug.ReadBuildInfo()：
 // 测试二进制的 Deps 里混着仅测试用的模块（本仓库是 github.com/coder/websocket，由
-// wails 的测试辅助带进来），拿它做「必须覆盖全部」会逼着清单去声明一个根本没进 exe
+// wails 的测试辅助带进来），拿它做“必须覆盖全部”会逼着清单去声明一个根本没进 exe
 // 的模块。取不到 go（PATH 里没有）时退化成只用反向核对，并在日志里说明由打包门禁
 // （scripts/gen_notices.py --check）兜正向。
 func TestNoticesCoversLinkedModules(t *testing.T) {
@@ -35,7 +35,7 @@ func TestNoticesCoversLinkedModules(t *testing.T) {
 	}
 
 	if haveGoList {
-		// 双向都用「解析出来的 key」比，不拿模字符串去 Contains 全文：
+		// 双向都用“解析出来的 key”比，不拿模字符串去 Contains 全文：
 		// 清单是列对齐的（名称与版本之间可能多个空格），直接 Contains 会因列宽变化而假红。
 		for _, mod := range linked {
 			if !containsString(declared, mod) {
@@ -48,7 +48,7 @@ func TestNoticesCoversLinkedModules(t *testing.T) {
 			}
 		}
 	} else {
-		t.Log("PATH 里没有 go：跳过「清单覆盖全部链接模块」的正向核对（打包时由 gen_notices.py --check 兜）")
+		t.Log("PATH 里没有 go：跳过“清单覆盖全部链接模块”的正向核对（打包时由 gen_notices.py --check 兜）")
 	}
 
 	// Go 运行时与标准库也必须声明：它链接进每个 Go 二进制，是最容易被漏掉的一项
@@ -72,16 +72,16 @@ func TestNoticesCoversLinkedModules(t *testing.T) {
 	}
 
 	// 产物开头必须是致谢 + 组件清单，且**不夹带任何说明性文字**（用户明确要求）。
-	// 这条同时防「以后有人好心加回『本文件由脚本生成』之类的元信息」。
+	// 这条同时防“以后有人好心加回『本文件由脚本生成』之类的元信息”。
 	if !strings.HasPrefix(thirdPartyNotices, "本程序使用了下列开源项目与第三方库。\n") {
 		t.Errorf("清单开头不是致谢句：%q", firstLine(thirdPartyNotices))
 	}
-	// 文件级标题必须删掉：弹窗标题已经是「开源鸣谢」，正文再顶一遍就是重复。
+	// 文件级标题必须删掉：弹窗标题已经是“开源鸣谢”，正文再顶一遍就是重复。
 	if strings.HasPrefix(thirdPartyNotices, "开源鸣谢") {
-		t.Error("清单开头又出现了「开源鸣谢」标题：弹窗已有标题，正文不该重复")
+		t.Error("清单开头又出现了“开源鸣谢”标题：弹窗已有标题，正文不该重复")
 	}
 	if !strings.Contains(noticeIndexBlock(thirdPartyNotices), "1.") {
-		t.Error("找不到「组件清单」段落")
+		t.Error("找不到“组件清单”段落")
 	}
 	for _, bad := range []string{"本文件由", "收录口径", "构建目标", "请勿手工编辑", "来源："} {
 		if strings.Contains(thirdPartyNotices, bad) {
@@ -105,7 +105,7 @@ func TestNoticesCoversLinkedModules(t *testing.T) {
 }
 
 // 组件清单与正文章节必须一一对应：清单里列了 9 个，下面就得有 9 段全文，编号还得对得上。
-// 这条防的是「清单改了、正文没跟上」这类不一致（例如删掉一段却留着清单行）。
+// 这条防的是“清单改了、正文没跟上”这类不一致（例如删掉一段却留着清单行）。
 func TestNoticesIndexMatchesSections(t *testing.T) {
 	comps := declaredComponents(thirdPartyNotices)
 	sec := regexp.MustCompile(`(?m)^  (\d+) / (\d+)  `).FindAllStringSubmatch(thirdPartyNotices, -1)
@@ -233,9 +233,9 @@ func linkedModulesFromGoList(t *testing.T) ([]string, bool) {
 
 // 组件条目的解析。
 //
-// 「组件清单」段的形态固定为「N. 名称  版本  协议」：列宽按当期最长项现算
-// （见 scripts/gen_notices.py），所以这里按「两个以上空格」切列，不假定具体列宽。
-// 名称内部只有单空格（如「Go standard library & runtime」），不会被切开。
+// “组件清单”段的形态固定为“N. 名称  版本  协议”：列宽按当期最长项现算
+// （见 scripts/gen_notices.py），所以这里按“两个以上空格”切列，不假定具体列宽。
+// 名称内部只有单空格（如“Go standard library & runtime”），不会被切开。
 type component struct {
 	Name    string
 	Version string
@@ -249,8 +249,8 @@ var (
 	noticeNumPre = regexp.MustCompile(`^\d+\.\s*`)
 )
 
-// noticeIndexBlock 取出「组件清单」那一段的正文（两条 78 字符横线之间）。
-// 只在这一段里解析：许可正文里也可能出现「1. foo」这类行，全文正则匹配会误抓。
+// noticeIndexBlock 取出“组件清单”那一段的正文（两条 78 字符横线之间）。
+// 只在这一段里解析：许可正文里也可能出现“1. foo”这类行，全文正则匹配会误抓。
 func noticeIndexBlock(text string) string {
 	head := "组件清单\n" + noticeRule + "\n"
 	i := strings.Index(text, head)
@@ -284,7 +284,7 @@ func declaredComponents(text string) []component {
 }
 
 // goModuleKeys 从组件清单里挑出 Go 模块（路径含斜杠 + 版本以 v 开头），
-// 组成「path version」用于与 `go list -deps` 双向核对。
+// 组成“path version”用于与 `go list -deps` 双向核对。
 // 前端库（qrcode 1.5.4）与 Go 标准库那行（版本是 go1.27.3）都被这个口径自然排除。
 func goModuleKeys(comps []component) []string {
 	var out []string

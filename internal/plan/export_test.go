@@ -7,8 +7,8 @@ import (
 	"workerrest/internal/settings"
 )
 
-// export.go 是给调度器用的薄封装：同一个实现两处入口，容易在重构时「只改一边」。
-// 这里只钉「封装确实转发到实现」，不重复实现里的判据（那些在 breakplan_test.go）。
+// export.go 是给调度器用的薄封装：同一个实现两处入口，容易在重构时“只改一边”。
+// 这里只钉“封装确实转发到实现”，不重复实现里的判据（那些在 breakplan_test.go）。
 
 func TestExportedWrappersForwardToImplementation(t *testing.T) {
 	s := settings.New(settings.DefaultSettingsMap(), "")

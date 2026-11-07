@@ -76,7 +76,7 @@ func TestSameVersion(t *testing.T) {
 	}
 }
 
-// TodayStr 是「当天是否已检查更新」的去重键：格式必须与 settings 里存的日期逐字一致
+// TodayStr 是“当天是否已检查更新”的去重键：格式必须与 settings 里存的日期逐字一致
 // （YYYY-MM-DD，本地时区），否则每天会重复检查一次、或者再也不检查。
 func TestTodayStrMatchesLocalDate(t *testing.T) {
 	got := TodayStr()

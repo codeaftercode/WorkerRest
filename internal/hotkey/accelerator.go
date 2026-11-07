@@ -4,7 +4,7 @@
 // 其它平台当前是 no-op 桩（见 hotkey_other.go），未来真机移植时 Linux 用 X11 的
 // XGrabKey、macOS 用 Carbon 的 RegisterEventHotKey 补实现。
 //
-// 本包只放「平台相关的最小原语 + 加速键字符串解析」，不依赖 main 包的 App；
+// 本包只放“平台相关的最小原语 + 加速键字符串解析”，不依赖 main 包的 App；
 // main 包里的 HotkeyManager（消息循环骨架、与调度器动作的映射）调用本包的原语。
 package hotkey
 
@@ -85,7 +85,7 @@ func ParseAccelerator(s string) (mods, vk uintptr, ok bool) {
 	if len(key) == 1 {
 		c := key[0]
 		// 字母统一折成大写再判：修饰键段本来就大小写不敏感（见上面的 ToUpper），
-		// 主键不折的话「手改成 ctrl+alt+x」会静默失效 —— 录入端产出大写，
+		// 主键不折的话“手改成 ctrl+alt+x”会静默失效 —— 录入端产出大写，
 		// 但手改配置的人没有理由知道这条约定。
 		if c >= 'a' && c <= 'z' {
 			c -= 'a' - 'A'

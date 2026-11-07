@@ -176,7 +176,7 @@ func targetNameOf(t displayPathTargetInfo) (name, path string, ok bool) {
 
 // List 枚举当前正在使用的显示器，主屏在前。
 //
-// 复制模式下多个输出口共用同一个 source mode，这里按「桌面矩形」去重 —— 镜像的两块屏
+// 复制模式下多个输出口共用同一个 source mode，这里按“桌面矩形”去重 —— 镜像的两块屏
 // 内容完全一样，本来也没法只在一块上弹窗，算成一块才是对的。
 func List() ([]Info, error) {
 	paths, modes, ok := queryRaw()
@@ -210,7 +210,7 @@ func List() ([]Info, error) {
 		id := devicePathToID(path)
 		if !ok || id == "" {
 			// 取不到 EDID 路径（个别虚拟显示驱动）→ 用桌面矩形兜底。
-			// 这种标识换布局就会变，但总比「没有 ID 可以存」好。
+			// 这种标识换布局就会变，但总比“没有 ID 可以存”好。
 			id = "pos:" + itoa(rect[0]) + "," + itoa(rect[1])
 			name = ""
 		}

@@ -25,14 +25,14 @@ func twoScreens() (primary, secondary *application.Screen) {
 	return primary, secondary
 }
 
-// TestMatchScreenUsesBoundsNotWorkArea 钉住「按整块屏矩形对齐」这条。
+// TestMatchScreenUsesBoundsNotWorkArea 钉住“按整块屏矩形对齐”这条。
 //
 // 曾经的实现拿 WorkArea 比 display.Info 的四边，而 display.Info 是整块屏的源模式尺寸
 // （不含任务栏扣减），于是：
-//   - 选主屏：全部失配 → 走「回退主屏」兜底，看起来是对的（蒙对）；
+//   - 选主屏：全部失配 → 走“回退主屏”兜底，看起来是对的（蒙对）；
 //   - 选副屏：同样全部失配 → 还是回退主屏 → **勾了副屏永远只有主屏弹窗**，且日志无异常。
 //
-// 这条测试直接构造「工作区矮 48px」的屏幕，钉死不能再用 WorkArea 对齐。
+// 这条测试直接构造“工作区矮 48px”的屏幕，钉死不能再用 WorkArea 对齐。
 func TestMatchScreenUsesBoundsNotWorkArea(t *testing.T) {
 	primary, secondary := twoScreens()
 	all := []*application.Screen{primary, secondary}

@@ -71,7 +71,7 @@ func TestCastStatusOf(t *testing.T) {
 			t.Fatalf("%s：detail 不该为空（诊断页与日志都靠它说明为什么判/没判）", c.name)
 		}
 	}
-	// API 不可用：一律「不支持 + 有说明 + 不算投屏」。
+	// API 不可用：一律“不支持 + 有说明 + 不算投屏”。
 	// 绝不报 active —— 那会在 RDP / 无桌面会话下凭空暂停休息，且用户完全不知道原因。
 	if st := castStatusOf(nil, false); st.Supported || st.Active || st.Detail == "" {
 		t.Fatalf("API 不可用时应为 {supported:false, active:false, detail:非空}，得到 %+v", st)
@@ -81,7 +81,7 @@ func TestCastStatusOf(t *testing.T) {
 }
 
 // TestCastModeIdxInvalidIgnored 无关联 mode 的路径（modeInfoIdx 全 1）不该凑成镜像。
-// 极端情况下两条路径都报 0xFFFFFFFF，若不排除就会「两个无效值相等」判成复制模式。
+// 极端情况下两条路径都报 0xFFFFFFFF，若不排除就会“两个无效值相等”判成复制模式。
 func TestCastModeIdxInvalidIgnored(t *testing.T) {
 	st := castStatusOf([]pathSummary{
 		{modeIdx: invalidModeIdx, cloneGroup: invalidCloneGroup, tech: 0x80000000},

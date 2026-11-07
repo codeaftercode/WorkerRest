@@ -1,6 +1,6 @@
 // 发布前可访问性审计（只读）：用系统 Edge 打开 web/dist 的静态 DOM，
 // 统计交互控件的可访问名、label 关联、img alt、tab 序、焦点可见性线索。
-// JS 全部阻断，只看 HTML 静态语义 —— 与「页面脚本未执行时」的语义等价。
+// JS 全部阻断，只看 HTML 静态语义 —— 与“页面脚本未执行时”的语义等价。
 //
 // 2026-10-31 从 build/ 挪到这里：build/ 是被 gitignore 的产物目录，审计工具放那儿
 // 等于没有版本；结果 json 仍写回 build/（那是产物）。命名用 textContent 而不是
@@ -30,7 +30,7 @@ const PAGES = ['settings.html', 'break.html', 'takeout.html', 'prebreak.html'];
     await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
     out[f] = await page.evaluate(() => {
       // 注意用 textContent 而不是 innerText：`<details>` 收起时其内容的 innerText 是空串，
-      // 会把「有文字、只是当前没展开」的按钮误报成无名控件（2026-10-31 误报过 3 个）。
+      // 会把“有文字、只是当前没展开”的按钮误报成无名控件（2026-10-31 误报过 3 个）。
       const txt = (el) => (el.textContent || '').trim().replace(/\s+/g, ' ');
       const labelledBy = (el) => {
         const ids = (el.getAttribute('aria-labelledby') || '').split(/\s+/).filter(Boolean);

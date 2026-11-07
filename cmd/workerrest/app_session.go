@@ -18,8 +18,8 @@ func (a *App) buildSupervisorSession(force bool, forceKey string) *model.SupStag
 // buildSupervisorSessionWith 同上，但允许传入一份**未落盘**的督导配置覆盖：
 // 设置页调整督休专员选择后立刻要预览，此时配置还在表单里、没保存到磁盘。
 //
-// 顶层「督休专员-启用」开关**始终**生效：预览窗与真实休息一视同仁——未启用时
-// 一律不显示立绘与对话框（设置页点「预览」也应如实反映这个勾选状态）。
+// 顶层“督休专员-启用”开关**始终**生效：预览窗与真实休息一视同仁——未启用时
+// 一律不显示立绘与对话框（设置页点“预览”也应如实反映这个勾选状态）。
 // force 现在只用于**绕过单个督休专员的启用**（预览某个已停用的督休专员时仍要能看到效果），
 // 不再绕过顶层总开关。
 func (a *App) buildSupervisorSessionWith(cfg model.SupervisorConfig, force bool, forceName string) *model.SupStageInfo {
@@ -69,8 +69,8 @@ func (a *App) buildSupervisorSessionWith(cfg model.SupervisorConfig, force bool,
 		}
 	default: // fixed：取指定督休专员。固定显示只看磁贴点选本身，**不看单条启用**——
 		// 复选框（role.enabled）只在随机 / 顺序模式下出现；若这里仍拿 enabled 当门槛，
-		// 随包 meta.json 里 enabled=false 的督休专员就会出现「立绘列表看得到、
-		// 休息时不显示」的劈叉（设置页总开关是启用的，用户无从排查）
+		// 随包 meta.json 里 enabled=false 的督休专员就会出现“立绘列表看得到、
+		// 休息时不显示”的劈叉（设置页总开关是启用的，用户无从排查）
 		for i := range usable {
 			if strings.EqualFold(usable[i].Name, strings.TrimSpace(cfg.FixedRole)) {
 				picked = &usable[i]
@@ -85,9 +85,9 @@ func (a *App) buildSupervisorSessionWith(cfg model.SupervisorConfig, force bool,
 		}
 	}
 	// 兜底（2026-10-25 修）：指定/固定的那个督休专员找不到时（库里改过名、刚被删掉，
-	// 或设置页传来的是过期的名字），按「固定项 → 第一个可用」逐级退让。
+	// 或设置页传来的是过期的名字），按“固定项 → 第一个可用”逐级退让。
 	// 曾经这里直接 return nil：预览窗于是变成一个既没有立绘、也没有对话框的空壳，
-	// 用户只能反复点「预览」撞运气。
+	// 用户只能反复点“预览”撞运气。
 	if picked == nil {
 		picked = pickByName(usable, cfg.FixedRole)
 	}
@@ -123,7 +123,7 @@ func (a *App) buildSupervisorSessionWith(cfg model.SupervisorConfig, force bool,
 // 优先 prefer，读不出来（磁盘瞬时抖动 / 文件被占用 / 正被替换成新图）就按顺序找下一个。
 //
 // 为什么要有它：曾经首选督休专员的 toDataURL 返回空串就直接返回 nil，提醒窗口于是变成
-// 一个既没有立绘也没有对话框的空壳；用户只能反复点「预览」撞运气。
+// 一个既没有立绘也没有对话框的空壳；用户只能反复点“预览”撞运气。
 func pickRoleWithImage(usable []role.Role, prefer *role.Role) (*role.Role, string) {
 	if prefer != nil {
 		if img := role.ToDataURL(prefer.FigurePath); img != "" {
@@ -141,11 +141,11 @@ func pickRoleWithImage(usable []role.Role, prefer *role.Role) (*role.Role, strin
 	return nil, ""
 }
 
-// SupervisorPreview 设置页的立绘预览：返回一次「督休专员会话」而不是弹窗
+// SupervisorPreview 设置页的立绘预览：返回一次“督休专员会话”而不是弹窗
 // （对应 上一版的 supervisor:preview → buildSupervisorSession(settings, true, key)）。
 //
 // sup 是设置页表单里**当前**的督导配置（可能还没落盘），null 时用磁盘上的配置。
-// 与弹窗预览的区别：同样尊重顶层「启用」开关（未启用返回 nil，页面据此隐藏立绘与对话框），
+// 与弹窗预览的区别：同样尊重顶层“启用”开关（未启用返回 nil，页面据此隐藏立绘与对话框），
 // 但 force=true 仍可绕过单个督休专员的启用（预览某个已停用的督休专员），forceKey 指定要预览的督休专员。
 func (a *App) SupervisorPreview(sup map[string]any, name string) *model.SupStageInfo {
 	a.mu.Lock()
@@ -212,7 +212,7 @@ func (a *App) pickMessage(kind, fallbackName string) []string {
 		return []string{fallbackName}
 	}
 	if rm.Order == "sequence" {
-		// 顺序游标按「类别」记忆（督休专员台词用同一张表的另一个键，互不干扰）
+		// 顺序游标按“类别”记忆（督休专员台词用同一张表的另一个键，互不干扰）
 		key := "msg-" + kind
 		cur := a.cursor[key] % len(pool)
 		a.cursor[key] = (cur + 1) % len(pool)
@@ -224,7 +224,7 @@ func (a *App) pickMessage(kind, fallbackName string) []string {
 // showBreakSession 构建一次休息会话并弹窗，返回会话 id。
 // 真实休息（调度器 / 托盘）与预览共用它，差别只在 preview 标志。
 //
-// 会话构建与「弹窗」必须分开：渲染层随后会自己再拉一次 breakCurrent，
+// 会话构建与“弹窗”必须分开：渲染层随后会自己再拉一次 breakCurrent，
 // 所以这里先把会话写完再放窗（跨多次调用期间保持一致）。
 func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) string {
 	a.mu.Lock()
@@ -241,7 +241,7 @@ func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) strin
 		dur = 20_000
 	}
 	now := time.Now()
-	// 提前结束快捷键与「设置 → 快捷键」的 endEarly 完全一致：休息窗口据此显示提示，
+	// 提前结束快捷键与“设置 → 快捷键”的 endEarly 完全一致：休息窗口据此显示提示，
 	// 本地 keydown 也按它匹配（全局快捷键已由 hotkeys.go 按同一组合键注册）。
 	endEarly := ""
 	if sc, ok := a.cfg.Raw()["shortcuts"].(map[string]any); ok {
@@ -264,21 +264,21 @@ func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) strin
 	a.sess = info
 	a.mu.Unlock()
 
-	// 系统级键鼠活动轮询：休息窗口在场期间必须能发现「用户在**别的应用**里还在敲键 /
-	// 动鼠标」，否则督休专员的二阶段只能靠窗口内的本地 mousemove / keydown 触发 ——
-	// 用户报的就是这个：「只在提醒窗口上检测」。
+	// 系统级键鼠活动轮询：休息窗口在场期间必须能发现“用户在**别的应用**里还在敲键 /
+	// 动鼠标”，否则督休专员的二阶段只能靠窗口内的本地 mousemove / keydown 触发 ——
+	// 用户报的就是这个：“只在提醒窗口上检测”。
 	// 放在会话建好之后、弹窗之前：会话一旦存在就该开始盯全局输入，与窗口是否已就绪无关
 	// （无头 server 模式也走这里，冒烟据此断言轮询真的起来了）。
 	a.ensureSupActivityWatch()
 
 	// 休息真的开始了：顺手收掉右下角的提前提示窗
 	//（对应 上一版 在 break-start 事件里调 closePreBreakWindow）。
-	// 预览不算「真的开始」：看一眼预览就把真实提醒的小窗收掉，属于预览污染真实状态。
+	// 预览不算“真的开始”：看一眼预览就把真实提醒的小窗收掉，属于预览污染真实状态。
 	if !preview {
 		a.closePreBreakWindow()
 	}
 	a.ShowBreakWindow(kind)
-	// 提示音：只给真实休息放（预览是「看一眼窗口长什么样」，不该出声）
+	// 提示音：只给真实休息放（预览是“看一眼窗口长什么样”，不该出声）
 	if !preview {
 		a.playConfiguredSound()
 		// 统计：休息开始 —— 从这里起休息时长逐秒实时入账（见 StatsStore.OnBreakTick），

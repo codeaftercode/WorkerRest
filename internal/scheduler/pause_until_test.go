@@ -8,7 +8,7 @@ import (
 // 定时手动暂停（PauseUntil）的三条不变量：
 //   一、到期时刻随状态走，前端 / 托盘 / 诊断页都能读到；
 //   二、改时长不重置 PausedAt —— 把 1 小时改成 2 小时，已经过去的那段不该从头算；
-//   三、恢复时清掉到期时刻，且按「离开」口径重锚（与无限手动暂停的平移刻意不同）。
+//   三、恢复时清掉到期时刻，且按“离开”口径重锚（与无限手动暂停的平移刻意不同）。
 
 func TestPauseUntilSetsDeadline(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
@@ -35,7 +35,7 @@ func TestPauseUntilSetsDeadline(t *testing.T) {
 		t.Fatal("改时长后应仍有到期时刻")
 	}
 
-	// 取消定时 → 退回「一直暂停」
+	// 取消定时 → 退回“一直暂停”
 	s.PauseUntil(0)
 	st = s.StateCopy()
 	if !st.Paused {
@@ -47,7 +47,7 @@ func TestPauseUntilSetsDeadline(t *testing.T) {
 }
 
 // 恢复时清掉到期时刻：否则下一段暂停会带着上一段的截止时间，托盘一挂上就显示
-// 「还有 0 分钟」。
+// “还有 0 分钟”。
 func TestResumeClearsPauseDeadline(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.PauseUntil(nowMs() + 600_000)
@@ -64,12 +64,12 @@ func TestResumeClearsPauseDeadline(t *testing.T) {
 
 // 定时暂停恢复时重锚内置倒计时。
 //
-// 跨夜场景是这条判据的由来：晚上设「到明天」、零点前几分钟合盖睡觉，空闲检测还
+// 跨夜场景是这条判据的由来：晚上设“到明天”、零点前几分钟合盖睡觉，空闲检测还
 // 没挂上就到了期；不重锚的话第二天开机会接着昨夜冻结的剩余时间走，几分钟后就弹。
 func TestTimedPauseResumeReanchorsCountdown(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
-	// 模拟「这一轮只剩 2 分钟」
+	// 模拟“这一轮只剩 2 分钟”
 	s.mu.Lock()
 	at := nowMs() + 120_000
 	s.state.NextAt = at
@@ -109,7 +109,7 @@ func TestUntimedManualPauseStillKeepsProgress(t *testing.T) {
 	}
 }
 
-// 「取消定时」不能把纯自动暂停偷偷变成手动暂停：PauseUntil(0) 在没有 manual 的时候
+// “取消定时”不能把纯自动暂停偷偷变成手动暂停：PauseUntil(0) 在没有 manual 的时候
 // 应该是空操作，否则托盘上会凭空多一条 manual，条件消失后也不自动恢复。
 func TestPauseUntilZeroDoesNotCreateManualPause(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
@@ -123,10 +123,10 @@ func TestPauseUntilZeroDoesNotCreateManualPause(t *testing.T) {
 	}
 }
 
-// TestManualResumeEndsTimedSegment 定时暂停中用户点「恢复休息」，但别的自动原因还挂着
+// TestManualResumeEndsTimedSegment 定时暂停中用户点“恢复休息”，但别的自动原因还挂着
 // （勿扰 / 投屏没解除）→ 暂停继续，可这段**手动定时**已经结束了：
-// 到期时刻必须跟着清掉，否则托盘会继续显示「还有 25 分钟（到 22:30）」、菜单里还挂着
-// 「取消定时（一直暂停）」，而用户刚刚亲手结束的就是这段定时暂停。
+// 到期时刻必须跟着清掉，否则托盘会继续显示“还有 25 分钟（到 22:30）”、菜单里还挂着
+// “取消定时（一直暂停）”，而用户刚刚亲手结束的就是这段定时暂停。
 func TestManualResumeEndsTimedSegment(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.Pause("勿扰")
@@ -158,7 +158,7 @@ func TestManualResumeEndsTimedSegment(t *testing.T) {
 }
 
 // TestResumeClearsPausedAt 恢复后段起点必须清零：留着上一段的时刻，任何
-// 「pausedAt != 0 就认为暂停过」的判据都会误读（状态快照里也带着一个没有意义的旧值）。
+// “pausedAt != 0 就认为暂停过”的判据都会误读（状态快照里也带着一个没有意义的旧值）。
 func TestResumeClearsPausedAt(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.Pause("勿扰")
@@ -169,7 +169,7 @@ func TestResumeClearsPausedAt(t *testing.T) {
 	if got := s.StateCopy().PausedAt; got != 0 {
 		t.Fatalf("恢复后段起点应清零，得到 %d", got)
 	}
-	// 下一段必须是新时刻（「已暂停多久」与小窗节流都以它为段标识）
+	// 下一段必须是新时刻（“已暂停多久”与小窗节流都以它为段标识）
 	s.Pause("勿扰")
 	if s.StateCopy().PausedAt == 0 {
 		t.Fatal("新一段暂停应重新记段起点")

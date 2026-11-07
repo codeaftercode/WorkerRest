@@ -5,8 +5,8 @@ import (
 	"time"
 )
 
-// GuardRun 必须把 panic 吃掉并让后面的代码照常跑 —— 这是「后台 goroutine 一条 nil deref
-// 就让 GUI 静默消失」的直接对策。跑在循环体里时，它保证的是「丢一拍，不丢整条循环」。
+// GuardRun 必须把 panic 吃掉并让后面的代码照常跑 —— 这是“后台 goroutine 一条 nil deref
+// 就让 GUI 静默消失”的直接对策。跑在循环体里时，它保证的是“丢一拍，不丢整条循环”。
 func TestGuardRunRecoversAndContinues(t *testing.T) {
 	after := false
 	func() {
@@ -18,7 +18,7 @@ func TestGuardRunRecoversAndContinues(t *testing.T) {
 		}()
 		GuardRun("test.guardRun", func() {
 			var p *int
-			_ = *p // nil deref，等价于线上那种「一处空指针」
+			_ = *p // nil deref，等价于线上那种“一处空指针”
 		})
 		after = true
 	}()
@@ -37,7 +37,7 @@ func TestGuardRunOKReportsInterruption(t *testing.T) {
 	}
 }
 
-// 决策表逐格验证。熔断会 os.Exit，所以「该不该熔断」只能在纯函数层面测。
+// 决策表逐格验证。熔断会 os.Exit，所以“该不该熔断”只能在纯函数层面测。
 func TestDecidePanic(t *testing.T) {
 	base := time.Date(2026, 10, 31, 12, 0, 0, 0, time.UTC)
 	tal := &panicTally{}

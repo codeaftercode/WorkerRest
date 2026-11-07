@@ -2236,7 +2236,7 @@
   }
 
   // renderer/supervisorStage.ts（外卖窗口版）
-  // 与休息窗口同源，但**没有二阶段**：外卖提醒不玩「凑近命令」——督休专员台词
+  // 与休息窗口同源，但**没有二阶段**：外卖提醒不玩“凑近命令”——督休专员台词
   // 恒为外卖提醒文字（stage1Text），不显示督休专员自己的劝说/命令台词；
   // 检测到活动只向其他窗口广播升级（supActivity），本窗口不升级。
   var GEOM_FALLBACK = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false };
@@ -2256,7 +2256,7 @@
     const nameEl = document.getElementById("dialog-name");
     if (nameEl) {
       delete nameEl.dataset.rt;
-      // 每次出场换一枚「章」：牌底轮廓/断裂与四周碎点一起换（同一下标）
+      // 每次出场换一枚“章”：牌底轮廓/断裂与四周碎点一起换（同一下标）
       pickSealInk(nameEl);
       if (sup.name) {
         nameEl.textContent = sup.name;
@@ -2308,9 +2308,9 @@
     });
     // 题名牌要跟着立绘一起动，但它不能搬进 .gaze 那条 DOM 链：.trim 的补偿缩放
     // （立绘可见区越窄放得越大，1.0~2.0）会把牌面文字一起放大，而牌面位置是按
-    // 「渲染后的像素」反解出来的，进去就全错。所以把同一套变换镜像一份写过去：
+    // “渲染后的像素”反解出来的，进去就全错。所以把同一套变换镜像一份写过去：
     // 同一个原点（立绘盒底边中点 = 双脚，见 layoutRoleTitle 写的 --rt-ox/--rt-oy）、
-    // 同一组函数、同一顺序 ⇒ 数学上等价于「牌面焊在立绘上」：立绘怎么偏，牌面就怎么偏，
+    // 同一组函数、同一顺序 ⇒ 数学上等价于“牌面焊在立绘上”：立绘怎么偏，牌面就怎么偏，
     // 中间那条缝一个像素都不变。
     // 唯一要换算的是平移量 —— .gaze 的位移发生在 .trim 的缩放空间里，渲染出来是 scale
     // 倍，所以镜像时乘上它（skew 的角度、scaleY 的比值都不受均匀缩放影响）。
@@ -2351,13 +2351,13 @@
 
   // renderer/supervisorLayout.ts —— 游戏对话画面版式（与 break.js 同一套）
   // .content 已是底部全宽对话框（CSS 定版），这里只负责把支付红包区浮到
-  // 「立绘可见右缘~窗口右缘」与「立绘可见上缘~窗口上边缘」两个中点的交点上
+  // “立绘可见右缘~窗口右缘”与“立绘可见上缘~窗口上边缘”两个中点的交点上
   // （红包中心对准）。摆位结果写入 supMetrics 供探针断言。
   var CD_EDGE = 10;
   function clamp(v, lo, hi) {
     return Math.min(Math.max(v, lo), hi);
   }
-  // 立绘「去掉透明部分后」的可见边缘（窗口坐标）——与 break.js 同一套几何。
+  // 立绘“去掉透明部分后”的可见边缘（窗口坐标）——与 break.js 同一套几何。
   // .trim 补偿变换 translate(-left*s%, bottom*s*fill%) scale(s)（origin: left bottom）
   // 把 img 盒（铺满立绘盒，盒左缘 x0、底缘 yB、盒宽 W、盒高 H）映射到屏幕，
   // 像素内容的四条可见边：
@@ -2394,21 +2394,21 @@
     };
   }
   // ── 督休专员题名（竖排金色宋体）─────────────────────────────────────────
-  // 立绘的「alpha 逐列剖面」。包围盒在这里不够用：立绘底部常有刀鞘/衣袍向左探出
+  // 立绘的“alpha 逐列剖面”。包围盒在这里不够用：立绘底部常有刀鞘/衣袍向左探出
   // （始皇帝包围盒左缘 44px，而头部那一段的最左不透明列在 148px），照包围盒摆名字
   // 会一头撞在人物身上。所以单独量一份 minY[x]（每列最上面的不透明像素行号）。
-  // 「头部段」= 图片顶部这一段。不能只看头顶那 16%：题名是竖排的，长一点的会向下
+  // “头部段”= 图片顶部这一段。不能只看头顶那 16%：题名是竖排的，长一点的会向下
   // 伸到下颌/肩线附近，那里的内容（散落的发丝、肩甲）比头顶更靠左。按 16% 定的右缘
-  // 到下面就会贴上去（竖屏「温柔学姐」实测 hit=1）。26% 能盖住题名的实际下探深度。
+  // 到下面就会贴上去（竖屏“温柔学姐”实测 hit=1）。26% 能盖住题名的实际下探深度。
   var HEAD_BAND = 0.26;
   var PROFILE_W = 360;    // 剖面采样宽度：只用来找列，不需要高清
   // 题名避让用**实质遮挡**阈值：ALPHA_MIN(8) 太敏感，会把发丝边缘的抗锯齿（≈5%
-  // 不透明度，压上去肉眼无感）也算成「有人」，于是把字号一路压到下限。32/255≈12.5%。
+  // 不透明度，压上去肉眼无感）也算成“有人”，于是把字号一路压到下限。32/255≈12.5%。
   var PROFILE_ALPHA = 32;
   var profileCache = new WeakMap();
 
   function measureHeadProfile(img) {
-    // complete 必须一起判：dataURL/webp 在「数据到齐但还没解码」时 naturalWidth 就
+    // complete 必须一起判：dataURL/webp 在“数据到齐但还没解码”时 naturalWidth 就
     // 已经有值了，此时 drawImage 画出来是空的或残缺的，会量出一个假剖面。
     if (!img || !img.complete || !img.naturalWidth || !img.naturalHeight) return null;
     const hit = profileCache.get(img);
@@ -2457,14 +2457,14 @@
     return profile;
   }
 
-  var RT_GAP = 12;      // 题名右缘距「头部段最左列」的留白
+  var RT_GAP = 12;      // 题名右缘距“头部段最左列”的留白
   var RT_EDGE = 6;      // 题名离窗口左缘的最小留白
   var RT_MIN_FS = 15;   // 字号下限：1x 屏 14px 已发虚，15 是能读的底线
   var RT_MAX_FS = 26;
   var RT_STEP = 0.5;
 
   // 印泥变体：同一枚章连盖两次也不该一模一样。每次出场随机挑一组（牌子 + 周围碎点
-  // 用同一个下标，保证「牌子和溅出来的碎点属于同一枚章」），并避开上一次用过的那张。
+  // 用同一个下标，保证“牌子和溅出来的碎点属于同一枚章”），并避开上一次用过的那张。
   // 变体由 scripts/make_seal_ink.py 生成，CSS 里的 url("seal-ink-1.svg") 只是兜底。
   var SEAL_VARIANTS = 6;
   var lastSeal = 0;
@@ -2478,9 +2478,9 @@
     nameEl.style.setProperty("--rt-specks", 'url("seal-specks-' + i + '.svg")');
   }
 
-  // 把题名钉到「立绘头部左侧的空白区」，并按零遮挡反解字号。
-  // 只有先钉住右缘（= headPx - RT_GAP）再一路缩字号，才能同时保证「不压人」和
-  // 「不出窗」——固定字号再找位置，长名字必然二选一失败。
+  // 把题名钉到“立绘头部左侧的空白区”，并按零遮挡反解字号。
+  // 只有先钉住右缘（= headPx - RT_GAP）再一路缩字号，才能同时保证“不压人”和
+  // “不出窗”——固定字号再找位置，长名字必然二选一失败。
   function layoutRoleTitle(figure, nameEl, box) {
     if (!figure || !nameEl || nameEl.classList.contains("hidden")) return null;
     if (!nameEl.textContent) return null;
@@ -2497,7 +2497,7 @@
     const flip = !!(t && t.flip);
 
     // 与 figureVisibleRect() 同一套映射（见该函数上方注释），这里只是需要
-    // 「图片绘制区在页面里的绝对位置」，好把剖面坐标反算回去。
+    // “图片绘制区在页面里的绝对位置”，好把剖面坐标反算回去。
     const drawW = s * box.width;
     const drawH = s * fill * box.height;
     const imgLeft = box.left - drawW * l;
@@ -2513,15 +2513,15 @@
     const appEl = document.getElementById("app") || document.body;
     const appRect = appEl.getBoundingClientRect();
 
-    // 零遮挡求解：从 RT_MAX_FS 起每档 −0.5px，直到「一个不透明像素都不压 +
-    // 整块没被 RT_EDGE 钳住」。capH > 0 时给整块一个最大高度 —— vertical-rl
+    // 零遮挡求解：从 RT_MAX_FS 起每档 −0.5px，直到“一个不透明像素都不压 +
+    // 整块没被 RT_EDGE 钳住”。capH > 0 时给整块一个最大高度 —— vertical-rl
     // 据此折出第二列（右→左，中文竖排的读序），长名就能留在头部左侧的同一片
     // 空白里，不必一路缩到发虚。capH 生效时同时限制列数（maxCols）：实测 13 字名
-    // 在 26px 会折成 3 列 98px 宽的金字块，压过头顶、读起来像「一块招牌」；
+    // 在 26px 会折成 3 列 98px 宽的金字块，压过头顶、读起来像“一块招牌”；
     // 限 2 列后整块是 40px 上下的一条窄带，与 3~4 字名的观感才连得上。
     // 注意 order：每次都要先把 left/top 钉回 0 再量，shrink-to-fit 元素否则
     // 量到的是上一轮的字号（74 当 35 那种）。
-    // 题名现在带红牌（padding 来自 CSS），所以要先用「不折列」量出一列的自然尺寸，
+    // 题名现在带红牌（padding 来自 CSS），所以要先用“不折列”量出一列的自然尺寸，
     // 再自己算列数与宽度：Chromium 的 shrink-to-fit 在竖排 + max-height 下**只按
     // 一列算宽**，溢出列会整列漏到红底外面（实测 13 字名有 6 个字露在牌外）。
     const cs0 = getComputedStyle(nameEl);
@@ -2545,7 +2545,7 @@
         cw = 0;
         if (capH > 0) {
           const innerH = Math.max(1, capH - padY * 2);
-          // 列数不能拿「总高 / 段高」折算：每列只排得下整数个字。必须先用
+          // 列数不能拿“总高 / 段高”折算：每列只排得下整数个字。必须先用
           // 单字推进量（oneH / 字数）算出每列容量，再算需要几列 —— 否则 13 字在
           // 21px 会算成 2 列，实际要 3 列，整整一列漏到牌外（实测 scrollWidth 89 > 68）。
           const adv = oneH / Math.max(1, nChars);
@@ -2566,12 +2566,12 @@
         }
         if (!wpx || !hpx) break;
         l = Math.max(RT_EDGE, rightPx - wpx);
-        // 题名矩形 → 剖面列区间；数「该区间内比题名底更靠上的不透明像素」
+        // 题名矩形 → 剖面列区间；数“该区间内比题名底更靠上的不透明像素”
         // ⚠️ minY 是按**原图列序**量的（canvas 直接 drawImage，没有翻转），而
         // imgLeft/drawW 是**显示方向**的映射。立绘水平翻转时（flip），屏幕 x 增大
         // = 原图列减小，列区间必须镜像 —— 漏掉这一步就去查了图片的另半边：牌面
-        // 明明落在人物左侧的空白里，判据却在右侧对称位置数到一堆像素，于是「每列
-        // 都算遮挡」（实测魔法师 hit=34，正好等于区间列数 34；字号被一路压到 15px
+        // 明明落在人物左侧的空白里，判据却在右侧对称位置数到一堆像素，于是“每列
+        // 都算遮挡”（实测魔法师 hit=34，正好等于区间列数 34；字号被一路压到 15px
         // 下限，而实拍牌面底下是纯背景）。bandX 早就按 flip 取过头部左缘，这里
         // 是同一件事的另一半，漏了就成了两套坐标系混用。
         let cx0 = Math.max(0, Math.floor(((l - imgLeft) / drawW) * pf.w));
@@ -2592,7 +2592,7 @@
     }
 
     // 先按单列解（短名的常态，绝不能给它折列）。只有单列撑不住时才允许折 2 列重解：
-    //   · 单列在下限字号都压到人（实测 12 字的「图书馆角落的温柔学姐」15px 仍 hit=7）
+    //   · 单列在下限字号都压到人（实测 12 字的“图书馆角落的温柔学姐”15px 仍 hit=7）
     //   · 单列虽然零遮挡，但已被逼到下限附近（13 字名 → 15px，太小）
     let sol = solve(0, 0);
     if (!sol.ok || sol.fs <= RT_MIN_FS + 1) {
@@ -2617,7 +2617,7 @@
     // 缩放原点 = 立绘**渲染后**盒子的底边中点（双脚），换算到牌子自身的坐标系
     //（牌子的 border-box 左上角就是它的 inline left/top）。二阶段的凑近 / 脉动是
     // CSS 的 scale 属性（img 的原点是 50% 100%），牌子必须绕同一个点放大 —— 否则
-    // 8% 的缩放会让牌面往人物身上挪十几像素，「头部左侧空白区」当场失效。
+    // 8% 的缩放会让牌面往人物身上挪十几像素，“头部左侧空白区”当场失效。
     // ⚠️ 直接量渲染后的 rect，不要用上面那套 trim 反算：反算只要有一项输入过期
     //（trim 还没到、换过图、盒宽与 paint 宽不等），原点就整体偏掉 —— 实测外卖窗口
     // 曾偏 13.5px，牌面放大时肉眼可见地往人物身上靠。量 rect 的话，每次重排都自愈。
@@ -2625,7 +2625,7 @@
     const ib = img.getBoundingClientRect();
     nameEl.style.setProperty("--rt-ox", (ib.left + ib.width / 2 - (appRect.left + plateX)).toFixed(1) + "px");
     nameEl.style.setProperty("--rt-oy", (ib.bottom - (appRect.top + plateY)).toFixed(1) + "px");
-    // 探针读这两个值做「零遮挡 / 字号达标」断言，不写死像素位置
+    // 探针读这两个值做“零遮挡 / 字号达标”断言，不写死像素位置
     nameEl.dataset.rtHit = String(sol.hits);
     nameEl.dataset.rtFs = sol.fs.toFixed(1);
     // 定位成功才放出来（CSS 里 .dialog-name 默认 visibility:hidden）
@@ -2635,15 +2635,15 @@
 
   // 外卖窗口没有 break 那套 lastLayoutKey / frozenFig 机制，题名单独记一个 key：
   // 几何（立绘盒 + 名字文字）没变就不重算 —— 求解要反复改字号并强制布局，很贵。
-  // 定位成功前不算数：图还没解码完时量不到 alpha 剖面，属于「没算出来」而不是
-  // 「算出没有」，缓存住就永久不重试（休息窗口竖屏实测踩过这个坑）。
-  // 注意：这段必须留在「layoutRoleTitle 函数体」之外 —— 两份 js 的同步区间是
+  // 定位成功前不算数：图还没解码完时量不到 alpha 剖面，属于“没算出来”而不是
+  // “算出没有”，缓存住就永久不重试（休息窗口竖屏实测踩过这个坑）。
+  // 注意：这段必须留在“layoutRoleTitle 函数体”之外 —— 两份 js 的同步区间是
   // 从函数内某个锚点同步到函数结尾，放里面会被整段替换删掉（已踩两次）。
   var titleKey = "";
   function layoutRoleTitleCached(figure, box) {
     const nameEl = document.getElementById("dialog-name");
     if (!nameEl) return;
-    // trim 是否就绪也要进 key：立绘还没量出透明边距时，题名是按「未补偿」的盒子
+    // trim 是否就绪也要进 key：立绘还没量出透明边距时，题名是按“未补偿”的盒子
     // 算出来的；trim 一到立绘会整体位移（实测外卖窗口偏 13.5px），不重算就一直错位，
     // 连缩放原点都跟着错（牌面放大时肉眼可见地往人物身上靠）。休息窗口的
     // lastLayoutKey 早就把这一项算进去了，这里补齐。
@@ -2655,7 +2655,7 @@
     if (layoutRoleTitle(figure, nameEl, box)) titleKey = key;
   }
 
-  // ---- 对话框内「提醒内容」的统一自适应（短休 / 长休 / 外卖 / 自定义共用）----
+  // ---- 对话框内“提醒内容”的统一自适应（短休 / 长休 / 外卖 / 自定义共用）----
   // break.js 与 takeout.js 里的这一段必须逐字相同：四个窗口的提醒内容是一套排版。
   // JS 只负责两件 CSS 做不到的事：
   //   1) 装不下就逐级缩字号（下限 --dlg-fs-min = 15px，再小就看不清了）；
@@ -2685,8 +2685,8 @@
     var cst = getComputedStyle(content);
     var padY = parseFloat(cst.paddingTop) + parseFloat(cst.paddingBottom);
     // 文字可用高度 = 对话框应有高度 − 上下内边距。四个窗口共用这一个公式：外卖框里
-    // 还有徽标/按钮，它们照样占高，框会自己长高 —— 但那不影响「同一段文字在哪个
-    // 窗口里字号都一样」，这正是「保持相同样式」要的（扣掉按钮高度反而会让外卖
+    // 还有徽标/按钮，它们照样占高，框会自己长高 —— 但那不影响“同一段文字在哪个
+    // 窗口里字号都一样”，这正是“保持相同样式”要的（扣掉按钮高度反而会让外卖
     // 的同一句话比休息窗口小 5px，且长文本白缩一次、框照样长高）。
     var boxH = cssLenPx(cst.getPropertyValue("--dlg-h")) || 0.22 * window.innerHeight;
     var budget = boxH - padY;
@@ -2719,11 +2719,11 @@
     // 立绘站位已由 CSS 的 --fig-* 变量定死，这里不再碰 figure/content 的定位。
     // 对话框（.content）与窗口边缘的偏移由 CSS 决定（当前贴边为 0），红包区
     // （.tk-redpacket）的包含块就是它——所以摆位全部用实测 rect 换算，不假设贴边。
-    // 两个锚点中点（红包「标题+框」整组的中心对准交点，left/bottom 写 inline）：
+    // 两个锚点中点（红包“标题+框”整组的中心对准交点，left/bottom 写 inline）：
     //   水平 midX = (立绘可见右缘 + 窗口右缘) / 2
     //   垂直 midY = (立绘可见上缘[去透明] + 底部对话框上边缘) / 2。
-    //     即「立绘去透明上缘」与「显示督休专员名称的对话框顶」两线中点。
-    //     「外卖提醒」标题胶囊浮在框外上方（.rp-title bottom:100%），框若贴顶
+    //     即“立绘去透明上缘”与“显示督休专员名称的对话框顶”两线中点。
+    //     “外卖提醒”标题胶囊浮在框外上方（.rp-title bottom:100%），框若贴顶
     //     标题会被顶出窗口——两线中点离对话框顶不足（框高+标题高）时，整组
     //     （标题+框）下移到刚好留出顶边距（TOP_MARGIN）为止。figTop/dialogTop
     //     随立绘尺寸/位置/图片动态实测；红包开关关闭时整块 hidden（display:none
@@ -2743,7 +2743,7 @@
     const midX = (figRight + cRect.width) / 2;
     const floatW = (floatEl && floatEl.offsetWidth) || 240;
     const floatH = (floatEl && floatEl.offsetHeight) || 108;
-    // 标题悬在框外上方，占「标题高 + margin-bottom」的空间（offsetHeight 不受
+    // 标题悬在框外上方，占“标题高 + margin-bottom”的空间（offsetHeight 不受
     // .content 入场动画的 transform 缩放影响，比 getBoundingClientRect 稳）
     const titleExtra = titleEl
       ? titleEl.offsetHeight + (parseFloat(getComputedStyle(titleEl).marginBottom) || 0)
@@ -2755,7 +2755,7 @@
     let cdX = midX - boxLeft - floatW / 2;
     let cdBottom = contentBottom - midY - titleExtra / 2 - floatH / 2;
     if (floatEl) {
-      // clamp 的合法区间是「红包相对对话框」的坐标：窗口坐标的边界先算好再减去内缩量
+      // clamp 的合法区间是“红包相对对话框”的坐标：窗口坐标的边界先算好再减去内缩量
       cdX = clamp(
         cdX,
         CD_EDGE - boxLeft,
@@ -2851,7 +2851,7 @@
       postEl.textContent = `已推迟 ${info.postponedCount} 次`;
       postEl.classList.remove("hidden");
     }
-    // 「可推迟」为 0 分钟时不显示「推迟」按钮（buildTakeoutInfo 透传配置快照）
+    // “可推迟”为 0 分钟时不显示“推迟”按钮（buildTakeoutInfo 透传配置快照）
     if (info.postponeMin > 0) {
       el("tk-postpone").textContent = `推迟 ${info.postponeMin} 分钟`;
     } else {

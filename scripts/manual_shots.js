@@ -72,13 +72,13 @@ async function run() {
   await delay(600);
   await shot(set, "m_timing");
 
-  // 0c-2. 自定义提醒卡：滚动到「喝水提醒」卡与「新建自定义提醒」虚线卡
+  // 0c-2. 自定义提醒卡：滚动到“喝水提醒”卡与“新建自定义提醒”虚线卡
   await set.evaluate(`(function(){var c=document.querySelector('#tab-timing > .card[data-cb="cb-manual"]');if(c)c.scrollIntoView({block:'start'});else{var a=document.getElementById('cb-add-card');if(a)a.scrollIntoView({block:'start'});} window.scrollBy(0,-10);})()`);
   await delay(500);
   await shot(set, "m_custom_card");
 
   // 0d. 提醒内容面板 + 批量添加弹窗（短休息第一条的批量添加）
-  // 先确保短休息提醒内容面板已展开，再点「＋」打开批量框
+  // 先确保短休息提醒内容面板已展开，再点“＋”打开批量框
   await set.evaluate(`(function(){var p=document.querySelector('.msg-panel[data-kind="short"]');if(p){var b=p.querySelector('.msg-toggle');if(b&&p.querySelector('.msg-body').classList.contains('hidden'))b.click();}})()`);
   await delay(400);
   await set.evaluate(`(function(){var p=document.querySelector('.msg-panel[data-kind="short"]');if(p){var add=p.querySelector('.msg-add');if(add)add.click();}})()`);
@@ -88,7 +88,7 @@ async function run() {
   await set.evaluate(`(function(){var c=document.getElementById('msg-batch-cancel');if(c)c.click();})()`);
   await delay(300);
 
-  // 0e. 删除确认弹窗：展开短休息提醒内容后点第一条的「删除」
+  // 0e. 删除确认弹窗：展开短休息提醒内容后点第一条的“删除”
   await set.evaluate(`(function(){var p=document.querySelector('.msg-panel[data-kind="short"]');if(p){var b=p.querySelector('.msg-toggle');if(b&&p.querySelector('.msg-body').classList.contains('hidden'))b.click();}})()`);
   await delay(400);
   await set.evaluate(`(function(){var del=document.querySelector('.msg-panel[data-kind="short"] .msg-item .btn.mini[title="删除"]');if(del)del.click();})()`);

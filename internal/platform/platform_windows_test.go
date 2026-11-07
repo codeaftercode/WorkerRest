@@ -11,8 +11,8 @@ import (
 
 // WebView2 预检的约束。
 //
-// 这里不测「本机装了没有」（换台干净的机器结论就变），只测**判断口径**：
-// 什么算已安装、哪些位置要查、链接必须是 https、以及「文件在就必须认」这条
+// 这里不测“本机装了没有”（换台干净的机器结论就变），只测**判断口径**：
+// 什么算已安装、哪些位置要查、链接必须是 https、以及“文件在就必须认”这条
 // 防误判的不变量 —— 误判会让能用的机器被挡在门外，比不提示更糟。
 
 func TestWebView2VersionUsable(t *testing.T) {
@@ -34,7 +34,7 @@ func TestWebView2VersionUsable(t *testing.T) {
 }
 
 // TestWebView2RegistryQueriesCoverAllLocations 三个登记位置一个都不能少：
-// 漏掉 32 位视图时，64 位进程在「装在 WOW6432Node」的机器上会误判缺失。
+// 漏掉 32 位视图时，64 位进程在“装在 WOW6432Node”的机器上会误判缺失。
 func TestWebView2RegistryQueriesCoverAllLocations(t *testing.T) {
 	qs := webView2RegistryQueries()
 	if len(qs) != 3 {
@@ -73,7 +73,7 @@ func TestWebView2DownloadURL(t *testing.T) {
 }
 
 // TestProbeWebView2NeverContradictsInstallDir 安装目录里有 msedgewebview2.exe 时，
-// 探测结果不许说「没装」—— 这条在没装运行时的机器上自动跳过（文件不存在就不成立）。
+// 探测结果不许说“没装”—— 这条在没装运行时的机器上自动跳过（文件不存在就不成立）。
 func TestProbeWebView2NeverContradictsInstallDir(t *testing.T) {
 	dirVer := webView2VersionFromInstallDir()
 	if dirVer == "" {

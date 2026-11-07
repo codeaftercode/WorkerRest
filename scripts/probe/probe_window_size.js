@@ -2,15 +2,15 @@
  * 测量用：设置窗口的最小可用宽度 + 关于页恰好不出垂直滚动条的高度。
  *
  * 它只**测量并打印数字**，不改任何配置；判定逻辑（取哪个值）留在人手里，
- * 因为「最小宽度」不是纯数学结果 —— 要同时看有没有横向裁切、控件有没有被挤扁。
+ * 因为“最小宽度”不是纯数学结果 —— 要同时看有没有横向裁切、控件有没有被挤扁。
  * 由 probe_window_size.py 起无头服务后注入 WR_BASE 调用。
  *
  * 三个口径：
- *   1) 宽度扫描：固定高度，逐档量「内容区横向裁切量」。只算**真正会把内容画到
+ *   1) 宽度扫描：固定高度，逐档量“内容区横向裁切量”。只算**真正会把内容画到
  *      盒子外面**的元素 —— 自身或祖先带 overflow-x:auto/scroll 的（统计报表的表格
  *      横向滚动条、时间线等）属于刻意设计的滚动容器，不算裁切。
  *   2) 每档宽度的关于页所需视口高度（含 #content 的 padding / border）。
- *   3) 选定宽度上的高度细扫：第一次不溢出就是「恰好不出垂直滚动条」的高度。
+ *   3) 选定宽度上的高度细扫：第一次不溢出就是“恰好不出垂直滚动条”的高度。
  */
 const { chromium } = require("playwright");
 
@@ -27,11 +27,11 @@ async function clickTab(page, tab) {
   await delay(130);
 }
 
-// 横向裁切量：跳过「自身或祖先可横向滚动」的元素（那是刻意的滚动容器）
+// 横向裁切量：跳过“自身或祖先可横向滚动”的元素（那是刻意的滚动容器）
 async function clipOverflow(page) {
   return await page.evaluate(`(function(){
     // 走到 #content 就停：它自己的 overflow-x 会被 overflow-y:auto 带成 auto，
-    // 若把它也算进去，所有元素都会被误判成「在可滚动容器里」→ 永远测不出裁切。
+    // 若把它也算进去，所有元素都会被误判成“在可滚动容器里”→ 永远测不出裁切。
     function scrollable(el){
       for(var n=el;n && n.nodeType===1 && n.id!=='content';n=n.parentElement){
         var ox=getComputedStyle(n).overflowX;
@@ -96,7 +96,7 @@ async function aboutNeedH(page) {
 
   // ---------- 1) 宽度扫描（求最小可用宽度） ----------
   // 高度取 620：**故意让每个标签页都出现垂直滚动条** —— 滚动条会吃掉约 15px 可用宽度，
-  // 真实窗口高度一变就可能有滚动条，所以最小宽度必须在「有滚动条」这个最坏情况下成立。
+  // 真实窗口高度一变就可能有滚动条，所以最小宽度必须在“有滚动条”这个最坏情况下成立。
   const sweepHeights = (process.env.WR_SWEEP_H || "620,940").split(",").map(Number);
   const widthRows = [];
   for (const sh of sweepHeights) {

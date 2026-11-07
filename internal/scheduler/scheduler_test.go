@@ -12,9 +12,9 @@ import (
 // 调度器与计划层的纯函数回归。
 //
 // 分工（与外部对拍互补，别搞混）：
-//   - 这里拦「规则写错」：消费记账、暂停冻结平移、休息总时长封顶、跨天截断……
+//   - 这里拦“规则写错”：消费记账、暂停冻结平移、休息总时长封顶、跨天截断……
 //     毫秒级跑完，改完代码先跑它。
-//   - scripts/verify_plan_parity.py 拦「与上一版 不一致」：拿 上一版自己的
+//   - scripts/verify_plan_parity.py 拦“与上一版 不一致”：拿 上一版自己的
 //     breakPlan.ts 当黄金参考逐字段对拍 27 个场景。
 // 两者都过才算这一层真的对。
 
@@ -166,7 +166,7 @@ func TestSchedulerReplanReanchorsOnIntervalChange(t *testing.T) {
 }
 
 func TestSchedulerModeSwitchToFixedWithoutSlotsDropsReminder(t *testing.T) {
-	// 倒计时切固定时间且没有任何时刻：应立刻按「没有这条提醒」重算——
+	// 倒计时切固定时间且没有任何时刻：应立刻按“没有这条提醒”重算——
 	// 挂起线 / 下次休息 / 分组视图 / 今日时间线都不再出现按倒计时算出来的旧时刻
 	s, host := newTestSched(t, shortCountdown)
 	s.replan()
@@ -225,7 +225,7 @@ func TestSchedulerAllDisabledNoPlan(t *testing.T) {
 	}
 }
 
-// 「提前通知」为 0 秒：不进 pre 阶段、不触发 onPreNotify —— 到点直接开始休息，
+// “提前通知”为 0 秒：不进 pre 阶段、不触发 onPreNotify —— 到点直接开始休息，
 // 不弹右下角提前提示窗（ notifyBeforeMs>0 的守卫在 onTick 与恢复暂停两条路径上都有）
 func TestSchedulerNoPreNotifyWhenZero(t *testing.T) {
 	cfg := `{"short":{"enabled":true,"mode":"countdown","intervalMs":600000,` +
@@ -233,7 +233,7 @@ func TestSchedulerNoPreNotifyWhenZero(t *testing.T) {
 	s, host := newTestSched(t, cfg)
 	s.replan()
 
-	// 挪到「已到点」：notifyBeforeMs=0 时 pre 与 due 同边界，只有守卫能拦住 pre
+	// 挪到“已到点”：notifyBeforeMs=0 时 pre 与 due 同边界，只有守卫能拦住 pre
 	s.mu.Lock()
 	s.state.NextAt = nowMs() - 1
 	for i := range s.state.Lines {
@@ -260,7 +260,7 @@ func TestSchedulerPostponeShiftsPlan(t *testing.T) {
 
 	s.Postpone()
 	got := s.StateCopy()
-	// 推迟是「在原定时刻基础上往后推」：原定 10 分钟后 + 可推迟 2 分钟。
+	// 推迟是“在原定时刻基础上往后推”：原定 10 分钟后 + 可推迟 2 分钟。
 	// （旧实现写 now+ms，会把还剩 10 分钟的提醒直接拉到 2 分钟后 —— P2-1）
 	want := origAt + 120_000
 	if diff := got.NextAt - want; diff < -2000 || diff > 2000 {
@@ -283,7 +283,7 @@ func TestSchedulerPostponeShiftsPlan(t *testing.T) {
 }
 
 // 原定时刻已经过去（例如系统刚从睡眠里醒、tick 还没跟上）时，推迟仍要保证往后走：
-// 基准退化成「现在」，不能算出比现在更早的时刻。
+// 基准退化成“现在”，不能算出比现在更早的时刻。
 func TestSchedulerPostponeFromOverdue(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
@@ -306,7 +306,7 @@ func TestSchedulerSkipConsumesOccurrence(t *testing.T) {
 	cfg := `{"short":{"enabled":true,"mode":"fixed","durationMs":20000,"slots":[
 		{"id":"s-a","hour":` + itoa(at.Hour()) + `,"minute":` + itoa(at.Minute()) + `,"repeat":"daily","days":[],"enabled":true}
 	]},"long":{"enabled":false}}`
-	// 固定时刻是按「时:分」对齐的，规划出来的时刻 = 那一刻的整分
+	// 固定时刻是按“时:分”对齐的，规划出来的时刻 = 那一刻的整分
 	aligned := time.Date(at.Year(), at.Month(), at.Day(), at.Hour(), at.Minute(), 0, 0, time.Local).UnixMilli()
 	s, _ := newTestSched(t, cfg)
 	s.replan()
@@ -348,9 +348,9 @@ func TestSchedulerBreakLifecycleAndCounter(t *testing.T) {
 		t.Fatal("休息中不该提前计数")
 	}
 
-	// 隔开两毫秒再结束：同一毫秒内「开始 → 结束」时，重排算出的新倒计时时刻会与被消费的
-	// 那次撞在同一个毫秒上、被「已消费」过滤掉（下一个 tick 才恢复）。那是瞬态，不属于
-	// 本用例要验的「计数推进 → 下一跳类型」。
+	// 隔开两毫秒再结束：同一毫秒内“开始 → 结束”时，重排算出的新倒计时时刻会与被消费的
+	// 那次撞在同一个毫秒上、被“已消费”过滤掉（下一个 tick 才恢复）。那是瞬态，不属于
+	// 本用例要验的“计数推进 → 下一跳类型”。
 	time.Sleep(2 * time.Millisecond)
 	s.EndBreak()
 	st = s.StateCopy()
@@ -389,7 +389,7 @@ func TestSchedulerLongBreakResetsCounter(t *testing.T) {
 	}
 }
 
-// 休息进行中点「跳过 / 提前结束」：必须真的结束这次休息，而不是静默 return。
+// 休息进行中点“跳过 / 提前结束”：必须真的结束这次休息，而不是静默 return。
 // 设置页侧栏、托盘、快捷键都走 skip 这一个入口（P3）。
 func TestSchedulerSkipWhileBreakingEndsBreak(t *testing.T) {
 	s, host := newTestSched(t, shortCountdown)
@@ -473,7 +473,7 @@ func TestSchedulerResumeShiftsCountdown(t *testing.T) {
 
 func TestSchedulerResumeBreakCappedToDuration(t *testing.T) {
 	// 休息期间被长时间暂停（如开着勿扰一下午）：恢复时总时长封顶为配置时长，
-	// 超过就直接收尾，不能拖成遥遥无期的「休息中」
+	// 超过就直接收尾，不能拖成遥遥无期的“休息中”
 	s, host := newTestSched(t, shortCountdown)
 	now := nowMs()
 	s.mu.Lock()
@@ -502,7 +502,7 @@ func TestSchedulerResumeBreakCappedToDuration(t *testing.T) {
 func TestSchedulerReanchorCountdownOnlyBuiltin(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
-	// 把挂起时刻改成「5 秒后」，模拟离开前剩下的旧账
+	// 把挂起时刻改成“5 秒后”，模拟离开前剩下的旧账
 	s.mu.Lock()
 	s.state.NextAt = nowMs() + 5_000
 	s.state.Lines[0].At = s.state.NextAt
@@ -522,7 +522,7 @@ func TestSchedulerReanchorCountdownOnlyBuiltin(t *testing.T) {
 	s2, _ := newTestSched(t, `{"short":{"enabled":false},"long":{"enabled":false},
 		"customBreaks":[{"id":"cb-1","name":"喝水提醒","config":{"enabled":true,"mode":"countdown","intervalMs":600000,"durationMs":15000}}]}`)
 	s2.replan()
-	// 故意改成一个「哨兵」值：重锚若生效就会把它换成 now+intervalMs
+	// 故意改成一个“哨兵”值：重锚若生效就会把它换成 now+intervalMs
 	sentinel := nowMs() + 5_000
 	s2.mu.Lock()
 	s2.state.NextAt = sentinel
@@ -571,7 +571,7 @@ func TestSchedulerStateForRendererIncludesTimeline(t *testing.T) {
 	}
 	for _, it := range st.Timeline {
 		if it.Source == "countdown" && it.Paused == nil {
-			t.Fatal("倒计时线的项必须带 paused 键（渲染层据它显示「已暂停」标记）")
+			t.Fatal("倒计时线的项必须带 paused 键（渲染层据它显示“已暂停”标记）")
 		}
 	}
 }

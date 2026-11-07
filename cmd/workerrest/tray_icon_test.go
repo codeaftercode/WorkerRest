@@ -16,7 +16,7 @@ import (
 // 仓库根不再有 assets/ 目录。全项目只有一个图标文件 icon.png，三处共用：
 // 标题栏 <img class="tb-icon">、系统托盘（trayIcon）、exe 文件图标（构建期生成 syso）。
 //
-// 本文件钉住「坏了也看不出来」的两件事：
+// 本文件钉住“坏了也看不出来”的两件事：
 //
 //  1. 托盘图标能过 Wails 的同一条转换链（CreateSmallHIconFromImage → CreateIconFromResourceEx）
 //     并拿到非零 HICON。格式不被接受时托盘只是静默变空白图标，程序照常启动、日志也不报，
@@ -25,7 +25,7 @@ import (
 //     （关于页横幅、标题栏图标）。
 //
 // 为什么图标个数/图片个数都不写死：增删图片是正常的内容变更，写死个数会让测试在
-// 无关改动上变红（本项目在「内置专员个数」上踩过这个坑）。
+// 无关改动上变红（本项目在“内置专员个数”上踩过这个坑）。
 
 // TestTrayIconIsEmbeddedPNG 托盘图标必须是能从 embed 读到的 PNG。
 func TestTrayIconIsEmbeddedPNG(t *testing.T) {

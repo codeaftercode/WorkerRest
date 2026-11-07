@@ -5,10 +5,10 @@ import (
 	"time"
 )
 
-// 「暂停休息时」三种处置（正常提醒 / 推迟提醒 / 跳过提醒，默认推迟）的回归：
-//   - 跳过：外卖提醒 / 自定义提醒在暂停态下到点时不弹任何窗，直接按「跳过」记一笔统计；
+// “暂停休息时”三种处置（正常提醒 / 推迟提醒 / 跳过提醒，默认推迟）的回归：
+//   - 跳过：外卖提醒 / 自定义提醒在暂停态下到点时不弹任何窗，直接按“跳过”记一笔统计；
 //   - 正常提醒：暂停期间照常弹（提前提示小窗 + 提醒窗口），不进跳过统计；
-//   - 推迟提醒：暂停期间不弹、也不记账，按该提醒的「可推迟」时长往后推；推完仍暂停就
+//   - 推迟提醒：暂停期间不弹、也不记账，按该提醒的“可推迟”时长往后推；推完仍暂停就
 //     继续推，恢复后按推迟后的时刻弹；
 //   - 短 / 长休息三种情形都保持原状（暂停期间不弹、不记账）。
 //
@@ -54,7 +54,7 @@ func TestPausedSkipCustomCountdown(t *testing.T) {
 		`"enabled":true,"pauseAction":"skip","mode":"countdown","intervalMs":600000,"durationMs":20000,"slots":[]}}]}`
 	s, host := newTestSched(t, cfg)
 	s.replan()
-	// 模拟「暂停期间时间走完了这一跳」
+	// 模拟“暂停期间时间走完了这一跳”
 	s.mu.Lock()
 	s.state.NextAt = nowMs() - 1000
 	for i := range s.state.Lines {
@@ -85,7 +85,7 @@ func TestPausedRemindCustomFixedSlot(t *testing.T) {
 	s.Pause("manual")
 	s.onTick()
 	if len(host.skips) != 0 {
-		t.Fatalf("「正常提醒」不应记账，得到 %v", host.skips)
+		t.Fatalf("“正常提醒”不应记账，得到 %v", host.skips)
 	}
 	if len(host.breaks) != 1 || host.breaks[0] != "cb-water" {
 		t.Fatalf("暂停期间到点应照常弹提醒，得到 %v", host.breaks)
@@ -116,13 +116,13 @@ func TestPausedRemindCustomCountdown(t *testing.T) {
 		t.Fatalf("倒计时到点应照常弹提醒，得到 %v", host.breaks)
 	}
 	if len(host.skips) != 0 {
-		t.Fatalf("「正常提醒」不应记账，得到 %v", host.skips)
+		t.Fatalf("“正常提醒”不应记账，得到 %v", host.skips)
 	}
 }
 
-// 正常提醒 + 提前通知：落在「原定时刻 − 提前量」区间时照常弹提前提示小窗
+// 正常提醒 + 提前通知：落在“原定时刻 − 提前量”区间时照常弹提前提示小窗
 func TestPausedRemindCustomPreNotify(t *testing.T) {
-	at := time.Now().Add(5 * time.Minute) // 5 分钟后到点：此刻正落在「到点 − 提前量」那一分钟
+	at := time.Now().Add(5 * time.Minute) // 5 分钟后到点：此刻正落在“到点 − 提前量”那一分钟
 	cfg := `{"customBreaks":[{"id":"cb-water","name":"喝水提醒","config":{` +
 		`"enabled":true,"pauseAction":"remind","mode":"fixed","durationMs":20000,"notifyBeforeMs":300000,"slots":[` +
 		`{"id":"s1","hour":` + itoa(at.Hour()) + `,"minute":` + itoa(at.Minute()) +
@@ -139,11 +139,11 @@ func TestPausedRemindCustomPreNotify(t *testing.T) {
 		t.Fatalf("还没到点不应弹提醒窗口，得到 %v", host.breaks)
 	}
 	if len(host.skips) != 0 {
-		t.Fatalf("「正常提醒」不应记账，得到 %v", host.skips)
+		t.Fatalf("“正常提醒”不应记账，得到 %v", host.skips)
 	}
 }
 
-// 推迟提醒：到点不弹窗也不记账，只排一条「推迟到 X」的计划；再到期时仍暂停就继续推
+// 推迟提醒：到点不弹窗也不记账，只排一条“推迟到 X”的计划；再到期时仍暂停就继续推
 func TestPausedPostponeCustomFixedSlot(t *testing.T) {
 	now := time.Now()
 	cfg := `{"customBreaks":[{"id":"cb-water","name":"喝水提醒","config":{` +
@@ -235,7 +235,7 @@ func TestPausedPostponeFiresAfterResume(t *testing.T) {
 	}
 }
 
-// 推迟提醒但「可推迟」填了 0：没有时长可推，退化成跳过（否则每跳原地打转、永远不弹）
+// 推迟提醒但“可推迟”填了 0：没有时长可推，退化成跳过（否则每跳原地打转、永远不弹）
 func TestPausedPostponeZeroFallsBackToSkip(t *testing.T) {
 	now := time.Now()
 	cfg := `{"customBreaks":[{"id":"cb-water","name":"喝水提醒","config":{` +
@@ -314,10 +314,10 @@ func TestPausedDefaultPostponeCustomFixedSlot(t *testing.T) {
 
 	s.onTick()
 	if len(host.skips) != 0 {
-		t.Fatalf("默认「推迟提醒」不应记跳过，得到 %v", host.skips)
+		t.Fatalf("默认“推迟提醒”不应记跳过，得到 %v", host.skips)
 	}
 	if len(host.breaks) != 0 || len(host.pre) != 0 {
-		t.Fatalf("默认「推迟提醒」不应弹窗，得到 breaks=%v pre=%v", host.breaks, host.pre)
+		t.Fatalf("默认“推迟提醒”不应弹窗，得到 breaks=%v pre=%v", host.breaks, host.pre)
 	}
 	s.mu.Lock()
 	n := len(s.postponed)

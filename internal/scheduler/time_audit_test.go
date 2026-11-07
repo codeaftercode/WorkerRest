@@ -9,11 +9,11 @@ import (
 
 // 时间轴审计（全量组合）的回归用例。
 //
-// 这里只钉「时间状态机在各种组合下必须成立的不变量」，不重复 scheduler_test.go
+// 这里只钉“时间状态机在各种组合下必须成立的不变量”，不重复 scheduler_test.go
 // 已覆盖的单条规则。每条用例都对应一条曾经的（或极易写错的）交叉路径：
 //   - 暂停 × replan：暂停期间的时间是冻结的，任何重排都不得改写剩余；
-//   - 提前量 × 跨午夜：occurrence 归属「提醒真正发生的那一天」，不是「现在这一天」。
-// 这两条都不是「算错一个数」，而是两套时间基准（真实墙钟 / 冻结时钟、now / now+提前量）
+//   - 提前量 × 跨午夜：occurrence 归属“提醒真正发生的那一天”，不是“现在这一天”。
+// 这两条都不是“算错一个数”，而是两套时间基准（真实墙钟 / 冻结时钟、now / now+提前量）
 // 在同一处混用 —— 只靠读代码很难发现，所以用测试钉住。
 
 // ---------- 暂停 × replan ----------
@@ -21,9 +21,9 @@ import (
 // TestPausedReplanKeepsFrozenRemain 暂停期间的一次 replan 不得把冻结的剩余时间推远。
 //
 // 触发路径（真实）：用户手动暂停 → 在设置页改任意选项（每次改动都会 SaveSettings →
-// refreshPlan → scheduleNext → replan）→ 若 replan 用真实墙钟判断「倒计时锚点是否过期」，
+// refreshPlan → scheduleNext → replan）→ 若 replan 用真实墙钟判断“倒计时锚点是否过期”，
 // 冻结中的旧锚点会被判过期并按 now+interval 重新起算；恢复时 resume 又整体平移 delta，
-// 等于把暂停时长算了两遍，用户看到「还剩 50 分钟」（配置是 20 分钟）。
+// 等于把暂停时长算了两遍，用户看到“还剩 50 分钟”（配置是 20 分钟）。
 func TestPausedReplanKeepsFrozenRemain(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown) // 每 10 分钟一次、每次 20 秒
 	s.replan()
@@ -95,7 +95,7 @@ func TestPausedScheduleNextKeepsFrozenRemain(t *testing.T) {
 
 // ---------- 提前量 × 跨午夜 ----------
 
-// TestSlotOccurrenceAcrossMidnight 提前量把提醒推到「次日零点后」时，occurrence 必须
+// TestSlotOccurrenceAcrossMidnight 提前量把提醒推到“次日零点后”时，occurrence 必须
 // 归属次日 —— 否则去重键会与当天同一条目的旧键相撞（提前通知被吞），预通知窗的
 // 倒计时也会指着已经过去的时刻（进窗即 0 秒）。
 func TestSlotOccurrenceAcrossMidnight(t *testing.T) {
@@ -123,7 +123,7 @@ func TestSlotOccurrenceAcrossMidnight(t *testing.T) {
 	}
 }
 
-// TestSlotOccurrenceSameDayNoShift 提前量不跨天时，slotOccurrenceAt 与「原定时刻」一致，
+// TestSlotOccurrenceSameDayNoShift 提前量不跨天时，slotOccurrenceAt 与“原定时刻”一致，
 // 避免修复跨午夜时把普通情形改错。
 func TestSlotOccurrenceSameDayNoShift(t *testing.T) {
 	now := time.Date(2026, 10, 27, 9, 0, 0, 0, time.Local).UnixMilli()
@@ -135,7 +135,7 @@ func TestSlotOccurrenceSameDayNoShift(t *testing.T) {
 	}
 }
 
-// TestTakeoutPreNotifyTargetNotInPast 预通知窗的倒计时目标必须是「即将到来的那一次」。
+// TestTakeoutPreNotifyTargetNotInPast 预通知窗的倒计时目标必须是“即将到来的那一次”。
 // 23:50 弹次日 00:10 的预通知，若 targetAt 按"今天 00:10"算，进窗就是 0 秒。
 func TestTakeoutPreNotifyTargetNotInPast(t *testing.T) {
 	slot := model.TimeSlot{ID: "s4", Hour: 0, Minute: 5, Enabled: true}
@@ -151,18 +151,18 @@ func TestTakeoutPreNotifyTargetNotInPast(t *testing.T) {
 
 // ---------- 暂停 × 立即休息 ----------
 
-// TestBreakStartedWhilePausedStillCloses 暂停态点「立即休息」之后，内置休息必须照常
+// TestBreakStartedWhilePausedStillCloses 暂停态点“立即休息”之后，内置休息必须照常
 // 到点收窗。
 //
-// 触发路径（真实）：托盘右键 →「暂停休息」→「立即休息」。休息在暂停开始之后发起，
-// 若到点判定仍按「暂停则冻结」，onTick 的暂停分支永远收不了窗 —— 长休息窗口会一直挂在
+// 触发路径（真实）：托盘右键 →“暂停休息”→“立即休息”。休息在暂停开始之后发起，
+// 若到点判定仍按“暂停则冻结”，onTick 的暂停分支永远收不了窗 —— 长休息窗口会一直挂在
 // 屏幕上，直到用户想起来去恢复暂停。
 func TestBreakStartedWhilePausedStillCloses(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
 	s.Pause("manual")
 	if id := s.BreakNowOf("short"); id == "" {
-		t.Fatal("暂停中「立即休息」应当能开始一次休息")
+		t.Fatal("暂停中“立即休息”应当能开始一次休息")
 	}
 	if got := s.StateCopy().Phase; got != "break" {
 		t.Fatalf("应进入休息态，实际 %q", got)
@@ -195,12 +195,12 @@ func TestBreakBeforePauseStaysFrozen(t *testing.T) {
 	}
 }
 
-// TestRefreshPlanKeepsPrePhase 保存设置触发的重排不得把「即将休息」打回等待态。
+// TestRefreshPlanKeepsPrePhase 保存设置触发的重排不得把“即将休息”打回等待态。
 // 否则每改一个输入框，右下角窗口都会关掉再弹一遍（500ms 后），肉眼可见一次闪烁。
 func TestRefreshPlanKeepsPrePhase(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown) // 提前量 10 秒
 	s.replan()
-	// 造出「已经进入提前区间」：距下次 5 秒
+	// 造出“已经进入提前区间”：距下次 5 秒
 	s.mu.Lock()
 	s.state.NextAt = nowMs() + 5000
 	for i := range s.state.Lines {
@@ -247,14 +247,14 @@ func TestRefreshPlanClosesWhenReminderSwitched(t *testing.T) {
 }
 
 // TestTickJumpResetsInsteadOfFiring 睡眠 / 休眠醒来后，不要在醒来第一刻补弹一个
-// 「已过期」的休息窗口：应当重排，让倒计时从头计时。
+// “已过期”的休息窗口：应当重排，让倒计时从头计时。
 //
 // 真实场景：合盖前倒计时还剩 3 分钟，合盖 8 小时。醒来第一跳若照常判 due，
 // 用户刚打开电脑就被一个 5 分钟长休息窗口糊脸。
 func TestTickJumpResetsInsteadOfFiring(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown) // 每 10 分钟
 	s.replan()
-	// 伪造「上一次 tick 在 20 分钟前」：倒计时早已过期
+	// 伪造“上一次 tick 在 20 分钟前”：倒计时早已过期
 	s.mu.Lock()
 	s.lastTickAt = nowMs() - 20*60_000
 	s.state.NextAt = nowMs() - 60_000

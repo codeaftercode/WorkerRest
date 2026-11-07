@@ -10,7 +10,7 @@ import (
 
 // 提示音：历史源码/sound.ts 的对应物。
 //
-// 为什么要有「播放宿主窗口」：主进程自己放不了声音。上一版开一个 1×1 的隐藏
+// 为什么要有“播放宿主窗口”：主进程自己放不了声音。上一版开一个 1×1 的隐藏
 // BrowserWindow 承载 <audio>；这里同理 —— Wails 的隐藏窗口加载 sound.html，
 // 播放时向它 ExecJS 一句 `new Audio(url).play()`。
 //
@@ -29,14 +29,14 @@ import (
 //
 // 与上一版 逐条对齐的三处：
 //
-// 一、选曲口径「单曲循环与启停无关」：single 模式播 singleId 指向的那一条（条目被停用
+// 一、选曲口径“单曲循环与启停无关”：single 模式播 singleId 指向的那一条（条目被停用
 // 也照样播，被删 / 文件不可用 = 静音）；random / sequence 只在**启用且文件存在**的条目
 // 里挑。全部不可用时不回退 —— 用户把列表停用 / 删空就是刻意静音。
 //
 // 二、顺序播放的游标跨播放持续递增（不是每次从头开始），所以连续两次播放取的是列表里
 // 相邻的两条。
 //
-// 三、导入副本的删除只认「音频目录里**直接**躺着的那一层」，子目录与别处的文件一律不碰。
+// 三、导入副本的删除只认“音频目录里**直接**躺着的那一层”，子目录与别处的文件一律不碰。
 
 const (
 	// soundURLPrefix 自定义音资源路由前缀（见 soundMiddleware）；带 query 参数 p
@@ -89,9 +89,9 @@ func (a *App) soundPickNext(cfg model.SoundCfg, rnd func(n int) int) string {
 //
 // 上一版是 userDataPath('sounds', 'sounds', false)：非便携 = <userData>/sounds，
 // 便携 = <运行目录>/sounds/sounds（category 与 rel 同名，结果多一层）。
-// Go 版**统一成「配置文件所在目录旁的 sounds/」**：也就是 <运行目录>/config/sounds
+// Go 版**统一成“配置文件所在目录旁的 sounds/”**：也就是 <运行目录>/config/sounds
 // （配置在 config/settings.json），数据与程序同目录。
-// 这处差异的可见影响只有「便携老用户的旧副本删不掉」（播放不受影响 —— 配置里存的是
+// 这处差异的可见影响只有“便携老用户的旧副本删不掉”（播放不受影响 —— 配置里存的是
 // 绝对路径），已记进 README 的已知差异。
 func (a *App) customSoundDir() string {
 	s := a.CfgSnapshot()

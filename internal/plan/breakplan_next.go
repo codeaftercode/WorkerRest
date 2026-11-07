@@ -16,7 +16,7 @@ func occurrenceKey(typ string, at int64) string {
 	return typ + "#" + strconv.FormatInt(at, 10)
 }
 
-// occurrenceKeyAt 拆出 occurrenceKey 里的时刻（拆不出返回 0，与 JS 的 Number(”)===0 同义）
+// occurrenceKeyAt 拆出 occurrenceKey 里的时刻（拆不出返回 0，与 JS 的 Number("")===0 同义）
 func occurrenceKeyAt(key string) int64 {
 	i := strings.LastIndex(key, "#")
 	if i < 0 {
@@ -80,7 +80,7 @@ func builtinCountdownLine(s *settings.Settings, now int64, shortsSinceLong int) 
 	if len(cds) == 0 {
 		return model.PlannedBreak{}, false
 	}
-	// 短/长都是倒计时：沿用「每 N 次短休息后换长休息」的节奏；只有一方是倒计时时就用那一方
+	// 短/长都是倒计时：沿用“每 N 次短休息后换长休息”的节奏；只有一方是倒计时时就用那一方
 	typ := cds[0]
 	if len(cds) == 2 && shortsSinceLong >= s.LongEveryNShort() {
 		typ = "long"
@@ -92,7 +92,7 @@ func builtinCountdownLine(s *settings.Settings, now int64, shortsSinceLong int) 
 	}
 	return model.PlannedBreak{
 		Type: typ, Name: name,
-		// 倒计时线不受任何时段限制：就是「从当前这一刻起再过 intervalMs」。
+		// 倒计时线不受任何时段限制：就是“从当前这一刻起再过 intervalMs”。
 		// 已消费的 occurrence 由 schedulerLines 的 skip 过滤统一剔除。
 		At: now + cfg.IntervalMs, Source: "countdown",
 	}, true
@@ -144,7 +144,7 @@ func filterConsumed(pool []model.PlannedBreak, skip map[string]bool) []model.Pla
 
 // cdAnchor 上一轮挂起的倒计时锚点：At = 触发时刻，Iv = 产生该锚点的间隔（ms）。
 // Frozen 表示这个锚点是在**暂停期间**收集的：暂停中时间不流逝，即使 At 已经早于真实
-// 墙钟，它也没有「过期」，replan 必须原样沿用（见 Scheduler.prevCountdownAnchorsLocked）。
+// 墙钟，它也没有“过期”，replan 必须原样沿用（见 Scheduler.prevCountdownAnchorsLocked）。
 type cdAnchor struct {
 	At     int64
 	Iv     int64
@@ -186,7 +186,7 @@ func schedulerLines(s *settings.Settings, now int64, shortsSinceLong int, skip m
 // 与当前配置一致时原样沿用（倒计时进度跨 replan 保留）；间隔已改的立刻按新间隔
 // 重新起算。到期、被跳过/立即休息（已消费）或该身份被删除后，同样回落到 fresh。
 //
-// Frozen 锚点（暂停期间收集）跳过「到期」判定：暂停中时间冻结，At 早于真实墙钟不代表
+// Frozen 锚点（暂停期间收集）跳过“到期”判定：暂停中时间冻结，At 早于真实墙钟不代表
 // 这一跳已经过去 —— 用真实墙钟判会把冻结进度整段丢掉。
 func countdownAnchor(prev map[string]cdAnchor, typ string, now int64, skip map[string]bool, fresh, curIv int64) int64 {
 	if a, ok := prev[typ]; ok && (a.Frozen || a.At > now) &&
@@ -205,7 +205,7 @@ func planNextBreak(s *settings.Settings, now int64, shortsSinceLong int, skip ma
 	return pool[0], true
 }
 
-// describePlan 计划的中文摘要：日志与托盘提示共用（如「长休息（固定时刻）12:00」）
+// describePlan 计划的中文摘要：日志与托盘提示共用（如“长休息（固定时刻）12:00”）
 func describePlan(p *model.PlannedBreak) string {
 	if p == nil {
 		return "未安排休息"
@@ -217,9 +217,9 @@ func describePlan(p *model.PlannedBreak) string {
 	return p.Name + "（" + src + "）" + time.UnixMilli(p.At).Format("15:04")
 }
 
-// takeoutLine 外卖提醒的「原定时刻」（下一次条目的时刻，不含提前通知——提前通知只是
+// takeoutLine 外卖提醒的“原定时刻”（下一次条目的时刻，不含提前通知——提前通知只是
 // 先弹个小窗，真实提醒窗口仍在原定时刻弹出）。外卖不进休息调度（窗口独立、永不自动收窗），
-// 这里只为设置页状态卡提供倒计时。固定时刻每天循环，查今天与明天两天足够覆盖「下一个还没到的时刻」。
+// 这里只为设置页状态卡提供倒计时。固定时刻每天循环，查今天与明天两天足够覆盖“下一个还没到的时刻”。
 func takeoutLine(s *settings.Settings, now int64) (model.PlannedBreak, bool) {
 	if !s.TakeoutEnabled() {
 		return model.PlannedBreak{}, false
@@ -248,10 +248,10 @@ func takeoutLine(s *settings.Settings, now int64) (model.PlannedBreak, bool) {
 	return model.PlannedBreak{Type: "takeout", Name: TAKEOUT_NAME, At: best, Source: "fixed"}, true
 }
 
-// planNextBreakSplit 按设置页状态卡的口径把下一跳分成两组：短/长一组（「下次休息提醒」），
-// 外卖 + 自定义提醒一组（「下次XX提醒」），两边互不混用。
+// planNextBreakSplit 按设置页状态卡的口径把下一跳分成两组：短/长一组（“下次休息提醒”），
+// 外卖 + 自定义提醒一组（“下次XX提醒”），两边互不混用。
 // 全局 next（planNextBreak）不含外卖 —— 外卖窗口独立于休息调度；分组视图把它算进
-// other 只是为了让状态卡能显示「下次外卖提醒还有多久」。
+// other 只是为了让状态卡能显示“下次外卖提醒还有多久”。
 func planNextBreakSplit(s *settings.Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) model.PlanSplit {
 	lines := fixedLines(s, now)
 	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
@@ -291,7 +291,7 @@ func planNextBreakSplit(s *settings.Settings, now int64, shortsSinceLong int, sk
 	return model.PlanSplit{Builtin: pick(true), Other: pick(false)}
 }
 
-// fixedNextMap 各「固定时刻线」身份下一次实际触发的时刻表（键 = BreakId 或 'takeout'）。
+// fixedNextMap 各“固定时刻线”身份下一次实际触发的时刻表（键 = BreakId 或 'takeout'）。
 // 与 planNextBreak 同一口径：已消费的 occurrence 不返回，并顺着时刻表找**再下一次**
 // （今天 12:00 被跳过后，摘要应显示明天 12:00，而不是把这条身份整个抹掉）。
 // 倒计时模式的身份不出现在表里（摘要里倒计时本就不展示具体时刻）。

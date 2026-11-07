@@ -8,7 +8,7 @@ import (
 )
 
 // 许可正文的四段关键条款必须真的在文本里：授权句、声明保留义务、免责、责任限制。
-// 少任何一段，这份「MIT」就不再是 MIT —— 只写一句「MIT License」的 LICENSE 文件
+// 少任何一段，这份“MIT”就不再是 MIT —— 只写一句“MIT License”的 LICENSE 文件
 // 在法务眼里等于没有授权，而打包、跑测试都不会报错。
 var licenseClauses = []string{
 	"Permission is hereby granted, free of charge",
@@ -21,8 +21,8 @@ func TestProjectLicenseEmbedded(t *testing.T) {
 	if len(projectLicense) < 800 {
 		t.Fatalf("内嵌的许可证过短（%d 字节），像是没嵌进来", len(projectLicense))
 	}
-	// 折叠空白后再找：MIT 正文在「IN NO EVENT SHALL THE / AUTHORS OR COPYRIGHT
-	// HOLDERS BE LIABLE」处换行，按行匹配会假红。
+	// 折叠空白后再找：MIT 正文在“IN NO EVENT SHALL THE / AUTHORS OR COPYRIGHT
+	// HOLDERS BE LIABLE”处换行，按行匹配会假红。
 	flat := strings.Join(strings.Fields(projectLicense), " ")
 	for _, want := range licenseClauses {
 		if !strings.Contains(flat, want) {
@@ -42,7 +42,7 @@ func TestProjectLicenseEmbedded(t *testing.T) {
 // 内嵌源（本目录的 LICENSE）必须与仓库根那份逐字节相同。
 //
 // go:embed 不能引用 `../LICENSE`，所以这里放了一份副本。副本一旦漂移，
-// 用户从「关于页 → 许可条款」看到的就不是仓库里那份 —— 改了年份或署名却忘了刷新副本，
+// 用户从“关于页 → 许可条款”看到的就不是仓库里那份 —— 改了年份或署名却忘了刷新副本，
 // 界面上会静默显示旧正文。这条把所有漂移方式都堵死（改字、改换行、改结尾空行）。
 func TestProjectLicenseMatchesRepoRoot(t *testing.T) {
 	root, err := os.ReadFile("../../LICENSE")

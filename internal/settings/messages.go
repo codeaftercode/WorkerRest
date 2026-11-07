@@ -1,7 +1,9 @@
 package settings
 
-import "strconv"
-import "workerrest/internal/model"
+import (
+	"strconv"
+	"workerrest/internal/model"
+)
 
 // 内置提醒内容：与 历史源码/messages.ts 的 builtinKindMessages 逐字同源。
 //
@@ -28,8 +30,8 @@ var builtinShortMessages = []string{
 
 // builtinLongMessages 长休息：时间充裕，活动幅度更大、更放松
 //
-// 2026-10-29 用户要求「以当前配置为出厂默认」：本清单与他配置里的长休息条目逐字一致
-// （原「闭眼小憩片刻，定好闹钟再休息」已按他的改法去掉，末条换成「接一杯水，补充水份」）。
+// 2026-10-29 用户要求“以当前配置为出厂默认”：本清单与他配置里的长休息条目逐字一致
+// （原“闭眼小憩片刻，定好闹钟再休息”已按他的改法去掉，末条换成“接一杯水，补充水份”）。
 var builtinLongMessages = []string{
 	"离开工位，到窗边或走廊走一走",
 	"做一组全身拉伸，重点放松肩颈和腰背",

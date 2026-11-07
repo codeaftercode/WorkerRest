@@ -82,7 +82,7 @@ func TestParseAcceleratorDigitsAndLetters(t *testing.T) {
 	}
 }
 
-// 空格键是唯一「尾部空格有意义」的输入：录入端产出 "Ctrl+ "，入口绝不能 Trim。
+// 空格键是唯一“尾部空格有意义”的输入：录入端产出 "Ctrl+ "，入口绝不能 Trim。
 func TestParseAcceleratorTrailingSpaceIsSpaceKey(t *testing.T) {
 	mods, vk, ok := ParseAccelerator("Ctrl+ ")
 	if !ok || vk != 0x20 || mods != ModControl {
@@ -120,7 +120,7 @@ func TestParseAcceleratorRejects(t *testing.T) {
 	}
 }
 
-// F1..F24 边界单独钉：0x70 + n - 1，错一位就是「按 F12 触发 F11」。
+// F1..F24 边界单独钉：0x70 + n - 1，错一位就是“按 F12 触发 F11”。
 func TestParseAcceleratorFunctionKeyRange(t *testing.T) {
 	for n := 1; n <= 24; n++ {
 		_, vk, ok := ParseAccelerator("Ctrl+F" + itoa(n))

@@ -5,7 +5,7 @@
 // 回落到出厂默认。出厂默认内嵌在本包的 default_settings.json（全仓唯一源）。
 //
 // 写入策略：先写 .tmp 再 Rename，避免写一半断电留下半个 JSON。本包不持有 App 状态，
-// 也不决定「改动什么时候生效」——那是 cmd 层的事。
+// 也不决定“改动什么时候生效”——那是 cmd 层的事。
 package settings
 
 import (
@@ -51,13 +51,13 @@ func DefaultSettingsJSON() []byte { return defaultSettingsJSON }
 const (
 	// PauseActionRemind 照常提醒：提前提示小窗与提醒窗口照旧弹
 	PauseActionRemind = "remind"
-	// PauseActionPostpone 推迟提醒：按该提醒的「可推迟」时长往后推，推完仍暂停就再推（默认）
+	// PauseActionPostpone 推迟提醒：按该提醒的“可推迟”时长往后推，推完仍暂停就再推（默认）
 	PauseActionPostpone = "postpone"
-	// PauseActionSkip 跳过提醒：不弹任何窗，直接按「跳过」记账
+	// PauseActionSkip 跳过提醒：不弹任何窗，直接按“跳过”记账
 	PauseActionSkip = "skip"
 )
 
-// normPauseAction 只认三个合法值，其余（缺失 / 类型不符 / 手改坏）一律按默认「推迟提醒」。
+// normPauseAction 只认三个合法值，其余（缺失 / 类型不符 / 手改坏）一律按默认“推迟提醒”。
 func normPauseAction(v any) string {
 	if s, ok := v.(string); ok {
 		switch s {
@@ -96,7 +96,7 @@ func defaultSettingsMap() map[string]any {
 // DefaultSettingsMap 出厂默认（跨包导出，供 main 的恢复默认等复用）。
 func DefaultSettingsMap() map[string]any { return defaultSettingsMap() }
 
-// isPlainObject 与 config.ts 的 isPlainObject 同义：数组与 nil 都不算「普通对象」
+// isPlainObject 与 config.ts 的 isPlainObject 同义：数组与 nil 都不算“普通对象”
 func isPlainObject(v any) bool {
 	if v == nil {
 		return false
@@ -110,7 +110,7 @@ func isPlainObject(v any) bool {
 // 逐字对应 config.ts 的 deepMerge —— 只递归普通对象，数组整体替换而不是逐项合并
 // （提醒内容列表 / 时刻表 / 音乐列表都靠这条：用户删掉一条就是删掉，不能被默认值补回来）。
 // over 不是普通对象时**原样返回 over**（含 nil）—— 这是 JS 的语义：显式写了 null 就该是 null，
-// 不能悄悄换成默认值。要区分「键缺失」与「键是 null」的调用点自己先做存在性判断。
+// 不能悄悄换成默认值。要区分“键缺失”与“键是 null”的调用点自己先做存在性判断。
 func deepMerge(base, over any) any {
 	if !isPlainObject(base) || !isPlainObject(over) {
 		return over
@@ -249,7 +249,7 @@ func (s *Settings) Raw() map[string]any { return s.raw }
 func (s *Settings) Path() string { return s.path }
 
 // LastUpdateCheck 最近一次自动/手动检查更新落到的日期（YYYY-MM-DD），空 = 从未检查。
-// 用于「自动检查更新」的当日去重：同一天已查过就不再查。
+// 用于“自动检查更新”的当日去重：同一天已查过就不再查。
 func (s *Settings) LastUpdateCheck() string {
 	return s.Str("", "lastUpdateCheck")
 }
@@ -262,8 +262,8 @@ func (s *Settings) SetLastUpdateCheck(date string) {
 	s.raw["lastUpdateCheck"] = date
 }
 
-// IgnoredVersion 被用户「忽略本版本」的版本号；空 = 没有忽略任何版本。
-// 自动弹窗时若 latest 落在 ignoredVersion 上则抑制弹窗，但「立即更新」按钮仍可显示。
+// IgnoredVersion 被用户“忽略本版本”的版本号；空 = 没有忽略任何版本。
+// 自动弹窗时若 latest 落在 ignoredVersion 上则抑制弹窗，但“立即更新”按钮仍可显示。
 func (s *Settings) IgnoredVersion() string {
 	return s.Str("", "ignoredVersion")
 }
@@ -277,8 +277,8 @@ func (s *Settings) SetIgnoredVersion(v string) {
 	s.raw["ignoredVersion"] = v
 }
 
-// LastUpdateResult 持久化的「最近一次检查结果」（形状与 updateCheckResult.toMap 一致）。
-// 用于让「发现新版本但未更新」的状态在重启后仍然显示，直到更新真正成功才清除。
+// LastUpdateResult 持久化的“最近一次检查结果”（形状与 updateCheckResult.toMap 一致）。
+// 用于让“发现新版本但未更新”的状态在重启后仍然显示，直到更新真正成功才清除。
 // 空/nil = 没有待展示的更新结果。
 func (s *Settings) LastUpdateResult() map[string]any {
 	return s.Map("lastUpdateResult")
@@ -311,7 +311,7 @@ func breakConfigOf(m map[string]any) model.BreakConfig {
 		IntervalMs:     600_000,
 		NotifyBeforeMs: 10_000,
 		PostponeMs:     120_000,
-		// 缺省：暂停休息期间到点按「推迟提醒」处理（推「可推迟」时长，仍暂停就继续推）
+		// 缺省：暂停休息期间到点按“推迟提醒”处理（推“可推迟”时长，仍暂停就继续推）
 		PauseAction: PauseActionPostpone,
 		Slots:       []model.TimeSlot{},
 	}
@@ -472,9 +472,9 @@ func (s *Settings) TakeoutSlots() []model.TimeSlot {
 // DisplayIDs 提醒窗口要显示在哪几块屏上（休息窗口与外卖窗口共用同一策略）。
 //
 // 语义见 internal/display 的 Resolve：**空数组 = 还没挑过屏**，运行时兜底主屏
-// （绝不是「所有屏」）；非空时就是 display.Info.ID 的具体字符串。
+// （绝不是“所有屏”）；非空时就是 display.Info.ID 的具体字符串。
 // 出厂配置就是空数组，首次启动时由 fillPrimaryDisplayID 枚举一遍、把主屏的稳定 ID
-// 写进配置，用户打开设置页看到的就是「主屏已勾」。这里只做「取出来 + 去空」，
+// 写进配置，用户打开设置页看到的就是“主屏已勾”。这里只做“取出来 + 去空”，
 // 真正的解析（含拔屏兜底）在 display 包。
 func (s *Settings) DisplayIDs() []string {
 	arr, ok := s.lookup("displayIds").([]any)
@@ -504,7 +504,7 @@ func (s *Settings) Autostart() bool { return s.Flag(false, "autostart") }
 // UpdateSites 更新源地址列表：每一项都指向一份远程 version.json。
 // **只保留 https**（http 明文源已禁用，回环地址例外，仅为单测的 httptest 保留，
 // 判定见 update_trust.go 的 checkUpdateURL）；其余（空串 / 非法 scheme / 非数组）
-// 一律丢弃，返回 nil 表示「未配置任何更新源」。供 update.go 依次容错拉取版本信息用。
+// 一律丢弃，返回 nil 表示“未配置任何更新源”。供 update.go 依次容错拉取版本信息用。
 func (s *Settings) UpdateSites() []string {
 	arr, ok := s.lookup("sites").([]any)
 	if !ok {
@@ -520,7 +520,7 @@ func (s *Settings) UpdateSites() []string {
 		if str == "" {
 			continue
 		}
-		// 用与下载/清单同一套判定，避免「配置层放行、下载层拒绝」的两套口径。
+		// 用与下载/清单同一套判定，避免“配置层放行、下载层拒绝”的两套口径。
 		if err := urltls.CheckUpdateURL(str); err != nil {
 			continue
 		}
@@ -531,7 +531,7 @@ func (s *Settings) UpdateSites() []string {
 
 // SetSites 直接覆盖本地更新源列表（远程 version.json 下发的 sites 会走这里替换本地）。
 // 调用方应只在远程确实返回了非空 sites 时才调用，避免把本地更新源误清空。
-// 写入前再过滤一次协议：远程下发值等同于不可信输入，这层是「万一上游漏了」的兜底。
+// 写入前再过滤一次协议：远程下发值等同于不可信输入，这层是“万一上游漏了”的兜底。
 func (s *Settings) SetSites(sites []string) {
 	raw := make([]any, 0, len(sites))
 	for _, it := range sites {

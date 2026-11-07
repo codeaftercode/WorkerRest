@@ -28,12 +28,12 @@ func queryQunsState() (state uint32, ok bool) {
 // queryQuietHoursProfile 读 WNF 勿扰档位。
 //
 // **为什么不能只用 SHQueryUserNotificationState**（2026-11-06 真机结论）：Win11 通知中心
-// 手动开「请勿打扰」、以及「开始专注」启动专注会话，都不改变 QUNS（连采 12 秒恒为 5）。
-// QUNS 只描述「系统此刻愿不愿意弹通知横幅」，不描述「用户按没按勿扰」。真正的勿扰档位
+// 手动开“请勿打扰”、以及“开始专注”启动专注会话，都不改变 QUNS（连采 12 秒恒为 5）。
+// QUNS 只描述“系统此刻愿不愿意弹通知横幅”，不描述“用户按没按勿扰”。真正的勿扰档位
 // 放在 WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED 里；这也是 YASB 等桌面工具在用的判据。
 //
 // 未文档化接口，所以任何异常（导出函数不存在、状态不存在、权限不足、数据长度不足）
-// 都只返回「不支持」，由调用方整拍跳过勿扰这一条，不影响 QUNS 那一条。
+// 都只返回“不支持”，由调用方整拍跳过勿扰这一条，不影响 QUNS 那一条。
 func queryQuietHoursProfile() (uint32, bool) {
 	if err := procNtQueryWnfStateData.Find(); err != nil {
 		return 0, false

@@ -8,14 +8,14 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
 
-// 项目自身的 MIT 许可证：整份正文嵌进 exe，关于页「许可条款」弹窗读的就是这一份。
+// 项目自身的 MIT 许可证：整份正文嵌进 exe，关于页“许可条款”弹窗读的就是这一份。
 //
 // 为什么内嵌，而不是便携目录里放个 LICENSE 文件：
-//   - MIT 的义务是「随软件的所有副本附带版权声明与许可正文」。最常见的分发方式是
+//   - MIT 的义务是“随软件的所有副本附带版权声明与许可正文”。最常见的分发方式是
 //     用户把 rest.exe 单独拷给同事 —— 散放的文件当场就丢了，嵌进 exe 才随行。
 //   - 目录里那份还有个更实际的毛病：更新包 rest.zip 只换 exe，装过一版的人永远停在
-//     首装那天的 LICENSE 快照上。内嵌的这份跟着版本走，不会「一致地过期」。
-//   - 内嵌不等于可获取：所以同时给了「关于页 → 许可条款」入口与本文件的另存为导出。
+//     首装那天的 LICENSE 快照上。内嵌的这份跟着版本走，不会“一致地过期”。
+//   - 内嵌不等于可获取：所以同时给了“关于页 → 许可条款”入口与本文件的另存为导出。
 //
 // 内嵌源是本目录下的 LICENSE，它是仓库根那份的逐字节副本（go:embed 不能跨目录引用
 // `../LICENSE`）。两者一致由 license_test.go 与 make_portable.check_license() 双向钉住：
@@ -28,7 +28,7 @@ var projectLicense string
 // 打开 —— 仓库里那份叫 LICENSE（无后缀）是惯例，导出给用户看的那份不必跟着惯例。
 const licenseFileName = "LICENSE.txt"
 
-// GetProjectLicense 返回项目许可全文（关于页「许可条款」弹窗用）。
+// GetProjectLicense 返回项目许可全文（关于页“许可条款”弹窗用）。
 //
 // 返回整份字符串：它是给人读的纯文本，前端用 textContent 写进 <pre> 即可
 // （不走 innerHTML，零注入面）。约 1 KB，比一份提示音还小。
@@ -38,7 +38,7 @@ func (a *App) GetProjectLicense() string {
 
 // ExportProjectLicense 把许可全文另存为纯文本文件。
 //
-// 与「只内嵌」的区别：内嵌证明「随程序带着」，导出证明「用户随时能取出一份完整副本」——
+// 与“只内嵌”的区别：内嵌证明“随程序带着”，导出证明“用户随时能取出一份完整副本”——
 // 要转贴、要留档、要交给法务时，不必从 exe 里扒资源。
 // 写盘用 CRLF（Windows 记事本的兼容性），内容与内嵌文本语义相同。
 //
@@ -70,8 +70,8 @@ func (a *App) ExportProjectLicense() map[string]any {
 
 // licensePayload 导出的字节内容。
 //
-// 抽出来是为了可测：导出要弹原生「另存为」对话框，自动化点不到，
-// 但「到底写什么字节」是这条义务的核心，必须能被单测钉住（见 license_test.go）。
+// 抽出来是为了可测：导出要弹原生“另存为”对话框，自动化点不到，
+// 但“到底写什么字节”是这条义务的核心，必须能被单测钉住（见 license_test.go）。
 func licensePayload() []byte {
 	return []byte(toCRLF(projectLicense))
 }

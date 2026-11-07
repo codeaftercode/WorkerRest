@@ -33,7 +33,7 @@ type supWatchInfo struct {
 //
 // 为什么休息会话也要开：休息窗口里的二阶段（督休专员改成命令语气）原本只监听窗口内的
 // mousemove / keydown，用户切到别的应用继续干活时完全检测不到 —— 用户报的就是这条
-// 「不能只在提醒窗口上检测，要在整个操作系统层面做全局检测」。
+// “不能只在提醒窗口上检测，要在整个操作系统层面做全局检测”。
 //
 // 与 上一版的差异：只有 GetLastInputInfo 一个来源，读不到 tick 时整段不启动。
 func (a *App) ensureSupActivityWatch() {
@@ -66,7 +66,7 @@ func (a *App) ensureSupActivityWatch() {
 				return
 			case <-t.C:
 				// 整拍包进闭包：里面的 continue 一律改写成 return —— 闭包返回就等于
-				// 「这一拍结束」，与 continue 同义，换来一次 panic 只丢一拍。
+				// “这一拍结束”，与 continue 同义，换来一次 panic 只丢一拍。
 				logx.GuardRun("sup.watch", func() {
 					a.mu.Lock()
 					w := &a.supWatch
@@ -102,7 +102,7 @@ func (a *App) ensureSupActivityWatch() {
 	}()
 }
 
-// broadcastSupActive 把「用户仍在操作键鼠」广播给所有提醒窗口，返回实际广播的次数。
+// broadcastSupActive 把“用户仍在操作键鼠”广播给所有提醒窗口，返回实际广播的次数。
 // Go 侧用 Event.Emit("sup:active") 全局广播（不按窗口定向，见文件头注释）。
 // 单测里没有 Wails 应用对象（a.app == nil）：计数照走、广播跳过，不让后台 goroutine 炸测试进程。
 func (a *App) broadcastSupActive() int {
@@ -132,7 +132,7 @@ func (a *App) releaseSupActivityWatch() {
 	close(ch)
 }
 
-// reminderPresentLocked 还有没有「需要盯全局输入」的提醒在场。
+// reminderPresentLocked 还有没有“需要盯全局输入”的提醒在场。
 // 窗口之外还要看**会话**：无头 server 模式没有原生窗口，只有会话；
 // 有会话在跑就说明休息还没结束，轮询不能停。
 func (a *App) reminderPresentLocked() bool {
@@ -163,7 +163,7 @@ func (a *App) TakeoutCurrent(win string) *model.TakeoutInfo {
 	return a.takeoutCurrent
 }
 
-// PreviewTakeout 预览外卖提醒窗口：有配置的时间就预览「下一条」，否则用当前时刻
+// PreviewTakeout 预览外卖提醒窗口：有配置的时间就预览“下一条”，否则用当前时刻
 //
 // 真实外卖提醒窗口在场时拒弹（返回 previewBusyReply）：showTakeoutWindowsAt 会把
 // a.takeoutWins 整批换成新建的窗口，屏幕上那扇真实的提醒窗引用就此丢掉，再也关不掉，
@@ -190,8 +190,8 @@ func (a *App) realTakeoutActive() bool {
 }
 
 // TakeoutAction 外卖窗口上的三个按钮：已点好 / 不点了 / 推迟。
-// 「推迟」不在窗口里排定时器，而是记一笔交给每秒的 tick（见 checkTakeoutReminders）；
-// 预览态只关窗不记账，免得「看一眼预览」把真实提醒推后。
+// “推迟”不在窗口里排定时器，而是记一笔交给每秒的 tick（见 checkTakeoutReminders）；
+// 预览态只关窗不记账，免得“看一眼预览”把真实提醒推后。
 func (a *App) TakeoutAction(win, action string) error {
 	a.mu.Lock()
 	cur := a.takeoutCurrent

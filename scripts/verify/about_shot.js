@@ -1,5 +1,5 @@
 /**
- * 验证用截图：打开设置页 → 进入「关于」页 → 截取整个关于内容（浅色 + 深色），
+ * 验证用截图：打开设置页 → 进入“关于”页 → 截取整个关于内容（浅色 + 深色），
  * 并读出关键字段文本，确认关于页与设置页其它标签页样式一致（统一 .card / .row / .btn 体系）。
  * 仅用于本地验证，不写入真实配置。由 verify_about.py 起服务后调用（WR_BASE / WR_OUT 注入）。
  */
@@ -44,7 +44,7 @@ async function shotEl(page, selector, name) {
   await set.evaluate(`(function(){var b=document.querySelector('#nav .nav-item[data-tab="about"]');if(b)b.click();})()`);
   await delay(1500); // 等 appInfo() 异步回填版本 / 发布时间
   // 截整个 #tab-about 前先回到内容区顶部：切换标签页会保留上一个页面的 scrollTop，
-  // 否则 element.screenshot 只截到「视口内那一段」，顶部横幅会被挤出画面。
+  // 否则 element.screenshot 只截到“视口内那一段”，顶部横幅会被挤出画面。
   await set.evaluate(`(function(){var c=document.getElementById('content');if(c)c.scrollTop=0;})()`);
   await delay(200);
 
@@ -54,7 +54,7 @@ async function shotEl(page, selector, name) {
   await set.screenshot({ path: path.join(OUT, "verify_settings_viewport.png") });
   console.log("[shot] verify_settings_viewport -> viewport");
 
-  // 开源鸣谢弹窗：入口在「软件信息」卡片第二行（#d-notices）。
+  // 开源鸣谢弹窗：入口在“软件信息”卡片第二行（#d-notices）。
   // 截图 + 读出实测样式，用来确认它与其它弹窗（同一套 .modal / .cf-box 体系）完全一致，
   // 且正文真的读到了（不是空壳）。
   await set.evaluate(`(function(){var b=document.getElementById('d-notices');if(b)b.click();})()`);
@@ -82,7 +82,7 @@ async function shotEl(page, selector, name) {
       closeText: (document.getElementById('nt-close')||{}).textContent,
       rowsCount: rows.length,
       rowHeights: Array.prototype.map.call(rows, function(r){return Math.round(r.getBoundingClientRect().height);}),
-      // 「版本 | 发布时间」同一行：核对主值与注脚的字号/字重差、分隔符颜色，以及是否真的只有一行
+      // “版本 | 发布时间”同一行：核对主值与注脚的字号/字重差、分隔符颜色，以及是否真的只有一行
       verRow: (function(){
         var n=document.getElementById('d-version-val'), b=document.getElementById('d-build-time');
         var s=document.querySelector('#tab-about .ver-sep');
@@ -113,7 +113,7 @@ async function shotEl(page, selector, name) {
   await delay(600);
   await shotEl(set, "#notices-modal .nt-box", "verify_notices_dark");
   // 再来一张整视口：弹窗是 position:fixed，元素截图的裁剪在滚动后会带伪影，
-  // 视口截图才能确认「遮罩 + 居中 + 贴合主题」的真实观感
+  // 视口截图才能确认“遮罩 + 居中 + 贴合主题”的真实观感
   await set.screenshot({ path: path.join(OUT, "verify_notices_dark_viewport.png") });
   console.log("[shot] verify_notices_dark_viewport -> viewport");
   await set.evaluate(`(function(){var b=document.getElementById('nt-close');if(b)b.click();})()`);
@@ -132,7 +132,7 @@ async function shotEl(page, selector, name) {
     var quitColor = quit ? getComputedStyle(quit).color : null;
     var dangerColor = getComputedStyle(ref).color;
     ref.remove();
-    // 数据隐私说明文案：应已去掉「全部功能」
+    // 数据隐私说明文案：应已去掉“全部功能”
     var noteText='';
     var nr=tab.querySelector('.note .note-row span');
     if(nr) noteText=nr.textContent;
@@ -165,7 +165,7 @@ async function shotEl(page, selector, name) {
       hasManual: !!document.getElementById('d-manual'),
       // 各页面标题（h2）应全部删除
       h2Total: document.querySelectorAll('#content .tab h2').length,
-      // 软件信息卡片头的「版本与更新设置」副标题应删除
+      // 软件信息卡片头的“版本与更新设置”副标题应删除
       versionSubtitleGone: !Array.prototype.some.call(tab.querySelectorAll('.card-head p'), function(p){return p.textContent.indexOf('版本与更新设置')>=0;}),
       // 退出软件红色校验
       quitColor: quitColor,

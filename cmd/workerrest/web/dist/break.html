@@ -8,7 +8,7 @@
   <title>休息一下</title>
   <link rel="stylesheet" href="./break.css" />
   <!-- 早期脚本：首帧渲染前根据 ?sup 决定窗口初始可见性。sup=1（启用督休专员）时
-       整窗先透明，等立绘加载完成再淡入，避免「先无立绘、后有立绘」闪烁；sup=0
+       整窗先透明，等立绘加载完成再淡入，避免“先无立绘、后有立绘”闪烁；sup=0
        或缺失时立即显示（无立绘即正确态）。
        必须是外链：上面 CSP 的 default-src 'self' 会拦掉内联脚本 —— 这段以前就是内联，
        从加上 CSP 起一直被拦、从未执行过（2026-10-25 修复）。说明见 break-early.js。 -->
@@ -18,12 +18,12 @@
   <div id="app">
     <div id="vignette"></div>
     <div id="preview-badge" class="hidden">预览模式 · 点击任意处关闭</div>
-    <!-- 「提前结束」固定在窗口顶部正中，与 #preview-badge 同一位置。两者互斥显示：
+    <!-- “提前结束”固定在窗口顶部正中，与 #preview-badge 同一位置。两者互斥显示：
          预览时只显示 badge（点任意处即可关），真实休息时只显示它。
-         文案（含快捷键）由 break.js 按「设置 → 快捷键」的 endEarly 动态填充。 -->
+         文案（含快捷键）由 break.js 按“设置 → 快捷键”的 endEarly 动态填充。 -->
     <a href="#" id="skip-link" class="skip-link hidden">提前结束</a>
     <!-- 督休专员题名：竖排金色宋体，钉在立绘头部左侧的空白区（不再进对话条）。
-         位置与字号由 break.js 的 layoutRoleTitle() 按「零遮挡」实测后写进 inline style，
+         位置与字号由 break.js 的 layoutRoleTitle() 按“零遮挡”实测后写进 inline style，
          所以它必须和 #figure 处在同一定位上下文（#app），不能留在 .content 里——
          留在框内会被框的 overflow 与 22vh 高度一起约束住。 -->
     <div class="dialog-name hidden" id="dialog-name"></div>
@@ -34,19 +34,19 @@
       <div class="figure hidden" id="figure">
         <div class="trim" id="figure-trim">
           <div class="gaze" id="gaze">
-            <!-- 镜像层：勾选「水平翻转」时整层 scaleX(-1)。单独一层是为了不干扰
+            <!-- 镜像层：勾选“水平翻转”时整层 scaleX(-1)。单独一层是为了不干扰
                  img 上的语气动画（凑近 / 脉动）与 .trim 的透明边距补偿 -->
             <div class="mirror"><img id="figure-img" alt="" /></div>
           </div>
         </div>
       </div>
-      <!-- 有督休专员时 .content 由脚本/样式变身「游戏对话画面」的底部全宽对话框：
+      <!-- 有督休专员时 .content 由脚本/样式变身“游戏对话画面”的底部全宽对话框：
            名字标签在左上角凸出，台词大字、提醒内容次要；倒计时环（.bar）脱离
-           文档流，中心落在「立绘右缘~窗口右缘」「对话框顶~窗口顶」两个中点的
+           文档流，中心落在“立绘右缘~窗口右缘”“对话框顶~窗口顶”两个中点的
            交点上（位置由脚本写入）。
            无督休专员时倒计时环精确居中于屏幕正中央，提醒名称在环正上方、
            提醒内容落在环下方到窗口底边的区域中央（均以环心为基准）。
-           「提前结束」两种版式都不在环附近，固定挂在窗口顶部正中（见上方 #skip-link）。 -->
+           “提前结束”两种版式都不在环附近，固定挂在窗口顶部正中（见上方 #skip-link）。 -->
       <div class="content" id="content">
         <!-- 台词（短休 / 长休 / 二阶段命令）与提醒内容（自定义提醒）共用同一套排版：
              都挂 .dialog-text，字号/字重/居中/自动换行只在 CSS 里定义一次。

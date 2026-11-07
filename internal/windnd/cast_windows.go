@@ -14,7 +14,7 @@ var (
 )
 
 const (
-	// QDC_ONLY_ACTIVE_PATHS 只取「正在驱动一块屏」的路径。不用 QDC_DATABASE_CURRENT：
+	// QDC_ONLY_ACTIVE_PATHS 只取“正在驱动一块屏”的路径。不用 QDC_DATABASE_CURRENT：
 	// 那条路虽然能直接拿 DISPLAYCONFIG_TOPOLOGY_CLONE，但它与其他 flag 互斥（要单独调一次），
 	// 而且走的是注册表里的持久化拓扑，用户用 SetDisplayConfig 临时改动后可能与现实不同步。
 	qdcOnlyActivePaths = 0x00000002
@@ -79,7 +79,7 @@ type displayPathInfo struct {
 //
 // 两种 flags 组合各试一次：带 QDC_VIRTUAL_MODE_AWARE 才能正确读到虚拟模式下的路径，
 // 但它是 Windows 10 才支持的，老系统（或某些远程会话）会拒绝，这时退回不带 flag 的调用。
-// 这一层降级有意义：投屏检测是「有就说、没有就算了」的功能，不能因为一个可选 flag
+// 这一层降级有意义：投屏检测是“有就说、没有就算了”的功能，不能因为一个可选 flag
 // 就让整个开关在所有机器上失效。
 func queryActivePaths() ([]pathSummary, bool) {
 	for _, flags := range []uint32{qdcOnlyActivePaths | qdcVirtualModeAware, qdcOnlyActivePaths} {
@@ -100,8 +100,8 @@ func queryActivePathsWith(flags uint32) ([]pathSummary, bool) {
 		return nil, false
 	}
 	if nPath == 0 {
-		// 一条活动路径都没有：无头会话 / 远程桌面断开。当成「查到了，但没有输出」，
-		// 而不是失败——失败会让日志天天报「不支持」，掩盖真正的问题。
+		// 一条活动路径都没有：无头会话 / 远程桌面断开。当成“查到了，但没有输出”，
+		// 而不是失败——失败会让日志天天报“不支持”，掩盖真正的问题。
 		return nil, true
 	}
 	if nMode == 0 {
@@ -122,7 +122,7 @@ func queryActivePathsWith(flags uint32) ([]pathSummary, bool) {
 	out := make([]pathSummary, 0, nPath)
 	for i := uint32(0); i < nPath; i++ {
 		p := paths[i]
-		// 只看活动路径：未激活的 path 是「这块屏可以接」的候选拓扑，
+		// 只看活动路径：未激活的 path 是“这块屏可以接”的候选拓扑，
 		// 把它们算进来会把闲置的 HDMI 口当成投屏。
 		if p.flags&displayConfigPathActive == 0 {
 			continue

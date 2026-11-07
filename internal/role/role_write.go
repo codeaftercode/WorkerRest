@@ -17,7 +17,7 @@ import (
 // 与读取侧（role.go）配套，语义对齐 历史源码/supervisor.ts 的
 // saveRoleConfig / deleteRoleDir。
 //
-// 身份是专员名（没有内部 id），所以「写入」有三种情形，别搞混：
+// 身份是专员名（没有内部 id），所以“写入”有三种情形，别搞混：
 //   - WriteRoleFile：按名字写，找不到就建目录（导入 / 首次落盘）；
 //   - WriteRoleFileAt：往**已知目录**里写（改名时必须走这条 —— 改名后按新名反查
 //     是找不到旧目录的，走 WriteRoleFile 会新建一个空壳，把原来的立绘丢下）；
@@ -39,7 +39,7 @@ var supGeomLimits = map[string][2]float64{
 var SupGeomDefault = model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
 
 // NormalizeSupGeom 夹紧并补全一份立绘几何：缺失或越界时回落默认值。
-// flip 只认真正的布尔 true（缺这个字段时一律按「不翻转」）。
+// flip 只认真正的布尔 true（缺这个字段时一律按“不翻转”）。
 func NormalizeSupGeom(raw map[string]any) model.SupGeom {
 	pick := func(k string, def float64) float64 {
 		lim, ok := supGeomLimits[k]
@@ -73,7 +73,7 @@ func NormalizeSupGeom(raw map[string]any) model.SupGeom {
 // ReadRoleFile 读一个督休专员的 meta.json 并**归一化**（不存在 / 解析失败返回零值 + false）。
 //
 // 归一化不能省：读出来就是为了改一处再整体写回，若拿原始内容写回，缺字段的督休专员
-// 会被写成「image: ""」，下次扫描再回落是能救回来，但中间任何一次读取者（预览、
+// 会被写成“image: ""”，下次扫描再回落是能救回来，但中间任何一次读取者（预览、
 // 会话组装）都会看到不合法的配置。与 上一版的 saveRoleFile → normalizeRoleFile 同路。
 func ReadRoleFile(root, name string) (RoleFile, bool) {
 	var cfg RoleFile
@@ -143,7 +143,7 @@ func WriteRoleFile(root, name string, cfg RoleFile) error {
 
 // RenameRoleDir 把督休专员目录改名成新名字的投影（去重后）。返回改后的目录路径。
 //
-// 目录名与名字不一致是允许的（名字里带 `/` 之类），所以这只是一个「让目录看起来对」
+// 目录名与名字不一致是允许的（名字里带 `/` 之类），所以这只是一个“让目录看起来对”
 // 的动作：失败只记日志，不算保存失败 —— meta.json 已经写好，按名字反查照常工作。
 func RenameRoleDir(root, dir, newName string) string {
 	base := SanitizeRoleDirName(newName)
@@ -160,7 +160,7 @@ func RenameRoleDir(root, dir, newName string) string {
 
 // UniqueRoleDir 在 root 下找一个不与现有目录冲突的名称化目录（返回完整路径）：
 // base 已存在（且不是 exclude）就加 (2)/(3) 后缀去重。exclude 是当前督休专员正在用的目录，
-// 改名时跳过自己，避免「同名 → 自指」误判成已占用。
+// 改名时跳过自己，避免“同名 → 自指”误判成已占用。
 func UniqueRoleDir(root, base, exclude string) string {
 	base = SanitizeRoleDirName(base)
 	cand := base
@@ -227,8 +227,8 @@ func ReplaceRoleImage(root, name, src string) bool {
 	}
 	// 旧预览图**全部删掉**（而不是覆盖）：新立绘的缩略图由渲染层事后重新生成
 	// （settings.js → SaveRolePreview）。留着旧副本，磁贴上就会显示上一张图 ——
-	// 那正是「preview 直接复制原图」时代的老毛病。
-	// 先写新立绘、再删旧文件：中途失败也不会落到「既没有立绘也没有预览图」。
+	// 那正是“preview 直接复制原图”时代的老毛病。
+	// 先写新立绘、再删旧文件：中途失败也不会落到“既没有立绘也没有预览图”。
 	for _, pat := range []string{"figure.*", "preview.*"} {
 		if matches, _ := filepath.Glob(filepath.Join(dir, pat)); matches != nil {
 			for _, m := range matches {
@@ -267,7 +267,7 @@ func RemoveRoleDir(root, name string) bool {
 // meta.json 上：**只改传进来的字段**，立绘与预览图文件名等读取侧字段原样保留。
 //
 // 督休专员的名字只做 trim —— 与 supervisor.ts 的 normalizeRoleFile 一致（那里是
-// `String(o.name ?? ”).trim() || fallbackName`）。**不要**套用软件名那套折叠空白 /
+// `String(o.name ?? "").trim() || fallbackName`）。**不要**套用软件名那套折叠空白 /
 // 限长 30 的规则：立绘库磁贴的名字允许更长，折叠空白也会把用户起的名字改样。
 func ApplyRolePatch(base RoleFile, patch map[string]any) RoleFile {
 	if v, ok := patch["name"].(string); ok {

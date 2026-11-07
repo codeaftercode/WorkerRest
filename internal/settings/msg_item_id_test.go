@@ -25,7 +25,7 @@ func itemIDsOf(items []any) []string {
 	return out
 }
 
-// 条目 id 就应该是「本列表内的序号」：短、可读、可手改。
+// 条目 id 就应该是“本列表内的序号”：短、可读、可手改。
 func TestNextSeqID(t *testing.T) {
 	cases := []struct {
 		name string
@@ -144,7 +144,7 @@ func TestNormalizeCustomBreaksConverges(t *testing.T) {
 		},
 	}
 	if !normalizeCustomBreaks(raw) {
-		t.Fatal("有老格式 id，应当报告「已重编号」")
+		t.Fatal("有老格式 id，应当报告“已重编号”")
 	}
 	cb := raw["customBreaks"].([]any)[0].(map[string]any)
 	msg := cb["messages"].(map[string]any)
@@ -175,7 +175,7 @@ func TestNormalizeLoadRenumbersItemIDs(t *testing.T) {
 	}
 	_, renumbered, _ := normalizeLoad(raw)
 	if !renumbered {
-		t.Fatal("老格式条目 id 应当被判为「已重编号」，否则不会回写盘")
+		t.Fatal("老格式条目 id 应当被判为“已重编号”，否则不会回写盘")
 	}
 	rm := raw["reminderMessages"].(map[string]any)
 	short := rm["short"].(map[string]any)

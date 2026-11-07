@@ -8,7 +8,7 @@
     字符串非空、OriginalFilename 与 exe 名一致
   - RT_MANIFEST(24) —— 应用清单在，且声明了 longPathAware 与 supportedOS（Win10/11）
 
-不校验「签名」：签名（Authenticode）需要证书，不在本脚本范围；本脚本只验证资源。
+不校验“签名”：签名（Authenticode）需要证书，不在本脚本范围；本脚本只验证资源。
 
 用法：python scripts/verify_windows_res.py <exe> [--expect-version X.Y.Z[.W]]
   --expect-version  可选：额外断言 FileVersion 的数字段等于给定值（比较到给定段数）。
@@ -93,10 +93,10 @@ def _collect(data, rsrc_rva, rva2off):
 def _version_strings(data, rva2off, rva, size):
     """解析 VS_VERSIONINFO 的字符串字段，返回 {key: value}。
 
-    goversioninfo 生成的 StringTable 是「key\\0\\0value\\0\\0…」连续排列的紧凑格式
+    goversioninfo 生成的 StringTable 是“key\\0\\0value\\0\\0…”连续排列的紧凑格式
     （非标准的 String 块头嵌套），逐块解析容易走偏。这里用最稳的方式：把整段
     VERSIONINFO 按 UTF-16LE 解码，再用正则提取所有已知键名后紧跟的值。
-    键名是固定集合，正则按「键名 + 双空终止 + 值 + 双空终止」匹配，天然对齐。
+    键名是固定集合，正则按“键名 + 双空终止 + 值 + 双空终止”匹配，天然对齐。
     """
     off = rva2off(rva)
     blob = data[off:off + size]

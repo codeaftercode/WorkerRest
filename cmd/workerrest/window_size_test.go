@@ -11,19 +11,19 @@ import (
 // 设置窗口尺寸策略的回归。
 //
 // 这层值得钉死的原因：尺寸配错**不会报错也不会崩** —— 窗口照开，只是每次都比上次小一点、
-// 或者「自动记录」明明勾着却没生效。没有断言的话只能靠人一次次关窗开窗去看。
+// 或者“自动记录”明明勾着却没生效。没有断言的话只能靠人一次次关窗开窗去看。
 
 // TestDefaultWindowSizeIsMeasured 出厂默认尺寸必须等于实测值，且默认值与最小尺寸自洽。
 //
 // 874 / 857 的来源见 window_size.go 顶部：874 是用户 2026-10-29 拖出来的宽度；857 是
-// 2026-10-31 关于页把「发布时间」并进版本行、删掉独立一行后重测的「恰好不出垂直滚动条」高度。
+// 2026-10-31 关于页把“发布时间”并进版本行、删掉独立一行后重测的“恰好不出垂直滚动条”高度。
 // 高度没有随手放大的余地：probe_window_size.py 的高度细扫里，857 是第一档 overflow=0，
 // 再低就滚（verify_window_size.py 断言出厂高度不滚、-10px 就滚）。
 // 最小宽度 760 也是实测的：740 宽时 .row.field 横向溢出 2px、750 起归零。
 func TestDefaultWindowSizeIsMeasured(t *testing.T) {
 	// 出厂唯一源 = internal/settings 内嵌的 default_settings.json（见 settings.go 的
 	// //go:embed）。这里读它而不是读模块根那份同名文件，两者内容一致，但内嵌这份
-	// 才是「恢复默认设置」真正下发的那份 —— 读它才能钉住「下发的默认尺寸 == 实测值」。
+	// 才是“恢复默认设置”真正下发的那份 —— 读它才能钉住“下发的默认尺寸 == 实测值”。
 	raw := settings.DefaultSettingsJSON()
 	var m map[string]any
 	if err := json.Unmarshal(raw, &m); err != nil {
@@ -39,7 +39,7 @@ func TestDefaultWindowSizeIsMeasured(t *testing.T) {
 	if got := win["height"]; got != float64(settings.SettingsWindowDefaultHeight) {
 		t.Fatalf("window.height = %v，期望实测默认高度 %d", got, settings.SettingsWindowDefaultHeight)
 	}
-	// 出厂默认「自动记录」= 开：首次启动用默认尺寸，之后沿用上次的
+	// 出厂默认“自动记录”= 开：首次启动用默认尺寸，之后沿用上次的
 	if got, ok := win["rememberSize"].(bool); !ok || !got {
 		t.Fatalf("window.rememberSize = %v，期望 true", win["rememberSize"])
 	}
@@ -55,7 +55,7 @@ func TestDefaultWindowSizeIsMeasured(t *testing.T) {
 	}
 }
 
-// TestWindowSizePolicy 四种组合：记没记过 × 勾没勾「自动记录」。
+// TestWindowSizePolicy 四种组合：记没记过 × 勾没勾“自动记录”。
 func TestWindowSizePolicy(t *testing.T) {
 	cases := []struct {
 		name     string
@@ -187,7 +187,7 @@ func TestSaveWindowLastSizePersists(t *testing.T) {
 	if win["lastWidth"] != float64(1024) || win["lastHeight"] != float64(800) {
 		t.Fatalf("落盘的 lastWidth/lastHeight = %v/%v，期望 1024/800", win["lastWidth"], win["lastHeight"])
 	}
-	// 默认尺寸不能被「上次尺寸」顶掉（两对数各管一头）
+	// 默认尺寸不能被“上次尺寸”顶掉（两对数各管一头）
 	if win["width"] != float64(874) || win["height"] != float64(858) {
 		t.Fatalf("默认尺寸被改动了: %v/%v", win["width"], win["height"])
 	}

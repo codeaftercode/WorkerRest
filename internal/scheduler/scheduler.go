@@ -1,5 +1,5 @@
-// Package scheduler 是休息调度状态机：每秒一拍地推进「还剩多久休息、要不要弹窗、
-// 用户暂停/跳过/推迟之后时钟怎么走」，并维护提前提示与外卖提醒的一次性触发点。
+// Package scheduler 是休息调度状态机：每秒一拍地推进“还剩多久休息、要不要弹窗、
+// 用户暂停/跳过/推迟之后时钟怎么走”，并维护提前提示与外卖提醒的一次性触发点。
 //
 // 它持有状态（倒计时锚点、跳过集合、暂停时刻）并加锁，但**不直接操作窗口**：所有
 // 需要界面动作的时刻都以回调/返回值交给 cmd 层执行，这样状态机可以在无 GUI 的测试里
@@ -44,48 +44,48 @@ type Scheduler struct {
 	mu    sync.Mutex
 	state model.SchedulerState
 	// consumed 已消费的触发线 occurrence（键 = occurrenceKey）：开始一次休息
-	// （无论到点触发还是「立即休息」）就把它记下，replan 时不再返回同一次安排。
-	// 否则固定时刻 12:00 的休息在提前窗点「立即休息」、又马上「提前结束」后，
+	// （无论到点触发还是“立即休息”）就把它记下，replan 时不再返回同一次安排。
+	// 否则固定时刻 12:00 的休息在提前窗点“立即休息”、又马上“提前结束”后，
 	// replan 会把还没到点的 12:00 原样排回来——提前窗与提醒窗各再弹一次。
-	// 「跳过」同样消费当前 occurrence（固定线不消费的话，跳过等于没跳）。
+	// “跳过”同样消费当前 occurrence（固定线不消费的话，跳过等于没跳）。
 	consumed map[string]bool
 	// anchorIv 各倒计时身份当前锚点的产生间隔（ms，键 = 休息身份）：replan 沿用旧锚点
 	// 的判据之一 —— 间隔没变才沿用，改了间隔立刻按新间隔重新起算（见 countdownAnchor）。
 	// 每次 replan 按新池同步（syncAnchorIvLocked）；reanchorCountdown / resetCycle 各自维护。
 	anchorIv map[string]int64
-	// pauseSkipped 暂停期间已按「跳过」记过账的 occurrence（键 = occurrenceKey）。
-	// 暂停态每半秒一跳都会重算「有没有到点的自定义提醒」，没有这份去重会重复记账；
+	// pauseSkipped 暂停期间已按“跳过”记过账的 occurrence（键 = occurrenceKey）。
+	// 暂停态每半秒一跳都会重算“有没有到点的自定义提醒”，没有这份去重会重复记账；
 	// 完全恢复后清空（下一段暂停重新计），键里带时刻本身也不会串到别的 occurrence。
 	pauseSkipped map[string]bool
-	// pauseFired 暂停期间「正常提醒」的自定义提醒已照常弹过的 occurrence
+	// pauseFired 暂停期间“正常提醒”的自定义提醒已照常弹过的 occurrence
 	//（键 = occurrenceKey；提前提示小窗另加 "|pre" 后缀，与真窗分开去重）。
 	// 与 pauseSkipped 同生命周期：完全恢复时一起清空。
 	pauseFired map[string]bool
-	// postponed 暂停期间被「推迟提醒」推后的 occurrence（键 = occurrenceKey，值 = 推到
+	// postponed 暂停期间被“推迟提醒”推后的 occurrence（键 = occurrenceKey，值 = 推到
 	// 哪一刻）。这份表**不随 resume 清空**：推迟是延后，恢复后还要按推迟后的时刻弹。
 	// 自动暂停是例外：那种暂停下不推迟、只跳过，所以表里不会留下它的条目。
 	postponed map[string]*postponedBreak
 	// pauseHadAuto 这一段暂停里出现过至少一条自动原因（非 manual）。
-	// 决定恢复时怎么对待时钟：自动原因 = 用户没主动要求暂停，按「离开」口径重锚
+	// 决定恢复时怎么对待时钟：自动原因 = 用户没主动要求暂停，按“离开”口径重锚
 	// 内置倒计时；手动暂停 = 用户主动按的，短暂暂停不吞倒计时进度，仍按平移处理。
 	pauseHadAuto bool
 	// pauseTimed 这一段暂停是**定时**手动暂停（PauseUntil 设过到期时刻）。
-	// 恢复时也按「离开」口径重锚：定时暂停表达的是「接下来一段时间我不工作」，
-	// 回来重新计一个完整周期才合理。更要紧的是跨夜场景 —— 晚上设「到明天」、
+	// 恢复时也按“离开”口径重锚：定时暂停表达的是“接下来一段时间我不工作”，
+	// 回来重新计一个完整周期才合理。更要紧的是跨夜场景 —— 晚上设“到明天”、
 	// 零点前几分钟合盖睡觉，空闲检测还没来得及挂上就到了期；不重锚的话，第二天
-	// 开机会接着昨夜冻结的剩余时间走，几分钟后就弹「该休息了」。
+	// 开机会接着昨夜冻结的剩余时间走，几分钟后就弹“该休息了”。
 	pauseTimed bool
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
 
-	// lastTickAt 上一次 onTick 的墙钟时刻：用来发现「两次 tick 之间过了很久」——
+	// lastTickAt 上一次 onTick 的墙钟时刻：用来发现“两次 tick 之间过了很久”——
 	// 睡眠 / 休眠 / 系统时间被大幅调整时，倒计时会在醒来第一刻全部到点，
 	// 不处理就会立刻弹一个休息窗口（用户刚开机就被要求休息）。
 	lastTickAt int64
 }
 
-// postponedBreak 暂停期间被「推迟提醒」推后的一次自定义提醒。
+// postponedBreak 暂停期间被“推迟提醒”推后的一次自定义提醒。
 // at = 原始 occurrence 时刻（startBreakAt 的 consumed 去重键用），dueAt = 推迟后的弹出时刻。
 type postponedBreak struct {
 	kind  string
@@ -96,16 +96,16 @@ type postponedBreak struct {
 // nowMs 当前时刻（毫秒时间戳，与 JS 的 Date.now() 同基准）
 func nowMs() int64 { return time.Now().UnixMilli() }
 
-// PauseReasonIdle 空闲暂停的原因键。它唯一不参与「用户仍在用电脑」的 busy 判定
+// PauseReasonIdle 空闲暂停的原因键。它唯一不参与“用户仍在用电脑”的 busy 判定
 // （见 pausedForBusyReason）：手动 / 勿扰 / 指定应用占用都会让空闲判定失效，
 // 只有 idle 自己能解开离开态。触发方（main 包的系统监视）用这个常量传 pause/resume。
 const PauseReasonIdle = "idle"
 
-// PauseReasonManual 手动暂停的原因键（托盘 / 设置页 / 快捷键点的「暂停休息」）。
+// PauseReasonManual 手动暂停的原因键（托盘 / 设置页 / 快捷键点的“暂停休息”）。
 // 它与上面那条 idle 是仅有的两个由调度器自己命名的键；勿扰 / 全屏 / 投屏 / 应用占用
 // 的原因名定义在 main 包的 sys_watch.go（那边负责探测，名字就跟着探测走）。
 //
-// 「是不是自动原因」的判据只有一个：**不等于 manual 就是自动**。所以新增一条自动链路
+// “是不是自动原因”的判据只有一个：**不等于 manual 就是自动**。所以新增一条自动链路
 // 时只要起个中文原因名传进 Pause，清场、跳过、恢复重锚这一整套自动语义自动生效，
 // 不需要再回调度器登记。
 const PauseReasonManual = "manual"
@@ -115,7 +115,7 @@ const PauseReasonManual = "manual"
 // 判据集中在函数里而不是散着写 `reason != "manual"`：新增原因时默认落在自动一侧
 // （更保守的那套语义），要归入手动必须显式把它加进这里的例外。
 //
-// 注意它与「条件消失是否自动恢复」**不是同一件事**：那是 App 层的
+// 注意它与“条件消失是否自动恢复”**不是同一件事**：那是 App 层的
 // autoResumeOnClear（见 cmd/workerrest/sys_watch.go），空闲与应用占用即使自动恢复，
 // 也仍然是自动原因。
 func IsAutoPauseReason(reason string) bool {
@@ -161,14 +161,14 @@ func (s *Scheduler) Stop() {
 }
 
 // Start 启动调度循环：重置周期后跑后台循环（生产启动时调一次）。循环体在 Loop 内，
-// 每一跳都由 logx.GuardRun 兜底，这里只负责「重置 + 起 goroutine」。
+// 每一跳都由 logx.GuardRun 兜底，这里只负责“重置 + 起 goroutine”。
 func (s *Scheduler) Start() {
 	s.ResetCycle()
 	go s.Loop()
 }
 
 // Loop 半秒一跳。上一版 里是两个各 500ms 的定时器（主 tick + 休息窗口到点收窗），
-// 这里合成一跳：休息进行中只看向「该收窗了没」，其余情况走主 tick。
+// 这里合成一跳：休息进行中只看向“该收窗了没”，其余情况走主 tick。
 func (s *Scheduler) Loop() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -185,17 +185,17 @@ func (s *Scheduler) Loop() {
 }
 
 // breakCloseDwellMs：能量蓄满（休息自然到点）后让提醒窗口多停留的毫秒数，
-// 让用户看清「满罐」状态再关窗。只作用于自然到点（onTick 的 due 判定），
-// 手动「提前结束」走 endBreak → finishBreak 不经过这里，立即关窗不受影响。
+// 让用户看清“满罐”状态再关窗。只作用于自然到点（onTick 的 due 判定），
+// 手动“提前结束”走 endBreak → finishBreak 不经过这里，立即关窗不受影响。
 const breakCloseDwellMs int64 = 1000
 
-// tickJumpThresholdMs 两次 tick 的墙钟间隔超过它，就认为中间「时间大跳」过
+// tickJumpThresholdMs 两次 tick 的墙钟间隔超过它，就认为中间“时间大跳”过
 // （睡眠 / 休眠 / 系统时间被调整）。与 stats 的睡眠判定同阈值：60 秒足够挡掉
 // GC、磁盘、系统卡顿这类正常抖动。
 const tickJumpThresholdMs = 60_000
 
 func (s *Scheduler) onTick() {
-	// 时间大跳：这一跳不判任何「到点」——睡眠期间过期的倒计时不该在醒来第一刻补弹，
+	// 时间大跳：这一跳不判任何“到点”——睡眠期间过期的倒计时不该在醒来第一刻补弹，
 	// 统一重排（内置 / 自定义倒计时从头计时，固定线顺延到下一个时刻）。
 	// 暂停中也重排：冻结锚点由 prevCountdownAnchorsLocked 保住，不会被清掉。
 	tickNow := nowMs()
@@ -215,19 +215,19 @@ func (s *Scheduler) onTick() {
 	clockFrozen := s.pauseFreezesClockLocked()
 	// 蓄能容器：到点（能量蓄满）后多停留 breakCloseDwellMs 再关窗
 	breakDue := inBreak && s.state.BreakEndsAt > 0 && nowMs() >= s.state.BreakEndsAt+breakCloseDwellMs
-	// 暂停期间：短 / 长休息保持原状（不提醒、不记账）；自定义提醒按「暂停休息时」的
+	// 暂停期间：短 / 长休息保持原状（不提醒、不记账）；自定义提醒按“暂停休息时”的
 	// 处置分派 —— 跳过（pausedSkip 记一笔跳过）、正常提醒（pausedFire 照常弹窗）、
 	// 推迟提醒（pausedPostpone 往后推，推完仍暂停就再推）。
 	//
 	// 自动原因（空闲 / 勿扰 / 全屏 / 投屏 / 应用占用）是例外：**一律按跳过**，不看
-	// 「暂停休息时」的配置。那不是用户自己要的暂停，是软件判定他现在不该被打断；
+	// “暂停休息时”的配置。那不是用户自己要的暂停，是软件判定他现在不该被打断；
 	// 这段时间到点的提醒弹出来就是打扰，攒到恢复后补弹则是把积压一次倒出来。
 	// 手动暂停仍按用户配的处置走 —— 那是他自己按的暂停，配置该怎么表达就怎么走。
 	if paused {
 		s.mu.Unlock()
 		if inBreak {
 			// 暂停期间弹出来的自定义提醒仍要按点收窗，否则窗口会一直挂着；
-			// 暂停中「立即休息」主动开始的内置休息同理（clockFrozen=false）——
+			// 暂停中“立即休息”主动开始的内置休息同理（clockFrozen=false）——
 			// 少这一条，内置休息窗口会一直挂到用户恢复暂停为止。
 			// 暂停前就在进行的短 / 长休息保持冻结（恢复时整体平移）。
 			if breakDue && !clockFrozen {
@@ -253,7 +253,7 @@ func (s *Scheduler) onTick() {
 		}
 		return
 	}
-	// 暂停期间被「推迟提醒」推到现在的提醒：到点就弹（推迟是延后，不是吞掉）。
+	// 暂停期间被“推迟提醒”推到现在的提醒：到点就弹（推迟是延后，不是吞掉）。
 	// flushPostponed 自己加锁，这里先把进入本函数时拿的那把锁放开，之后再拿回来
 	// 继续走下面的正常触发线。
 	s.mu.Unlock()
@@ -268,13 +268,13 @@ func (s *Scheduler) onTick() {
 	nextType := s.state.NextType
 	nextAt := s.state.NextAt
 	now := nowMs()
-	// 提前把当前 NextType 的配置取出来：既用于「提前提示」阶段判定，也用于下面的
+	// 提前把当前 NextType 的配置取出来：既用于“提前提示”阶段判定，也用于下面的
 	// 禁用项竞态兜底（这条休息可能刚被用户在设置页关闭，replan 还没跑）。
 	cfg, cfgOK := s.host.CfgSnapshot().BreakByID(nextType)
 	preNotifyMs := int64(0)
 	if s.state.Phase == "idle" {
 		// 该提醒已被用户在设置页关闭（禁用项正常路径上由 replan 从挂起线剔除，
-		// 这里再卡一道：既不进「提前提示」阶段、也绝不会到点触发，杜绝竞态下误提醒）。
+		// 这里再卡一道：既不进“提前提示”阶段、也绝不会到点触发，杜绝竞态下误提醒）。
 		// now < nextAt：已到点就直接走下面的 due（开始休息），不再先弹一个 0 秒的提示窗。
 		if cfgOK && cfg.Enabled && cfg.NotifyBeforeMs > 0 && now < nextAt && now >= nextAt-cfg.NotifyBeforeMs {
 			s.state.Phase = "pre"
@@ -291,7 +291,7 @@ func (s *Scheduler) onTick() {
 	if due {
 		if cfgOK && !cfg.Enabled {
 			// 配置刚改、replan 还没跑的竞态下，当前 NextType 已被禁用：重排，
-			// 让它退出「下一个」位置，绝不误弹一个已关闭的提醒。
+			// 让它退出“下一个”位置，绝不误弹一个已关闭的提醒。
 			s.scheduleNext()
 		} else {
 			s.startBreak()
@@ -299,24 +299,24 @@ func (s *Scheduler) onTick() {
 	}
 }
 
-// pausedSkip 暂停期间的「跳过提醒」：自定义提醒在暂停态下到点时不弹任何窗，
-// 直接按「跳过」处理（调一次 host.onBreakSkipped）。
-// **但自定义提醒不进统计**：统计页「休息」这一组四项（完成 / 推迟 / 跳过 / 提前结束）
+// pausedSkip 暂停期间的“跳过提醒”：自定义提醒在暂停态下到点时不弹任何窗，
+// 直接按“跳过”处理（调一次 host.onBreakSkipped）。
+// **但自定义提醒不进统计**：统计页“休息”这一组四项（完成 / 推迟 / 跳过 / 提前结束）
 // 只统计内置短休息与长休息，过滤集中在 App.onBreakSkipped 一处 —— 这里照旧发回调，
 // 免得调度器与宿主各判一次、口径漂移。所以本函数对自定义提醒实际只留下日志与去重。
-// 「推迟提醒」但「可推迟」填了 0 时也落到这里（没有时长可推，见 pauseDisposition）。
+// “推迟提醒”但“可推迟”填了 0 时也落到这里（没有时长可推，见 pauseDisposition）。
 //
 // 为什么只处理自定义提醒：短 / 长休息按需求保持原状（暂停期间不提醒也不记账）；
 // 外卖不走调度器，它自己的每秒 tick 里做同样的事（见 takeout.go 的 skipTakeoutWhilePaused）。
 //
-// 两条触发线的「到点」判定：
+// 两条触发线的“到点”判定：
 //   - 固定时刻线：按分钟匹配（isTimeSlotDue），暂停期间每个到点的时刻各记一次；
 //   - 倒计时线：挂起线代表那一跳，At 已过就是到点了。暂停期间计划被冻结（不再往后排），
 //     所以同一段暂停最多记这一跳。
 //
 // 去重键是 occurrenceKey：暂停态每半秒一跳都会重算一次，没有去重会重复记账。
 //
-// all=true 是「自动暂停」的口径：不看每条提醒自己的「暂停休息时」配置，一律按跳过。
+// all=true 是“自动暂停”的口径：不看每条提醒自己的“暂停休息时”配置，一律按跳过。
 // 自动暂停（勿扰 / 投屏 / 全屏 / 应用占用 / 空闲）不是用户要求的暂停，那段时间里
 // 到点的提醒弹出来就是打扰；推迟也不行 —— 恢复时会把积压的提醒一次倒出来。
 func (s *Scheduler) pausedSkip(all bool) {
@@ -369,11 +369,11 @@ func (s *Scheduler) pausedSkip(all bool) {
 	}
 }
 
-// pauseFirePreSuffix 暂停期间「提前提示小窗」去重键的后缀：同一次 occurrence 的
+// pauseFirePreSuffix 暂停期间“提前提示小窗”去重键的后缀：同一次 occurrence 的
 // 真窗与提前提示各记一次，互不吞掉。
 const pauseFirePreSuffix = "|pre"
 
-// pausedFire 暂停期间「正常提醒」的自定义提醒照常提醒：固定时刻线到点弹提醒窗口、
+// pausedFire 暂停期间“正常提醒”的自定义提醒照常提醒：固定时刻线到点弹提醒窗口、
 // 落在提前区间弹提前提示小窗，倒计时线到点弹提醒窗口；不进跳过统计（与手动跳过区分开）。
 //
 // 每跳最多弹一条（与正常路径一致：一次只开一个提醒窗口），按到点时刻最早的优先，
@@ -412,7 +412,7 @@ func (s *Scheduler) pausedFire() {
 					continue
 				}
 				// 提前提示线：occurrence 按 now+提前量 折算（提前量跨午夜时归次日那一格），
-				// 与真窗用同一把键，才能正确区分「同一天的两个不同 occurrence」。
+				// 与真窗用同一把键，才能正确区分“同一天的两个不同 occurrence”。
 				if nb := cc.NotifyBeforeMs; nb > 0 && plan.IsTimeSlotDue(slot, now, nb) {
 					preAt := plan.SlotOccurrenceAt(slot, nb, now)
 					key := plan.OccurrenceKey(c.ID, preAt) + pauseFirePreSuffix
@@ -424,7 +424,7 @@ func (s *Scheduler) pausedFire() {
 			continue
 		}
 		// 倒计时线：挂起线里这条身份最早的一跳已过点即触发（暂停期间计划被冻结、
-		// 恢复时才整体平移，所以这里认的就是「本来该提醒的那一刻」）。
+		// 恢复时才整体平移，所以这里认的就是“本来该提醒的那一刻”）。
 		for _, l := range s.state.Lines {
 			if l.Type != c.ID || l.Source != "countdown" || l.At > now {
 				continue
@@ -458,7 +458,7 @@ func (s *Scheduler) pausedFire() {
 	s.startBreakAt(pick.id, pick.at)
 }
 
-// pauseDisposition 这条自定义提醒在暂停休息期间的实际处置。把「推迟但没有推迟时长」
+// pauseDisposition 这条自定义提醒在暂停休息期间的实际处置。把“推迟但没有推迟时长”
 // 降级成跳过：没有时长可推，硬推会每跳原地打转、永远不弹。未知取值按默认的推迟。
 func pauseDisposition(c model.BreakConfig) string {
 	switch c.PauseAction {
@@ -475,11 +475,11 @@ func pauseDisposition(c model.BreakConfig) string {
 	return settings.PauseActionPostpone
 }
 
-// pausedPostpone 暂停期间的「推迟提醒」：到点不弹窗，按该提醒的「可推迟（分钟）」
+// pausedPostpone 暂停期间的“推迟提醒”：到点不弹窗，按该提醒的“可推迟（分钟）”
 // 把弹出时间往后推；推完再到期时若仍在暂停休息状态，就继续往后推，如此往复。
 // 推迟不是吞掉：恢复后由 flushPostponed 在推迟后的时刻弹出。
 //
-// 「可推迟」填 0 的配置已经被 pauseDisposition 降级成跳过，这里不会看到。
+// “可推迟”填 0 的配置已经被 pauseDisposition 降级成跳过，这里不会看到。
 func (s *Scheduler) pausedPostpone() {
 	cfg := s.host.CfgSnapshot()
 	now := nowMs()
@@ -537,7 +537,7 @@ func (s *Scheduler) pausedPostpone() {
 	}
 }
 
-// flushPostponed 弹出「暂停期间被推迟、现在到点」的提醒，返回是否弹了一次。
+// flushPostponed 弹出“暂停期间被推迟、现在到点”的提醒，返回是否弹了一次。
 // 每跳最多弹一条（与正常路径一致：一次只开一个提醒窗口），其余下一跳继续。
 func (s *Scheduler) flushPostponed() bool {
 	now := nowMs()

@@ -9,7 +9,7 @@ import (
 )
 
 // 立绘格式换成 webp 后的读取回归（2026-10-23）：meta.json 里写的扩展名与磁盘上的
-// 实际文件不一致时，role.ScanRoles 必须按**实际文件**定位，否则立绘「明明在、却显示不出来」。
+// 实际文件不一致时，role.ScanRoles 必须按**实际文件**定位，否则立绘“明明在、却显示不出来”。
 // 三类情形：完全对齐（webp）、meta.json 落后一拍（写 png、磁盘只有 webp）、
 // meta.json 缺 image 字段（走新默认 figure.webp，但磁盘是老 png）。
 

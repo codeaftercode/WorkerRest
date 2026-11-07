@@ -9,11 +9,11 @@ import (
 	"workerrest/internal/settings"
 )
 
-// plan 包是纯算术层：给定配置与「现在」，算出下一次休息在哪。判据全部是「毫秒时间戳
-// 进、毫秒时间戳出」，所以这里不 sleep、不依赖真实时钟，跑起来是毫秒级的。
+// plan 包是纯算术层：给定配置与“现在”，算出下一次休息在哪。判据全部是“毫秒时间戳
+// 进、毫秒时间戳出”，所以这里不 sleep、不依赖真实时钟，跑起来是毫秒级的。
 //
-// 基准时刻统一取本地 2026-03-12（周四）10:00 —— 周四是为了让「周重复」的用例同时
-// 能覆盖「本周还有」与「要等下周」两种情形。
+// 基准时刻统一取本地 2026-03-12（周四）10:00 —— 周四是为了让“周重复”的用例同时
+// 能覆盖“本周还有”与“要等下周”两种情形。
 
 const (
 	dayMs = int64(24 * 60 * 60 * 1000)
@@ -127,7 +127,7 @@ func TestIsTimeSlotDue(t *testing.T) {
 	if isTimeSlotDue(slot, at(2026, 3, 12, 12, 1), 0) {
 		t.Fatal("差一分钟不该到期")
 	}
-	// 提前量把「到期时刻」整体前移
+	// 提前量把“到期时刻”整体前移
 	if !isTimeSlotDue(slot, at(2026, 3, 12, 11, 50), 10*60_000) {
 		t.Fatal("提前 10 分钟应到期")
 	}
@@ -204,7 +204,7 @@ func TestPreBreakTexts(t *testing.T) {
 	if got := preBreakTitle("喝水"); got != "喝水时间到" {
 		t.Fatalf("得到 %q", got)
 	}
-	// 名称本身以「时间」结尾时不能叠成「喝水时间时间到」
+	// 名称本身以“时间”结尾时不能叠成“喝水时间时间到”
 	if got := preBreakTitle("喝水时间"); got != "喝水时间到" {
 		t.Fatalf("得到 %q", got)
 	}
@@ -212,7 +212,7 @@ func TestPreBreakTexts(t *testing.T) {
 		t.Fatalf("尾部要带前导空格（接在数字后面），得到 %q", got)
 	}
 	if got := preBreakCountdownTail("喝水提醒"); got != " 秒显示喝水提醒" {
-		t.Fatalf("名称已带「提醒」时不该补第二次，得到 %q", got)
+		t.Fatalf("名称已带“提醒”时不该补第二次，得到 %q", got)
 	}
 }
 
@@ -223,7 +223,7 @@ func TestOccurrenceKeyRoundTrip(t *testing.T) {
 	if got := occurrenceKeyAt("short#1234567"); got != 1234567 {
 		t.Fatalf("得到 %d", got)
 	}
-	// 拆不出来一律 0（与 JS 的 Number('')===0 同义），调用方按「不是有效键」处理
+	// 拆不出来一律 0（与 JS 的 Number('')===0 同义），调用方按“不是有效键”处理
 	for _, k := range []string{"", "short", "short#abc", "short#"} {
 		if got := occurrenceKeyAt(k); got != 0 {
 			t.Fatalf("occurrenceKeyAt(%q) 应为 0，得到 %d", k, got)
@@ -573,7 +573,7 @@ func TestExpandCustomCountdown(t *testing.T) {
 		t.Fatalf("应展开成链，得到 %d 项", len(chain))
 	}
 	if chain[1].At != first.At+20_000+1_800_000 {
-		t.Fatalf("步长应为「时长 + 间隔」，得到 %s", time.UnixMilli(chain[1].At))
+		t.Fatalf("步长应为“时长 + 间隔”，得到 %s", time.UnixMilli(chain[1].At))
 	}
 	for _, p := range chain {
 		if !sameLocalDay(p.At, now) {
@@ -727,7 +727,7 @@ func TestIntInAndFmtClock(t *testing.T) {
 		t.Fatal("intIn 判据不符")
 	}
 	if got := fmtClock(0); got != "0" {
-		t.Fatalf("0 是「没有时刻」的哨兵，应原样显示，得到 %q", got)
+		t.Fatalf("0 是“没有时刻”的哨兵，应原样显示，得到 %q", got)
 	}
 	if got := fmtClock(at(2026, 3, 12, 9, 5)); got != "09:05" {
 		t.Fatalf("得到 %q", got)

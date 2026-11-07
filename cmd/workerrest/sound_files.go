@@ -191,8 +191,8 @@ func (a *App) serveBuiltinSound(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, name, st.ModTime(), f)
 }
 
-// allowedSoundPath 白名单校验：只放行「音频目录下的文件」与「当前配置音乐列表里点名的
-// 绝对路径」，其余一律拒绝。返回规范化后的绝对路径。
+// allowedSoundPath 白名单校验：只放行“音频目录下的文件”与“当前配置音乐列表里点名的
+// 绝对路径”，其余一律拒绝。返回规范化后的绝对路径。
 func (a *App) allowedSoundPath(p string) (string, bool) {
 	p = strings.TrimSpace(p)
 	if p == "" || !filepath.IsAbs(p) || !sound.Supported(p) {

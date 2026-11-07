@@ -16,12 +16,12 @@ import (
 // 随包提示音目录（sounds/）的启动体检。
 //
 // 为什么需要它：sounds/ 是 exe 旁的随包目录，用户想加自己的提示音，最自然的动作就是
-// 把文件丢进去 —— 但程序只播「配置里登记过的条目」，丢进去等于没用。反过来的情形更
+// 把文件丢进去 —— 但程序只播“配置里登记过的条目”，丢进去等于没用。反过来的情形更
 // 常见：用户清理磁盘时删掉了某个已登记的文件，配置里就留下一条永远播不出来的死条目
 // （试听点了没反应，界面上还没有任何解释）。
 //
 // 两种都在启动时扫一次，然后**只记录、绝不擅自改配置** —— 由设置页弹窗逐项问用户
-// （与统计文件自愈同一套「先告知、再让用户决定」的口径；开机自启时完全安静）。
+// （与统计文件自愈同一套“先告知、再让用户决定”的口径；开机自启时完全安静）。
 
 // SoundScanFile 扫到的新音频：随包 sounds/ 里有、音乐列表里没登记
 type SoundScanFile struct {
@@ -57,9 +57,9 @@ func (n *SoundScanNotice) empty() bool {
 
 // ---------- 扫描 ----------
 
-// scanSoundDir 扫随包 sounds/，算出「新发现的音频」与「已失效的配置条目」。
+// scanSoundDir 扫随包 sounds/，算出“新发现的音频”与“已失效的配置条目”。
 //
-// 「已登记」= 内置 4 条的固定文件名（无论有没有种进 music 列表，它们都由内置音逻辑
+// “已登记”= 内置 4 条的固定文件名（无论有没有种进 music 列表，它们都由内置音逻辑
 // 直接使用）∪ 配置里 file 为相对名的那些条目。路径比较一律小写（Windows 不区分）。
 func (a *App) scanSoundDir() SoundScanNotice {
 	out := SoundScanNotice{Dir: sound.BuiltinDir()}
@@ -80,7 +80,7 @@ func (a *App) scanSoundDir() SoundScanNotice {
 	}
 
 	// 目录里的新文件。不可播放的一律不收：扩展名不在白名单、0 字节、超过导入上限
-	// —— 与 soundFileUsable 同口径，否则「导入了却播不出」比不提示更糟。
+	// —— 与 soundFileUsable 同口径，否则“导入了却播不出”比不提示更糟。
 	if entries, err := os.ReadDir(out.Dir); err == nil {
 		for _, e := range entries {
 			if e.IsDir() {
@@ -175,11 +175,11 @@ func (a *App) GetSoundScanNotice() map[string]any {
 
 // ImportScannedSounds 把扫到的新音频登记进音乐列表。
 //
-// 本质是「原地登记」：文件本来就在随包目录里，所以不复制、不改名，music[].file 直接
-// 写相对文件名。若改成复制一份副本，原文件会留在目录里 —— 下次启动又被当成「新音频」，
+// 本质是“原地登记”：文件本来就在随包目录里，所以不复制、不改名，music[].file 直接
+// 写相对文件名。若改成复制一份副本，原文件会留在目录里 —— 下次启动又被当成“新音频”，
 // 变成每次开机都要问一遍的循环。
 //
-// 入参只认「这次扫出来过」的文件名：前端传别的值一律丢弃，避免任意字符串被写进配置。
+// 入参只认“这次扫出来过”的文件名：前端传别的值一律丢弃，避免任意字符串被写进配置。
 func (a *App) ImportScannedSounds(files []string) map[string]any {
 	a.soundScanMu.Lock()
 	candidates := make(map[string]SoundScanFile)
@@ -241,7 +241,7 @@ func (a *App) ImportScannedSounds(files []string) map[string]any {
 	return map[string]any{"ok": ok, "imported": len(added)}
 }
 
-// DropMissingSounds 把「文件已不在」的条目从配置里删掉。
+// DropMissingSounds 把“文件已不在”的条目从配置里删掉。
 //
 // 只删配置条目 —— 文件本来就不在了，没有可删的文件。singleId 若指向被删条目，
 // 由 normalizeForSave 里的 normalizeSound 兜底（迁移到老字段 / 指向第一首启用项）。
@@ -288,10 +288,10 @@ func (a *App) DropMissingSounds(ids []string) map[string]any {
 	return map[string]any{"ok": ok, "removed": len(removed)}
 }
 
-// DismissSoundScan 用户选了「暂不导入 / 保留」：本次运行不再询问。
+// DismissSoundScan 用户选了“暂不导入 / 保留”：本次运行不再询问。
 //
 // 刻意不持久化：下次启动会重新扫，文件还在就再问一次 —— 用户可能只是这次不想动，
-// 而「永远不再问」反过来会让死条目一直留着、新文件一直用不上。
+// 而“永远不再问”反过来会让死条目一直留着、新文件一直用不上。
 func (a *App) DismissSoundScan() map[string]any {
 	a.soundScanMu.Lock()
 	a.soundScan = nil
@@ -345,7 +345,7 @@ func (a *App) dropScanEntries(files, ids []string) {
 // 整体替换 a.cfg）。fn 收到当前列表的深拷贝，返回新列表与是否有改动。
 //
 // 为什么要深拷贝：配置是 map[string]any 的树，deepMerge 只递归对象、数组整体替换，
-// 数组里的元素仍是同一份引用 —— 直接改元素会污染「已经发出去的那份配置」。
+// 数组里的元素仍是同一份引用 —— 直接改元素会污染“已经发出去的那份配置”。
 func (a *App) mutateSoundMusic(fn func(music []any) ([]any, bool)) bool {
 	a.mu.Lock()
 	cur := a.cfg

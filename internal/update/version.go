@@ -1,9 +1,9 @@
-// Package update 是「检查更新」的纯逻辑层：版本号比较、更新清单的信任校验
+// Package update 是“检查更新”的纯逻辑层：版本号比较、更新清单的信任校验
 // （只认 https、必带 sha256、超限拒绝）、以及自动检查的退避节奏。
 //
 // 不含下载与解包 —— 那是 cmd 层的 update_download.go（要写文件、要换 exe）。
 // 本包的所有判断都遵守 fail closed：清单缺字段、格式不对、来源不是 https，一律当作
-// 「没有可用更新」，绝不「先装上再说」。
+// “没有可用更新”，绝不“先装上再说”。
 package update
 
 import (
@@ -58,7 +58,7 @@ func strconvAtoiSafe(p string) int {
 }
 
 // SameVersion 两段版本号（按前三段）是否完全相同（v 前缀 / 缺段都容忍）。
-// 用于判断「本次远程版本是否就是被忽略的那个版本」。
+// 用于判断“本次远程版本是否就是被忽略的那个版本”。
 func SameVersion(a, b string) bool {
 	av := parseVersion(a)
 	bv := parseVersion(b)
@@ -77,7 +77,7 @@ func SameVersion(a, b string) bool {
 	return true
 }
 
-// TodayStr 本地日期（YYYY-MM-DD），用作「当天是否已检查更新」的去重键。
+// TodayStr 本地日期（YYYY-MM-DD），用作“当天是否已检查更新”的去重键。
 func TodayStr() string {
 	return time.Now().Format("2006-01-02")
 }

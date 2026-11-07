@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// ---------- 最长连续工作（今天卡「久坐」面板） ----------
+// ---------- 最长连续工作（今天卡“久坐”面板） ----------
 
 // workTicks 连续记 d 长的工作（每 1 秒一拍，与真实计时器同粒度）
 func workTicks(st *StatsStore, c *statsClock, d time.Duration) {
@@ -30,7 +30,7 @@ func TestMaxWorkStreak(t *testing.T) {
 	if d.MaxStreakMs != 720_000 {
 		t.Fatalf("最长连续工作应为 12 分钟，实得 %d", d.MaxStreakMs)
 	}
-	// 段数组里此时只有一项，就是这段进行中的 12 分钟（久坐面板的「平均 / 中位数」靠它）
+	// 段数组里此时只有一项，就是这段进行中的 12 分钟（久坐面板的“平均 / 中位数”靠它）
 	if len(d.WorkSegments) != 1 || d.WorkSegments[0] != 720_000 {
 		t.Fatalf("段数组应只有一段 12 分钟，实得 %v", d.WorkSegments)
 	}
@@ -151,7 +151,7 @@ func TestBreakEndEarlyNotCountedAsDone(t *testing.T) {
 		t.Fatalf("正常结束应记完成、不记提前结束：%+v", d)
 	}
 
-	// early 对自定义提醒无效：它们本来就没有「提前结束」这个口径
+	// early 对自定义提醒无效：它们本来就没有“提前结束”这个口径
 	st.OnBreakStart("cb-water")
 	c.add(time.Minute)
 	st.OnBreakEnd("喝水提醒", true)
@@ -184,7 +184,7 @@ func TestBreakEndEarlyNotCountedAsDone(t *testing.T) {
 
 // 软件不重启、连续跑过零点时，渲染层每秒拿到的 Today() 必须换人：
 // 日期换成新的一天、各项数值是新的零起点，昨天的账一个字都不许动。
-// （前端「今天」卡就是靠这个快照刷的；报表范围由前端现算，另有跨天重画。）
+// （前端“今天”卡就是靠这个快照刷的；报表范围由前端现算，另有跨天重画。）
 func TestTodayRollsOverAtMidnight(t *testing.T) {
 	c := &statsClock{}
 	c.set(localTime(2026, 10, 9, 23, 58))

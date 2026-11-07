@@ -1,8 +1,8 @@
-// 跨天探针（页面侧）：把页面时钟伪造到「今天 23:59:40」，再推到「次日 00:00:40」，
-// 采集「日」范围的右端与表格首行，交给 probe_crossday.py 断言。
+// 跨天探针（页面侧）：把页面时钟伪造到“今天 23:59:40”，再推到“次日 00:00:40”，
+// 采集“日”范围的右端与表格首行，交给 probe_crossday.py 断言。
 //
 // 为什么必须伪造时钟：后端的 Today() 按真实时间算，改不了；但报表范围、桶的生成、
-// 跨天重画全在前端，用 FakeDate 顶掉 window.Date 就能真实走一遍「软件通宵没关」。
+// 跨天重画全在前端，用 FakeDate 顶掉 window.Date 就能真实走一遍“软件通宵没关”。
 const { chromium } = require("playwright");
 const BASE = process.env.WR_BASE;
 const DAY1 = process.env.WR_DAY1; // 页面初始时间的日期（= 真实今天）

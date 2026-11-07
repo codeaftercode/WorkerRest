@@ -16,10 +16,10 @@ import (
 // 每个起了后台 goroutine 的生产文件里都必须出现兜底调用。
 //
 // 这是域3-4 的防回归线：新增一条后台循环、忘了包 GuardRun，测试直接红。
-// 判定口径故意宽松 —— 只看「文件里有没有 logx.GuardRun / logx.GuardRunOK」，
+// 判定口径故意宽松 —— 只看“文件里有没有 logx.GuardRun / logx.GuardRunOK”，
 // 不解析具体是哪一行：有的循环（scheduler.loop / hotkeys.run / watchLoop）在函数
 // 内部包，外部调用点看不出，逐行匹配只会制造误报。宽松口径同样能拦住
-// 「新文件 + 新 goroutine + 零兜底」这个真问题。
+// “新文件 + 新 goroutine + 零兜底”这个真问题。
 //
 // 扫描范围是 cmd/ + internal/ 的**全部**生产文件，不是本包目录。曾经这里只
 // filepath.Glob("*.go")，源码下沉到 internal/ 之后，stats 那两条后台循环就整片
@@ -68,8 +68,8 @@ func TestBackgroundGoroutinesAreGuarded(t *testing.T) {
 // 熔断路径必须真的以退出码 1 结束，并在日志里留下现场。
 //
 // 这条只能在子进程里验：fatalPanicExit 会 os.Exit，跑在主测试进程里等于把整套测试干掉。
-// 父进程只断言「退出码 + 日志内容」—— 退出码 1 单独看不够（编译错、断言失败也是 1），
-// 关键是日志里那句「判定为不可恢复」。
+// 父进程只断言“退出码 + 日志内容”—— 退出码 1 单独看不够（编译错、断言失败也是 1），
+// 关键是日志里那句“判定为不可恢复”。
 func TestPanicFuseExitsWithCodeOne(t *testing.T) {
 	if os.Getenv("WR_PANIC_FUSE_CHILD") == "1" {
 		logx.SetHeadless(true)             // 子进程模拟无头环境：熔断时不弹系统框（会卡住自动化）

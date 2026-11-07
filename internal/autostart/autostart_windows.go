@@ -37,7 +37,7 @@ func RunEntryExists() bool { return ReadRunEntry() != nil }
 
 // WriteRunEntry 写入启动项（勾选开机自启动）。可重复调用 —— 已有值会被覆盖成最新命令行。
 //
-// 顺带清掉「启动已批准」里的禁用标记：项不存在 = 默认启用。不清的话，用户曾在任务管理器里
+// 顺带清掉“启动已批准”里的禁用标记：项不存在 = 默认启用。不清的话，用户曾在任务管理器里
 // 禁用过就永远是禁用的 —— Run 键写得再对也不启动。
 func WriteRunEntry(cmdline string) RegResult {
 	k, _, err := registry.CreateKey(registry.CURRENT_USER, runKeyPath, registry.SET_VALUE)
@@ -74,7 +74,7 @@ func RemoveRunEntry() RegResult {
 	return RegResult{OK: true, Detail: "removed(approval not cleared: " + approval.Detail + ")"}
 }
 
-// ClearApproval 清掉「启动已批准」里本应用的条目（启用标记与禁用标记一并清掉）。
+// ClearApproval 清掉“启动已批准”里本应用的条目（启用标记与禁用标记一并清掉）。
 func ClearApproval() RegResult {
 	k, err := registry.OpenKey(registry.CURRENT_USER, approvedKeyPath, registry.SET_VALUE)
 	if err != nil {
@@ -91,8 +91,8 @@ func ClearApproval() RegResult {
 	return RegResult{OK: true, Detail: "cleared"}
 }
 
-// ApprovalDisabled 「启动已批准」里是否标记为禁用（任务管理器 → 启动 页里的开关）。
-// 返回 nil 表示读不出来（无法判断），调用方按「需要处理」对待。与 autostart.ts 同口径。
+// ApprovalDisabled “启动已批准”里是否标记为禁用（任务管理器 → 启动 页里的开关）。
+// 返回 nil 表示读不出来（无法判断），调用方按“需要处理”对待。与 autostart.ts 同口径。
 func ApprovalDisabled() *bool {
 	ptr := func(b bool) *bool { return &b }
 	k, err := registry.OpenKey(registry.CURRENT_USER, approvedKeyPath, registry.QUERY_VALUE)

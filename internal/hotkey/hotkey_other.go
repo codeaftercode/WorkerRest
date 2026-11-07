@@ -3,8 +3,8 @@
 package hotkey
 
 // 非 Windows 平台的全局快捷键桩：本项目尚未做 Linux/macOS 真机适配。
-// 所有函数都是 no-op（返回「未注册」），让 main 包的 HotkeyManager 在非 Windows
-// 上自然走「不启动」路径。未来真机移植时补 XGrabKey（Linux）/ RegisterEventHotKey
+// 所有函数都是 no-op（返回“未注册”），让 main 包的 HotkeyManager 在非 Windows
+// 上自然走“不启动”路径。未来真机移植时补 XGrabKey（Linux）/ RegisterEventHotKey
 // （macOS）实现。
 
 // WinMsg 非 Windows 平台的占位消息结构（不会用到）。

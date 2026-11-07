@@ -6,7 +6,7 @@ import "testing"
 
 // 真注册一次全局热键，确认三个原语都活着：注册成功 → 注销 → 再注册。
 //
-// 组合键挑「Ctrl+Alt+Shift+F24」：所有修饰键都按住 + 最高功能键，正常软件不会占用，
+// 组合键挑“Ctrl+Alt+Shift+F24”：所有修饰键都按住 + 最高功能键，正常软件不会占用，
 // 也不会与用户的系统热键冲突；用例结束前必定注销（defer），不会污染后续测试。
 func TestRegisterAndUnregisterRealHotkey(t *testing.T) {
 	const id = 4711
@@ -19,7 +19,7 @@ func TestRegisterAndUnregisterRealHotkey(t *testing.T) {
 	}
 	defer UnregisterHotKey(id)
 
-	// 同一组合键第二次注册到不同 id 应失败：这正是「两个动作配同一个键」的检测方式
+	// 同一组合键第二次注册到不同 id 应失败：这正是“两个动作配同一个键”的检测方式
 	if RegisterHotKey(id+1, mods, vk) {
 		UnregisterHotKey(id + 1)
 		t.Log("同一组合键可被重复注册（系统行为与文档不同），不改判据")
@@ -38,7 +38,7 @@ func TestUnregisterUnknownIdIsHarmless(t *testing.T) {
 	UnregisterHotKey(65000)
 }
 
-// PeekMessage 的作用是「确保线程有消息队列」，它本身不许阻塞、不许崩。
+// PeekMessage 的作用是“确保线程有消息队列”，它本身不许阻塞、不许崩。
 func TestPeekMessageDoesNotBlock(t *testing.T) {
 	var m WinMsg
 	PeekMessage(&m)
@@ -47,7 +47,7 @@ func TestPeekMessageDoesNotBlock(t *testing.T) {
 	}
 }
 
-// CurrentThreadID 必须给出非 0 的真实 tid：HotkeyManager 拿它当「消息循环就绪」的
+// CurrentThreadID 必须给出非 0 的真实 tid：HotkeyManager 拿它当“消息循环就绪”的
 // 标志，0 表示未就绪（reload 会静默跳过）。
 func TestCurrentThreadIDNonZero(t *testing.T) {
 	if id := CurrentThreadID(); id == 0 {

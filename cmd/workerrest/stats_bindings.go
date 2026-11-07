@@ -13,7 +13,7 @@ import (
 // appStatsFile 统计文件落点。优先级：
 //  1. `WR_STATS_PATH`：显式指定（冒烟 / 单测钉死落点）；
 //  2. `WR_SETTINGS_PATH`：测试用它把配置隔离到临时目录，统计跟着走同一目录 ——
-//     这一步保证「冒烟永远碰不到用户的真实统计文件」，不必依赖调用方记得设置。
+//     这一步保证“冒烟永远碰不到用户的真实统计文件”，不必依赖调用方记得设置。
 //     刻意**优先于**便携推导：测试目录名恰好叫 config 时也不会跑到别处去；
 //  3. 按当前配置文件的路径推导（见 stats.StatsFileForConfig）；
 //  4. 还没找到配置文件时，按候选路径（= 唯一的 <运行目录>/config/settings.json）推导，
@@ -53,9 +53,9 @@ func (a *App) statsStore() *stats.StatsStore {
 	}
 	a.mu.Unlock()
 	// onChange 在 App 锁之外注入：SetOnChange 内部要拿 st.mu，而 st.mu 侧有一条
-	// 「Flush → appStatsFile → a.mu」的反向路径，两个方向锁序相反会留下死锁窗口。
+	// “Flush → appStatsFile → a.mu”的反向路径，两个方向锁序相反会留下死锁窗口。
 	if created {
-		// 数据一变就把今天的快照推给渲染层（统计报表「今天」卡实时刷新）。
+		// 数据一变就把今天的快照推给渲染层（统计报表“今天”卡实时刷新）。
 		// 回调在 notifier goroutine 里跑、**不持任何锁**，只读一份快照再广播。
 		st.SetOnChange(func() {
 			app := a.app
@@ -110,7 +110,7 @@ func (a *App) GetStatsFileNotice() map[string]any {
 	}
 }
 
-// AckStatsFileNotice 用户已看过「统计文件已重建」弹窗：清掉说明，本次运行不再弹。
+// AckStatsFileNotice 用户已看过“统计文件已重建”弹窗：清掉说明，本次运行不再弹。
 func (a *App) AckStatsFileNotice() map[string]any {
 	a.statsStore().AckFileNotice()
 	return map[string]any{"ok": true}
@@ -154,7 +154,7 @@ func (a *App) stopStats() {
 	log.Printf("[stats] 已落盘并停止")
 }
 
-// statsIsBreak 工作累加器的「这一跳归休息」判定：休息窗口正显示
+// statsIsBreak 工作累加器的“这一跳归休息”判定：休息窗口正显示
 func (a *App) statsIsBreak() bool {
 	if a.sched == nil {
 		return false
@@ -162,7 +162,7 @@ func (a *App) statsIsBreak() bool {
 	return a.sched.CurrentPhase() == "break"
 }
 
-// statsIsIdle 工作累加器的「这一跳归离开」判定：连续无输入已达阈值
+// statsIsIdle 工作累加器的“这一跳归离开”判定：连续无输入已达阈值
 // （与 idleWatchTick 同一口径；手动暂停 / 勿扰 / 应用占用都不算 —— 那时人还在用电脑）
 func (a *App) statsIsIdle() bool {
 	if a.sched == nil || a.idle == nil {
@@ -175,8 +175,8 @@ func (a *App) statsIsIdle() bool {
 // 推迟 / 跳过各记一笔统计。对应上一版的 scheduler.on('postpone' / 'skip')。
 //
 // **只认短休息 / 长休息**：调度器的 NextType 也可能是自定义提醒（id 形如 cb-…），
-// 手动推迟、手动跳过、暂停休息期间按「跳过」处理的自定义提醒都会走到这两个回调，
-// 但「今天卡 - 休息」这一组四项（完成 / 推迟 / 跳过 / 提前结束）只统计内置短、长休息。
+// 手动推迟、手动跳过、暂停休息期间按“跳过”处理的自定义提醒都会走到这两个回调，
+// 但“今天卡 - 休息”这一组四项（完成 / 推迟 / 跳过 / 提前结束）只统计内置短、长休息。
 // 外卖走的是独立的 RecordTakeoutAction，不经过这里。
 func (a *App) OnBreakPostponed(kind string, postponeMs int64) {
 	if kind != "short" && kind != "long" {

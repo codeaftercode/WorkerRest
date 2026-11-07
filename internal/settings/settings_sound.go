@@ -9,7 +9,7 @@ import (
 
 // ---------- 声音配置视图 ----------
 
-// SoundCfg 取出声音配置。缺字段按「与默认配置同口径」兜底：启用、音量 0.6、单曲循环。
+// SoundCfg 取出声音配置。缺字段按“与默认配置同口径”兜底：启用、音量 0.6、单曲循环。
 func (s *Settings) SoundCfg() model.SoundCfg {
 	return soundCfgOf(s.Map("sound"))
 }

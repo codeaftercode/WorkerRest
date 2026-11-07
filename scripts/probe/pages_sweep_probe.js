@@ -1,7 +1,7 @@
 "use strict";
 // 七页面全谱健康扫描：一次性把 web/dist 里全部 7 个页面都真渲染一遍。
 //
-// 与既有探针的分工（这一支补的是「资产网络层 + 全局不变量」）：
+// 与既有探针的分工（这一支补的是“资产网络层 + 全局不变量”）：
 //   · probe_static_audit.py  —— 静态读源码：文件在不在、脚本集合对不对、有没有内联脚本；
 //   · renderer_probe.js      —— 各页面的内容深度：文案、排版、立绘摆位、外卖出图；
 //   · pause_page_probe.js    —— 暂停小窗的交互与可访问性；
@@ -12,8 +12,8 @@
 //      ⑥ 所有 <img> 真的解码成功（naturalWidth>0）；
 //      ⑦ 样式表真的生效（有 <link> 的页面要求 styleSheets 非空且 body 拿到了非默认字体）。
 //
-// 为什么值得单独做：静态审计只能看见「源码里写了哪些引用」，看不见
-// 「运行到某个时机才去取 seal-ink-7.svg / sitting_risk.webp」这类动态引用；
+// 为什么值得单独做：静态审计只能看见“源码里写了哪些引用”，看不见
+// “运行到某个时机才去取 seal-ink-7.svg / sitting_risk.webp”这类动态引用；
 // 而内容探针用的是 mock shim，网络层错误会被它自己的断言淹掉。
 // 7 个页面共用一次服务启动，成本很低（秒级）。
 
@@ -38,9 +38,9 @@ function check(ok, label, detail) {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// 七个页面 + 各自的「壳」契约。
+// 七个页面 + 各自的“壳”契约。
 // 注意：break / takeout 在没有真实会话时只会画出空壳，这里不要求内容——
-// 内容由 renderer_probe 用 mock shim 单独验，本支只看「壳在不在、有没有报错」。
+// 内容由 renderer_probe 用 mock shim 单独验，本支只看“壳在不在、有没有报错”。
 const PAGES = [
   {
     name: "index 面板",
@@ -65,10 +65,10 @@ const PAGES = [
       "titlebar", "appName", "idlePauseMin",
       "tab-general", "tab-timing", "tab-supervisor", "tab-stats", "tab-shortcuts", "tab-about",
     ],
-    // 只有当前 tab 是可见的，其余 tab 容器按设计隐藏 —— 所以它们只要求「存在」
+    // 只有当前 tab 是可见的，其余 tab 容器按设计隐藏 —— 所以它们只要求“存在”
     vis: ["titlebar", "appName", "idlePauseMin", "tab-general"],
     styles: true,
-    // 六个导航项 + 六个 tab 容器是设置页的骨架，缺一个就是「点了没反应」的那类 bug
+    // 六个导航项 + 六个 tab 容器是设置页的骨架，缺一个就是“点了没反应”的那类 bug
     extra: (d) => [
       [d.navs === 6, "六个导航项齐全", d.navs],
       [d.tabs === 6, "六个 tab 容器齐全", d.tabs],
@@ -208,8 +208,8 @@ async function sweep(browser, spec) {
     //    /wails/custom.js 判断在不在，那次 fetch 会被它自己 abort，紧接着用 <script>
     //    正式加载，200 通过）。资源确实拿到了，不是我们的资产出了问题；
     //  · 从头到尾没拿到 —— 这才是真失败（404 / 连接中断）。
-    // 判据是「这个 URL 有没有成功过」，不是按路径白名单放行，所以仍然能抓住
-    // 「custom.js 真没了」这种情况：那时 okAssets 里不会有它。
+    // 判据是“这个 URL 有没有成功过”，不是按路径白名单放行，所以仍然能抓住
+    // “custom.js 真没了”这种情况：那时 okAssets 里不会有它。
     const gotOk = new Set([...okAssets]);
     const realBad = bad.filter((b) => !gotOk.has(b.p));
     const benign = bad.length - realBad.length;
@@ -227,14 +227,14 @@ async function sweep(browser, spec) {
     if (spec.styles) {
       check(d.sheets > 0, spec.name + " · 样式表已加载", d.sheets);
       // 没有样式表时 body 的 fontFamily 是浏览器默认（含 "Times New Roman"）；
-      // 有样式就一定换成了项目自己那套 —— 这一条能抓住「css 404 了但没人报错」
+      // 有样式就一定换成了项目自己那套 —— 这一条能抓住“css 404 了但没人报错”
       check(!/Times New Roman/i.test(d.font), spec.name + " · 样式真的生效（body 字体不是浏览器默认）",
         d.font.slice(0, 60));
     }
 
     const missing = spec.ids.filter((id) => !(id in d.visibleIds));
     check(missing.length === 0, spec.name + " · 关键元素都在", missing.length ? "缺 " + missing.join(",") : spec.ids.length + " 个");
-    // 列为 vis 的还要求「可见」而不是「存在」：display:none 的骨架对用户等于没有
+    // 列为 vis 的还要求“可见”而不是“存在”：display:none 的骨架对用户等于没有
     const hidden = (spec.vis || []).filter((id) => id in d.visibleIds && !d.visibleIds[id]);
     check(hidden.length === 0, spec.name + " · 该露的都露出来了（非 0×0）",
       hidden.length ? "隐藏 " + hidden.join(",") : (spec.vis || []).length + " 个可见");

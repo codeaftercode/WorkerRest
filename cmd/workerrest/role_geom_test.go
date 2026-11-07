@@ -16,7 +16,7 @@ import (
 // 都是这一组值；导入自定义立绘时默认也是这一组值。
 //
 // 所以这条测试同时钉三件事：
-//  1. 默认值本身（Go 侧 role.SupGeomDefault —— 「恢复默认」与「导入自定义立绘」都走它）
+//  1. 默认值本身（Go 侧 role.SupGeomDefault —— “恢复默认”与“导入自定义立绘”都走它）
 //  2. 仓库里每个内置 meta.json 的 geom 与默认值一致（打包发布出去的就是这些文件）
 //  3. 前端几处 fallback 常量不能跟 Go 侧劈叉（读不到 geom 时显示成另一套比例）
 //
@@ -55,13 +55,13 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 		}
 		checked++
 	}
-	// 防「目录改名 / 结构变动后这条测试空跑一遍就算过」
+	// 防“目录改名 / 结构变动后这条测试空跑一遍就算过”
 	if checked < 10 {
 		t.Fatalf("只检查到 %d 个内置专员，明显偏少（应该十几款）", checked)
 	}
 
-	// 前端三处 fallback 常量：读不到 geom 时按它显示，跟 Go 侧劈叉就会「换台机器
-	// 立绘突然小一圈」。这四处是同一组数字的手工副本，只能靠测试钉住。
+	// 前端三处 fallback 常量：读不到 geom 时按它显示，跟 Go 侧劈叉就会“换台机器
+	// 立绘突然小一圈”。这四处是同一组数字的手工副本，只能靠测试钉住。
 	dist := filepath.Join(root, "cmd", "workerrest", "web", "dist")
 	for _, c := range []struct{ file, decl string }{
 		{"settings.js", "SUP_GEOM_DEFAULT"},

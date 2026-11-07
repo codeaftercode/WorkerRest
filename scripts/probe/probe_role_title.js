@@ -1,11 +1,11 @@
 /**
- * 督休专员题名「零遮挡」全专员探针（数据采集端）。
+ * 督休专员题名“零遮挡”全专员探针（数据采集端）。
  *
  * 背景：题名的位置与字号是渲染层按立绘 alpha 剖面反解出来的（break.js /
  * takeout.js 各一份 layoutRoleTitle）。这个反解有一处极易漏的对称性：剖面
  * minY[] 是按**原图列序**量的，而屏幕映射是**显示方向**的 —— 立绘水平翻转时
  * 两者互为镜像。2026-11-02 就漏了这一步：命中判定去查图片的另半边，牌面明明
- * 在人物左侧空白里，却「每列都算遮挡」（魔法师 hit=34 = 区间列数 34），字号被
+ * 在人物左侧空白里，却“每列都算遮挡”（魔法师 hit=34 = 区间列数 34），字号被
  * 一路压到下限 15px。而这种专员只有几何配置里 flip=true 才会触发，主探针
  * （probe_renderer，跑真实配置的那一位）抽不到就等于没测。
  *
@@ -55,7 +55,7 @@ const INFO = `(function(){
     fs: n.dataset.rtFs != null ? Number(n.dataset.rtFs) : null,
     text: n.textContent,
     flip: !!(trim && trim.flip),
-    // 竖排标志：横排时牌子的「头在左上」这套几何全都不成立
+    // 竖排标志：横排时牌子的“头在左上”这套几何全都不成立
     vertical: cs.writingMode === 'vertical-rl',
     overflow: t.width > cw + 6.5 || t.height > chb + 6.5,
     box: { w: Math.round(r.width), h: Math.round(r.height) },
@@ -95,7 +95,7 @@ async function settle(page) {
     }
     await sleep(700);
     // 未定位就重开一次页面：Windows 侧套接字偶发抖动会让 shim 没连上，
-    // 那种失败与题名算法无关，不该判成「压到立绘」。
+    // 那种失败与题名算法无关，不该判成“压到立绘”。
     let info = null;
     let errs = [];
     for (let attempt = 0; attempt < 2; attempt++) {

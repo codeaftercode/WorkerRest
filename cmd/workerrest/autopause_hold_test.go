@@ -42,7 +42,7 @@ func TestAutoResumeOnClearMatrix(t *testing.T) {
 	}
 }
 
-// 点「恢复休息」时记不记忽略，取决于该原因的条件**此刻**是否仍成立。
+// 点“恢复休息”时记不记忽略，取决于该原因的条件**此刻**是否仍成立。
 // 两边都要钉：记漏了按钮点了没反应，记多了下一场会议彻底静音。
 func TestIgnoreOnlyForStillActiveReasons(t *testing.T) {
 	// 进入侧去抖：一律连推两拍让条件成立
@@ -90,7 +90,7 @@ func TestIgnoreOnlyForStillActiveReasons(t *testing.T) {
 }
 
 // 保持暂停期间原因留在 PauseReasons 里，条件再次成立时不该叠出第二条。
-// 这条钉的是「不自动恢复」带来的副作用：以前条件消失会摘掉原因，现在不摘了。
+// 这条钉的是“不自动恢复”带来的副作用：以前条件消失会摘掉原因，现在不摘了。
 func TestHoldPausedReasonNotDuplicated(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
 	a.applyAutoPause(true, pauseReasonFullScr, &a.fsActiveLogged, "", "")
@@ -105,10 +105,10 @@ func TestHoldPausedReasonNotDuplicated(t *testing.T) {
 	}
 }
 
-// 条件消失后「保持暂停」，退出日志只能打一次。
+// 条件消失后“保持暂停”，退出日志只能打一次。
 //
-// 回归的是 2026-11-05 真机现象：一次只持续 3 秒的系统「勿扰(busy)」把软件挂进暂停，
-// 之后每 3 秒重打一条「…已关闭：恢复提醒；按策略保持暂停，等用户手动恢复」，十几分钟
+// 回归的是 2026-11-05 真机现象：一次只持续 3 秒的系统“勿扰(busy)”把软件挂进暂停，
+// 之后每 3 秒重打一条“…已关闭：恢复提醒；按策略保持暂停，等用户手动恢复”，十几分钟
 // 刷出近 300 行 —— 47 KB 的 app.log 里九成是它，真实现场全被挤进滚动淘汰。
 func TestHoldPausedExitLogsOnce(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
@@ -131,7 +131,7 @@ func TestHoldPausedExitLogsOnce(t *testing.T) {
 		t.Fatal("保持暂停期间不该恢复提醒")
 	}
 
-	// 条件再次成立：重新报一次「暂停提醒」（用户可能真的又开了勿扰），且不叠原因
+	// 条件再次成立：重新报一次“暂停提醒”（用户可能真的又开了勿扰），且不叠原因
 	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, enter, exit)
 	a.applyAutoPause(true, pauseReasonDnd, &a.dndActiveLogged, enter, exit)
 	if n := strings.Count(buf.String(), enter); n != 2 {
@@ -145,10 +145,10 @@ func TestHoldPausedExitLogsOnce(t *testing.T) {
 // 进入侧去抖：单次采样尖峰（一次 3 秒的勿扰 / 全屏 / 投屏闪现）不把提醒挂进暂停。
 //
 // 回归 2026-11-05 真机根因的上游：那次是 20:02:19 一条 QUNS_BUSY 就暂停、20:02:22
-// 条件就没了。加去抖后，这种「成立一拍就消失」的尖峰连暂停都不会触发，后面的
-// 「按策略保持暂停」刷屏更无从发生。
+// 条件就没了。加去抖后，这种“成立一拍就消失”的尖峰连暂停都不会触发，后面的
+// “按策略保持暂停”刷屏更无从发生。
 func TestAutoPauseEnterDebounce(t *testing.T) {
-	// 四条「保持暂停」原因都走 applyAutoPause，共用一个去抖逻辑；抽一条（勿扰）钉死行为，
+	// 四条“保持暂停”原因都走 applyAutoPause，共用一个去抖逻辑；抽一条（勿扰）钉死行为，
 	// 其余三条由 TestAutoPauseManualResumeIgnoresUntilConditionClears 的表格顺带覆盖。
 	a, s := newWatchApp(t, shortCountdown)
 
@@ -158,7 +158,7 @@ func TestAutoPauseEnterDebounce(t *testing.T) {
 		t.Fatalf("单拍成立不该暂停（去抖），得到 %v", s.StateCopy().PauseReasons)
 	}
 	if a.dndActiveLogged {
-		t.Fatal("单拍成立不该置「已记录」标记")
+		t.Fatal("单拍成立不该置“已记录”标记")
 	}
 
 	// ② 第二拍条件消失：尖峰到此为止，整段作废，仍不暂停
@@ -175,7 +175,7 @@ func TestAutoPauseEnterDebounce(t *testing.T) {
 	}
 }
 
-// 托盘提示：带「暂停了多久」，条件全消失时补一句「可以恢复」。
+// 托盘提示：带“暂停了多久”，条件全消失时补一句“可以恢复”。
 // 自动暂停不再自己恢复，用户想知道什么时候该去点，只有托盘这一处能告诉他。
 func TestTrayTipShowsPauseDurationAndReadyHint(t *testing.T) {
 	now := nowMs()
@@ -193,7 +193,7 @@ func TestTrayTipShowsPauseDurationAndReadyHint(t *testing.T) {
 		t.Errorf("状态行 = %q", status)
 	}
 	if pause != "恢复休息" {
-		t.Errorf("暂停项 = %q，应为「恢复休息」", pause)
+		t.Errorf("暂停项 = %q，应为“恢复休息”", pause)
 	}
 
 	tipReady, statusReady, _, _ := trayTexts(st, true)

@@ -1,7 +1,7 @@
 // 自绘下拉（.cdrop-host）键盘可达性的行为探针（只读，不改任何数据）。
 //
 // 为什么需要它：cdrop 不是原生 <select>，是按钮 + role=listbox 拼出来的。静态语义
-// （aria-haspopup / aria-expanded / role=option）证明不了「键盘真的进得去、选得中、回得来」。
+// （aria-haspopup / aria-expanded / role=option）证明不了“键盘真的进得去、选得中、回得来”。
 // 这里用系统 Edge 打开 settings.html，把 /wails/runtime.js 换成只回 null 的桩，然后验证：
 //
 //   1) 按钮有可访问名（aria-label），且 aria-haspopup=listbox / aria-expanded 初始 false
@@ -29,11 +29,11 @@ function check(ok, label, detail) {
 
 // 假运行时：默认全回 null，但 GetSettings 返回仓库里的出厂配置（default_settings.json）——
 // 设置页没有自己的默认值，拿到 null 会整页停摆，下拉就挂不上。这里用真实出厂配置喂它，
-// 数据不会过时，且与本软件的「恢复默认设置」同源。
+// 数据不会过时，且与本软件的“恢复默认设置”同源。
 //
 // 为什么不直接 route /wails/runtime.js：shim.js 用 import("/wails/runtime.js") 动态加载，
 // 而 file:// 页面里这个绝对 specifier 在 Chromium 里解析失败（base URL 是 about:blank），
-// route 根本拦不到。所以改走 shim.js 本身：把它的 runtime() 换成「直接 resolve 内联桩」，
+// route 根本拦不到。所以改走 shim.js 本身：把它的 runtime() 换成“直接 resolve 内联桩”，
 // shim 其余逻辑（call/on/str/arr、window.api 形状、__WR_SHIM）原样保留。
 const fs = require('fs');
 const SHIM_SRC = fs.readFileSync(path.join(DIST, 'shim.js'), 'utf8');
@@ -41,7 +41,7 @@ const DEFAULT_SETTINGS = JSON.stringify(
   JSON.parse(fs.readFileSync(path.join(ROOT, 'internal', 'settings', 'default_settings.json'), 'utf8')),
 );
 // 内联桩：Call.ByName 对 GetSettings 返回出厂配置、ListRoles 返回空数组、
-// BuiltinMsgDefaults 返回「三类提醒的空种子」（空 kinds，避免硬编码会过时的文案），
+// BuiltinMsgDefaults 返回“三类提醒的空种子”（空 kinds，避免硬编码会过时的文案），
 // 其余 null；Events 全 no-op。
 const INLINE_RUNTIME = `Promise.resolve({
   Call: { ByName: async function (name) {
@@ -55,7 +55,7 @@ const INLINE_RUNTIME = `Promise.resolve({
   } },
   Events: { On: function(){}, Off: function(){}, Emit: function(){} },
 })`;
-// 把 shim 里「import("/wails/runtime.js").catch(…)」换成上面的内联桩；结构上保留 .catch 链
+// 把 shim 里“import("/wails/runtime.js").catch(…)”换成上面的内联桩；结构上保留 .catch 链
 // 的写法不变，只替换 import 表达式本身，语义等价且对 shim 无侵入。
 const SHIM_STUB = SHIM_SRC.replace(
   /import\("\/wails\/runtime\.js"\)/,
@@ -76,7 +76,7 @@ if (SHIM_STUB === SHIM_SRC) {
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
 
-  // 目标：短休息的「触发方式」下拉（#short-mode），它在「时间规划」tab 里，默认折叠
+  // 目标：短休息的“触发方式”下拉（#short-mode），它在“时间规划”tab 里，默认折叠
   // （section.tab 是 display:none，按钮收不了焦点）。先切过去，与真实用户路径一致。
   await page.evaluate(() => {
     document.querySelector('.nav-item[data-tab="timing"]').click();
@@ -99,7 +99,7 @@ if (SHIM_STUB === SHIM_SRC) {
       itemRole: menu.children[0] ? menu.children[0].getAttribute('role') : null,
     };
   }, host);
-  check(!!stat, '短休息「触发方式」有 .cdrop-btn 与 .cdrop-menu', stat);
+  check(!!stat, '短休息“触发方式”有 .cdrop-btn 与 .cdrop-menu', stat);
   if (stat) {
     check(stat.label === '触发方式', '按钮有 aria-label="触发方式"', stat.label);
     check(stat.haspopup === 'listbox', '按钮 aria-haspopup=listbox', stat.haspopup);

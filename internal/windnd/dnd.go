@@ -1,29 +1,29 @@
-// Package windnd 判断「现在该不该让提醒窗弹出来」：系统请勿打扰、全屏应用、
+// Package windnd 判断“现在该不该让提醒窗弹出来”：系统请勿打扰、全屏应用、
 // Windows 演示设置、正在投屏，都算不应打扰。
 //
 // 判据来自 Windows 的两条**互相独立**的系统信号：
 //   - shell32!SHQueryUserNotificationState → QUERY_USER_NOTIFICATION_STATE（QUNS）
 //   - ntdll!NtQueryWnfStateData → WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED（勿扰档位）
 //
-// 非 Windows 平台走 _other 桩，恒返回「不支持」，保证跨平台编译与测试。
+// 非 Windows 平台走 _other 桩，恒返回“不支持”，保证跨平台编译与测试。
 package windnd
 
 import "fmt"
 
 // 两条系统状态自动暂停选项各自的判据（2026-11-06 三次收敛定稿）。
 //
-// 最初「勿扰 / 系统忙碌 / 演示设置」挤在一条 dndPause 开关里共用 QUNS 的 2 / 4，
+// 最初“勿扰 / 系统忙碌 / 演示设置”挤在一条 dndPause 开关里共用 QUNS 的 2 / 4，
 // 结果 Win11 通知中心手动开勿扰根本不改 QUNS，那条开关名不副实；中途拆成三条独立开关，
-// 又撞上 QUNS 自身的缺口：它是**互斥单值**，微软枚举页把「演示设置」同时写进了
+// 又撞上 QUNS 自身的缺口：它是**互斥单值**，微软枚举页把“演示设置”同时写进了
 // QUNS_BUSY(2) 和 QUNS_PRESENTATION_MODE(4)，函数页却只给一条二分契约——
-// 「只有 QNS_ACCEPTS_NOTIFICATIONS(5) 才允许弹通知」，从不承诺让调用者按数值反推成因，
+// “只有 QNS_ACCEPTS_NOTIFICATIONS(5) 才允许弹通知”，从不承诺让调用者按数值反推成因，
 // 也没公开 2 与 4 的判定顺序。既然分不出来，就别假装能分：全屏与演示合成一条选项。
 //
-//   - 请勿打扰 → WNF 勿扰档位 ≠ 0（Win11 通知中心「请勿打扰」、Win10 专注助手手动档位）
+//   - 请勿打扰 → WNF 勿扰档位 ≠ 0（Win11 通知中心“请勿打扰”、Win10 专注助手手动档位）
 //   - 全屏 / 演示 → QUNS 2（非独占全屏或演示设置已应用）、3（D3D 独占全屏）、
 //     4（Windows 演示设置主动屏蔽通知），三者任一即成立
 //
-// 判据没删、只并了开关：2 是浏览器 F11 / 播放器全屏这类「非独占全屏」的唯一兜底，
+// 判据没删、只并了开关：2 是浏览器 F11 / 播放器全屏这类“非独占全屏”的唯一兜底，
 // 应用占用按进程名匹配、原来只认 3，删掉会让全屏看视频时弹窗无人拦。
 //
 // 两条各一个开关、一条暂停原因、一份忽略表；两条探测链路失败时也只跳过自己那条，
@@ -43,9 +43,9 @@ const (
 	qunsApp                  = 7 // Windows 商店应用在前台
 )
 
-// WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED 的数据是「当前生效的勿扰档位」。
-// 0 = 没开；1 / 2 = 开了（Win11 的「请勿打扰」与 Win10 专注助手的仅优先 / 仅闹钟）。
-// WNF 是未文档化接口，所以查询失败一律降级成「不支持」，绝不凭空暂停。
+// WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED 的数据是“当前生效的勿扰档位”。
+// 0 = 没开；1 / 2 = 开了（Win11 的“请勿打扰”与 Win10 专注助手的仅优先 / 仅闹钟）。
+// WNF 是未文档化接口，所以查询失败一律降级成“不支持”，绝不凭空暂停。
 const (
 	quietHoursOff           = 0
 	quietHoursPriorityOnly  = 1
@@ -61,15 +61,15 @@ type DndStatus struct {
 }
 
 // FullScreenStatus 全屏应用 / 演示设置检测结果（QUNS 2 / 3 / 4）。
-// 类型名沿用旧的全屏判据，内部标识符不改以缩小改动面；对外文案一律写「全屏或演示」。
+// 类型名沿用旧的全屏判据，内部标识符不改以缩小改动面；对外文案一律写“全屏或演示”。
 type FullScreenStatus struct {
 	Supported bool   `json:"supported"`
 	Active    bool   `json:"active"`
 	Detail    string `json:"detail"`
 }
 
-// BusyStatus 一次系统采样的原始值。两条信号各带自己的 Supported —— 这是「两条选项
-// 互不相关」在探测层的体现：WNF 读不到只让「勿扰」那一条整拍跳过，QUNS 那条照常判。
+// BusyStatus 一次系统采样的原始值。两条信号各带自己的 Supported —— 这是“两条选项
+// 互不相关”在探测层的体现：WNF 读不到只让“勿扰”那一条整拍跳过，QUNS 那条照常判。
 type BusyStatus struct {
 	QunsSupported bool
 	Quns          uint32
@@ -109,7 +109,7 @@ func qunsText(state uint32) string {
 }
 
 // dndStatusOfProfile WNF 勿扰档位 → 结论。
-// 未知的非零档位按「勿扰生效」处理：拿不准时宁可不弹窗，也不在用户按了勿扰之后弹。
+// 未知的非零档位按“勿扰生效”处理：拿不准时宁可不弹窗，也不在用户按了勿扰之后弹。
 func dndStatusOfProfile(profile uint32, ok bool) DndStatus {
 	if !ok {
 		return DndStatus{Supported: false, Detail: "WNF 勿扰档位读取失败"}
@@ -124,15 +124,15 @@ func dndStatusOfProfile(profile uint32, ok bool) DndStatus {
 	return DndStatus{Supported: true, Active: true, Detail: text}
 }
 
-// fullScreenStatusOf 认 2 / 3 / 4，三者合起来才是「屏幕上正在放内容」的全部场景：
-//   - QUNS_BUSY(2)：官方定义「全屏应用运行或应用了演示设置」，覆盖浏览器 F11、
+// fullScreenStatusOf 认 2 / 3 / 4，三者合起来才是“屏幕上正在放内容”的全部场景：
+//   - QUNS_BUSY(2)：官方定义“全屏应用运行或应用了演示设置”，覆盖浏览器 F11、
 //     播放器全屏、无边框覆盖整屏的窗口（非独占全屏），也覆盖演示设置。
 //   - QUNS_RUNNING_D3D_FULL_SCREEN(3)：D3D 独占全屏（真全屏游戏）。
 //   - QUNS_PRESENTATION_MODE(4)：Windows 演示设置被用户主动激活以屏蔽通知。
 //
 // 三者互斥（同一次查询只返回一个值），微软没公开 2 与 4 谁对应演示设置的判定顺序，
-// 函数页的契约也只规定「只有 5 允许弹通知」。既然 API 不给成因，就统一归一条开关。
-// 2026-11-06 起 QUNS=2 不再单列「系统忙碌」、QUNS=4 不再单列「演示设置」。
+// 函数页的契约也只规定“只有 5 允许弹通知”。既然 API 不给成因，就统一归一条开关。
+// 2026-11-06 起 QUNS=2 不再单列“系统忙碌”、QUNS=4 不再单列“演示设置”。
 func fullScreenStatusOf(state uint32, ok bool) FullScreenStatus {
 	if !ok {
 		return FullScreenStatus{Supported: false, Detail: "SHQueryUserNotificationState 调用失败"}

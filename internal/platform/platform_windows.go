@@ -20,15 +20,15 @@ import (
 // （`WebviewInstallMode` 在 v3 里不存在），缺运行时时唯一的表现是
 // GetAvailableCoreWebView2BrowserVersionString 失败 → handleError → 写 Logger 后整个
 // 进程退出。而发布版是 GUI 子系统（-H windowsgui，无控制台、无弹窗），用户看到的
-// 就是「双击没反应」—— 这是最典型的「看起来装坏了」的发布事故。
+// 就是“双击没反应”—— 这是最典型的“看起来装坏了”的发布事故。
 //
 // 判据取微软官方推荐的注册表口径（EdgeUpdate\Clients\{GUID} 的 pv），外加
-// msedgewebview2.exe 的目录存在性做二次确认。**只在「确认缺失」时拦人**：
+// msedgewebview2.exe 的目录存在性做二次确认。**只在“确认缺失”时拦人**：
 // 读不到（权限、非标准部署）一律放行 —— 探测本身的误判比不提示更糟。
 
 const (
 	// webView2ClientGUID 是 WebView2 Runtime 在 EdgeUpdate 里的固定产品 GUID
-	// （微软文档「Detect if the WebView2 Runtime is already installed」给的同一个值）。
+	// （微软文档“Detect if the WebView2 Runtime is already installed”给的同一个值）。
 	webView2ClientGUID = `{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}`
 	// webView2DownloadURL 微软官方 Evergreen Bootstrapper 的短链（fwlink 会跳到当前语言页）。
 	webView2DownloadURL = "https://go.microsoft.com/fwlink/p/?LinkId=2124703"
@@ -37,7 +37,7 @@ const (
 // WebView2DownloadURL 返回 WebView2 运行时官方下载页短链（给 main 包提示用户用）。
 func WebView2DownloadURL() string { return webView2DownloadURL }
 
-// HiddenSysProcAttr 返回「隐藏子进程窗口」的 SysProcAttr（Windows）。
+// HiddenSysProcAttr 返回“隐藏子进程窗口”的 SysProcAttr（Windows）。
 //
 // 自更新/重启拉起子进程时，默认会闪一个控制台黑框；HideWindow + CREATE_NO_WINDOW
 // （0x00000200）把它藏起来。其它平台无此概念，返回 nil（即不设置，走默认行为）。
@@ -57,8 +57,8 @@ var (
 	procGetLastInputInfo = modUser32.NewProc("GetLastInputInfo")
 )
 
-// LastInputTick 读系统「最后一次键鼠输入」的毫秒 tick；第二个返回值表示是否读到。
-// 只用它做「两次采样是否相同」的比较，**绝不与墙钟相减**（零点在开机时刻）。
+// LastInputTick 读系统“最后一次键鼠输入”的毫秒 tick；第二个返回值表示是否读到。
+// 只用它做“两次采样是否相同”的比较，**绝不与墙钟相减**（零点在开机时刻）。
 func LastInputTick() (int64, bool) {
 	var li lastInputInfo
 	li.cbSize = uint32(unsafe.Sizeof(li))
@@ -79,7 +79,7 @@ type registryQuery struct {
 //   - HKLM 64 位视图（常规的机器级安装）
 //   - HKLM 32 位视图（在 WOW6432Node 下；64 位进程必须显式带上 WOW64_32KEY 才看得到
 //     —— 2026-10 实测本机就只登记在这一处：pv 在 WOW6432Node，64 位视图是空的）
-//   - HKCU（免管理员的「仅为我安装」）
+//   - HKCU（免管理员的“仅为我安装”）
 func webView2RegistryQueries() []registryQuery {
 	client := `\Clients\` + webView2ClientGUID
 	access := uint32(registry.QUERY_VALUE)
@@ -96,7 +96,7 @@ func ProbeWebView2() WebView2Probe {
 	for _, q := range webView2RegistryQueries() {
 		k, err := registry.OpenKey(q.root, q.path, q.access)
 		if err != nil {
-			// 键不存在才是「这一处没有」；别的错误（权限等）不构成缺失证据。
+			// 键不存在才是“这一处没有”；别的错误（权限等）不构成缺失证据。
 			if !errors.Is(err, windows.ERROR_FILE_NOT_FOUND) {
 				unknown = true
 			}
@@ -105,7 +105,7 @@ func ProbeWebView2() WebView2Probe {
 		pv, _, err := k.GetStringValue("pv")
 		_ = k.Close()
 		if err != nil || !webView2VersionUsable(pv) {
-			// 键在但 pv 为空/0.0.0.0：微软文档明确这种情况等于「运行时已不在了」。
+			// 键在但 pv 为空/0.0.0.0：微软文档明确这种情况等于“运行时已不在了”。
 			continue
 		}
 		return WebView2Probe{Version: pv, Found: true}
@@ -117,7 +117,7 @@ func ProbeWebView2() WebView2Probe {
 	return WebView2Probe{Certain: !unknown}
 }
 
-// webView2VersionUsable pv 为 "0.0.0.0" 或空串时，微软的判定是「未安装」。
+// webView2VersionUsable pv 为 "0.0.0.0" 或空串时，微软的判定是“未安装”。
 func webView2VersionUsable(pv string) bool {
 	pv = strings.TrimSpace(pv)
 	return pv != "" && pv != "0.0.0.0"

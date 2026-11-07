@@ -1,10 +1,10 @@
 /**
  * 暂停 / 恢复的端到端探针（真页面 + 真绑定 + 真调度器）。
  *
- * 验的是「点下去之后世界真的变成那样」，而不是「某个纯函数返回 true」：
- *   1. 点「暂停休息」→ 状态真翻转（paused / reasons / pausedAt / deadline），按钮文案跟着变；
+ * 验的是“点下去之后世界真的变成那样”，而不是“某个纯函数返回 true”：
+ *   1. 点“暂停休息”→ 状态真翻转（paused / reasons / pausedAt / deadline），按钮文案跟着变；
  *   2. 暂停期间**倒计时冻结**：nextAt 不动，到点也不弹休息窗（phase 不会变 break）；
- *   3. 再点一次恢复 → nextAt 整体平移了「暂停时长」这段（手动暂停是冻结平移，不是重锚），
+ *   3. 再点一次恢复 → nextAt 整体平移了“暂停时长”这段（手动暂停是冻结平移，不是重锚），
  *      状态干净归零（pausedAt / pauseDeadline 都是 0）；
  *   4. 恢复之后排期照旧工作：冻结住的那次休息照样会到点弹出来；
  *   5. 连做两轮，确认反复切换不会留下脏状态（原因表不涨、段起点每次重记）。
@@ -98,11 +98,11 @@ async function main() {
     check(st0.nextAt > 0, "初始已有排期（配置里短休息是 6 秒一条）", "nextAt=" + st0.nextAt);
 
     const label0 = await page.textContent("#qa-pause");
-    check(label0.trim() === "暂停休息", "按钮初始文案是「暂停休息」", label0);
+    check(label0.trim() === "暂停休息", "按钮初始文案是“暂停休息”", label0);
 
     await page.click("#qa-pause");
     const stP = await waitState(page, "paused", (s) => s.paused === true);
-    check(stP.paused === true, "点「暂停休息」后状态真的进入暂停");
+    check(stP.paused === true, "点“暂停休息”后状态真的进入暂停");
     check(
       Array.isArray(stP.pauseReasons) && stP.pauseReasons.length === 1 && stP.pauseReasons[0] === "manual",
       "暂停原因恰好是 manual 一条（没被别的判定掺进来）",
@@ -112,7 +112,7 @@ async function main() {
     check(stP.pauseDeadline === 0, "无限手动暂停不该有到期时刻", "deadline=" + stP.pauseDeadline);
 
     const label1 = await page.textContent("#qa-pause");
-    check(label1.trim() === "恢复休息", "暂停后按钮文案变成「恢复休息」", label1);
+    check(label1.trim() === "恢复休息", "暂停后按钮文案变成“恢复休息”", label1);
 
     // 冻结：暂停期间 nextAt 不许动
     const frozenAt = stP.nextAt;
@@ -129,7 +129,7 @@ async function main() {
     check(stR.pausedAt === 0, "恢复后段起点归零", "pausedAt=" + stR.pausedAt);
     check(stR.pauseDeadline === 0, "恢复后到期时刻归零", "deadline=" + stR.pauseDeadline);
     const label2 = await page.textContent("#qa-pause");
-    check(label2.trim() === "暂停休息", "恢复后按钮文案回到「暂停休息」", label2);
+    check(label2.trim() === "暂停休息", "恢复后按钮文案回到“暂停休息”", label2);
 
     // 平移量 ≈ 暂停时长（2.6s 冻结 + 两次点击的等待）
     const shift = stR.nextAt - frozenAt;

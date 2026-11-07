@@ -36,7 +36,7 @@ version.json 的 changes：上一个 tag 到当前 tag 之间的提交标题，�
 自动编号（"1. xxx"）；首个 tag 没有上一个 tag，changes 留空。
 
 version.json 的 sha256 / size：**由本脚本从刚生成的 rest.zip 现算**，不是手填。
-客户端只认「哈希对得上」的包（对不上就丢弃、换镜像、全失败则拒绝更新），
+客户端只认“哈希对得上”的包（对不上就丢弃、换镜像、全失败则拒绝更新），
 所以这两个字段缺失时打包直接失败 —— 没有哈希的清单等于没有更新通道。
 
 用法：python scripts/build/make_portable.py [--no-build] [--out DIR] [--allow-dirty]
@@ -46,7 +46,7 @@ version.json 的 sha256 / size：**由本脚本从刚生成的 rest.zip 现算**
   --out DIR     交付根目录（默认 release/；产物落在其下 WorkerRest-<tag>/ 里）
   --allow-dirty 允许在未提交的工作树上打包：**只用于排查构建问题**。默认脏树即停 ——
                 tag 指的是提交，工作树里的未提交改动不在那个 tag 里，打出来的包与
-                「发布包 = 源码」这条审计链对不上。
+                “发布包 = 源码”这条审计链对不上。
 
 退出码 0 = 打包成功且便携 zip / 更新包 zip / version.json 全部校验通过；
        2 = 当前提交没有版本 tag（未开始构建）；
@@ -77,7 +77,7 @@ import version as gitver  # noqa: E402
 ROLES_SRC = os.path.join(ROOT, "assets", "supervisors")  # 内置专员模板（仓库里收在 assets/ 下）
 SOUNDS_SRC = os.path.join(ROOT, "assets", "sounds")  # 内置提示音源文件（打包预置进便携包）
 # 出厂默认的唯一源文件：internal/settings/default_settings.json 就是 //go:embed 嵌进 exe 的那份，
-# 打包时再复制成便携包的 config/settings.json。全仓只此一份，不再有「根目录副本要跟着同步」的坑。
+# 打包时再复制成便携包的 config/settings.json。全仓只此一份，不再有“根目录副本要跟着同步”的坑。
 DEFAULT_SETTINGS_SRC = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 EXE_NAME = "rest.exe"
 EXE_SRC = os.path.join(ROOT, "build", "bin", EXE_NAME)
@@ -89,19 +89,19 @@ RUNTIME_REL = ["config", "data", "sounds", "images", "stats.json", "logs"]
 
 # 开源鸣谢清单与项目许可证：两者都**只**内嵌进 exe（notices.go / license.go），
 # 不再随便携包散放。理由是分发形态决定的：更新包 rest.zip 只换 exe，目录里那份文件
-# 从首装那天起就再也不会变 —— 与其发一份「一致地过期」的快照，不如只留 exe 里那份，
-# 它跟着版本走。用户要文件就点关于页的「另存为」，那是这两段文本唯一的出口。
+# 从首装那天起就再也不会变 —— 与其发一份“一致地过期”的快照，不如只留 exe 里那份，
+# 它跟着版本走。用户要文件就点关于页的“另存为”，那是这两段文本唯一的出口。
 NOTICES_NAME = "THIRD-PARTY-NOTICES.txt"
 
-# 项目自己的许可证：和鸣谢清单是两个方向 —— 清单是「我用了别人的什么」，
-# LICENSE 是「别人可以拿这个项目做什么」。真源在仓库根（GitHub/Gitee 认这个位置），
+# 项目自己的许可证：和鸣谢清单是两个方向 —— 清单是“我用了别人的什么”，
+# LICENSE 是“别人可以拿这个项目做什么”。真源在仓库根（GitHub/Gitee 认这个位置），
 # go:embed 不能跨目录引用 ../../LICENSE，所以 cmd/workerrest/ 下放了一份逐字节副本，
 # 打包前在这里比对两者 —— 改了许可证忘了刷新副本，出包就停。
 LICENSE_NAME = "LICENSE"
 LICENSE_SRC = os.path.join(ROOT, LICENSE_NAME)
 LICENSE_EMBED_SRC = os.path.join(MAIN_DIR, LICENSE_NAME)
 # MIT 正文的四段关键条款（授权 / 保留声明 / 免责 / 责任限制）。只校验存在与关键词，
-# 不逐字比对正文 —— 换行、版权人、年份都可能被改，那几处不属于「完整性」。
+# 不逐字比对正文 —— 换行、版权人、年份都可能被改，那几处不属于“完整性”。
 LICENSE_REQUIRED = [
     "Permission is hereby granted, free of charge",
     "The above copyright notice and this permission notice shall be included",
@@ -109,10 +109,10 @@ LICENSE_REQUIRED = [
     "IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE",
 ]
 
-# 清除开机自启动项脚本：便携版没有安装器（删文件夹就算卸载），但用户勾过「开机自启动」
-# 就往注册表里写过一项，删了文件夹之后它指向一个不存在的 exe，任务管理器「启动」页里
-# 还留着一条。随包放这个小脚本专门清它 —— 名字必须如实说明「只清这一项」，
-# 不能叫「卸载」：它不删任何文件，叫卸载会让用户以为删完了。
+# 清除开机自启动项脚本：便携版没有安装器（删文件夹就算卸载），但用户勾过“开机自启动”
+# 就往注册表里写过一项，删了文件夹之后它指向一个不存在的 exe，任务管理器“启动”页里
+# 还留着一条。随包放这个小脚本专门清它 —— 名字必须如实说明“只清这一项”，
+# 不能叫“卸载”：它不删任何文件，叫卸载会让用户以为删完了。
 CLEANER_NAME = "清除开机自启动项.bat"
 CLEANER_SRC = os.path.join(HERE, CLEANER_NAME)
 
@@ -125,7 +125,7 @@ DEFAULT_OUT = os.path.join(ROOT, "release")
 #   - sites **检查更新**地址数组（各指向一份 version.json）。客户端启动时先查本地
 #           config/settings.json 的 sites，一旦远程 version.json 下发了非空 sites 就整体
 #           覆盖本地。所以这里必须与 default_settings.json 的 sites 逐字一致，否则会出现
-#           「装完查 A，检查一次更新后又跳回 B」。
+#           “装完查 A，检查一次更新后又跳回 B”。
 # 官方地址只有 goodgoodlive 一个（软件里也把它当兜底源）。要加镜像就在这儿往数组里追加，
 # 或者发布后直接改 version.json 的 url —— 程序按顺序容错，不针对任何具体域名做特殊处理。
 UPDATE_BASE_URLS = [
@@ -153,7 +153,7 @@ SEVEN_ZIP_CANDIDATES = [
 
 
 def suggest_next(tag: str) -> str:
-    """给「还没打 tag」的提示建议下一个版本号：最近 tag 的修订号 +1。"""
+    """给“还没打 tag”的提示建议下一个版本号：最近 tag 的修订号 +1。"""
     m = re.match(r"^v(\d+)\.(\d+)\.(\d+)$", tag or "")
     if not m:
         return "v0.9.0"
@@ -165,7 +165,7 @@ def _move(src: str, dst: str) -> None:
     """原子替换文件，跨磁盘时自动回退到 shutil.move（copy+delete）。
 
     os.replace 在同盘是原子改名，但 Windows 上跨盘会抛 WinError 17
-    （「系统无法将文件移到不同的磁盘驱动器」）。$TEMP 与项目目录不在同一盘时
+    （“系统无法将文件移到不同的磁盘驱动器”）。$TEMP 与项目目录不在同一盘时
     （如本机 $TEMP 被指向 C 盘、项目在 D 盘），构建期临时 syso 落在 $TEMP 而
     目标 syso 在项目根，直接 os.replace 必然失败。这里对跨盘失败做一次降级。
     """
@@ -182,18 +182,18 @@ def build_exe(version: str) -> bool:
     -trimpath 是**分发必需**：不加它，每个源文件都会以 `D:/Projects/.../xxx.go`
     的形式进二进制，等于把开发机的目录结构、用户名一起发出去（panic 栈、
     runtime.Caller、DWARF 全是它）。加了之后文件路径变成 `workerrest/xxx.go`。
-    注意它与 -X main.buildTime=<当前时间> 天然互斥于「逐字节可复现」——
+    注意它与 -X main.buildTime=<当前时间> 天然互斥于“逐字节可复现”——
     剥离路径是为了不泄漏，不是为了 bit-for-bit 复现。
 
     构建前用**本次 tag 版本**在临时目录重生成一份 syso 并临时替换仓库根的
-    rsrc_windows_amd64.syso，go build 链接完再恢复。这是为了消除「打了新 tag →
-    仓库里 syso 版本号还是旧的 → 必须先 commit 一份新 syso → tag 又不在 HEAD 上」的
+    rsrc_windows_amd64.syso，go build 链接完再恢复。这是为了消除“打了新 tag →
+    仓库里 syso 版本号还是旧的 → 必须先 commit 一份新 syso → tag 又不在 HEAD 上”的
     死锁：VERSIONINFO 版本号必须跟 tag 走，但 syso 又随源码入库（commit 会顶掉 tag），
     所以只能在构建这瞬间用显式版本号现算一份，不动仓库、不留脏文件。
     """
     exe = EXE_SRC
     # 发布时间用 RFC3339 且无空格（ISO 格式），避免破坏单条 ldflags 字符串；
-    # 前端「版本 | 发布时间」行在时间为空时回退显示「本地构建」。
+    # 前端“版本 | 发布时间”行在时间为空时回退显示“本地构建”。
     build_time = datetime.now().astimezone().isoformat()
     ldflags = f'-X main.appVersion={version} -X main.buildTime={build_time} -H windowsgui -s -w'
 
@@ -241,10 +241,10 @@ def build_exe(version: str) -> bool:
 
 
 def copy_roles(dest: str) -> None:
-    """把 supervisors/ 里「带 meta.json」的子目录逐个拷进包。
+    """把 supervisors/ 里“带 meta.json”的子目录逐个拷进包。
 
     只拷 meta.json 齐全的目录：scanRoles 不认没有 meta.json 的子目录（等于不存在），
-    打进去只是白占体积，用户看到目录还会以为「这个专员怎么没显示」。所以纯素材目录
+    打进去只是白占体积，用户看到目录还会以为“这个专员怎么没显示”。所以纯素材目录
     （只有立绘、还没做 meta.json）天然不进包，不用另维护排除名单。
     """
     out = os.path.join(dest, "supervisors")
@@ -288,8 +288,8 @@ def assemble(dest: str, version: str) -> bool:
     # （缺就建空表、坏就改名备份后重建），更新时也不会被安装包覆盖或删除。
     shutil.copytree(SOUNDS_SRC, os.path.join(dest, "sounds"))
     os.makedirs(os.path.join(dest, "config"), exist_ok=True)
-    # 预置配置写「exe 内嵌的那份」而不是直接拷仓库文件：点「恢复默认设置」拿到的就是内嵌
-    # 那份，字节同源才不会有「首装看到 A、恢复默认回 B」这种界面上看不出来的错位。
+    # 预置配置写“exe 内嵌的那份”而不是直接拷仓库文件：点“恢复默认设置”拿到的就是内嵌
+    # 那份，字节同源才不会有“首装看到 A、恢复默认回 B”这种界面上看不出来的错位。
     try:
         cfg_bytes = dump_embedded_defaults(os.path.join(dest, EXE_NAME))
     except RuntimeError as e:  # noqa: BLE001
@@ -345,7 +345,7 @@ def verify_zip(zip_path: str, top: str) -> bool:
     # 起不再更新的快照 —— 用户分不清哪份是当前版本，比没有更糟。
     stray_license = [n for n in names
                      if n in (f"{top}/{NOTICES_NAME}", f"{top}/{LICENSE_NAME}")]
-    # 清启动项脚本：便携版「卸载」只剩这一处残留，脚本丢了用户就只能自己手改注册表
+    # 清启动项脚本：便携版“卸载”只剩这一处残留，脚本丢了用户就只能自己手改注册表
     has_cleaner = f"{top}/{CLEANER_NAME}" in names
     # 统计是用户数据：安装包与更新包里**必须没有** data/（首跑自动创建，见 stats.go Load）
     data_entries = [n for n in names if n.startswith(f"{top}/data/") or n == f"{top}/stats.json"]
@@ -393,7 +393,7 @@ def find_7z() -> str:
 
 
 def make_update_zip(src_exe: str, dest_zip: str) -> tuple:
-    """把单个 exe 压成「最大压缩」的 zip（包内只有一层 rest.exe，自动更新解压后
+    """把单个 exe 压成“最大压缩”的 zip（包内只有一层 rest.exe，自动更新解压后
     直接可用）。
 
     压缩方式：优先 7-Zip CLI 的 deflate 极限档
@@ -513,8 +513,8 @@ def check_default_sites() -> str:
     """出厂默认配置的 sites 必须与 UPDATE_SITES 逐字一致，返回空串表示通过。
 
     便携包里的 config/settings.json 就是 default_settings.json 的副本，而 version.json
-    下发的 sites 会整体覆盖客户端本地 sites —— 两边不一致就会出现「装完查 A、检查一次
-    更新后又跳回 B」。发布前在这里挡住，比发出去再发现便宜。
+    下发的 sites 会整体覆盖客户端本地 sites —— 两边不一致就会出现“装完查 A、检查一次
+    更新后又跳回 B”。发布前在这里挡住，比发出去再发现便宜。
     """
     try:
         with open(DEFAULT_SETTINGS_SRC, encoding="utf-8") as f:
@@ -531,11 +531,11 @@ def check_default_sites() -> str:
     return ""
 
 
-# ---- 「恢复默认设置」的内嵌默认 vs 随包预置配置 ----
+# ---- “恢复默认设置”的内嵌默认 vs 随包预置配置 ----
 # 两条路径吃的是两份可能不同的东西：exe 内嵌的 default_settings.json（go:embed，恢复默认
 # 的数据源）与便携包里的 config/settings.json（新装首跑读它，由本脚本从 internal/settings 复制）。
 # 正常流程（每次 go build 后再组装）两者天然同源，但 `--no-build` 用上一轮 exe 时就会分叉：
-# 包里是新值、点「恢复默认」回旧值，界面上完全看不出来。所以组装前必须让 exe 自己吐出来核对。
+# 包里是新值、点“恢复默认”回旧值，界面上完全看不出来。所以组装前必须让 exe 自己吐出来核对。
 _DUMP_CACHE = {}
 
 
@@ -543,7 +543,7 @@ def dump_embedded_defaults(exe: str) -> bytes:
     """让 exe 把内嵌的出厂默认原样写到临时文件并读回（`--dump-default-settings <out>`）。
 
     失败抛 RuntimeError。最常见原因是 exe 是旧构建（还不认识这个参数，会当普通参数直接
-    启动 GUI 挂着），因此带超时 + 「文件是否真的写到」两重判断。"""
+    启动 GUI 挂着），因此带超时 + “文件是否真的写到”两重判断。"""
     if exe in _DUMP_CACHE:
         return _DUMP_CACHE[exe]
     out = os.path.join(TEMP, "wr-embedded-default.json")
@@ -568,7 +568,7 @@ def dump_embedded_defaults(exe: str) -> bytes:
 
 
 def _flatten(v, prefix=""):
-    """把嵌套 JSON 摊成 {键路径: 值}，用于打印「到底哪一项不一致」。"""
+    """把嵌套 JSON 摊成 {键路径: 值}，用于打印“到底哪一项不一致”。"""
     if isinstance(v, dict):
         out = {}
         for k, vv in v.items():
@@ -609,7 +609,7 @@ def check_embedded_defaults(exe: str) -> str:
 
 # ---- exe 新鲜度：`--no-build` 的防线 ----
 # build/bin 里会留着上一轮的 exe（审计 域2-3 逮到过一条 6 天前的产物），`--no-build`
-# 会把它原样打进发布包。check_embedded_defaults 只能发现「内嵌默认与磁盘不一致」，
+# 会把它原样打进发布包。check_embedded_defaults 只能发现“内嵌默认与磁盘不一致”，
 # 代码层面的过期（改了逻辑、修了 bug、换了前端资源）在那里完全看不出来 ——
 # 所以再补一条时间线核对：exe 必须比**所有会被编进它的东西**新。
 _EMBED_DIRECTIVE = re.compile(r"^\s*//go:embed\s+(.+)$", re.MULTILINE)
@@ -618,8 +618,8 @@ _EMBED_DIRECTIVE = re.compile(r"^\s*//go:embed\s+(.+)$", re.MULTILINE)
 def _compiled_sources() -> list:
     """可能改变 exe 内容的文件全集：非测试 *.go、go.mod/go.sum、`//go:embed` 的资源。
 
-    直接解析 `//go:embed` 指令而不是手写一份资源清单：漏写清单的代价是「新加的内嵌
-    资源改了也放行」，而那正是这条防线要防的事。`all:` 前缀只表示「连隐藏文件一起」，
+    直接解析 `//go:embed` 指令而不是手写一份资源清单：漏写清单的代价是“新加的内嵌
+    资源改了也放行”，而那正是这条防线要防的事。`all:` 前缀只表示“连隐藏文件一起”，
     剥掉后按普通 glob 处理。
 
     源码布局：main 包在 cmd/workerrest/（含其 embed 资源），纯逻辑在 internal/。
@@ -645,7 +645,7 @@ def _compiled_sources() -> list:
             for m in _EMBED_DIRECTIVE.finditer(src):
                 for raw in m.group(1).split():
                     pat = raw[4:] if raw.startswith("all:") else raw
-                    # embed 路径相对「声明它的包目录」解析
+                    # embed 路径相对“声明它的包目录”解析
                     for hit in glob.glob(os.path.join(dirpath, pat), recursive=True):
                         if os.path.isdir(hit):
                             for d2, _dirs, names in os.walk(hit):
@@ -675,7 +675,7 @@ def _compiled_sources() -> list:
 def check_exe_freshness(exe: str) -> str:
     """exe 不能比源码/资源旧，返回空串表示通过。
 
-    1 秒容差：go build 与源文件写入可能落在同一秒，亚秒级差异不构成「过期」；
+    1 秒容差：go build 与源文件写入可能落在同一秒，亚秒级差异不构成“过期”；
     真正过期的产物差的是小时/天，不会被容差放过。
     """
     try:
@@ -708,15 +708,15 @@ def check_exe_freshness(exe: str) -> str:
 def check_winres(exe: str, version: str) -> str:
     """exe 必须带图标 + VERSIONINFO + MANIFEST 三类 Windows 资源，返回空串表示通过。
 
-    审计 域2-4 逮到过「exe 既无 VERSIONINFO 也无应用清单」：.syso 只嵌了图标
+    审计 域2-4 逮到过“exe 既无 VERSIONINFO 也无应用清单”：.syso 只嵌了图标
     （早期 rsrc 方案），资源管理器属性页看不到版本号，也没有 longPathAware /
     supportedOS 清单。这里让 verify_windows_res.py 解析 PE 的 .rsrc 节断言三类资源
-    齐全，把「发出去的 exe 缺版本信息」挡在打包之前。
+    齐全，把“发出去的 exe 缺版本信息”挡在打包之前。
 
     版本号一致性：exe 的 VERSIONINFO 必须等于**本次 tag 版本**（build_exe 已用该版本
-    显式生成 syso，这里用 --expect-version 复核 exe 里确实编进了对的版本，防「生成的
-    syso 没用上 / 版本传错」这类静默漂移）。不再拿「仓库 syso 的版本号 == git 最新 tag」
-    来卡 —— 那正是「打 tag 后 syso 必须 commit 一份新版本」死锁的来源：版本号只在
+    显式生成 syso，这里用 --expect-version 复核 exe 里确实编进了对的版本，防“生成的
+    syso 没用上 / 版本传错”这类静默漂移）。不再拿“仓库 syso 的版本号 == git 最新 tag”
+    来卡 —— 那正是“打 tag 后 syso 必须 commit 一份新版本”死锁的来源：版本号只在
     build_exe 这一瞬间用显式值现算，仓库里的 syso 保持上一个 tag 的版本即可，不必
     为它多提交一次。
 
@@ -771,13 +771,13 @@ def check_notices() -> str:
 def check_toolchain() -> str:
     """发布工具链必须与 go.mod 声明的 `toolchain` 指令一致，返回空串表示通过。
 
-    go.mod 的 toolchain 指令是「发布用哪个 Go 构建」的唯一真源（有了它，任何机器上
-    默认 GOTOOLCHAIN=auto 都会切到同一版本）。这里在构建前显式校验「实际运行的 go
-    == 声明的版本」：一旦有人用 GOTOOLCHAIN=local 或别的 go 入口悄悄换了工具链，
+    go.mod 的 toolchain 指令是“发布用哪个 Go 构建”的唯一真源（有了它，任何机器上
+    默认 GOTOOLCHAIN=auto 都会切到同一版本）。这里在构建前显式校验“实际运行的 go
+    == 声明的版本”：一旦有人用 GOTOOLCHAIN=local 或别的 go 入口悄悄换了工具链，
     编进 exe 的运行时版本就和清单里声明的不一致 —— 声明与实物不符，比漏声明更糟。
 
-    这条与 check_notices 里 gen_notices.py 的同名校验互补：那边管「清单里写的版本
-    对不对」，这边管「构建 exe 的工具链对不对」，两头都钉住才算钉死。
+    这条与 check_notices 里 gen_notices.py 的同名校验互补：那边管“清单里写的版本
+    对不对”，这边管“构建 exe 的工具链对不对”，两头都钉住才算钉死。
     """
     go_mod = os.path.join(ROOT, "go.mod")
     try:
@@ -787,7 +787,7 @@ def check_toolchain() -> str:
         return f"读不到 go.mod：{e}"
     m = re.search(r"^toolchain\s+(go[\d.]+)\s*$", text, re.M)
     if not m:
-        # 没声明 toolchain 指令：退回 go 指令版本，但这是「未固定」状态，也应提醒
+        # 没声明 toolchain 指令：退回 go 指令版本，但这是“未固定”状态，也应提醒
         m = re.search(r"^go\s+([\d.]+)\s*$", text, re.M)
         if not m:
             return "go.mod 里既没有 toolchain 指令也没有 go 指令"
@@ -808,7 +808,7 @@ def autostart_facts() -> dict:
     """从 internal/autostart 的 Windows 实现解析值名与两处键路径（唯一真源在 Go 源码里）。
 
     清脚本里硬编码了一份，打包时逐字比对。不比对的话，改了值名脚本还在删旧名字 ——
-    这种失败对用户是静默的：屏幕上说「已删除」，开机照样启动，而且无从察觉。
+    这种失败对用户是静默的：屏幕上说“已删除”，开机照样启动，而且无从察觉。
 
     自启动逻辑已下沉到 internal/autostart（值名 runValueName 是 const；runKeyPath /
     approvedKeyPath 是 var 块里的变量，单测会替换成临时键）。Windows 实现里才有真值。
@@ -831,7 +831,7 @@ def autostart_facts() -> dict:
 
 
 def check_cleaner() -> str:
-    """随包的「清除开机自启动项」脚本必须存在、可被 cmd 正确读取、且与 Go 侧同源。"""
+    """随包的“清除开机自启动项”脚本必须存在、可被 cmd 正确读取、且与 Go 侧同源。"""
     if not os.path.isfile(CLEANER_SRC):
         return f"找不到 {CLEANER_SRC}"
     raw = open(CLEANER_SRC, "rb").read()
@@ -863,7 +863,7 @@ def check_cleaner() -> str:
 def check_license() -> str:
     """项目许可证：必须是 MIT 正文、带版权行，且许可全文完整（返回空串表示通过）。
 
-    只查「文件在不在」不够 —— 一份被截断、或者只有一句「MIT」的 LICENSE 同样能让
+    只查“文件在不在”不够 —— 一份被截断、或者只有一句“MIT”的 LICENSE 同样能让
     打包成功，而 MIT 的有效性依赖正文逐条保留（授权 + 声明保留义务 + 免责声明）。
     """
     if not os.path.isfile(LICENSE_SRC):
@@ -872,7 +872,7 @@ def check_license() -> str:
     if not text.strip():
         return f"{LICENSE_NAME} 是空文件"
     # 折叠空白后再找条款：MIT 正文的断行位置各不相同（比如责任限制那句常在
-    # AUTHORS 与 COPYRIGHT 之间换行），按行找会漏，按「连续空白当空格」找才稳。
+    # AUTHORS 与 COPYRIGHT 之间换行），按行找会漏，按“连续空白当空格”找才稳。
     flat = " ".join(text.split())
     missing = [s for s in LICENSE_REQUIRED if s not in flat]
     if missing:
@@ -897,11 +897,11 @@ def check_license() -> str:
 def check_worktree_clean() -> str:
     """工作树必须与 tag 指向的那个提交完全一致，返回空串表示通过。
 
-    版本号的语义是「这个 tag 里的代码」。工作树带着未提交改动时，`go build` 编进去的是
-    磁盘上的东西，而 tag 指的是另一个快照 —— 包能打出来、测试也全绿，但「发布包 = 源码」
+    版本号的语义是“这个 tag 里的代码”。工作树带着未提交改动时，`go build` 编进去的是
+    磁盘上的东西，而 tag 指的是另一个快照 —— 包能打出来、测试也全绿，但“发布包 = 源码”
     这条审计链就断了：用户/审计方按 tag 检出对不上二进制的行为。
 
-    这个坑很隐蔽：改动通常是「顺手没提交」的几个文件，打包时不会有任何异常提示。
+    这个坑很隐蔽：改动通常是“顺手没提交”的几个文件，打包时不会有任何异常提示。
     所以在这里硬停。真要在脏树上试打包（排查构建问题），显式加 --allow-dirty，别默认放行。
 
     只认 git status（含未跟踪文件）：.gitignore 里的 build/bin、release/ 等不算脏，
@@ -937,13 +937,13 @@ def main() -> int:
 
     out_dir = os.path.abspath(args.out) if args.out else DEFAULT_OUT
 
-    # 出厂默认更新源必须与发布清单的 sites 一致，不一致直接停（别产出会「跳源」的包）
+    # 出厂默认更新源必须与发布清单的 sites 一致，不一致直接停（别产出会“跳源”的包）
     why = check_default_sites()
     if why:
         print("[make-portable] FAIL: " + why)
         return 1
 
-    # 0. 版本号只认 tag：当前提交没打 tag 就停下，别产出「没版本号」的包
+    # 0. 版本号只认 tag：当前提交没打 tag 就停下，别产出“没版本号”的包
     tag = gitver.tag_at_head()
     if not tag:
         last = gitver.latest_tag()
@@ -994,7 +994,7 @@ def main() -> int:
         print(f"[make-portable] FAIL: 找不到 {EXE_SRC}（先构建，或用 --no-build 前先 go build）")
         return 1
 
-    # 1c. exe 必须比源码新：`--no-build` 拿上一轮产物是合法用法，但「上一轮」必须是
+    # 1c. exe 必须比源码新：`--no-build` 拿上一轮产物是合法用法，但“上一轮”必须是
     #     在**当前源码**上构建的。刚 go build 过时这里天然通过（成本只有一次 mtime 遍历），
     #     过期就停 —— 发出去的是代码没变的旧行为，比打不出包更糟。
     why = check_exe_freshness(EXE_SRC)
@@ -1010,7 +1010,7 @@ def main() -> int:
         print("[make-portable] FAIL: " + why)
         return 1
 
-    # 1d. exe 里「恢复默认设置」用的内嵌默认，必须与要进包的 default_settings.json 一致。
+    # 1d. exe 里“恢复默认设置”用的内嵌默认，必须与要进包的 default_settings.json 一致。
     #     不构建（--no-build）拿上一轮 exe 时最容易在这里翻车，所以卡在组装之前。
     why = check_embedded_defaults(EXE_SRC)
     if why:
@@ -1114,7 +1114,7 @@ def main() -> int:
     if ok and version_json:
         print("[make-portable] " + "-" * 60)
         print("[make-portable] 下一步：修改 version.json 里的 changes")
-        print("[make-portable]   上面列出的条目是「上一个 tag..当前 tag」的提交标题，")
+        print("[make-portable]   上面列出的条目是“上一个 tag..当前 tag”的提交标题，")
         print("[make-portable]   面向用户发布前请手动改写成可读的变更说明，例如")
         print("[make-portable]     \"changes\": [\"1. 修复了一些已知问题\"]")
         print(f"[make-portable]   待编辑文件：{version_json}")

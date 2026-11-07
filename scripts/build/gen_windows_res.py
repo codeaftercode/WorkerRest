@@ -7,7 +7,7 @@
 
 三类资源：
   - RT_GROUP_ICON / RT_ICON —— exe 文件图标（多尺寸，从 web/dist/icon.png 现算）
-  - RT_VERSION(16) —— 文件/产品版本、公司、描述等（资源管理器「属性 → 详细信息」可见）
+  - RT_VERSION(16) —— 文件/产品版本、公司、描述等（资源管理器“属性 → 详细信息”可见）
   - RT_MANIFEST(24) —— 应用清单：longPathAware（Win10 1607+ 支持 >260 字符路径）
     与 supportedOS（让系统正确识别新系统，避免兼容模式误判）
 
@@ -17,7 +17,7 @@
 
 版本号规则（与 ldflags 注入的 appVersion 口径一致，见 make_portable.py）：
   版本 = **HEAD 上的 tag**（去 v，例如 v0.9.5 → 0.9.5）；不足 4 段时第 4 段补 0（→ 0.9.5.0）。
-  HEAD 没打 tag 时退回「最近可达 tag」（与 version.py 的 latest_tag 同源）。也可用
+  HEAD 没打 tag 时退回“最近可达 tag”（与 version.py 的 latest_tag 同源）。也可用
   `--version` 显式指定（打包脚本在 go build 前用本次 tag 版本临时生成，见 --version）。
   数字段（FixedFileInfo.FileVersion/ProductVersion）与字符串段（StringFileInfo 的
   FileVersion/ProductVersion）**相同**，都是这个四段版本号，不做 .dev 特殊处理。
@@ -29,8 +29,8 @@ make_portable.py / ldflags 都不改。生成可复现：同一份 icon.png + �
   --check   只核对现有 syso 的图标/manifest 内容是否与当前源码一致（不比对版本号），
             不一致返回 1（不写文件）。
   --version  显式指定版本号（如 0.9.6），配合 --out 在打包时于临时位置生成一份正确版本
-            的 syso，供 go build 链接 —— 消除「打 tag 后仓库 syso 版本号还是旧的，必须
-            先 commit 一份再挪 tag」的死锁。不与 --check 同时用。
+            的 syso，供 go build 链接 —— 消除“打 tag 后仓库 syso 版本号还是旧的，必须
+            先 commit 一份再挪 tag”的死锁。不与 --check 同时用。
   --out      与 --version 连用：把生成的 syso 写到指定路径，而非仓库根。
 """
 
@@ -45,8 +45,8 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 MAIN_DIR = os.path.join(ROOT, "cmd", "workerrest")  # main 包所在（含 embed 资源与 .syso）
 
 # 复用 version.py 的 tag 语义（tag_at_head / latest_tag / sort_key），
-# 保证这里读到的版本号与 make_portable.py 逐字同源 —— 两个脚本对「版本是什么」
-# 的定义不再各写一份正则，避免「打 tag 后一边读到 0.9.6、一边还停在 0.9.5」的漂移。
+# 保证这里读到的版本号与 make_portable.py 逐字同源 —— 两个脚本对“版本是什么”
+# 的定义不再各写一份正则，避免“打 tag 后一边读到 0.9.6、一边还停在 0.9.5”的漂移。
 sys.path.insert(0, HERE)
 import version as version_mod  # noqa: E402
 
@@ -91,9 +91,9 @@ def find_goversioninfo() -> str:
 def derive_version(explicit: str = "") -> tuple:
     """返回 (数字四段 tuple, 字符串版本)。
 
-    `explicit` 非空时直接用它（形如 "0.9.6" 或 "0.9.6.0"），供打包脚本在「tag 已打、
-    但 syso 尚未 commit」的窗口里，用本次 tag 版本显式生成一份正确的 syso ——
-    这样就不需要「重新生成 → commit → 挪 tag」的手工四步。
+    `explicit` 非空时直接用它（形如 "0.9.6" 或 "0.9.6.0"），供打包脚本在“tag 已打、
+    但 syso 尚未 commit”的窗口里，用本次 tag 版本显式生成一份正确的 syso ——
+    这样就不需要“重新生成 → commit → 挪 tag”的手工四步。
 
     否则版本来源与 make_portable.py 逐字同源（见 version.py）：
       优先 HEAD 上的 tag（tag_at_head），没打 tag 才退回最近可达 tag（latest_tag）。
@@ -271,11 +271,11 @@ def main() -> int:
     work = tempfile.mkdtemp(prefix="wr-winres-")
     try:
         if args.check:
-            # 只比对「图标 + manifest 内容」是否与当前源码一致，**不比对版本号**。
+            # 只比对“图标 + manifest 内容”是否与当前源码一致，**不比对版本号**。
             # 版本号的一致性由 make_portable.py 的 check_winres 用
             # verify_windows_res.py --expect-version 直接校验最终 exe（build_exe 已用
-            # 本次 tag 版本显式生成 syso），这里再拿「仓库 syso 的版本号 == git 最新 tag」
-            # 来卡，就是「打了新 tag → 必须 commit 一份新 syso → tag 又不在 HEAD」的死锁。
+            # 本次 tag 版本显式生成 syso），这里再拿“仓库 syso 的版本号 == git 最新 tag”
+            # 来卡，就是“打了新 tag → 必须 commit 一份新 syso → tag 又不在 HEAD”的死锁。
             #
             # 做法：读出现有 syso 里的 FileVersion，用**同一个版本号**重算一份 syso，
             # 再比全 hash —— 版本号相同，hash 的差异就只能来自图标/清单内容变化。
