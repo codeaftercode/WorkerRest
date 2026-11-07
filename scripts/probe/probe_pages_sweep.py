@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 """七页面全谱健康扫描的驱动：起无头服务 → 跑 pages_sweep_probe.js → 收断言。
 
-为什么要单独一个驱动：JS 侧只管「打开页面 + 断言」，起服务、隔离配置、清理进程
+为什么要单独一个驱动：JS 侧只管“打开页面 + 断言”，起服务、隔离配置、清理进程
 这些 Python 侧更顺手（与 probe_settings_ui.py 同一分工）。
 
 与 probe_static_audit.py 的区别：那个只读源码（文件在不在、脚本集合对不对），
-这个真的把 7 个页面都渲染一遍，从网络层看「每个子资源都取到了没有」。
+这个真的把 7 个页面都渲染一遍，从网络层看“每个子资源都取到了没有”。
 
 隔离口径：配置用出厂默认的一份副本放到临时目录，`WR_SETTINGS_PATH` 指过去；
 跑完断言仓库里真实的 config/settings.json 没被动过（设置页在 init 时会回写默认值，
@@ -29,7 +29,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 PROBE_JS = os.path.join(HERE, "pages_sweep_probe.js")
 OUT = os.path.join(tempfile.gettempdir(), "wr_pages_sweep")
@@ -83,7 +83,7 @@ def main():
     iso_settings = os.path.join(iso, "settings.json")
     with open(FACTORY, encoding="utf-8") as f:
         cfg = json.load(f)
-    # 立绘库、提示音面板都要有内容可渲染，否则「专员磁贴 0 个」会被误判成绑定断了
+    # 立绘库、提示音面板都要有内容可渲染，否则“专员磁贴 0 个”会被误判成绑定断了
     cfg.setdefault("supervisor", {})["enabled"] = True
     cfg.setdefault("sound", {})["enabled"] = True
     with open(iso_settings, "w", encoding="utf-8") as f:
@@ -127,7 +127,7 @@ def main():
                            capture_output=True)
         print(r.stdout or "")
         if "结果：" not in (r.stdout or ""):
-            # 脚本没跑到收尾就退了：不能让「0 项断言」冒充通过
+            # 脚本没跑到收尾就退了：不能让“0 项断言”冒充通过
             print("!! pages_sweep_probe.js 没有输出断言汇总，脚本可能提前退出")
             return 1
         if r.returncode != 0:

@@ -3,7 +3,7 @@
 """验证用：设置窗口尺寸这一层的端到端断言（无头服务 + Playwright + 隔离配置）。
 
 断言分两块：
-  · 页面侧（window_size_verify.js）：勾选框在「设置窗口」卡片里、出厂默认勾上；
+  · 页面侧（window_size_verify.js）：勾选框在“设置窗口”卡片里、出厂默认勾上；
     关于页在**出厂尺寸**下恰好不滚、高度减 10px 就滚；最小宽度 760 下无横向裁切、740 有。
   · 配置侧（本脚本）：取消勾选后 settings.json 的 window.rememberSize 真的变成 false，
     且 lastWidth / lastHeight 仍是 0（页面无权写尺寸）。这两条只有落到文件上才验得到。
@@ -24,7 +24,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 PROBE = os.path.join(HERE, "window_size_verify.js")
 TEMP = os.environ.get("TEMP", ROOT)
 ISO = os.path.join(TEMP, "wr_winsize_verify_iso")
@@ -102,7 +102,7 @@ def main():
     base = "http://127.0.0.1:%d" % port
 
     # 隔离配置：**从出厂默认起步**（拷真实配置会带上用户改过的 rememberSize，
-    # 「出厂默认勾上」这条就验不到了）
+    # “出厂默认勾上”这条就验不到了）
     shutil.rmtree(ISO, ignore_errors=True)
     os.makedirs(ISO, exist_ok=True)
     iso_settings = os.path.join(ISO, "settings.json")
@@ -158,9 +158,9 @@ def main():
         opt = data["opt"]
         check(opt["exists"], "勾选框存在（#win-remember）")
         check(opt["type"] == "checkbox", "是复选框", opt["type"])
-        check(opt["cardTitle"] == "设置窗口", "位于「设置窗口」卡片内", opt["cardTitle"])
+        check(opt["cardTitle"] == "设置窗口", "位于“设置窗口”卡片内", opt["cardTitle"])
         check("自动记录窗口尺寸" in (opt["label"] or ""), "标签文案正确", opt["label"])
-        check(opt["hasTip"], "带「?」说明（解释勾选/不勾的区别）")
+        check(opt["hasTip"], "带“?”说明（解释勾选/不勾的区别）")
         check(opt["checked"] is True, "出厂默认勾选（首次启动用默认尺寸、之后沿用上次）")
 
         h_ok, h_bad, h_wide = data["hOk"], data["hBad"], data["hWide"]

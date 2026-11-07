@@ -3,12 +3,12 @@
 """跨天探针：软件连续运行跨过零点时，统计报表能不能跟着翻页。
 
 验的是三件在真实使用里最容易坏、平时又看不到的事（通宵挂着设置页才会暴露）：
-  1. 「日」范围的右端要自己推到新的一天（默认范围必须现算，不能缓存在内存里）；
+  1. “日”范围的右端要自己推到新的一天（默认范围必须现算，不能缓存在内存里）；
   2. 新一天的数据要出现在表格里（跨天那一刻页面要主动重画）；
   3. 用户手动选过的范围不能被跨天重置。
 
 做法：起一个无头服务（配置与统计都隔离到临时目录），用 Playwright 打开真实页面，
-把页面时钟伪造到「今天 23:59:40」，再推到「次日 00:00:40」，比对前后两次快照。
+把页面时钟伪造到“今天 23:59:40”，再推到“次日 00:00:40”，比对前后两次快照。
 后端时间改不了也不影响 —— 范围、桶、重画都在前端。
 
 前端改动后**必须先重建无头服务**（本脚本会自动构建）。
@@ -28,7 +28,7 @@ from datetime import date, timedelta
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 PROBE = os.path.join(HERE, "crossday_probe.js")
 TEMP = os.environ.get("TEMP", ROOT)
 OUT = os.path.join(TEMP, "wr_crossday")
@@ -119,7 +119,7 @@ def main():
 
     print("构建无头服务…")
     b = subprocess.run(
-        ["go", "build", "-tags", "server", "-o", os.path.join("build", "bin", "chibingren_server.exe"),
+        ["go", "build", "-tags", "server", "-o", os.path.join("build", "bin", "rest_server.exe"),
          "-ldflags", "-s -w", "./cmd/workerrest"],
         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
@@ -188,7 +188,7 @@ def main():
     md1, md2 = d1[5:], d2[5:]
 
     check(m.get("rendered") is True, "统计页渲染完成（表格有数据行）")
-    check(str(b.get("label") or "").endswith(md1), "跨天前：「日」范围右端 = 今天", b.get("label"))
+    check(str(b.get("label") or "").endswith(md1), "跨天前：“日”范围右端 = 今天", b.get("label"))
     check(str(a.get("label") or "").endswith(md2), "跨天后：范围标签自动推到次日", a.get("label"))
     check(str(b.get("newest") or "").startswith(d1), "跨天前：表格最新一行 = 今天", b.get("newest"))
     check(str(a.get("newest") or "").startswith(d2), "跨天后：表格最新一行 = 次日（新一天的数据出现了）", a.get("newest"))

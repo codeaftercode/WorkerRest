@@ -3,10 +3,10 @@
 """绑定级全覆盖探针：契约表里全部前端绑定，逐个真调一次并断言行为。
 
 与既有脚本的分工：
-  - smoke_server.py：证明「绑定按名能解析、主链路（休息/统计/专员）走得通」；
+  - smoke_server.py：证明“绑定按名能解析、主链路（休息/统计/专员）走得通”；
   - 本脚本：补齐剩余面 —— 只读查询的返回结构、状态变更的落盘效果、
     无头环境下文件对话框类绑定的降级路径、非法入参是否被拒、
-    以及「探针本身能不能发现绑定丢失」的元测试。
+    以及“探针本身能不能发现绑定丢失”的元测试。
 
 口径：
   - 一切副作用落在临时隔离目录（WR_SETTINGS_PATH），跑完断言真实 settings.json 未变；
@@ -32,7 +32,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 BINDING_PREFIX = "main.App."
 
 try:
@@ -120,7 +120,7 @@ def call(base, name, args, window=""):
 
 
 def invoke(base, name, args, window=""):
-    """调一个绑定，归一成 (status, result, 文本, 是否「名字未知」)。"""
+    """调一个绑定，归一成 (status, result, 文本, 是否“名字未知”)。"""
     st, res = call(base, name, args, window)
     text = res if isinstance(res, str) else json.dumps(res, ensure_ascii=False)
     return st, res, text, ("unknown bound method" in text)
@@ -184,7 +184,7 @@ def default_settings():
         "autostart": False,
         "startMinimized": False,
         "checkUpdateOnStart": False,
-        # 指向必然连不通的回环端口：让 CheckUpdate 走「失败但优雅」的分支，不碰公网。
+        # 指向必然连不通的回环端口：让 CheckUpdate 走“失败但优雅”的分支，不碰公网。
         "sites": ["http://127.0.0.1:9/version.json"],
     }
 
@@ -221,7 +221,7 @@ def start_server(iso_dir, port):
 
 def main():
     if not os.path.exists(EXE):
-        print("找不到 %s（先 go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest）" % EXE)
+        print("找不到 %s（先 go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest）" % EXE)
         return 2
 
     real_cfg = os.path.join(ROOT, "config", "settings.json")
@@ -235,7 +235,7 @@ def main():
         return 1
 
     try:
-        # ---------- 元测试：探针能不能发现「绑定丢了」----------
+        # ---------- 元测试：探针能不能发现“绑定丢了”----------
         print("\n[元] 探针自身的有效性")
         st, res, text, unknown = invoke(base, "ThisBindingDoesNotExist", [])
         check(unknown, "调用不存在的绑定名 → 返回 unknown bound method（说明本探针能发现绑定丢失）",
@@ -314,7 +314,7 @@ def main():
         check(isinstance(ustat, dict), "UpdateStatus 返回对象", type(ustat).__name__)
         pend = call_ok(base, "PendingUpdate", [])
         # 返回 nil map（JSON null）= 没有待安装的更新。前端用 `if (!x) return` 处理，
-        # 所以 null 是语义正确的「无」，不是漏返回。
+        # 所以 null 是语义正确的“无”，不是漏返回。
         check(pend is None or isinstance(pend, dict), "PendingUpdate 返回对象或 null（null=无待装更新）",
               type(pend).__name__)
         ck = call_ok(base, "CheckUpdate", [])
@@ -328,7 +328,7 @@ def main():
         hist = call_ok(base, "GetHistory", ["2026-01-01", "2026-12-31"])
         check(isinstance(hist, (dict, list)), "GetHistory 返回对象/数组", type(hist).__name__)
         notice = call_ok(base, "GetStatsFileNotice", [])
-        # null = 统计文件没有发生过「损坏→备份→重建」，没有要告知用户的事。
+        # null = 统计文件没有发生过“损坏→备份→重建”，没有要告知用户的事。
         check(notice is None or isinstance(notice, dict),
               "GetStatsFileNotice 返回对象或 null（null=无自愈事件）", type(notice).__name__)
         acked = call_ok(base, "AckStatsFileNotice", [])
@@ -352,8 +352,8 @@ def main():
         pstate = call_ok(base, "PreBreakState", [])
         check(isinstance(pstate, dict), "PreBreakState 返回对象", type(pstate).__name__)
 
-        # 自动暂停期间的「已暂停多久」小窗（见 pause_notice.go）。两个动作都要在
-        # 「没有窗口 / 没有暂停」时也是安全的：Dismiss 直接真调（关窗是空操作），
+        # 自动暂停期间的“已暂停多久”小窗（见 pause_notice.go）。两个动作都要在
+        # “没有窗口 / 没有暂停”时也是安全的：Dismiss 直接真调（关窗是空操作），
         # Resume 走 schedPauseToggle（会改状态），所以只探测它是否注册。
         pdst, pdres, pdtext, pdunknown = invoke(base, "PauseNoticeDismiss", [])
         check(pdst == 200 and not pdunknown, "PauseNoticeDismiss 无窗时安全返回（关窗是空操作）",
@@ -394,7 +394,7 @@ def main():
         check("ignoredVersion" not in disk, "恢复默认后 ignoredVersion 被清除",
               disk.get("ignoredVersion"))
 
-        # ---------- 窗口类（无头下应「安静地不做事」）----------
+        # ---------- 窗口类（无头下应“安静地不做事”）----------
         print("\n[窗口] 无头模式下的空操作路径")
         for name, args in (("SetActiveTab", ["about"]), ("ShowSettingsWindow", []),
                            ("CloseWindow", ["settings"]), ("SupActivity", ["break"]),
@@ -435,11 +435,11 @@ def main():
         check(prev is None or isinstance(prev, dict), "SupervisorPreview 返回对象或 null",
               str(prev)[:80])
 
-        # ---------- 无头下的文件对话框类：必须「优雅拒绝」，不是崩溃 ----------
+        # ---------- 无头下的文件对话框类：必须“优雅拒绝”，不是崩溃 ----------
         print("\n[对话框] 无头环境应优雅降级")
         for name, args in (("PickSupervisorImage", []), ("PickAppExe", []), ("AddMusicSound", [])):
             res = call_ok(base, name, args)
-            # 无头下弹不出对话框 → Go 侧返回 nil map（JSON null）表示「用户取消」；
+            # 无头下弹不出对话框 → Go 侧返回 nil map（JSON null）表示“用户取消”；
             # 前端一律写 `if (!picked) return`，null 与 {canceled:true} 等价。
             ok = res is None or (isinstance(res, dict) and ("error" in res or "canceled" in res))
             check(ok, "%-22s 返回 null 或 {canceled|error}，不抛异常" % name, str(res)[:100])
@@ -466,7 +466,7 @@ def main():
         print("\n[外卖] 动作负路径")
         t1 = call_ok(base, "TakeoutAction", ["takeout", "postpone"])
         # 没有进行中的外卖提醒时，Go 侧走错误返回（响应体为空对象），前端 `void api.takeoutAction()`
-        # 不看返回值 —— 判据是「不炸、不改状态」。
+        # 不看返回值 —— 判据是“不炸、不改状态”。
         check(t1 is None or isinstance(t1, (str, dict)), "TakeoutAction(postpone) 无提醒时安全返回",
               str(t1)[:80])
         state_after_takeout = call_ok(base, "GetState", [])
@@ -502,7 +502,7 @@ def main():
         check("panic:" not in logtext, "运行期日志无 panic 字样",
               "" if "panic:" not in logtext else logtext[logtext.find("panic:") - 200:][:400])
         check("契约缺失" not in logtext, "启动时契约自检未报缺失",
-              "" if "契约缺失" not in logtext else "日志里出现「契约缺失」")
+              "" if "契约缺失" not in logtext else "日志里出现“契约缺失”")
     finally:
         if proc.poll() is None:
             proc.terminate()

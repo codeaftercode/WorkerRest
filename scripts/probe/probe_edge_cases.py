@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""异常与边界探针：正常流程之外的「坏输入 / 坏环境」还撑不撑得住。
+"""异常与边界探针：正常流程之外的“坏输入 / 坏环境”还撑不撑得住。
 
 覆盖六类：
   1. 打包态缺资源目录（exe 旁边没有 assets/）—— 便携包被用户删了素材也不能白屏崩掉；
@@ -29,7 +29,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 BINDING_PREFIX = "main.App."
 
 try:
@@ -83,7 +83,7 @@ def http(method, url, body=None, headers=None, timeout=15):
 
     Windows 在突发并发（比如 20 路同时 SaveSettings）下偶发
     WSAEADDRINUSE(10048) / WSAENOBUFS(10055)，以及 Wails 反代自连失败的
-    「upstream connect failed」—— 三者都是套接字资源抖动，请求还没进方法体，
+    “upstream connect failed”—— 三者都是套接字资源抖动，请求还没进方法体，
     退避重试安全。不重试的话，探针会把环境噪声报成产品缺陷。
     """
     last = (0, "")
@@ -200,7 +200,7 @@ def case_no_assets():
     """打包态：exe 旁没有 assets/supervisors、assets/sounds —— 便携包被删素材。"""
     print("\n[1] 打包态缺资源目录")
     tmp = tempfile.mkdtemp(prefix="wr_edge_noassets_")
-    exe = os.path.join(tmp, "chibingren_server.exe")
+    exe = os.path.join(tmp, "rest_server.exe")
     shutil.copy2(EXE, exe)
     cfgp = os.path.join(tmp, "config", "settings.json")
     os.makedirs(os.path.dirname(cfgp), exist_ok=True)
@@ -379,15 +379,15 @@ def case_dir_instead_of_file():
 
 
 def case_legacy_identifier():
-    """配置里出现「旧版本才有的键」时的口径：**不做旧键迁移**（2026-11-04 用户拍板）。
+    """配置里出现“旧版本才有的键”时的口径：**不做旧键迁移**（2026-11-04 用户拍板）。
 
     软件未发布过，不存在真的老版本配置；`cleanLegacyKeys` 已整段删除，设备标识也已从
-    代码里彻底移除（不生成、不存储、不下发）。所以这里钉的是三条「不」：
+    代码里彻底移除（不生成、不存储、不下发）。所以这里钉的是三条“不”：
     带着陌生键照样启动、软件不把它当回事、也不擅自改写用户文件。
 
-    做法刻意分两轮：第一轮让服务把配置「跑熟」（补齐 seeded 标记并回写），第二轮才塞
-    一个陌生键进去再起 —— 否则第一轮本来就因为补种而回写，测不出「是不是这个键触发
-    的落盘」，等于把两件事混成一条断言。
+    做法刻意分两轮：第一轮让服务把配置“跑熟”（补齐 seeded 标记并回写），第二轮才塞
+    一个陌生键进去再起 —— 否则第一轮本来就因为补种而回写，测不出“是不是这个键触发
+    的落盘”，等于把两件事混成一条断言。
     """
     print("\n[7] 旧版本残留键：不迁移、不崩、不改写")
     tmp = tempfile.mkdtemp(prefix="wr_edge_ident_")
@@ -417,7 +417,7 @@ def case_legacy_identifier():
             check(disk.get("installId") == old_id,
                   "不做旧键迁移：陌生键原样留着，软件不擅自删用户文件", disk.get("installId"))
             check(os.path.getmtime(cfgp) == before,
-                  "没有触发回写（不做迁移也就没有「清理残留键」这次落盘）", "")
+                  "没有触发回写（不做迁移也就没有“清理残留键”这次落盘）", "")
             # 其余字段照常生效：陌生键不能把整份配置带偏
             st, got = call(srv.base, "GetSettings", [])
             got = got or {}

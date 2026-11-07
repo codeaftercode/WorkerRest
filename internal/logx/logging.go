@@ -21,11 +21,11 @@ import (
 //
 // 为什么必须落盘：GUI 子系统（-H windowsgui）没有控制台，stderr 写进虚空。而
 // **Wails 运行时自己的致命错误也只走 Logger**（application.handleError），所以
-// 「双击没反应」这类问题在正式包里唯一能看到现场的通道就是这份文件 —— 早先
+// “双击没反应”这类问题在正式包里唯一能看到现场的通道就是这份文件 —— 早先
 // appLogger 默认返回 nil（丢弃），等于把最需要的一条日志一起丢了。
 //
-// 落点：<exe 所在目录>/logs/app.log（便携包的结构就是「exe 旁边放 config/、data/、
-// sounds/」，日志跟着同一个目录，用户打包拷走时一起带走；装到只读目录时退到
+// 落点：<exe 所在目录>/logs/app.log（便携包的结构就是“exe 旁边放 config/、data/、
+// sounds/”，日志跟着同一个目录，用户打包拷走时一起带走；装到只读目录时退到
 // %LocalAppData%\WorkerRest\logs）。WR_LOG_FILE 仍然优先，探针靠它把某个被测
 // 进程的日志单独捞出来。
 //
@@ -34,7 +34,7 @@ import (
 //  2. 按大小分包：单份 2 MiB，另留 app.log.1 / app.log.2，目录里最多 3 份、6 MiB；
 //  3. 按时间分包与清理：单份最多跨 1 天，启动时删掉 7 天前的分包 —— 只留近期日志。
 //
-// 第 3 条是必要的：日志产生得很慢时，一个 app.log 能横跨好几个月，光靠「按大小」
+// 第 3 条是必要的：日志产生得很慢时，一个 app.log 能横跨好几个月，光靠“按大小”
 // 永远轮不到滚动，旧内容就一直赖在盘上。
 const (
 	logFileName   = "app.log"
@@ -50,7 +50,7 @@ var (
 )
 
 // AppLogWriter 返回全局日志目标（进程内只算一次，log 与 slog 共用同一份）。
-// 最外层套 guardWriter：所有来源都过「媒体拒收 + 单条截断」这道闸，包括 WR_LOG_FILE。
+// 最外层套 guardWriter：所有来源都过“媒体拒收 + 单条截断”这道闸，包括 WR_LOG_FILE。
 func AppLogWriter() io.Writer {
 	appLogOnce.Do(func() { appLogOut = wrapGuarded(newAppLogWriter()) })
 	return appLogOut
@@ -60,11 +60,11 @@ func AppLogWriter() io.Writer {
 func newAppLogWriter() io.Writer {
 	// 诊断用覆盖：设了 WR_LOG_FILE 就**只**写该文件（不滚动 —— 探针自己管理生命周期，
 	// 每次运行前清空该文件）。刻意不再往 stderr 抄一份：用它的探针同时也是 stdout
-	// 重定向到同一个文件的，两边都写会让按行计数、按「第几条」判序的断言
+	// 重定向到同一个文件的，两边都写会让按行计数、按“第几条”判序的断言
 	//（smoke_server 数 [sound] 播放次数）直接翻倍。
 	//
 	// 这条通道同样过 AppLogWriter 最外层的 guardWriter，所以媒体/超长内容依然落不了盘；
-	// 只是不参与下面那套按大小/按时间的滚动（诊断通道要的是「一份完整的本次现场」）。
+	// 只是不参与下面那套按大小/按时间的滚动（诊断通道要的是“一份完整的本次现场”）。
 	if p := os.Getenv("WR_LOG_FILE"); p != "" {
 		if f, err := os.OpenFile(p, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644); err == nil {
 			return f
@@ -79,7 +79,7 @@ func newAppLogWriter() io.Writer {
 		pruneOldLogs(dir, now, time.Duration(logRetainDays)*24*time.Hour)
 		w, err := openRotatingLog(filepath.Join(dir, logFileName), logMaxBytes, logKeepFiles)
 		if err == nil {
-			// 文件是主目标，stderr 只是「有控制台时顺便看一眼」：
+			// 文件是主目标，stderr 只是“有控制台时顺便看一眼”：
 			// 发布版是 -H windowsgui（stderr 是无效句柄，写失败直接忽略），而
 			// 去掉该标记的探针产物、以及用户从 cmd 启动时，日志还得能出现在控制台上
 			// —— probes 里 smoke_server / probe_sound_scan / probe_stats_file 全都
@@ -134,8 +134,8 @@ func appLogDirs() []string {
 // 日常排查没有价值，只由本包的标准 log 打 `[xxx]` 关键日志，所以把框架的 Info 整档
 // 静默，只留 Warn / Error。真正要看框架行为时用环境变量把级别顶上去：
 //
-//	WR_LOG_LEVEL=info  ./chibingren_server.exe   # 恢复框架 Info（含资源请求日志）
-//	WR_LOG_LEVEL=debug ./chibingren_server.exe   # 连 Debug 一起开，日志里会打出
+//	WR_LOG_LEVEL=info  ./rest_server.exe   # 恢复框架 Info（含资源请求日志）
+//	WR_LOG_LEVEL=debug ./rest_server.exe   # 连 Debug 一起开，日志里会打出
 //	                                              # fqn=main.App.Xxx（唯一能看到 Wails
 //	                                              # 真实注册了哪些全限定名的地方）
 //
@@ -155,7 +155,7 @@ func AppLogger() *slog.Logger {
 // ListRoles 的 result 里带着 17 个督休专员立绘的 data:image/webp;base64,… ——
 // 一次调用就是几 MB，实测一份 11.2 MB 的日志里有 6.78 MB 是这类内容。
 // 这里从源头把超长属性换成摘要（保留 method= 等真正有用的排查信息），
-// guardWriter 再兜一层「万一别的通道漏过来」。
+// guardWriter 再兜一层“万一别的通道漏过来”。
 const logMaxAttrBytes = 1024
 
 var logAttrMediaMarkers = []string{
@@ -188,7 +188,7 @@ func trimLogAttr(_ []string, a slog.Attr) slog.Attr {
 
 // Debugf 只在 WR_LOG_LEVEL=debug 时输出。
 //
-// 用来安放「什么都没发生」类的旁路播报（已是目标状态、跳过、宿主就绪…）：
+// 用来安放“什么都没发生”类的旁路播报（已是目标状态、跳过、宿主就绪…）：
 // 它们既不反映状态变化，也不是警告或错误，平时写进日志只是稀释现场；真要顺着
 // 启动流程排查时把级别顶到 debug 即可看见。未开启时提前返回，连格式化都不做。
 func Debugf(format string, args ...any) {
@@ -199,7 +199,7 @@ func Debugf(format string, args ...any) {
 }
 
 // appLoggerLevel WR_LOG_LEVEL → slog 级别。默认 Warn；info / debug 各升一档，非法值按默认兜底。
-// 抽成纯函数是为了让「级别映射」可测（见 writer_test.go 的 TestAppLoggerLevel）。
+// 抽成纯函数是为了让“级别映射”可测（见 writer_test.go 的 TestAppLoggerLevel）。
 func appLoggerLevel() slog.Level {
 	switch os.Getenv("WR_LOG_LEVEL") {
 	case "info":
@@ -210,7 +210,7 @@ func appLoggerLevel() slog.Level {
 	return slog.LevelWarn
 }
 
-// pruneOldLogs 清掉日志目录里的「过期」或「异常超大」分包，只留近期、正常大小的日志。
+// pruneOldLogs 清掉日志目录里的“过期”或“异常超大”分包，只留近期、正常大小的日志。
 //
 // 只认 app.log 与 app.log.*，不碰 config/、data/ 或用户放的同目录文件；
 // 删除失败一律忽略 —— 日志组件不该把主程序拖死。
@@ -218,7 +218,7 @@ func appLoggerLevel() slog.Level {
 // 两条判据缺一不可：
 //   - 过期：软件很久没开时，连当前份 app.log 一起删掉，随后 openRotatingLog 新建空文件；
 //   - 超大：正常单份上限 2 MiB，超过 2 倍必然是历史异常（旧版本曾把立绘 base64
-//     整块写进日志，实测留下 11.2 MB 的 app.log）。只按时间判据它还是「今天」，
+//     整块写进日志，实测留下 11.2 MB 的 app.log）。只按时间判据它还是“今天”，
 //     会一直赖在盘上。
 func pruneOldLogs(dir string, now time.Time, retain time.Duration) {
 	if retain <= 0 {
@@ -254,7 +254,7 @@ type rotatingLogWriter struct {
 	max    int64
 	keep   int
 	maxAge time.Duration
-	now    func() time.Time // 注入时钟，便于回归「跨天滚动」
+	now    func() time.Time // 注入时钟，便于回归“跨天滚动”
 	file   *os.File
 	size   int64
 	since  time.Time // 当前份的起始时间（进程重启后从 mtime 恢复）
@@ -305,7 +305,7 @@ func (w *rotatingLogWriter) Write(p []byte) (int, error) {
 			return 0, err
 		}
 	}
-	// 按时间滚动：一份日志不该横跨好几天，否则「只保留近期」无从谈起。
+	// 按时间滚动：一份日志不该横跨好几天，否则“只保留近期”无从谈起。
 	// 先把 since 推到当前，即使这次 rotate 失败也不会每拍重试。
 	if w.maxAge > 0 && w.now().Sub(w.since) > w.maxAge {
 		w.since = w.now()
@@ -322,7 +322,7 @@ func (w *rotatingLogWriter) Write(p []byte) (int, error) {
 
 // rotate 把 app.log(N) → app.log(N+1)，最老的一份删掉，然后续写新的 app.log。
 //
-// 任何一步失败都只当「这次没滚成功」：日志组件不该把主程序拖死。
+// 任何一步失败都只当“这次没滚成功”：日志组件不该把主程序拖死。
 func (w *rotatingLogWriter) rotate() {
 	_ = w.file.Close()
 	for i := w.keep; i >= 1; i-- {
@@ -347,7 +347,7 @@ func (w *rotatingLogWriter) rotate() {
 	// 重定向到同一个路径就会这样）。reopen 又打开了这份已经很大的旧文件，
 	// 若就此罢休，w.size 一直 > max，之后**每条**日志都会再试一次 Rename：
 	// 既白耗一次系统调用，体积也永远降不下来。退而求其次就地截断，
-	// 并把 since 推到当前，避免「按时间滚动」跟着每拍再来一次。
+	// 并把 since 推到当前，避免“按时间滚动”跟着每拍再来一次。
 	w.since = w.now()
 	if w.size > w.max {
 		_ = os.Truncate(w.path, 0)

@@ -3,19 +3,19 @@
 """真机双屏验证：提醒窗口到底弹在哪几块屏上。
 
 为什么必须有这个探针：`displayIds` 的语义（具体 ID 快照 / 空=主屏 / 失配回退主屏）
-在 Go 侧有单测，但「窗口真的落到那块屏上了吗」只有跑起来才知道 —— 中间还隔着两层：
+在 Go 侧有单测，但“窗口真的落到那块屏上了吗”只有跑起来才知道 —— 中间还隔着两层：
   ① display.Info（QueryDisplayConfig 的物理像素矩形）与 Wails Screen.WorkArea 的对齐；
   ② 窗口建出来后有没有被 Wails 的 InitialPosition 或系统 DPI 虚拟化挪走。
-这两层任何一层错，用户看到的就是「勾了副屏，提醒还是弹在主屏」，而日志一切正常。
+这两层任何一层错，用户看到的就是“勾了副屏，提醒还是弹在主屏”，而日志一切正常。
 
 做法：一组一条进程，隔离配置（WR_SETTINGS_PATH），让短休息 6 秒后自己弹出来，
 然后用 Win32 枚举本进程的顶层窗口，按窗口中心点判定它落在哪块屏上。
 
-场景（每个都同时断言「数量对不对」和「屏对不对」）：
+场景（每个都同时断言“数量对不对”和“屏对不对”）：
   primary    勾主屏的 ID                     → 主屏 1 扇
   both       勾满两块                          → 每块各 1 扇（这是用户想要的那个行为）
   secondary  只勾副屏                          → 只有副屏 1 扇，主屏不许有
-  stale      勾了一个已经不存在的 ID            → 回退主屏 1 扇，绝不「一扇都不弹」
+  stale      勾了一个已经不存在的 ID            → 回退主屏 1 扇，绝不“一扇都不弹”
   prebreak   只勾副屏 + 提前提示                → 提前小窗跟着勾选走
 
 判据：
@@ -24,7 +24,7 @@
     算过尺寸只是位置碰巧对
   - 非目标屏上一扇都不许有（数量断言已覆盖，这里再显式数一遍便于读报告）
 
-前置：至少两块活动屏，否则退出码 3（= 无法测量，与「失败」区分）。
+前置：至少两块活动屏，否则退出码 3（= 无法测量，与“失败”区分）。
 隔离：WR_SETTINGS_PATH / WR_LOG_FILE 指向 %TEMP%，绝不碰真实配置。
 用法：python scripts/probe/probe_display_target.py [--keep] [--no-build]
 """
@@ -41,7 +41,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_disp.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_disp.exe")
 HELPER = os.path.join(HERE, "display_ids.go")
 TEMP = os.environ.get("TEMP", ROOT)
 ISO = os.path.join(TEMP, "wr_disptarget_iso")
@@ -143,7 +143,7 @@ def make_cfg(display_ids, scene="short"):
     else:
         raise SystemExit("未知场景：" + scene)
 
-    # 其它「会让提醒不弹」的开关全关：探针要验的是显示器选择，不是这些
+    # 其它“会让提醒不弹”的开关全关：探针要验的是显示器选择，不是这些
     cfg["appPause"] = {"enabled": False, "apps": []}
     cfg["idlePauseMin"] = 0
     cfg["dndPause"] = False
@@ -157,7 +157,7 @@ def make_cfg(display_ids, scene="short"):
     ap = dict(cfg.get("appearance") or {})
     ap["hideOnShare"] = False
     ap["alwaysOnTop"] = True
-    ap["blur"] = False       # 模糊会让「窗口在不在」难判定，这里不需要它
+    ap["blur"] = False       # 模糊会让“窗口在不在”难判定，这里不需要它
     ap["fullscreen"] = False
     cfg["appearance"] = ap
 
@@ -231,7 +231,7 @@ def screen_of(rect, displays):
 # ---------- 单场景 ----------
 
 def run_case(name, display_ids, expect_ix, scene="short", note=""):
-    """expect_ix：本场景期望「每块屏各一扇」的屏下标列表。"""
+    """expect_ix：本场景期望“每块屏各一扇”的屏下标列表。"""
     title = TITLE_PREBREAK if scene == "prebreak" else TITLE_BREAK
     print("\n—— %s：%s ——" % (name, note or "、".join(str(x) for x in display_ids)))
     kill_all()
@@ -245,7 +245,7 @@ def run_case(name, display_ids, expect_ix, scene="short", note=""):
     try:
         want = len(expect_ix)
         wins = wait_windows(proc.pid, title, want, timeout=45)
-        print("  「%s」共 %d 扇：%s" % (title, len(wins), [w[1] for w in wins]))
+        print("  “%s”共 %d 扇：%s" % (title, len(wins), [w[1] for w in wins]))
         if not check(len(wins) == want, "窗口数量 = %d" % want, "实际 %d" % len(wins)):
             return
         landed = [screen_of(r, DISPLAYS) for _, r in wins]
@@ -312,7 +312,7 @@ def main():
     pid_other = DISPLAYS[other]["id"]
 
     run_case("只勾主屏", [pid_primary], [primary], note="勾主屏的稳定 ID")
-    run_case("空配置", [], [primary], note="空数组必须等同主屏，绝不是「所有屏」")
+    run_case("空配置", [], [primary], note="空数组必须等同主屏，绝不是“所有屏”")
     run_case("勾满两块", [pid_primary, pid_other], list(range(len(DISPLAYS))),
              note="用户想要的：每块各一扇")
     run_case("只勾副屏", [pid_other], [other], note="主屏上一扇都不许有")

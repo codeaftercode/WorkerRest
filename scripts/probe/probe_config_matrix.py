@@ -6,14 +6,14 @@
   A. 归一化矩阵（一个服务，反复 SaveSettings → GetSettings）
      覆盖 short/long 的 mode 与 slots、sound.mode/volume、supervisor.selection、
      reminderMessages.order、takeout.pauseAction/leadSec/slots、window、appPause、
-     dndPause/fullscreenPause、sites 过滤，以及「类型错误的值不得让整份配置坏掉」。
+     dndPause/fullscreenPause、sites 过滤，以及“类型错误的值不得让整份配置坏掉”。
   B. 启动态矩阵（每个变体单起一个服务）
      nextAt/nextSource/nextType 与 lines 的类型序列 —— 这些只在启动时算一次。
 
-判据分两类，写清楚免得把「设计如此」误判成 bug：
+判据分两类，写清楚免得把“设计如此”误判成 bug：
   · 归一化组（normalizeForSave 覆盖的键）：非法值必须被折回合法集合；
-  · 透传组（theme / appearance / shortcuts 等前端负责的键）：只要求「存得住、读得回、
-    不让服务崩」，具体取值由前端控件约束，服务端不做二次裁决。
+  · 透传组（theme / appearance / shortcuts 等前端负责的键）：只要求“存得住、读得回、
+    不让服务崩”，具体取值由前端控件约束，服务端不做二次裁决。
 
 用法：python scripts/probe/probe_config_matrix.py
 退出码 0 = 全部通过。
@@ -35,7 +35,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 BINDING_PREFIX = "main.App."
 
 try:
@@ -239,7 +239,7 @@ def phase_a():
         cfg = save_get(base, {"short": {"mode": "countdown"}})
 
         # ---- 时长 / 间隔为 0：归一化不管这两个键（只管 mode/slots），
-        #      所以判据不是「被钳制」，而是「运行时不失控」—— 用 3 秒内的计划日志条数当尺子。
+        #      所以判据不是“被钳制”，而是“运行时不失控”—— 用 3 秒内的计划日志条数当尺子。
         pos0 = os.path.getsize(log_path)
         save_get(base, {"short": {"durationMs": 0, "intervalMs": 0}})
         time.sleep(3)
@@ -282,7 +282,7 @@ def phase_a():
             check(at(cfg, "sound", "mode") == good, "sound.mode=%s 保留" % good, at(cfg, "sound", "mode"))
         cfg = save_get(base, {"sound": {"mode": "single"}})
 
-        # 音量越界：raw 不钳制，判据是「真正播的时候用的是不是合法音量」—— 从播放日志里取。
+        # 音量越界：raw 不钳制，判据是“真正播的时候用的是不是合法音量”—— 从播放日志里取。
         def played_volume(level):
             save_get(base, {"sound": {"enabled": True, "volume": level, "mode": "single"}})
             mark = os.path.getsize(log_path)
@@ -344,7 +344,7 @@ def phase_a():
         cfg = save_get(base, {"takeout": {"pauseAction": "postpone", "leadSec": 10, "postponeMin": 2}})
 
         # ---- 开关类：类型错误的原始值不要求被改写（读取侧用 Bool 带默认），
-        #      判据是「不污染运行路径」：保存后服务照样能起状态、值仍是可解释的。
+        #      判据是“不污染运行路径”：保存后服务照样能起状态、值仍是可解释的。
         cfg = save_get(base, {"dndPause": 0,
                               "fullscreenPause": "false",
                               "appPause": {"enabled": "true"}, "window": {"rememberSize": "yes"}})
@@ -355,7 +355,7 @@ def phase_a():
         check(at(cfg, "appPause", "enabled") is False,
               "appPause.enabled='true'（字符串）被折成 false，而不是当成真值", at(cfg, "appPause", "enabled"))
         check(at(cfg, "window", "rememberSize") is True,
-              "window.rememberSize='yes' 被归成 true（非空字符串按「开」处理）",
+              "window.rememberSize='yes' 被归成 true（非空字符串按“开”处理）",
               at(cfg, "window", "rememberSize"))
         st3, s3 = call(base, "GetState", [])
         check(isinstance(s3, dict), "类型错误的开关不影响服务状态读取", type(s3).__name__)
@@ -375,7 +375,7 @@ def phase_a():
              "读回 %r / %r" % (at(cfg, "appearance", "widthPct"), at(cfg, "appearance", "heightPct")))
         cfg = save_get(base, {"appearance": {"widthPct": 95, "heightPct": 95}})
 
-        # ---- sites：raw 原样存（前端写入的是候选列表），但「用的时候」必须只剩
+        # ---- sites：raw 原样存（前端写入的是候选列表），但“用的时候”必须只剩
         #      https / 回环 —— 判据取自 CheckUpdate 的耗时与日志，而不是读回的 raw。
         save_get(base, {"sites": ["http://evil.example.com/v.json", "ftp://x/y.json"]})
         mark = os.path.getsize(log_path)
@@ -409,8 +409,8 @@ def phase_a():
               "SaveSettings(null) 是 no-op：返回 true 但配置一点没变", "%r → %r" % (before_null, after_null))
 
         # ---- appearance 的实际生效面（会话里下发）----
-        # 先确保没有残留会话：BreakCurrent 拿的是「当前会话」，若上一次休息没真正结束，
-        # 这里读到的就是旧会话的外观（默认值），会误判成「配置没生效」。
+        # 先确保没有残留会话：BreakCurrent 拿的是“当前会话”，若上一次休息没真正结束，
+        # 这里读到的就是旧会话的外观（默认值），会误判成“配置没生效”。
         call(base, "Action", ["break", "endBreak"], window="break")
         time.sleep(0.4)
         st_idle, st0 = call(base, "GetState", [])
@@ -458,8 +458,8 @@ def boot_state(cfg, port, prefix):
     if proc is None:
         return None, iso, None
     # 服务起来了不等于反代已经能转发：连跑多个变体时偶发 502 / upstream connect failed，
-    # 那一下 GetState 会拿到空。这里重试几次再判「起不来」—— 否则会把套接字抖动报成
-    # 「某个配置组合起不来」，是最容易误导人的那种假红。
+    # 那一下 GetState 会拿到空。这里重试几次再判“起不来”—— 否则会把套接字抖动报成
+    # “某个配置组合起不来”，是最容易误导人的那种假红。
     state = None
     for i in range(8):
         st, got = call(base, "GetState", [])
@@ -560,7 +560,7 @@ def phase_b():
         try:
             if not st:
                 return None, []
-            # lines 只放「最近几跳」，跨一天的分布要看 timeline（今日时间线）。
+            # lines 只放“最近几跳”，跨一天的分布要看 timeline（今日时间线）。
             items = st.get("timeline") or []
             return sum(1 for l in items if l.get("type") == "long"), items
         finally:

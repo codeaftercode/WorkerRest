@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""一次性截图：把「显示的屏幕」面板（含底部刷新行）拍下来，人工核对版式。
+"""一次性截图：把“显示的屏幕”面板（含底部刷新行）拍下来，人工核对版式。
 
 用法：python scripts/oneoff/shot_display_drop.py
 产物：%TEMP%/wr_shot/display_drop.png、display_drop_open.png
@@ -19,7 +19,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 OUT = os.path.join(tempfile.gettempdir(), "wr_shot")
 

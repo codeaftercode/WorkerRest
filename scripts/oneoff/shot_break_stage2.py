@@ -7,14 +7,14 @@
 
 为什么走无头服务 + Playwright 而不是屏幕抓图：
   1. 提醒窗口带 WDA_EXCLUDEFROMCAPTURE，任何走官方捕获通路的截图都拍不到它
-     （见 README「副作用：想截图也拍不到」）；
+     （见 README“副作用：想截图也拍不到”）；
   2. 真窗口的尺寸受屏幕工作区约束，做出来的图比需要的更大。
   无头服务渲染的是同一份 HTML/CSS/JS，只是数据由替身 shim 喂进来，
   所以画面与真窗口逐像素同源，尺寸还能自己定。
 
 二阶段怎么进：break.js 的 noteActivity 在 stage1 累计权重到 3 就升到 stage2。
 页面对外只暴露全局键鼠心跳（onSupActivity），这里把它存下来再触发一次
-（权重 +3），等价于「用户在任意应用里敲了一下键」——真实路径，不是改 DOM 硬造。
+（权重 +3），等价于“用户在任意应用里敲了一下键”——真实路径，不是改 DOM 硬造。
 """
 import base64
 import json
@@ -29,7 +29,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 ROLE_DIR = os.path.join(ROOT, "assets", "supervisors", "医生")
 
@@ -124,7 +124,7 @@ const { chromium } = require('playwright-core');
     status: 200, contentType: 'application/javascript', body: shim }));
   await page.route('**/favicon.ico', (r) => r.fulfill({ status: 204, body: '' }));
   await page.goto(base + '/break.html?win=break', { waitUntil: 'load' });
-  // 立绘解码 + 透明边距测量完成后 .trim 才可见（figureTrim），此时才是「画好了」
+  // 立绘解码 + 透明边距测量完成后 .trim 才可见（figureTrim），此时才是“画好了”
   await page.waitForFunction(() => {
     const t = document.getElementById('figure-trim');
     const img = document.getElementById('figure-img');

@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""督休专员题名「零遮挡」全专员探针（驱动端）。
+"""督休专员题名“零遮挡”全专员探针（驱动端）。
 
 为什么需要它：题名的位置与字号由渲染层按立绘 alpha 剖面反解（break.js 与
 takeout.js 各一份 layoutRoleTitle）。这个反解有一处对称性极易漏：剖面 minY[]
@@ -8,7 +8,7 @@ takeout.js 各一份 layoutRoleTitle）。这个反解有一处对称性极易�
 
 2026-11-02 实测到漏掉这一步的后果：命中判定去查了图片的另半边，牌面明明落在
 人物左侧的空白里（实拍牌底是纯背景），判据却在右侧对称位置数到一片像素，于是
-「每列都算遮挡」—— 魔法师 hit=34，正好等于区间列数 34，字号被一路压到下限
+“每列都算遮挡”—— 魔法师 hit=34，正好等于区间列数 34，字号被一路压到下限
 15px。只有几何配置 flip=true 的专员才触发，主探针（probe_renderer 跑真实配置
 的那一位）抽不到就等于没测。所以这里**逐个专员**钉住 fixedRole 各跑一遍。
 
@@ -47,7 +47,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 SUP_DIR = os.path.join(ROOT, "assets", "supervisors")
 PROBE_JS = os.path.join(HERE, "probe_role_title.js")
@@ -114,7 +114,7 @@ def run_one(role):
         sup = cfg.setdefault("supervisor", {})
         sup["enabled"] = True
         # 固定显示：会话里的督休专员必然就是 fixedRole 那位。随机/顺序模式下
-        # 抽到谁不可控，量到的 hit 也就对不上「这个专员的立绘」。
+        # 抽到谁不可控，量到的 hit 也就对不上“这个专员的立绘”。
         sup["selection"] = "fixed"
         sup["fixedRole"] = role
         sup["order"] = [role]          # 出厂 order 为空 = 用内置顺序；这里显式点名
@@ -179,7 +179,7 @@ def main():
     args = ap.parse_args()
 
     if not os.path.exists(EXE):
-        print("没有 %s（先 go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest）" % EXE)
+        print("没有 %s（先 go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest）" % EXE)
         return 2
     try:
         import playwright  # noqa: F401
@@ -225,11 +225,11 @@ def main():
                   "box=%s" % (d.get("box"),))
             check(not d.get("errs"), label + "：页面无未捕获 JS 错误", d.get("errs"))
 
-    # 关键路径的「失效断言」：翻转命中判据就是这次修的 bug，若这一轮一位翻转
+    # 关键路径的“失效断言”：翻转命中判据就是这次修的 bug，若这一轮一位翻转
     # 专员都没抽到，全绿毫无意义（几何数据坏了也会是这样）。
-    check(flips["on"] > 0, "本轮覆盖到「水平翻转」立绘（误报 bug 的触发条件）",
+    check(flips["on"] > 0, "本轮覆盖到“水平翻转”立绘（误报 bug 的触发条件）",
           "flip=on %d / off %d" % (flips["on"], flips["off"]))
-    check(flips["off"] > 0, "本轮同时有「未翻转」对照（不是只测镜像那一侧）",
+    check(flips["off"] > 0, "本轮同时有“未翻转”对照（不是只测镜像那一侧）",
           "flip=on %d / off %d" % (flips["on"], flips["off"]))
 
     after = digest(real_cfg)

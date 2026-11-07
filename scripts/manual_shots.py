@@ -14,7 +14,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 PROBE = os.path.join(HERE, "manual_shots.js")
 TEMP = os.environ.get("TEMP", ROOT)
 OUT = os.path.join(TEMP, "wr_manual_shots")
@@ -70,7 +70,7 @@ def main():
     print("构建无头服务…")
     b = subprocess.run(
         ["go", "build", "-tags", "server", "-o",
-         os.path.join("build", "bin", "chibingren_server.exe"), "-ldflags", "-s -w", "./cmd/workerrest"],
+         os.path.join("build", "bin", "rest_server.exe"), "-ldflags", "-s -w", "./cmd/workerrest"],
         cwd=ROOT, capture_output=True, text=True, encoding="utf-8", errors="replace",
     )
     if b.returncode != 0:

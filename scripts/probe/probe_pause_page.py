@@ -3,7 +3,7 @@
 """暂停提示小窗（pause.html）的驱动：起无头服务 → 跑 pause_page_probe.js → 收断言。
 
 为什么单独一支：这扇窗 300×76、每小时才出现一次、只活 7.5 秒，真机上几乎没法手动盯；
-而它承担的正是「开会 / 投屏被自动暂停」这个最容易出事的场景。既有探针里 pause.html
+而它承担的正是“开会 / 投屏被自动暂停”这个最容易出事的场景。既有探针里 pause.html
 从未被渲染过（静态审计才第一次扫到它），所以补这一支。
 
 隔离口径与其余探针一致：配置用出厂默认的一份副本放临时目录，WR_SETTINGS_PATH 指过去，
@@ -26,7 +26,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 PROBE_JS = os.path.join(HERE, "pause_page_probe.js")
 PRELOAD = os.path.join(ROOT, "scripts", "probe_preload.js")
@@ -70,7 +70,7 @@ def digest(path):
 
 def main():
     if not os.path.exists(EXE):
-        print("找不到 %s（先 go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest）" % EXE)
+        print("找不到 %s（先 go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest）" % EXE)
         return 2
     if not os.path.exists(PROBE_JS):
         print("找不到 %s" % PROBE_JS)

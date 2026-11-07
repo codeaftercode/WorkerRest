@@ -23,7 +23,7 @@ import secrets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 TEMP = os.environ.get("TEMP", ROOT)
 BINDING_PREFIX = "main.App."
 

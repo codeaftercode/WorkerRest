@@ -6,13 +6,13 @@
   1. 没有 data/ 与 stats.json 时，启动后程序自己把目录和空表建出来（打包不再预置它们）；
   2. 空表内容是合法 JSON 且只含 `_customNames` 保留键（与 marshalLocked 同格式）；
   3. 把文件改坏后重启：原内容被改名成 `stats_<日期_时间>.json` 原样保留，
-     原路径换回空表，且 GetStatsFileNotice 给出「备份在哪 / 为什么判定损坏」；
+     原路径换回空表，且 GetStatsFileNotice 给出“备份在哪 / 为什么判定损坏”；
   4. AckStatsFileNotice 之后说明清空（同一次运行不再弹）。
 
 用法：python scripts/probe_stats_file.py [--port 29751] [--keep]
 退出码 0 = 全部通过。
 
-前置：go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest（脚本不重建二进制）
+前置：go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest（脚本不重建二进制）
 """
 
 import argparse
@@ -31,7 +31,7 @@ import secrets
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 TEMP = os.environ.get("TEMP", ROOT)
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 REPORT = os.path.join(TEMP, "wr_stats_file_probe_report.txt")
 
 try:
@@ -131,7 +131,7 @@ def main():
     args = ap.parse_args()
 
     if not os.path.isfile(EXE):
-        print("找不到 %s —— 先 go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest" % EXE)
+        print("找不到 %s —— 先 go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest" % EXE)
         return 2
 
     iso = os.path.join(TEMP, "wr_stats_file_probe")
@@ -175,7 +175,7 @@ def main():
                 check(False, "自建空表可解析", repr(e))
         notice, raw = rpc(base, "GetStatsFileNotice")
         check(notice is None and str(raw).strip() in ("null", "", "None"),
-              "首跑不产生「文件损坏」说明（GetStatsFileNotice 为 null）", raw)
+              "首跑不产生“文件损坏”说明（GetStatsFileNotice 为 null）", raw)
     finally:
         stop(proc)
 

@@ -10,7 +10,7 @@
   · settings_flow_probe.js   —— 写入链路：控件改动 → 落盘 → 读回 → 主题 / 快捷键 /
                                 导入校验 / 恢复默认。
 
-为什么单独一个驱动：JS 侧只负责「打开页面 + 断言」，起服务、隔离配置、清理进程
+为什么单独一个驱动：JS 侧只负责“打开页面 + 断言”，起服务、隔离配置、清理进程
 这些 Python 侧更顺手（与 probe_renderer.py 同一分工）。三个脚本共用一个服务，
 省掉两次冷启动。
 
@@ -35,13 +35,13 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 PROBE_JS = [
     os.path.join(HERE, "settings_ui_probe.js"),
     os.path.join(HERE, "settings_modals_probe.js"),
     os.path.join(HERE, "settings_flow_probe.js"),
-    # 放在最后：它逐个操作控件、改配置，会让页面停在「刚改完又改回去」的状态上，
+    # 放在最后：它逐个操作控件、改配置，会让页面停在“刚改完又改回去”的状态上，
     # 前三个探针都假定初始形态，所以它必须收尾跑。
     os.path.join(HERE, "settings_options_probe.js"),
 ]
@@ -141,13 +141,13 @@ def main():
         for js in PROBE_JS:
             print("\n===== %s =====" % os.path.basename(js))
             # 捕获而不是继承 stdout：继承时 node 的输出直奔文件、Python 的 print 还在
-            # 块缓冲里，日志顺序会变成「所有断言在前、所有分节标题在后」，出问题极难对位。
+            # 块缓冲里，日志顺序会变成“所有断言在前、所有分节标题在后”，出问题极难对位。
             r = subprocess.run([node, js], cwd=ROOT, env=penv, text=True,
                                encoding="utf-8", errors="replace", timeout=300,
                                capture_output=True)
             print(r.stdout or "")
             if "结果：" not in (r.stdout or ""):
-                # 脚本没跑到收尾就退了（例如开浏览器失败）：不能让「0 项断言」冒充通过
+                # 脚本没跑到收尾就退了（例如开浏览器失败）：不能让“0 项断言”冒充通过
                 rc = 1
                 print("!! %s 没有输出断言汇总，脚本可能提前退出" % os.path.basename(js))
             if r.returncode != 0:

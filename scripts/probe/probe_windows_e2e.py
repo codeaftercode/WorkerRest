@@ -2,22 +2,22 @@
 # -*- coding: utf-8 -*-
 """提醒窗口端到端：真 GUI 进程 → 真实调度器 / 真实全局热键 → 真实窗口。
 
-无头（-tags server）构建根本不建窗口，所以「配置有没有真的接到 WebviewWindowOptions
-上」「窗口是不是真的弹出来、尺寸对不对、到点会不会自己关」这三件事在无头探针里
+无头（-tags server）构建根本不建窗口，所以“配置有没有真的接到 WebviewWindowOptions
+上”“窗口是不是真的弹出来、尺寸对不对、到点会不会自己关”这三件事在无头探针里
 一条都验不到。本脚本用真产物 + Win32 枚举窗口补这一层。
 
 三段（每段各自起一次进程，互不干扰）：
   A 短休息全流程：倒计时模式 45s + 提前 20s
-       → 约 25s 弹「即将休息」，约 45s 弹「休息一下」，约 65s 自己关掉
+       → 约 25s 弹“即将休息”，约 45s 弹“休息一下”，约 65s 自己关掉
        → 顺带把日志里 preBreak 算出的 %dx%d @(%d,%d) 与真实窗口矩形对齐（计算 = 实际）
-  B 外卖提醒：把一个「已经过了提前线」的时间槽放进去（slot=现在+2min, lead=300s）
+  B 外卖提醒：把一个“已经过了提前线”的时间槽放进去（slot=现在+2min, lead=300s）
        → 提前线已过 → 秒级内触发，窗口应为 100% 工作区（这轮 appearance.fullscreen=true）
   C 全局热键 → 立即休息：SendInput 发 Ctrl+Alt+Shift+F24（与 shortcuts.nextBreak 对应）
-       → 5s 内出现「休息一下」
+       → 5s 内出现“休息一下”
 
 为什么这三段必须分开起进程：A 跑完会重排下一次休息，B/C 混进去会被残留的调度线干扰。
 
-隔离：WR_SETTINGS_PATH 指向 %TEMP% 的配置副本；并把「自动暂停」的四条来源
+隔离：WR_SETTINGS_PATH 指向 %TEMP% 的配置副本；并把“自动暂停”的四条来源
 （空闲 / 勿扰 / 全屏 / 投屏 / 应用占用）全部关掉 —— 探针机全程无输入，
 不关的话空闲监视会在跑的过程中把休息挂起，断言随机变红，看起来像产品坏了。
 
@@ -37,7 +37,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_winprobe.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_winprobe.exe")
 DEFAULTS = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 TEMP = os.environ.get("TEMP", ROOT)
 ISO = os.path.join(TEMP, "wr_wins_e2e_iso")
@@ -71,7 +71,7 @@ def skip(label, why):
 # ---------------- Win32 小工具 ----------------
 
 def titled_windows(pid):
-    """该进程下「可见且有标题」的窗口 → [(hwnd, title)]。
+    """该进程下“可见且有标题”的窗口 → [(hwnd, title)]。
 
     只认有标题的：WebView2 自己会建若干无标题的隐藏子窗，全算进来会淹没断言。
     """
@@ -168,9 +168,9 @@ def log_tail(n=2500):
 
 
 def poll_timeline(pid, seconds, interval=0.4):
-    """按时间采样该进程的「有标题可见窗口」集合，返回 [(t, {title: rect})]。
+    """按时间采样该进程的“有标题可见窗口”集合，返回 [(t, {title: rect})]。
 
-    时间线而不是单点快照：「弹出来了」「又自己关掉了」这两件事都必须看见，
+    时间线而不是单点快照：“弹出来了”“又自己关掉了”这两件事都必须看见，
     只在固定时刻截一次图，等于把生命周期砍成一张照片。
     """
     t0 = time.time()
@@ -267,20 +267,20 @@ def phase_break():
         if not wait_main_window(proc.pid):
             check(False, "A · 主窗口起来了", log_tail(1200))
             return
-        # 45s 到点 + 20s 时长 + 建模/启动抖动；采样 95s 足够看到「弹 → 关」全生命周期
+        # 45s 到点 + 20s 时长 + 建模/启动抖动；采样 95s 足够看到“弹 → 关”全生命周期
         tl = poll_timeline(proc.pid, 95)
 
         t_pre, r_pre = first_seen(tl, "即将休息")
         t_brk, r_brk = first_seen(tl, "休息一下")
-        check(t_pre is not None, "A · 提前提示窗「即将休息」弹出来了",
+        check(t_pre is not None, "A · 提前提示窗“即将休息”弹出来了",
               ("%.1fs" % t_pre) if t_pre is not None else "95s 内没出现")
-        check(t_brk is not None, "A · 休息窗「休息一下」弹出来了",
+        check(t_brk is not None, "A · 休息窗“休息一下”弹出来了",
               ("%.1fs" % t_brk) if t_brk is not None else "95s 内没出现")
 
         if t_pre is not None and t_brk is not None:
             gap = t_brk - t_pre
             # 提前量 20s：允许 ±7s（窗口建模 + 采样粒度 + 调度器 1s tick）
-            check(13 <= gap <= 30, "A · 「提前 20s」真的提前了约 20s", "实测 %.1fs 后进入休息" % gap)
+            check(13 <= gap <= 30, "A · “提前 20s”真的提前了约 20s", "实测 %.1fs 后进入休息" % gap)
             check(t_pre <= 40, "A · 提前提示在首轮倒计时里就到点（40s 内）", "%.1fs" % t_pre)
 
         if r_brk is not None:
@@ -301,7 +301,7 @@ def phase_break():
             check(alive >= 15, "A · 休息窗至少撑满了休息时长", "存活 %.1fs" % alive)
             check(t_gone < 94, "A · 休息结束后窗自动关掉", "最后可见 %.1fs，之后消失" % t_gone)
 
-        # 日志里 preBreak 自己算的尺寸必须与真实窗口一致 —— 「算得对」和「建得对」是两件事
+        # 日志里 preBreak 自己算的尺寸必须与真实窗口一致 —— “算得对”和“建得对”是两件事
         tail = log_tail(6000)
         got = parse_prebreak_log(tail)
         if not got:
@@ -336,14 +336,14 @@ def parse_prebreak_log(text):
 
 
 def phase_takeout():
-    print("\n[B] 外卖提醒：提前线落到「当前这一分钟」→ 预通知立刻弹，主窗在我定时刻弹")
+    print("\n[B] 外卖提醒：提前线落到“当前这一分钟”→ 预通知立刻弹，主窗在我定时刻弹")
     cfg = base_cfg()
     # 不安排自动休息，只看外卖这一条链路（预通知窗与休息预通知共用一扇窗，混着来分不清）
     cfg["short"]["enabled"] = False
     cfg["long"]["enabled"] = False
     cfg["customBreaks"] = []
     now = time.time()
-    # 提前线判定是「now + 提前量 命中原定分钟」。把槽设在 now+60s 所在的那一分钟，
+    # 提前线判定是“now + 提前量 命中原定分钟”。把槽设在 now+60s 所在的那一分钟，
     # 提前量也给 60s：启动后 now+60 恰好落在槽的那一分钟里 → 预通知秒级弹出，
     # 原定时刻（≤60s 后）主窗再弹一次。两个时刻都是确定的，不用碰运气。
     lead = 60
@@ -381,12 +381,15 @@ def phase_takeout():
                 check(abs(r_tk[2] - ww) <= TOL and abs(r_tk[3] - wh) <= TOL,
                       "B · fullscreen=true 时外卖窗铺满工作区",
                       "窗口 %dx%d / 工作区 %dx%d" % (r_tk[2], r_tk[3], ww, wh))
-            # 预通知必须在主窗起来时退场：两扇窗叠在一起会让人点错
+            # 预通知必须在主窗起来时退场：两扇窗叠在一起会让人点错。
+            # 只从「外卖主窗首次出现」起算 —— 采样间隔 0.4s，用 ±0.5s 会把主窗还没出现的
+            # 那一拍也算进来（那一拍照样有预通知），那是采样粒度，不是叠窗。
             if t_pre is not None:
-                at_fire = [snap for t, snap in tl if abs(t - t_tk) < 0.5]
-                gone = all("即将休息" not in snap for snap in at_fire)
+                after = [(t, snap) for t, snap in tl if t_tk - 1e-9 <= t <= t_tk + 1.0]
+                gone = all("即将休息" not in snap for _, snap in after)
+                shown = [("%.1fs:" % t) + ",".join(snap or ["-"]) for t, snap in after[:4]]
                 check(gone, "B · 主窗弹出时预通知小窗已经收掉",
-                      "同刻快照：" + (list(at_fire[0].keys()) and str(list(at_fire[0].keys())) or "空"))
+                      "主窗出现后 1s 内：" + (" | ".join(shown) or "无采样"))
         tail = log_tail(4000)
         check("触发提醒" in tail, "B · 日志记下了这次触发",
               ([ln for ln in tail.splitlines() if "触发提醒" in ln][-1:] or ["没有该行"])[0])
@@ -430,9 +433,9 @@ class INPUT(ctypes.Structure):
 def press_hotkey():
     """发 Ctrl+Alt+Shift+F24。RegisterHotKey 是系统级投递，不需要窗口有焦点。
 
-    用 SendInput 而不是 keybd_event：只有它能如实返回「插进去几条事件」。
+    用 SendInput 而不是 keybd_event：只有它能如实返回“插进去几条事件”。
     返回 False = 一条都没进去（沙箱 / 会话隔离拦了合成输入），
-    这时「热键没生效」不能算产品失败，只能记为「无法测量」。
+    这时“热键没生效”不能算产品失败，只能记为“无法测量”。
     """
     seq = [(0x11, 0), (0x12, 0), (0x10, 0), (VK_F24, 0),      # Ctrl Alt Shift F24 按下
            (VK_F24, KEYEVENTF_KEYUP), (0x10, KEYEVENTF_KEYUP),

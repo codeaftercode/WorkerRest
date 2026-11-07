@@ -1,11 +1,11 @@
 /**
  * 渲染层探针（Playwright 驱动系统 Edge 当浏览器用）：把真实的 web/dist 页面
- * 指向无头服务（-tags server 构建的 chibingren_server.exe），验证
+ * 指向无头服务（-tags server 构建的 rest_server.exe），验证
  *
  *   真实的 shim.js（动态 import /wails/runtime.js + Call.ByName）
  *     → 真实 Go 绑定 → 真实会话数据 → 真实渲染层 DOM
  *
- * 这条链路是「按名调用」唯一无法用单元测试覆盖的部分：名字错、运行时装载失败、
+ * 这条链路是“按名调用”唯一无法用单元测试覆盖的部分：名字错、运行时装载失败、
  * CSP 拦截、事件通道不通，都只有真在浏览器里跑一遍才看得见。
  *
  * 输出：WR_OUT 目录下的 PNG（页面实拍）+ metrics.json（DOM 断言用到的度量）。
@@ -25,8 +25,8 @@ const OUT = process.env.WR_OUT || path.join(process.env.TEMP || ".", "wr_go_prob
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // 页面脚本（shim.js）是否真的装载成功：shim.js 装载成功才会挂上 window.api。
-// 用它判定「这一页是不是根本没跑起来」，比逐个枚举浏览器的网络错误码可靠。
-// evaluate 失败（页面正在导航 / 已关闭）也视作「没装载好」，交给重试处理。
+// 用它判定“这一页是不是根本没跑起来”，比逐个枚举浏览器的网络错误码可靠。
+// evaluate 失败（页面正在导航 / 已关闭）也视作“没装载好”，交给重试处理。
 async function scriptsLoaded(page) {
   try {
     return await page.evaluate(() => typeof window.api === "object" && window.api !== null);
@@ -39,17 +39,17 @@ async function scriptsLoaded(page) {
 // 关键：用 addInitScript 在页面脚本之前注入 window.__WR_WIN，模拟 Go 侧建窗时的注入。
 // shim.js 的窗口身份优先级是 window.__WR_WIN → URL 的 ?win= → "settings"，
 // 真实运行时由 Go 的 WebviewWindowOptions.JS 注入；探针不走 Wails 建窗路径，得自己补。
-// 新建一页并挂好「开页前的全部准备」：preload 注入 + favicon 拦截 + console 收集。
+// 新建一页并挂好“开页前的全部准备”：preload 注入 + favicon 拦截 + console 收集。
 // 抽成独立函数是因为 goto 失败要**重开**一页（见 open 里的重试）——重开的页
 // 必须把同样的钩子再挂一遍，漏挂就会丢掉 console 错误或让 favicon 404 混进断言。
 async function newPage(browser, w, h, o) {
   const page = await browser.newPage({ viewport: { width: w, height: h } });
-  // 透明窗口的截图：给透明页一个深色底，避免白底掩盖「没画出来」——但保持与旧
+  // 透明窗口的截图：给透明页一个深色底，避免白底掩盖“没画出来”——但保持与旧
   // 上一版探针一致，这里只对 transparent 页面用透明背景，其余用浅灰。
   if (o.transparent) {
     // Playwright 截图默认白底；透明窗口在 上一版 里截出来是透明底。
     // 这里用 addStyleTag 把 body 背景设成固定色，保证截图可判读（probe_renderer.py
-    // 只断言「非空且非白屏」，不比对透明通道）。
+    // 只断言“非空且非白屏”，不比对透明通道）。
   }
   if (o.preload) {
     // 原 上一版 preload 注入 window.__WR_WIN="settings"：用 addInitScript 等价实现
@@ -62,7 +62,7 @@ async function newPage(browser, w, h, o) {
   // （只有 icon.png），会 404。上一版时代这条被 webContents 吞掉，
   // Playwright 会如实上报成 console error，故这里直接拦掉、返回 204。
   await page.route("**/favicon.ico", (route) => route.fulfill({ status: 204, body: "" }));
-  // 替身 shim：把 shim.js 换成一段直接返回窗口数据的桩，用来进「不启用督休专员」这类
+  // 替身 shim：把 shim.js 换成一段直接返回窗口数据的桩，用来进“不启用督休专员”这类
   // 探针没有真实会话可用的状态（真实路径下窗口数据由 Go 的 breakCurrent/takeoutCurrent
   // 给，督休专员是否启用写在设置里，探针不该为此改用户配置）。必须在 goto 之前挂。
   if (o.mockShim) {
@@ -71,15 +71,15 @@ async function newPage(browser, w, h, o) {
     );
   }
   if (o.onConsole) {
-    // SupActivity 是「用户在任意窗口动了键鼠」的心跳上报（fire-and-forget，调用方不读结果）。
+    // SupActivity 是“用户在任意窗口动了键鼠”的心跳上报（fire-and-forget，调用方不读结果）。
     // 页面对它没有失败分支，界面也不因此少任何东西；但页面正在关闭、或 server 模式下
     // HTTP 连接被并发挤掉时，这次 fetch 会被浏览器中止（TypeError: Failed to fetch），
-    // shim 会如实 console.error 一行 —— 于是「页面无控制台错误」这条断言变成 1/3 概率的假红
+    // shim 会如实 console.error 一行 —— 于是“页面无控制台错误”这条断言变成 1/3 概率的假红
     // （实测 3 轮里红 1 轮，红的那轮报的就是这一条）。
     //
-    // 只放过这一条，判据钉死到「方法名 + TypeError: Failed to fetch」：
+    // 只放过这一条，判据钉死到“方法名 + TypeError: Failed to fetch”：
     // 绑定真丢了（比如方法不存在）、或它抛的是别的错，照旧上报。
-    // 「SupActivity 这个绑定在不在」由契约自检（57 个方法）与绑定级探针兜底，不靠这条断言。
+    // “SupActivity 这个绑定在不在”由契约自检（57 个方法）与绑定级探针兜底，不靠这条断言。
     const BENIGN_IPC_ABORT =
       /\[shim\] 绑定调用失败 main\.App\.SupActivity: TypeError: Failed to fetch/;
     page.on("console", (msg) => {
@@ -114,10 +114,10 @@ async function open(browser, url, w, h, opts) {
   }
   await delay(1400);
   // 偶发：资源加载失败（浏览器侧连接抖动，与被测代码无关），结果是页面脚本没跑起来
-  // → window.api 未定义 → 页面里的方法调用全炸（如「Cannot read properties of
-  // undefined (reading 'takeoutCurrent')」）→ 断言整段变红。
+  // → window.api 未定义 → 页面里的方法调用全炸（如“Cannot read properties of
+  // undefined (reading 'takeoutCurrent')”）→ 断言整段变红。
   //
-  // 判定「脚本没装载成功」不能只看错误文案：Chromium 的网络错误码一长串
+  // 判定“脚本没装载成功”不能只看错误文案：Chromium 的网络错误码一长串
   // （ERR_ADDRESS_IN_USE / ERR_NO_BUFFER_SPACE / ERR_CONNECTION_RESET …），
   // 白名单永远补不全（曾漏掉 ERR_NO_BUFFER_SPACE：Windows 套接字缓冲耗尽，
   // 症状是 shim.js 没加载成功 → 页面首行就抛 TypeError）。
@@ -148,7 +148,7 @@ async function open(browser, url, w, h, opts) {
 const NET_TRANSPORT =
   /net::ERR_(ADDRESS_IN_USE|CONNECTION_REFUSED|NO_BUFFER_SPACE|CONNECTION_RESET|CONNECTION_CLOSED|EMPTY_RESPONSE|NETWORK_CHANGED|TIMED_OUT|SOCKET_NOT_CONNECTED|CONNECTION_ABORTED|HOST_RESOLVER|NAME_NOT_RESOLVED|UNEXPECTED_EOF|INVALID_HTTP_RESPONSE|INTERNET_DISCONNECTED)|Failed to fetch/;
 
-// 归一化掉「纯传输层」错误。
+// 归一化掉“纯传输层”错误。
 // 页内 JS 错误（TypeError / ReferenceError 等）一律保留，让断言照常报红。
 //
 // ⚠️ 必须**原地**删（splice），不能重新赋值：调用方（sErr / tkErr …）持有的是
@@ -184,9 +184,9 @@ async function shot(page, name) {
   await page.screenshot({ path: path.join(OUT, name + ".png") });
 }
 
-// ---- 候选专员拖拽排序：真拖一次，核对「DOM 顺序 / 落盘的 order / 刷新后是否还在」----
-// 落点取目标磁贴**左缘往里 6px**（它的左半）= 语义上「插到它前面」。
-// 画廊是多列网格，落点判定在页面里按「行分组 + 行内左右」算，这里只负责把鼠标放到对的位置。
+// ---- 候选专员拖拽排序：真拖一次，核对“DOM 顺序 / 落盘的 order / 刷新后是否还在”----
+// 落点取目标磁贴**左缘往里 6px**（它的左半）= 语义上“插到它前面”。
+// 画廊是多列网格，落点判定在页面里按“行分组 + 行内左右”算，这里只负责把鼠标放到对的位置。
 async function dragRoleTile(page) {
   const readOrder = () =>
     page.evaluate(() =>
@@ -226,7 +226,7 @@ async function dragRoleTile(page) {
     const s = await window.api.getSettings();
     return (s && s.supervisor && s.supervisor.order) || [];
   });
-  // 刷新页面（模拟重启）：顺序必须还在 —— 这才是「持久化」的真实验证
+  // 刷新页面（模拟重启）：顺序必须还在 —— 这才是“持久化”的真实验证
   await page.reload({ waitUntil: "domcontentloaded" });
   await delay(1600);
   const reloaded = await readOrder();
@@ -236,7 +236,7 @@ async function dragRoleTile(page) {
 // ---- 督休专员重名：提交重名 → 拒绝保存、对话框不关、要求用户重新输入 ----
 //
 // 这条用例必须**无副作用**：重名被拒时磁盘一个字节都不该变。
-// 所以只做「提交重名 → 看它被拒」，不做「改成别的名字」（那会真改名）。
+// 所以只做“提交重名 → 看它被拒”，不做“改成别的名字”（那会真改名）。
 // Go 侧的权威判定（saveSupervisorRole 返回 false）也在这里直接验一次。
 async function dupNameProbe(page) {
   const info = await page.evaluate(() => {
@@ -257,7 +257,7 @@ async function dupNameProbe(page) {
   });
   if (info.skipped) return info;
 
-  // 右键第一个磁贴 → 菜单 → 「重命名」→ 命名框弹出
+  // 右键第一个磁贴 → 菜单 → “重命名”→ 命名框弹出
   await page.evaluate(() => {
     const tile = document.querySelector("#sup-gallery .role-item");
     tile.dispatchEvent(
@@ -369,7 +369,7 @@ async function dupNameProbe(page) {
 // 三条断言缺一不可：
 //   A 列表已到底 → 继续下滚 → 外层 #content 往下走（链生效）
 //   B 列表已到顶 → 继续上滚 → 外层 #content 往上走（反向也生效）
-//   C 列表在中间 → 滚轮只滚列表，外层**不动**（不能变成「一滚就带动整页」）
+//   C 列表在中间 → 滚轮只滚列表，外层**不动**（不能变成“一滚就带动整页”）
 async function galleryScrollChainProbe(page) {
   const snap = () => {
     const g = document.getElementById("sup-gallery-body");
@@ -384,10 +384,10 @@ async function galleryScrollChainProbe(page) {
     };
   };
 
-  // 必须自己切到「督休专员」页签：dragRoleTile 结尾会 reload 页面，而设置页的
+  // 必须自己切到“督休专员”页签：dragRoleTile 结尾会 reload 页面，而设置页的
   // init() **不恢复上次页签**（goTab(activeTab) 只在 pendingUpdate 流程里调用），
-  // 刷新后页签复位到「通用」→ #sup-gallery-body 落在 display:none 的祖先下，
-  // boundingBox() 返回 null，这条用例会误报「找不到列表」。
+  // 刷新后页签复位到“通用”→ #sup-gallery-body 落在 display:none 的祖先下，
+  // boundingBox() 返回 null，这条用例会误报“找不到列表”。
   await page.evaluate(() => {
     const b = document.querySelector('#nav .nav-item[data-tab="supervisor"]');
     if (b) b.click();
@@ -400,7 +400,7 @@ async function galleryScrollChainProbe(page) {
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 
   const init = await page.evaluate(snap);
-  // 列表装得下就没有「滚不动」这回事，这条用例无从验证
+  // 列表装得下就没有“滚不动”这回事，这条用例无从验证
   if (!init || init.gMax <= 0) return { skipped: "画廊内容装得下（不可滚）", init: init };
   if (init.cMax <= 0) return { skipped: "页面本身不可滚", init: init };
 
@@ -457,7 +457,7 @@ async function galleryScrollChainProbe(page) {
 
 // ---- 设置页（settings.html）：本窗口是本项目的主界面，最要紧的一条 ----
 // 设置页没有自己的默认值：它拿到 getSettings() 就直接填表，少一个字段就整页停摆。
-// 所以这里既要断言「填上了」，也要断言「页面没抛错」。
+// 所以这里既要断言“填上了”，也要断言“页面没抛错”。
 const PROBE_SETTINGS = `(function () {
   var val = function (id) { var e = document.getElementById(id); return e ? e.value : null; };
   // 自绘下拉（.cdrop-host）没有 .value，当前值挂在宿主的 dataset.value 上
@@ -471,10 +471,10 @@ const PROBE_SETTINGS = `(function () {
     title: document.title,
     tbTitle: txt('tb-title'),
     appName: val('appName'),
-    // 关于页「软件信息」卡：一行「版本」（版本号 | 发布时间）+ 一行「开源鸣谢」（运行环境行已移除）
+    // 关于页“软件信息”卡：一行“版本”（版本号 | 发布时间）+ 一行“开源鸣谢”（运行环境行已移除）
     dVersion: txt('d-version-val'),
     dBuildTime: txt('d-build-time'),
-    // 关于页「许可条款 | 开源鸣谢」行尾的运行环境指纹（Go / Wails 版本）
+    // 关于页“许可条款 | 开源鸣谢”行尾的运行环境指纹（Go / Wails 版本）
     dRuntime: txt('d-runtime'),
     navCount: cnt('#nav .nav-item'),
     tabCount: cnt('#content .tab'),
@@ -495,7 +495,7 @@ const PROBE_SETTINGS = `(function () {
     })(),
     bodyClass: document.body.className,
     // 侧栏状态格（下次外卖/自定义提醒）：名称在左、时间在右，两段都必须单行显示。
-    // 采集每格的实际字号、高度与溢出量，供 probe 断言「没换行 / 没裁字 / 没挤出卡片」。
+    // 采集每格的实际字号、高度与溢出量，供 probe 断言“没换行 / 没裁字 / 没挤出卡片”。
     statusCells: Array.prototype.map.call(
       document.querySelectorAll('#data-status .status-cell'),
       function (c) {
@@ -525,7 +525,7 @@ const PROBE_SETTINGS = `(function () {
     apWidthPct: val('ap-widthPct'),
     apHeightPct: val('ap-heightPct'),
     apFullscreen: chk('ap-fullscreen'),
-    // 「显示的屏幕」自绘多选下拉：值挂在宿主 dataset.value（JSON 数组），没有原生 .value
+    // “显示的屏幕”自绘多选下拉：值挂在宿主 dataset.value（JSON 数组），没有原生 .value
     apDisplayIds: (function () {
       var el = document.getElementById('ap-displays');
       return el ? el.dataset.value : null;
@@ -556,7 +556,7 @@ const PROBE_SETTINGS = `(function () {
     supMsgItems: cnt('.msg-panel[data-kind="sup"] .msg-list .msg-item'),
     supMsgEmpty: cnt('.msg-panel[data-kind="sup"] .msg-list .msg-empty'),
     // 督休专员预览面板的名字牌：必须与真实提醒窗口同款（竖排金字 + 印泥墨块 + 牌外碎点环）。
-    // 旧版是「圆角胶囊小徽标」（纯 --accent 底 + 边框）—— 预览与真机对不上。
+    // 旧版是“圆角胶囊小徽标”（纯 --accent 底 + 边框）—— 预览与真机对不上。
     // 取数照 PROBE_BREAK 的 dialogNameSeal 那一套，另加竖排/字体/位置三项。
     supPreviewName: (function () {
       var n = document.getElementById('sup-preview-name');
@@ -572,7 +572,7 @@ const PROBE_SETTINGS = `(function () {
         text: (n.textContent || '').trim(),
         shown: !!(r.width > 0 && r.height > 0),
         ink: ink, specks: sp ? sp[0] : null,
-        // 碎点层必须是「比盒子大一圈」的伪元素：负 inset 才装得下牌外的碎点
+        // 碎点层必须是“比盒子大一圈”的伪元素：负 inset 才装得下牌外的碎点
         afterInset: parseFloat(af.top), afterContent: af.content,
         clip: cs.backgroundClip,
         writing: cs.writingMode,
@@ -598,8 +598,8 @@ const PROBE_MAIN = `(function () {
   var imgs = document.querySelectorAll('#roles img');
   var loaded = 0;
   for (var i = 0; i < imgs.length; i++) if (imgs[i].src.indexOf('data:image') === 0) loaded++;
-  // 环境卡片：dt 是标签、dd 是值。两者都收 —— 断言要能同时核对「有哪些项」
-  // 和「值是什么」（只收 dd 时「督休专员目录」这个标签永远匹配不上）。
+  // 环境卡片：dt 是标签、dd 是值。两者都收 —— 断言要能同时核对“有哪些项”
+  // 和“值是什么”（只收 dd 时“督休专员目录”这个标签永远匹配不上）。
   var envNodes = document.querySelectorAll('#env dt, #env dd');
   var env = [];
   for (var j = 0; j < envNodes.length; j++) env.push(envNodes[j].textContent);
@@ -614,7 +614,7 @@ const PROBE_MAIN = `(function () {
     optCount: document.querySelectorAll('#rolePick option').length
   };
 })()`;
-// 独立反推立绘「去掉透明部分后」的可见边——完全不依赖页面 layoutSupDialog 的公式：
+// 独立反推立绘“去掉透明部分后”的可见边——完全不依赖页面 layoutSupDialog 的公式：
 // ① 从图片自然像素扫 alpha bbox；② 读 .trim 的计算变换矩阵（translate+scale，
 //    不含 img 自身的二阶段缩放）；③ 内容在 .trim 局部坐标的 bbox（img 盒铺满
 //    .trim，object-fit:contain + 底对齐 ⇒ 绘制区高 fill*H 贴盒底）；④ 按
@@ -624,7 +624,7 @@ const PROBE_MAIN = `(function () {
 // ⚠️ 拼接方式：本常量是**函数声明**，只能拼进 IIFE 内部（见 PROBE_BREAK / PROBE_TAKEOUT
 // 的 `(function () {` + FIG_VISIBLE_FN + 后续体）。绝不能当前缀拼在整串最前面——
 // page.evaluate 的表达式若以 function 开头，Playwright 的 normalizeEvaluationExpression
-// 会按 /^(async)?\s*function(\s|\()/ 给它包一层括号，「函数声明 + IIFE」被并成单个
+// 会按 /^(async)?\s*function(\s|\()/ 给它包一层括号，“函数声明 + IIFE”被并成单个
 // 表达式 E1(E2)()：helper 先被执行、其返回值（对象）再被当函数调用，直接 TypeError
 // "(intermediate value)(...) is not a function"（2026-10-14 踩坑：整串以 function
 // 开头 ⇒ 探针 break 段整个挂掉）。
@@ -697,7 +697,7 @@ const PROBE_BREAK = `(function () {
   var img = document.getElementById('figure-img');
   // 督休专员版式（游戏对话画面）：layoutSupDialog 把倒计时环的摆位写进 .bar 的
   // inline style，度量写进 .content 的 data-sup-metrics。这里把两者都采回来，
-  // 证明版式真的摆了位，而不是「有立绘但没排对话框」。
+  // 证明版式真的摆了位，而不是“有立绘但没排对话框”。
   var content = document.querySelector('.content');
   var nameEl = document.getElementById('dialog-name');
   var bar = document.getElementById('bar');
@@ -713,7 +713,7 @@ const PROBE_BREAK = `(function () {
   var skipRect = skipEl ? skipEl.getBoundingClientRect() : null;
   var nameEl = document.getElementById('dialog-name');
   var nameRect = nameEl ? nameEl.getBoundingClientRect() : null;
-  // ---- 倒计时数字 vs 圆环：字号由「环尺寸 × 位数」派生（break.css 的 --cd-w 表），
+  // ---- 倒计时数字 vs 圆环：字号由“环尺寸 × 位数”派生（break.css 的 --cd-w 表），
   // 硬要求是 tick-pop 的 1.22 倍峰值也不越内径圆，同时不许把数字缩到看不见。
   // 逐组现量（切 body 的 has-supervisor、改 data-cd-digits 与文本），量完恢复现场 ——
   // 后面的断言与截图都还依赖原本的有专员版式。
@@ -804,8 +804,8 @@ const PROBE_BREAK = `(function () {
     appBrRadius: app ? getComputedStyle(app).borderBottomRightRadius : null,
     badgeHidden: document.getElementById('preview-badge').classList.contains('hidden'),
     // 立绘几何：break.js 把 meta.json 的 geom 写成 documentElement 上的三个 CSS 变量。
-    // 内置专员统一「高度 80 / 距左 5 / 距底 0」（2026-10-28 用户要求），这里采回来
-    // 就能直接断言「打包出去的那份 meta.json 真的按 80/5 渲染」，而不是只看截图。
+    // 内置专员统一“高度 80 / 距左 5 / 距底 0”（2026-10-28 用户要求），这里采回来
+    // 就能直接断言“打包出去的那份 meta.json 真的按 80/5 渲染”，而不是只看截图。
     figVars: [
       cs.getPropertyValue('--fig-size').trim(),
       cs.getPropertyValue('--fig-x').trim(),
@@ -834,10 +834,10 @@ const PROBE_BREAK = `(function () {
       rectRight: Math.round(skipRect.right), rectBottom: Math.round(skipRect.bottom),
     } : null,
     // 题名：竖排金色宋体，位置与字号都由 break.js 按立绘 alpha 剖面实测写入
-    // （不再有固定 left:56/46）。这里采回定位结果 + 渲染层自己算的「遮挡列数」，
-    // 让 probe_renderer.py 能断言「零遮挡」这条硬承诺，而不是死记一个像素值。
+    // （不再有固定 left:56/46）。这里采回定位结果 + 渲染层自己算的“遮挡列数”，
+    // 让 probe_renderer.py 能断言“零遮挡”这条硬承诺，而不是死记一个像素值。
     dialogNameLeft: nameRect ? Math.round(nameRect.left) : null,
-    // 布局框（不含变换）：rect 里含 1.03 / 1.08 的「凑近」缩放，绕立绘双脚放大时
+    // 布局框（不含变换）：rect 里含 1.03 / 1.08 的“凑近”缩放，绕立绘双脚放大时
     // 牌子边缘本来就会外扩（立绘自己也一样），那不是布局错。窗口内断言钉布局框。
     dialogNameLayout: (function () {
       var n = document.getElementById('dialog-name');
@@ -852,12 +852,12 @@ const PROBE_BREAK = `(function () {
     dialogNameHit: nameEl && nameEl.dataset.rtHit != null ? Number(nameEl.dataset.rtHit) : null,
     dialogNameFs: nameEl && nameEl.dataset.rtFs != null ? Number(nameEl.dataset.rtFs) : null,
     // 牌面必须包住所有字：竖排折列时 Chromium 的 shrink-to-fit 只按一列算宽，
-    // 溢出列会整列漏到红底外面（实测漏过一整列 21px）。这里量「文字 Range 是否
-    // 超出 content box」——以前用 scrollWidth/scrollHeight，会被碎点层（负 inset
+    // 溢出列会整列漏到红底外面（实测漏过一整列 21px）。这里量“文字 Range 是否
+    // 超出 content box”——以前用 scrollWidth/scrollHeight，会被碎点层（负 inset
     // 的 ::after）撑大而误报。
     dialogNameOverflow: nameEl ? (function () {
       // 文字必须落在自己的 content box 内。不能再用 scrollWidth/scrollHeight：
-      // 碎点层是负 inset 的 ::after，会把滚动区撑大，永远判成「溢出」（实测误报）。
+      // 碎点层是负 inset 的 ::after，会把滚动区撑大，永远判成“溢出”（实测误报）。
       var n = document.getElementById('dialog-name');
       if (!n) return null;
       var cs2 = getComputedStyle(n), r2 = n.getBoundingClientRect();
@@ -870,7 +870,7 @@ const PROBE_BREAK = `(function () {
       return t.width > cw + 6.5 || t.height > ch + 6.5;
     })() : null,
     // 墨块只有盒子的 82%×93%，毛边位移再吃掉约 2.25%×1.5%；文字到盒边只有 padding。
-    // 两者相减就是「字外侧还剩多少红」—— 竖排 10 字（盒高 227）曾是负的，字从墨块上下
+    // 两者相减就是“字外侧还剩多少红”—— 竖排 10 字（盒高 227）曾是负的，字从墨块上下
     // 探出去压在背景上。0.09/0.035 镜像 scripts/make_seal_ink.py 的 a=41/50、b=93/100。
     dialogNameRedPad: nameEl ? (function () {
       var n2 = document.getElementById('dialog-name');
@@ -883,16 +883,16 @@ const PROBE_BREAK = `(function () {
     })() : null,
     // 红印泥牌底必须真的画出来：底色是第二层 background-image（裁进 border-box），
     // 用 background-color 时它只会被第一层 text 的 clip 裁掉 —— 牌面变透明，
-    // 看着「有红底」其实只有内阴影+高光圈，金主题下牌子直接融进背景。
+    // 看着“有红底”其实只有内阴影+高光圈，金主题下牌子直接融进背景。
     // 也不能只写 -webkit-background-clip: text（单值会把整条列表丢掉）。
     dialogNameClip: nameEl ? getComputedStyle(nameEl).backgroundClip : null,
     // 层数要数 url()（墨块图）+ 渐变，只数 linear-gradient 会在牌底换成图之后误报
     dialogNameLayers: nameEl ? (getComputedStyle(nameEl).backgroundImage.match(/url\\(|(?:linear|radial|conic)-gradient\\(/g) || []).length : null,
-    // 牌底必须是「墨块图」：纯色填充画不出印泥的不规则轮廓
+    // 牌底必须是“墨块图”：纯色填充画不出印泥的不规则轮廓
     dialogNameInk: nameEl ? /url\\(/.test(getComputedStyle(nameEl).backgroundImage) : null,
-    // 每次出场随机换一枚「章」：JS 把选中的那一档写进 --rt-ink / --rt-specks，
-    // 这里把解析出来的文件名报回去，Python 侧核对「确实是 N 选 1 里的一档、
-    // 两个变量指向同一档、且文件真的存在」（只写死 url 的旧实现会一直报 1）。
+    // 每次出场随机换一枚“章”：JS 把选中的那一档写进 --rt-ink / --rt-specks，
+    // 这里把解析出来的文件名报回去，Python 侧核对“确实是 N 选 1 里的一档、
+    // 两个变量指向同一档、且文件真的存在”（只写死 url 的旧实现会一直报 1）。
     dialogNameSeal: nameEl ? (function () {
       var cs = getComputedStyle(nameEl);
       var ink = (cs.backgroundImage.match(/seal-ink-\\d+\\.svg/) || [])[0] || null;
@@ -900,12 +900,12 @@ const PROBE_BREAK = `(function () {
       var sp = (af.backgroundImage || '').match(/seal-specks-\\d+\\.svg/);
       return {
         ink: ink, specks: sp ? sp[0] : null,
-        // 碎点层必须是「比盒子大一圈」的伪元素：负 inset 才装得下牌外的碎点
+        // 碎点层必须是“比盒子大一圈”的伪元素：负 inset 才装得下牌外的碎点
         afterInset: parseFloat(af.top),
         afterContent: af.content
       };
     })() : null,
-    // 二阶段的「凑近 + 脉动」是 CSS 的 scale 属性（原点 50% 100% = 立绘盒底边中点）。
+    // 二阶段的“凑近 + 脉动”是 CSS 的 scale 属性（原点 50% 100% = 立绘盒底边中点）。
     // 题名牌必须绕同一个点放大，否则牌面会绕自己的牌心长大、整体往人物身上挪
     // （8% 的缩放 ≈ 15px）。这里把牌子的 transform-origin 换算回页面坐标，跟立绘
     // 底边中点比对：dx/dy 都该是 0（允许 1.5px 的取整误差）。
@@ -921,7 +921,7 @@ const PROBE_BREAK = `(function () {
       if (!isFinite(sx)) sx = 1;
       if (!isFinite(sy)) sy = 1;
       // 牌子自身已经按 scale 放大过，local 原点在页面上是 ox*sx（不是 ox）——漏乘
-      // 这一下会精确地差 (s-1)*ox，看起来像「差了几个像素」，其实是算错了。
+      // 这一下会精确地差 (s-1)*ox，看起来像“差了几个像素”，其实是算错了。
       var nb = n.getBoundingClientRect(), ib = im.getBoundingClientRect();
       return {
         dx: +((nb.left + ox * sx) - (ib.left + ib.width / 2)).toFixed(1),
@@ -929,7 +929,7 @@ const PROBE_BREAK = `(function () {
         scale: cs2.scale || null
       };
     })() : null,
-    // 对话框内「提醒内容」的排版：短休 / 长休 / 外卖是 .supervisor-line（台词），
+    // 对话框内“提醒内容”的排版：短休 / 长休 / 外卖是 .supervisor-line（台词），
     // 自定义提醒是 .messages（框里只放自己的提醒内容）。两者都挂 .dialog-text 且
     // 互斥显示 —— 取实际渲染出来的那一个。四个窗口这块必须是同一套：居中、同字号
     // 同字重、不透明、不溢出框。以前自定义是 15px/400/opacity .72 的淡小字，外卖
@@ -952,7 +952,7 @@ const PROBE_BREAK = `(function () {
         fs: parseFloat(cs2.fontSize),
         // 文字块中心 − 对话框中心（正 = 偏右）。居中要求 |offCenter| ≤ 0.5px。
         offCenter: +(((r2.left + r2.right) / 2) - (cr.left + cr.width / 2)).toFixed(1),
-        // 溢出：文字底越过「框底 − 下内边距」为正（> 1 即溢出）
+        // 溢出：文字底越过“框底 − 下内边距”为正（> 1 即溢出）
         overflowY: +(r2.bottom - (cr.bottom - padB)).toFixed(1),
         // 缩到 --dlg-fs-min 仍装不下时 JS 给框加 .tall 让它长高（不裁字）
         tall: c.classList.contains('tall'),
@@ -963,7 +963,7 @@ const PROBE_BREAK = `(function () {
     errors: window.__WR_ERRORS || []
   };
 })()`;
-// 「不启用督休专员」时的提醒内容排版。真实路径下这个状态要改用户配置里的
+// “不启用督休专员”时的提醒内容排版。真实路径下这个状态要改用户配置里的
 // supervisor.enabled，探针不碰配置 —— 改用替身 shim（见 newPage 的 mockShim）直接
 // 返回一份 supervisor:null 的窗口数据，走的是同一份 HTML/CSS/JS，只是数据不同。
 const PROBE_NOSUP = `(function () {
@@ -996,7 +996,7 @@ const PROBE_NOSUP = `(function () {
     overY: Math.round(Math.max(0, tr.bottom - innerHeight)),
     lines: Math.round(el.offsetHeight / parseFloat(cs.lineHeight))
   };
-  // 外卖窗口：块序必须是 红包 → 徽标 → 提醒内容 → 按钮，「外卖提醒」标题不得压内容
+  // 外卖窗口：块序必须是 红包 → 徽标 → 提醒内容 → 按钮，“外卖提醒”标题不得压内容
   var rp = document.querySelector('.tk-redpacket');
   if (rp) {
     var ids = ['.tk-redpacket', '#tk-badges', '#tk-msg', '.tk-actions'];
@@ -1011,8 +1011,8 @@ const PROBE_NOSUP = `(function () {
     var gaps = [];
     for (var g = 1; g < tops.length; g++) gaps.push(+(tops[g].top - tops[g - 1].top).toFixed(1));
     out.gaps = gaps;
-    // 「外卖提醒」标题浮在红包框上方（absolute + bottom:100%），与提醒内容不得相交 ——
-    // 这就是 2026-10-30「提醒内容与标题重合」那个 bug 的判据。
+    // “外卖提醒”标题浮在红包框上方（absolute + bottom:100%），与提醒内容不得相交 ——
+    // 这就是 2026-10-30“提醒内容与标题重合”那个 bug 的判据。
     var title = document.querySelector('.rp-title'), msg = document.querySelector('#tk-msg');
     if (title && msg && msg.offsetHeight > 0) {
       var a = title.getBoundingClientRect(), b = msg.getBoundingClientRect();
@@ -1032,7 +1032,7 @@ const PROBE_PREBREAK = `(function () {
   for (var i = 0; i < list.length; i++) btns.push(list[i].textContent.trim());
   var app = document.getElementById('app');
   // 底色 / 文字色自适应（prebreak.js 的 applyPalette）：这里按 WCAG 真算一遍对比度，
-  // 只断言「颜色不等于某个值」是拦不住"深字配深底"这类事故的。
+  // 只断言“颜色不等于某个值”是拦不住"深字配深底"这类事故的。
   var cs = getComputedStyle(document.documentElement);
   var v = function (n) { return (cs.getPropertyValue(n) || '').trim(); };
   var parseRgb = function (s) {
@@ -1109,7 +1109,7 @@ const PROBE_SOUND_PREVIEW = `(async function () {
   return out;
 })()`;
 const PROBE_STATS = `(async function () {
-  // 后端 today 原值：用来核对「今天卡」四项（完成 / 推迟 / 跳过 / 提前结束）的渲染口径
+  // 后端 today 原值：用来核对“今天卡”四项（完成 / 推迟 / 跳过 / 提前结束）的渲染口径
   var bk = { shortCount: 0, longCount: 0, customCount: 0, endEarlyCount: 0, postponeCount: 0, skipCount: 0 };
   try {
     var gs = await window.api.getStats();
@@ -1127,7 +1127,7 @@ const PROBE_STATS = `(async function () {
   var svg = plot ? plot.querySelector('svg') : null;
   var marks = svg ? svg.querySelectorAll('rect, path, line, circle, polyline, text').length : 0;
   var dateEl = document.getElementById('stats-date');
-  // 「今天」卡已并入构成卡并改名「今日看板」：统计页应只剩 4 张卡，且首张标题就是「今日看板」
+  // “今天”卡已并入构成卡并改名“今日看板”：统计页应只剩 4 张卡，且首张标题就是“今日看板”
   var cards = document.querySelectorAll('#tab-stats > .card');
   var firstH3 = cards.length ? cards[0].querySelector('h3') : null;
   var comp = (function () {
@@ -1156,7 +1156,7 @@ const PROBE_STATS = `(async function () {
       barVals: bv,
       barLabels: bl,
       total: tot ? tot.textContent.trim() : null,
-      // 久坐面板底部的小结（把「最长一段」翻译成有没有坐过头）
+      // 久坐面板底部的小结（把“最长一段”翻译成有没有坐过头）
       sedNote: (document.getElementById('comp-sed-note') || {}).textContent || '',
       // 今天卡的说明图标：用户要求全部删掉（时间构成 / 休息动作 / 久坐），应为 0
       qmarks: box.querySelectorAll('.comp-h i, .comp-h .q-mark').length
@@ -1271,7 +1271,7 @@ const PROBE_TAKEOUT = `(async function () {
     dialogNameFs: (function () { var n = document.getElementById('dialog-name'); return n && n.dataset.rtFs != null ? Number(n.dataset.rtFs) : null; })(),
     dialogNameOverflow: (function () {
       // 文字必须落在自己的 content box 内。不能再用 scrollWidth/scrollHeight：
-      // 碎点层是负 inset 的 ::after，会把滚动区撑大，永远判成「溢出」（实测误报）。
+      // 碎点层是负 inset 的 ::after，会把滚动区撑大，永远判成“溢出”（实测误报）。
       var n = document.getElementById('dialog-name');
       if (!n) return null;
       var cs2 = getComputedStyle(n), r2 = n.getBoundingClientRect();
@@ -1320,7 +1320,7 @@ const PROBE_TAKEOUT = `(async function () {
     if (!isFinite(sx)) sx = 1;
     if (!isFinite(sy)) sy = 1;
     // 牌子自身已经按 scale 放大过，local 原点在页面上是 ox*sx（不是 ox）——漏乘
-    // 这一下会精确地差 (s-1)*ox，看起来像「差了几个像素」，其实是算错了。
+    // 这一下会精确地差 (s-1)*ox，看起来像“差了几个像素”，其实是算错了。
     var nb = n.getBoundingClientRect(), ib = im.getBoundingClientRect();
     return {
       dx: +((nb.left + ox * sx) - (ib.left + ib.width / 2)).toFixed(1),
@@ -1381,7 +1381,7 @@ const PROBE_TAKEOUT = `(async function () {
     })(),
     accent: cs.getPropertyValue('--accent').trim(),
     rounded: (document.getElementById('app') || {}).dataset ? document.getElementById('app').dataset.rounded : null,
-    // 对话框内「提醒内容」的排版：短休 / 长休 / 外卖是 .supervisor-line（台词），
+    // 对话框内“提醒内容”的排版：短休 / 长休 / 外卖是 .supervisor-line（台词），
     // 自定义提醒是 .messages（框里只放自己的提醒内容）。两者都挂 .dialog-text 且
     // 互斥显示 —— 取实际渲染出来的那一个。四个窗口这块必须是同一套：居中、同字号
     // 同字重、不透明、不溢出框。以前自定义是 15px/400/opacity .72 的淡小字，外卖
@@ -1404,7 +1404,7 @@ const PROBE_TAKEOUT = `(async function () {
         fs: parseFloat(cs2.fontSize),
         // 文字块中心 − 对话框中心（正 = 偏右）。居中要求 |offCenter| ≤ 0.5px。
         offCenter: +(((r2.left + r2.right) / 2) - (cr.left + cr.width / 2)).toFixed(1),
-        // 溢出：文字底越过「框底 − 下内边距」为正（> 1 即溢出）
+        // 溢出：文字底越过“框底 − 下内边距”为正（> 1 即溢出）
         overflowY: +(r2.bottom - (cr.bottom - padB)).toFixed(1),
         // 缩到 --dlg-fs-min 仍装不下时 JS 给框加 .tall 让它长高（不裁字）
         tall: c.classList.contains('tall'),
@@ -1446,7 +1446,7 @@ async function run() {
 
   // ---- 0a. 预览被拒时的提示 ----
   // 真实提醒窗口（休息 / 外卖）在场时后端拒弹预览并返回 "busy"，页面必须给一句提示，
-  // 否则用户点了「预览」什么都没发生，会以为卡住了。
+  // 否则用户点了“预览”什么都没发生，会以为卡住了。
   // 无头环境里没有真实休息窗口，这里把 api.previewBreak 临时换成返回 "busy" 的桩，
   // 只验前端这一条反馈链路（后端真的会返回 busy 由 smoke_server.py 钉住）。
   metrics.previewBusyToast = await set.evaluate(async function () {
@@ -1470,7 +1470,7 @@ async function run() {
   });
   console.log("[probe] previewBusyToast:", JSON.stringify(metrics.previewBusyToast));
 
-  // ---- 0a. 侧栏状态格超长名称压力：注入 20 字名字，验证「缩字号 → 中间省略」链路。
+  // ---- 0a. 侧栏状态格超长名称压力：注入 20 字名字，验证“缩字号 → 中间省略”链路。
   //      三条底线：不换行、不裁半截字（scrollWidth 不超 clientWidth）、不溢出卡片。
   //      测完把原文还原，免得影响后面的截图与页签断言。
   await set.evaluate(() => {
@@ -1508,7 +1508,7 @@ async function run() {
   await delay(300);
 
   // ---- 0a2. 暂停态文案：手动暂停、自动暂停（空闲 / 勿扰 / 应用占用）在状态格里
-  //      统一显示「暂停休息」，原因只留在 title 上（用户 2026-10-24 要求去掉长尾巴）。
+  //      统一显示“暂停休息”，原因只留在 title 上（用户 2026-10-24 要求去掉长尾巴）。
   await set.evaluate(() => window.api.action("pauseToggle"));
   await delay(700);
   metrics.pauseStatus = await set.evaluate(() => {
@@ -1528,7 +1528,7 @@ async function run() {
   console.log("[probe] pauseResumed:", JSON.stringify(metrics.pauseResumed));
 
   // ---- 0b. 逐个切换页签 ----
-  // 「提醒窗口」卡片在首屏之下（通用配置要滚一段才看得见）：单独滚过去留一张。
+  // “提醒窗口”卡片在首屏之下（通用配置要滚一段才看得见）：单独滚过去留一张。
   // settings.png 只截视口，这张卡片里的开关（置顶 / 所有屏幕 / 共享屏幕时隐藏）
   // 从来不出现在任何截图里，改版式时等于没有回归依据。截完把滚动位置还原，
   // 免得影响后面按坐标做的断言。
@@ -1580,7 +1580,7 @@ async function run() {
       console.log("[probe] edgeGutter:", JSON.stringify(metrics.edgeGutter));
       // 预览面板的名字牌要等这页真的切过来才有盒子：别的页签是 display:none，
       // getBoundingClientRect 全是 0（首屏 PROBE_SETTINGS 量出来的 dx/dy/boxH 都是 0 就是这个原因）。
-      // 所以「显示了吗、摆在哪」这类断言只能在这里量。
+      // 所以“显示了吗、摆在哪”这类断言只能在这里量。
       metrics.supPreviewGeom = await set.evaluate(() => {
         const n = document.getElementById("sup-preview-name");
         const box = document.getElementById("sup-preview");
@@ -1606,7 +1606,7 @@ async function run() {
   }
   console.log("[probe] tabs:", JSON.stringify(metrics.tabs));
 
-  // ---- 0b2. 关于页「检查更新」：点下去必须立刻有反馈 ----
+  // ---- 0b2. 关于页“检查更新”：点下去必须立刻有反馈 ----
   // 真实的 checkUpdate 在无头模式下瞬间返回，观察不到加载态；这里把它临时换成一个
   // 受控 Promise：点完在**同一个 tick 内**读 DOM（证明"点了就有反应"），再放行 Promise，
   // 确认按钮文案与状态条都收敛回结果。
@@ -1637,7 +1637,7 @@ async function run() {
   console.log("[probe] updateLoading:", JSON.stringify(metrics.updateLoading));
 
   // ---- 0b3. 手动检查发现新版本必须弹窗（与自动检查的门控不同）----
-  // 手动点的语义是「用户主动问了，必须给结果」：即使该版本已被忽略（ignored=true）、
+  // 手动点的语义是“用户主动问了，必须给结果”：即使该版本已被忽略（ignored=true）、
   // 或本次会话里已经为同一版本弹过一次，再点仍要弹。这里连点两次同版本模拟这两种情况。
   metrics.updateModalForce = await set.evaluate(async () => {
     const btn = document.getElementById("d-checkupdate");
@@ -1693,7 +1693,7 @@ async function run() {
   console.log("[probe] stats:", JSON.stringify(metrics.stats));
 
   // ---- 0e. 候选专员拖拽排序：拖第 1 块到第 3 块之前 → 顺序变 → 落盘 → 刷新后仍在 ----
-  // 放在设置页所有断言之后：这一段会 reload 页面（验证「持久化」），跑在最后不影响别的用例。
+  // 放在设置页所有断言之后：这一段会 reload 页面（验证“持久化”），跑在最后不影响别的用例。
   await set.evaluate(
     '(function(){var b=document.querySelector(\'#nav .nav-item[data-tab="supervisor"]\');' +
     "if(b) b.click();})()",
@@ -1738,11 +1738,11 @@ async function run() {
   metrics.nozoom.prebreak = await pre.evaluate(NOZOOM_PROBE);
   console.log("[probe] nozoom/prebreak:", JSON.stringify(metrics.nozoom.prebreak));
 
-  // ---- 1b2. 提前提示窗：底色跟随「通用配置 → 提醒窗口 → 背景颜色」 ----
+  // ---- 1b2. 提前提示窗：底色跟随“通用配置 → 提醒窗口 → 背景颜色” ----
   // 地址里的 bg 就是主进程 preBreakURL 按配置生成的参数（# 编码成 %23）。
   // 这里挑一个**亮色**（亮黄）：浅底必须自动改用深色文字，否则整窗白字看不见。
   // 放在 1c 之前 —— 1c 会造一条自定义提醒，轮询会把版式切成自定义（无两行说明），
-  // 而这段要验的正是「浅底上那两行红绿说明还看得清」。
+  // 而这段要验的正是“浅底上那两行红绿说明还看得清”。
   const pbLErr = [];
   const preL = await open(
     browser,
@@ -1757,7 +1757,7 @@ async function run() {
   console.log("[probe] preBreakLightBg:", JSON.stringify(metrics.preBreakLightBg));
 
   // ---- 1c. 提前提示窗：自定义提醒版式 ----
-  // supervisor:{enabled:true}：探针断言（has-supervisor 版式 / 立绘解码）以「启用」为前提，
+  // supervisor:{enabled:true}：探针断言（has-supervisor 版式 / 立绘解码）以“启用”为前提，
   // 必须在隔离副本上显式打开，不跟随用户真实配置的开关状态。
   await main.evaluate(
     "(function(){ return window.api.saveSettings({" +
@@ -1797,7 +1797,7 @@ async function run() {
   console.log("[probe] breakWide:", JSON.stringify(metrics.breakWide));
   // 全局键鼠活动 → 二阶段：Go 侧广播的 sup:active 必须能把督休专员推到二阶段。
   // 这条链路（Go Event.Emit → runtime → shim on() → break.js noteActivity）里
-  // **没有任何页内键鼠事件**，正是「不能只在提醒窗口上检测」缺的那一段。
+  // **没有任何页内键鼠事件**，正是“不能只在提醒窗口上检测”缺的那一段。
   // 必须排在 NOZOOM_PROBE 之前：那一段会合成 wheel / keydown，页内事件本身也会升级。
   metrics.globalActivity = await wide.evaluate(`(async function () {
     var app = document.getElementById("app");
@@ -1806,8 +1806,8 @@ async function run() {
     var rect = function (el) { var r = el.getBoundingClientRect();
       return { h: +r.height.toFixed(1), top: +r.top.toFixed(1) }; };
     // 题名牌相对立绘的归一化纵向位置：二阶段立绘放大 8%（头顶抬高约 50px），
-    // 牌面若不跟着动，这个值会从 0.014 跳到 0.08 量级 —— 就是「人凑过来了、
-    // 牌子掉在原地」那种观感。归一化到立绘盒高，窗口尺寸与缩放都自动消掉。
+    // 牌面若不跟着动，这个值会从 0.014 跳到 0.08 量级 —— 就是“人凑过来了、
+    // 牌子掉在原地”那种观感。归一化到立绘盒高，窗口尺寸与缩放都自动消掉。
     var nameEl = document.getElementById("dialog-name");
     var imgEl = document.getElementById("figure-img");
     var plateV = function () {
@@ -1824,7 +1824,7 @@ async function run() {
       n1 = window.__WR_SUP_ACTIVE || 0;
     }
     // 二阶段换成督休专员的命令台词（通常比一阶段的提醒内容长）：对话框高度必须不变，
-    // 否则「进入二阶段」这一瞬间整块框会长高、倒计时环跟着上移，整屏跳一下。
+    // 否则“进入二阶段”这一瞬间整块框会长高、倒计时环跟着上移，整屏跳一下。
     var box2 = rect(box), line2 = rect(line), pv2 = plateV();
     return {
       pulsesBefore: n0, pulsesAfter: n1, stage: app.dataset.stage,
@@ -1860,7 +1860,7 @@ async function run() {
   console.log("[probe] nozoom/takeout:", JSON.stringify(metrics.nozoom.takeout));
 
   // ---- 5a. 不启用督休专员：四类窗口的提醒内容排版 ----
-  // 探针跑在用户真实配置上，而「督休专员关掉」是配置项（supervisor.enabled），
+  // 探针跑在用户真实配置上，而“督休专员关掉”是配置项（supervisor.enabled），
   // 不改配置就进不去这个状态 —— 所以这一组用替身 shim 直接喂一份 supervisor:null
   // 的窗口数据。HTML/CSS/JS 全是同一份，只有数据不同，量的就是这条分支本身。
   const NS_TEXT = "别饿着肚子硬撑，胃是要慢慢养的，先把手上的活放一放，去吃点热乎的东西。";
@@ -1900,7 +1900,7 @@ async function run() {
     await p.close().catch(() => {});
   }
 
-  // ---- 5b. 「可推迟」为 0：提前提示窗与外卖窗口都不显示「推迟」按钮 ----
+  // ---- 5b. “可推迟”为 0：提前提示窗与外卖窗口都不显示“推迟”按钮 ----
   await main.evaluate(
     "(function(){ return window.api.saveSettings({" +
       "short:{postponeMs:0}, takeout:{postponeMin:0}}); })()",
@@ -1935,7 +1935,7 @@ async function run() {
   );
   await delay(800);
 
-  // ---- 5c. 「全屏/演示」：勾一下，配置真的跟着变 ----
+  // ---- 5c. “全屏/演示”：勾一下，配置真的跟着变 ----
   // 静态控件上的 change 由 bindAutoSave 统一接到 autoSave（collectForm + saveSettings），
   // 这里验的就是这条链路；fillForm 的回填另有 stg 断言覆盖。
   // 验完立刻还原，免得影响后面按磁盘配置比对的断言。
@@ -1959,7 +1959,7 @@ async function run() {
     "(function(){ return window.api.getSettings().then(function(s){ return !!s.fullscreenPause; }); })()",
   );
   // 收尾**必须还原成初值**，不能写死 false：真实配置本来就开着这个开关时，硬写 false 等于
-  // 篡改用户配置，紧接着「勾选态 == 磁盘值」的断言就会自相矛盾（2026-10-29 实测踩到）。
+  // 篡改用户配置，紧接着“勾选态 == 磁盘值”的断言就会自相矛盾（2026-10-29 实测踩到）。
   const fsWas = !!(metrics.settings && metrics.settings.fullscreenPause === true);
   await set.evaluate(
     "(function(){ var c=document.getElementById('fullscreenPause');" +
@@ -1972,14 +1972,14 @@ async function run() {
   );
   console.log("[probe] fsPauseRoundTrip:", JSON.stringify(metrics.fsPauseRoundTrip));
 
-  // ---- 5d. 「共享屏幕时隐藏提醒窗口」：勾掉 → 配置 false，勾回 → true ----
-  // 默认是开的（Go 侧 Flag(true,…)），所以两段都要走一遍：只验「勾掉生效」会漏掉
-  // 「本来就是开的时候还能不能写回 true」。收尾同样还原成初值，不写死。
+  // ---- 5d. “共享屏幕时隐藏提醒窗口”：勾掉 → 配置 false，勾回 → true ----
+  // 默认是开的（Go 侧 Flag(true,…)），所以两段都要走一遍：只验“勾掉生效”会漏掉
+  // “本来就是开的时候还能不能写回 true”。收尾同样还原成初值，不写死。
   metrics.shareGuardRoundTrip = { off: null, on: null, restored: null };
   // 往返结束后要还原成**进页面时的那个值**。取的是页面勾选框自己（PROBE_SETTINGS 量到的
   // apHideOnShare），不是 settings.appearance.hideOnShare —— 后者在 PROBE_SETTINGS 里根本
   // 不存在（那里只有 ap* 一组拍平字段），undefined === false 恒为 false，于是 sgWas 恒等于
-  // true，每次都把用户本来就关掉的开关「还原」成打开；收尾再拿这份被改过的配置去比对
+  // true，每次都把用户本来就关掉的开关“还原”成打开；收尾再拿这份被改过的配置去比对
   // 开场时的勾选态，就成了必然误报（2026-10-30 真实配置 hideOnShare=false 时才暴露）。
   const sgWas = !(metrics.settings && metrics.settings.apHideOnShare === false);
   await set.evaluate(
@@ -2017,7 +2017,7 @@ async function run() {
   // 收尾兜底：WebSocket 事件通道是**延迟**连上的（页面加载完才连），
   // 所以 `net::ERR_ADDRESS_IN_USE` 这类传输层抖动会在 open() 返回**之后**才进
   // consoleErrors 数组 —— open() 里那次归一化看不到它。写盘前统一再兜一遍，
-  // 否则环境抖动会被断言当成「页面有控制台错误」报红。
+  // 否则环境抖动会被断言当成“页面有控制台错误”报红。
   // 注意：只清传输层错误，页内 JS 错误（TypeError / ReferenceError）一律保留。
   collectConsoleErrorArrays(metrics, []).forEach(normalizeTransportErrors);
 

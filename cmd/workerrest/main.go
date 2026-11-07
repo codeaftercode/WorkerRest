@@ -1,4 +1,4 @@
-// Command workerrest 是「吃饼人也敢休息？」（WorkerRest）的桌面入口。
+// Command workerrest 是“吃饼人也敢休息？”（WorkerRest）的桌面入口。
 //
 // 本包只承担两件必须留在 main 里的事：一是把业务能力注册成 Wails 服务（绑定方法要被
 // 反射成 main.App.xxx，Wails 只认 main 包，所以签名层搬不走），二是创建窗口 / 托盘
@@ -26,9 +26,9 @@ import (
 //
 // 图片也统一放这里，只有一份 256×256 的 icon.png 通吃三处：设置窗口标题栏
 // （<img class="tb-icon">）、系统托盘（下面的 trayIcon）、exe 文件图标（构建期由它
-// 生成 rsrc_windows_amd64.syso，见 README「打包」）。
+// 生成 rsrc_windows_amd64.syso，见 README“打包”）。
 //
-// 注意别和模块根的 assets/ 搞混：那是「随包分发、但不进 exe」的素材（督休专员立绘、
+// 注意别和模块根的 assets/ 搞混：那是“随包分发、但不进 exe”的素材（督休专员立绘、
 // 内置提示音），由打包脚本复制到 exe 旁；这里这份才是编进二进制的渲染层。
 //
 //go:embed all:web/dist
@@ -53,13 +53,13 @@ func loadTrayIcon() []byte {
 }
 
 func main() {
-	// 熔断兜底需要知道「是否无头 / 探针」以决定要不要弹系统错误框：serverMode 是
+	// 熔断兜底需要知道“是否无头 / 探针”以决定要不要弹系统错误框：serverMode 是
 	// main 包的 build-tag 常量，logx 包不能反向 import main，故启动最早处注入。
 	logx.SetHeadless(serverMode)
 
 	// 主 goroutine 的 panic 兜底（第三层，见 internal/logx/recoverguard.go）。
 	// 放在最前面：application.New 内部、自更新分支都在它覆盖范围内。
-	// 这里能做的只有「留下现场 + 让用户看到一句人话」，做不到继续运行 ——
+	// 这里能做的只有“留下现场 + 让用户看到一句人话”，做不到继续运行 ——
 	// 主 goroutine 的栈已经展开，进程状态不可信。
 	defer func() {
 		if r := recover(); r != nil {
@@ -89,8 +89,8 @@ func main() {
 			}
 		case "--dump-default-settings":
 			// 打包脚本用：把内嵌的出厂默认原样写到文件后立刻退出（不建窗口、不进单例）。
-			// 「恢复默认设置」用的就是内嵌这份，便携包里的 config/settings.json 必须与它
-			// 同源 —— 让 exe 自己吐出来核对，比「假设刚编译过」可靠（--no-build 拿旧 exe
+			// “恢复默认设置”用的就是内嵌这份，便携包里的 config/settings.json 必须与它
+			// 同源 —— 让 exe 自己吐出来核对，比“假设刚编译过”可靠（--no-build 拿旧 exe
 			// 时，包里是新值、恢复默认还是旧值，用户测不出来）。
 			if i+1 < len(os.Args) {
 				if err := os.WriteFile(os.Args[i+1], settings.DefaultSettingsJSON(), 0o644); err != nil {
@@ -104,16 +104,16 @@ func main() {
 
 	// 日志落盘：默认写 <exe 所在目录>/logs/app.log（单份 2 MiB，另留 .1/.2），
 	// WR_LOG_FILE 可改指别处（探针用它单独捞被测进程的日志）。
-	// GUI 版 stderr 不可见，排查「提示音不响」「缺 WebView2 直接退出」靠它抓现场。
+	// GUI 版 stderr 不可见，排查“提示音不响”“缺 WebView2 直接退出”靠它抓现场。
 	// 注意顺序：--dump-default-settings / --self-update 在上面已经 return，所以打包
 	// 脚本用 exe 吐默认配置时不会在包里留下 logs/。
 	log.SetOutput(logx.AppLogWriter())
 
 	// WebView 运行时预检：必须在 application.New / app.Run() **之前**。
 	// Windows 缺 WebView2 运行时 Wails 建不出 webview，handleError 写完日志就整个
-	// 进程退出；发布版是 GUI 子系统，用户只看到「双击没反应」。这里先探一次，确认
+	// 进程退出；发布版是 GUI 子系统，用户只看到“双击没反应”。这里先探一次，确认
 	// 缺失才提示 + 打开下载页，然后直接退出 —— 不留下半初始化的单例互斥与后台 goroutine。
-	// 只拦「确认缺失」：探测读不到（权限、非标准部署）一律放行，见 internal/platform。
+	// 只拦“确认缺失”：探测读不到（权限、非标准部署）一律放行，见 internal/platform。
 	// 非 Windows 平台（Linux/macOS）用系统自带 WebKit/WKWebView，无需预检，恒放行。
 	if !serverMode {
 		switch p := platform.ProbeWebView2(); {
@@ -124,7 +124,7 @@ func main() {
 			promptWebView2Missing()
 			return
 		default:
-			// 探不出结论（权限、非标准部署）：放行。宁可回到「交给 Wails 报错」，
+			// 探不出结论（权限、非标准部署）：放行。宁可回到“交给 Wails 报错”，
 			// 也不能让探测本身的误判把能用的机器挡在门外。
 			log.Printf("[boot] WebView2 运行时探测无结论，按已安装处理")
 		}
@@ -136,12 +136,12 @@ func main() {
 	// 中间件只在 app.Run() 之后被请求触发，那时下面的 backend 早已赋值。
 	var backend *App
 	app := application.New(application.Options{
-		Name:        "chibingren",
+		Name:        "WorkerRest",
 		Description: "吃饼人也敢休息？— 休息提醒",
 		Windows: application.WindowsOptions{
-			// WebView2 默认拦截「无用户手势的有声自动播放」：休息提示音由定时器触发、
+			// WebView2 默认拦截“无用户手势的有声自动播放”：休息提示音由定时器触发、
 			// 在从无点击交互的宿主窗口里 new Audio().play() 会被静默拒绝（.catch 吞掉），
-			// 表现为「试听能响、真休息不响」。全局放开 autoplay 策略，对所有窗口生效。
+			// 表现为“试听能响、真休息不响”。全局放开 autoplay 策略，对所有窗口生效。
 			//
 			// --disable-pinch：关掉触屏两指捏合的页面缩放（WebView2 的 Page Scale）。
 			// 提醒 / 预览窗口是按固定版式排的小窗，捏合放大后文字溢出、按钮错位；
@@ -150,11 +150,11 @@ func main() {
 			// 窗口关，所以对所有窗口一起关 —— 这个 App 里没有任何窗口需要捏合缩放。
 			// 页面侧另有 web/dist/nozoom.js 做同目的的兜底（touch-action + 拦
 			// Ctrl+滚轮），两层叠加。
-			// --disable-direct-composition：**「共享屏幕时隐藏提醒窗口」的前提**。
+			// --disable-direct-composition：**“共享屏幕时隐藏提醒窗口”的前提**。
 			// Chromium 默认走 DirectComposition 把画面交给 DWM 合成：像素属于渲染进程的
 			// 独立视觉树，不在宿主窗口的重绘表面里。而 SetWindowDisplayAffinity
 			//（Wails 的 ContentProtectionEnabled 底层就调它）只能作用在有重绘表面的
-			// 顶层窗口上 —— 结果是回读亲和性 = 0x11「看起来成功了」，捕获结果里
+			// 顶层窗口上 —— 结果是回读亲和性 = 0x11“看起来成功了”，捕获结果里
 			// 却仍是完整画面（2026-10-29 实测：关掉这个开关时窗口内容 99.6% 可见）。
 			// 关掉 DComp 后帧改由窗口表面呈现，亲和性立刻生效（同一份探针实测 0.00%）。
 			// 代价：最终呈现少一次 GPU 合成，滚动/动画略逊于默认路径；本应用的界面
@@ -166,7 +166,7 @@ func main() {
 			},
 		},
 		// 单例运行：第二个实例立即退出（ExitCode），第一个实例收到回调后把
-		// 设置窗口唤到前台 —— 与托盘「双击二次启动唤起窗口」同一条入口。
+		// 设置窗口唤到前台 —— 与托盘“双击二次启动唤起窗口”同一条入口。
 		// 此前没有这层，双开会导致两份调度器抢着弹提醒窗口。
 		SingleInstance: &application.SingleInstanceOptions{
 			UniqueID: "com.goodgoodlive.workerrest",
@@ -192,12 +192,12 @@ func main() {
 
 	// 主窗口就是设置窗口：路由 /settings.html 是 上一版 renderer 的产物副本
 	// （无边框）。尺寸不再写死在这里，而是取自配置的 window 块：
-	//   · 默认尺寸 = 874 × 857（874 是用户拖出的宽度；857 是「关于页恰好不出滚动条」的
-	//     实测高度：2026-10-31 先因加「第三方许可」一行抬到 893，同一天把「发布时间」
+	//   · 默认尺寸 = 874 × 857（874 是用户拖出的宽度；857 是“关于页恰好不出滚动条”的
+	//     实测高度：2026-10-31 先因加“第三方许可”一行抬到 893，同一天把“发布时间”
 	//     并进版本行后回落到 857。测量方法见 window_size.go 顶部）；
-	//   · 勾选了「自动记录窗口尺寸」时改用上次记录的尺寸。
+	//   · 勾选了“自动记录窗口尺寸”时改用上次记录的尺寸。
 	// 最小尺寸是布局下限（常量），不是用户偏好，故不进配置。
-	// 唯一的例外是「主屏工作区比这个下限还矮」（小屏 + 大缩放）：这时最小高度跟着
+	// 唯一的例外是“主屏工作区比这个下限还矮”（小屏 + 大缩放）：这时最小高度跟着
 	// 工作区收，否则窗口会比屏幕还高，底部永远在任务栏后面 —— 见 settingsWindowMinHeight。
 	winW, winH := backend.settingsWindowSize()
 	minH := backend.settingsWindowMinHeight()
@@ -225,7 +225,7 @@ func main() {
 		// 在 Windows 上只对内嵌 HTML 注入 JS、对 URL 加载的页面不注入，故这里仅作占位。
 		JS: `window.__WR_WIN = "settings";`,
 		// 注意：这里**不**设 DisableFramelessWindowDecorations —— 设置窗口是普通无边框窗口，
-		// 需要 Win11 的 DWM 系统级圆角（与阴影）。那个字段置 true 会把「无边框装饰」一起关掉，
+		// 需要 Win11 的 DWM 系统级圆角（与阴影）。那个字段置 true 会把“无边框装饰”一起关掉，
 		// 圆角也跟着没了（只对透明自定义形状的休息窗口才需要）。
 	})
 	// 最大化状态要由主进程推给页面（自绘标题栏的图标不能靠渲染层自己数，见 wireSettingsWindow）
@@ -240,11 +240,11 @@ func main() {
 //
 // 用系统原生消息框（internal/notifier）而不是 Wails 的对话框：这时应用还没建起来，
 // WebView2 也渲染不了 HTML，能用的只有系统原生消息框。消息框是阻塞调用，用户点掉
-// 才继续 —— 正好当「等用户看完」的同步点。
+// 才继续 —— 正好当“等用户看完”的同步点。
 func promptWebView2Missing() {
 	const text = "本程序需要 Microsoft Edge WebView2 运行时才能显示界面，" +
 		"当前系统未检测到它。\r\n\r\n" +
-		"点「确定」后会打开微软官方下载页，安装完成后重新打开本程序即可。\r\n" +
+		"点“确定”后会打开微软官方下载页，安装完成后重新打开本程序即可。\r\n" +
 		"（体积很小，普通权限安装，不需要管理员。）"
 	const title = "吃饼人也敢休息？— 缺少 WebView2 运行时"
 

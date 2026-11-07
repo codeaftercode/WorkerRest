@@ -4,7 +4,7 @@
 
 与既有脚本的分工：
   · 单元测试（internal/scheduler + cmd/workerrest）验判据与状态机；
-  · 本脚本验「真页面点下去 → 真绑定 → 真调度器」这条链路：
+  · 本脚本验“真页面点下去 → 真绑定 → 真调度器”这条链路：
     按钮文案翻转、nextAt 冻结与平移、暂停期间到点不弹窗、恢复后照常弹；
   · 自动暂停（勿扰 / 投屏 / 全屏 / 应用占用 / 空闲）走 probe_pause_autopause.py：
     那几条判据来自系统状态，而无头模式**故意不启动**对应监视器。
@@ -29,7 +29,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 PROBE_JS = os.path.join(HERE, "pause_cycle_probe.js")
 
@@ -71,7 +71,7 @@ def digest(path):
 
 def main():
     if not os.path.exists(EXE):
-        print("找不到 %s（先 go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest）" % EXE)
+        print("找不到 %s（先 go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest）" % EXE)
         return 2
     if not os.path.exists(PROBE_JS):
         print("找不到 %s" % PROBE_JS)
@@ -84,7 +84,7 @@ def main():
     iso_settings = os.path.join(iso, "settings.json")
     with open(FACTORY, encoding="utf-8") as f:
         cfg = json.load(f)
-    # 短休息 6 秒一条、3 秒、不提前提示：探针十几秒内就能看到「到点 / 被暂停挡住 / 恢复后照常弹」
+    # 短休息 6 秒一条、3 秒、不提前提示：探针十几秒内就能看到“到点 / 被暂停挡住 / 恢复后照常弹”
     cfg["short"] = dict(cfg.get("short") or {}, enabled=True, mode="countdown",
                         intervalMs=6000, durationMs=3000, notifyBeforeMs=0, postponeMs=60000,
                         slots=[])
@@ -92,7 +92,7 @@ def main():
     cfg["takeout"] = dict(cfg.get("takeout") or {}, enabled=False)
     cfg["customBreaks"] = []
     # 自动判定一条都不开：无头模式下它们本来就不跑，但配置侧也关干净，
-    # 免得将来无头模式启用监视器时这条用例变成「环境依赖」
+    # 免得将来无头模式启用监视器时这条用例变成“环境依赖”
     cfg["dndPause"] = False
     cfg["fullscreenPause"] = False
     cfg["castMirrorPause"] = False

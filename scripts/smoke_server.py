@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""无头冒烟：直接打 Wails 运行时的 HTTP 端点，验证「前端 → Go 绑定」这条链路。
+"""无头冒烟：直接打 Wails 运行时的 HTTP 端点，验证“前端 → Go 绑定”这条链路。
 
 为什么不用 GUI 跑：Wails v3 支持 `-tags server` 构建出无头服务（没有原生窗口，
 但仍然提供资源服务 + `/wails/runtime` 的绑定调用端点）。这份脚本用与
@@ -13,7 +13,7 @@
 
 断言分三层：
   1. 静态资源可服务（/、/break.html、/wails/runtime.js）；
-  2. 契约里每个「已接通」的绑定都能按名解析（不允许 "unknown bound method name"）；
+  2. 契约里每个“已接通”的绑定都能按名解析（不允许 "unknown bound method name"）；
   3. 会话数据与**真实配置/督休专员目录**逐项对齐（时长、提醒内容、外观、督休专员名与几何）。
 
 用法：python scripts/smoke_server.py [--port 29731] [--keep]
@@ -36,7 +36,7 @@ import secrets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)  # 项目根（原 rewrite-go，现已提升为顶层）
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 TEMP = os.environ.get("TEMP", ROOT)
 REPORT = os.path.join(TEMP, "wr_go_smoke_report.txt")
 LOG = os.path.join(TEMP, "wr_go_smoke_server.log")
@@ -52,7 +52,7 @@ except Exception:
     pass
 
 # 内置督休专员的固定出场顺序（与 历史源码/supervisor.ts 的 BUILTIN_ROLE_META 同源）
-# 这是**出厂顺序**清单（产品语义），不是「个数」清单 —— 实际个数从磁盘现算。
+# 这是**出厂顺序**清单（产品语义），不是“个数”清单 —— 实际个数从磁盘现算。
 BUILTIN_ROLE_ORDER = [
     "秦始皇", "神秘黑客", "中尉军官", "熊猫侠客",
     "医生", "经济学家", "法官", "体能教练",
@@ -73,7 +73,7 @@ def scan_role_names(root):
 
     身份就是名字（meta.json 里没有 key 字段），目录名是它的文件系统投影。
     顺序：自带清单顺序在前（只含磁盘上确实存在的），其余按目录名排序。
-    写死「内置 17 个」是错的 —— 用户在设置页删掉某个专员后目录真的没了，
+    写死“内置 17 个”是错的 —— 用户在设置页删掉某个专员后目录真的没了，
     断言会必然误报红。这里从磁盘现算，删一个少一个都不误报。
     """
     sup = os.path.join(root, "supervisors")
@@ -188,7 +188,7 @@ def _http_once(method, url, body=None, headers=None, timeout=15):
 #   · 10048 WSAEADDRINUSE —— 客户端临时端口抖动；
 #   · 10055 WSAENOBUFS    —— 套接字缓冲区/队列耗尽（并发 + 大量 TIME_WAIT 时会撞上）；
 #   · 502 upstream connect failed —— Wails server 模式的反向代理连不上自己，同一原因。
-# 这几种都发生在「请求还没进到方法体」之前，重试安全，不重试就会把噪声报成产品缺陷。
+# 这几种都发生在“请求还没进到方法体”之前，重试安全，不重试就会把噪声报成产品缺陷。
 _TRANSIENT = ("10048", "10055", "timed out", "upstream connect failed")
 
 
@@ -290,7 +290,7 @@ def main():
     args = ap.parse_args()
 
     if not os.path.isfile(EXE):
-        print("找不到 %s —— 先跑：go build -tags server -o build/bin/chibingren_server.exe ." % EXE)
+        print("找不到 %s —— 先跑：go build -tags server -o build/bin/rest_server.exe ." % EXE)
         return 2
 
     port = free_port(args.port)
@@ -298,12 +298,12 @@ def main():
     print("无头服务冒烟：%s  (port=%d)" % (EXE, port))
 
     # ---- 配置隔离：拷一份真实配置到临时目录，用 WR_SETTINGS_PATH 独占指向它 ----
-    # 为什么必须隔离：加载路径在「补生成 installId / 种入预置条目」时会回写配置文件。
+    # 为什么必须隔离：加载路径在“补生成 installId / 种入预置条目”时会回写配置文件。
     # 直接跑在真实配置上会改写用户的数据（第一次实测就把键序动掉了），这是不可接受的。
     real_settings = find_real_settings()
     real_digest = _digest(real_settings)
     # 统计文件按配置落点推导（config/ → 上级 data/stats.json）—— 它同样一个字节都不许被冒烟碰。
-    # 第 8 段会断言「统计落点确实在隔离目录里」，这里再留一份真实文件的指纹兜底。
+    # 第 8 段会断言“统计落点确实在隔离目录里”，这里再留一份真实文件的指纹兜底。
     real_stats = stats_file_for_settings(real_settings)
     real_stats_digest = _digest(real_stats)
     shutil.rmtree(ISO, ignore_errors=True)
@@ -317,7 +317,7 @@ def main():
     env["WAILS_SERVER_HOST"] = "127.0.0.1"
     env["WR_SETTINGS_PATH"] = iso_settings
     # 打开 Wails 的 Debug 日志：日志里会列出真实注册的绑定全限定名（fqn=...），
-    # 「按名调用找不到绑定」时这是唯一能直接看到真值的地方
+    # “按名调用找不到绑定”时这是唯一能直接看到真值的地方
     env["WR_LOG_LEVEL"] = "debug"
     env.pop("ELECTRON_RUN_AS_NODE", None)
     logf = open(LOG, "w", encoding="utf-8")
@@ -348,12 +348,12 @@ def main():
         check(st == 200 and "ByID" in body and "ByName" in body, "GET /wails/runtime.js 提供运行时（含 ByID/ByName）", "status=%s len=%d" % (st, len(body)))
 
         # ---- 2. 按名解析：每个已接通的绑定都不许是 unknown bound method ----
-        # 会**产生副作用**的绑定一律用「多传一个参数」探它是否注册（应是参数错误、
+        # 会**产生副作用**的绑定一律用“多传一个参数”探它是否注册（应是参数错误、
         # 方法体不执行），不然一次探测就把服务状态改了。两个已知的：
         #   - QuitApp 会真的退出；
         #   - StartBreak 会真的开始一次休息（Go 版走调度器：一旦 phase=break，
         #     后续再调 StartBreak 会返回空串 —— 那是**正确**的幂等行为，不是故障。
-        #     所以真正的「开始一次休息」留给第 3 段，这里只探名字。
+        #     所以真正的“开始一次休息”留给第 3 段，这里只探名字。
         probe = [
             ("BreakCurrent", ["break"], True),
             ("Action", ["break", "不再需要"], True),
@@ -367,7 +367,7 @@ def main():
             ("OpenExternal", ["http://example.com"], True),  # 非 https：应被拒但方法本身可解析
             ("GetSettings", [], True),
             ("SaveSettings", [{}], True),
-            ("QuitApp", ["bogus-extra-arg"], False),  # 预期参数错误，绝不能是「名字未知」
+            ("QuitApp", ["bogus-extra-arg"], False),  # 预期参数错误，绝不能是“名字未知”
         ]
         for name, a, expect_ok in probe:
             st, res = call(base, name, a, window="break")
@@ -387,7 +387,7 @@ def main():
 
         # 真实休息窗口在场时**不许弹预览**：返回 busy，且当前会话不能被预览顶掉。
         # 改前这里会新建一个 preview 会话覆盖，GUI 下 ShowBreakWindow 顺手把真实窗口
-        # 当 stale 关掉 —— 用户点一下「预览」，正在进行的休息就被腰斩了。
+        # 当 stale 关掉 —— 用户点一下“预览”，正在进行的休息就被腰斩了。
         st, pv_busy = call(base, "PreviewBreak", ["short", ""])
         check(st == 200 and pv_busy == "busy",
               "真实休息在场时 PreviewBreak 返回 busy（拒弹）", "status=%s %s" % (st, str(pv_busy)[:80]))
@@ -398,7 +398,7 @@ def main():
               "id=%s preview=%s" % (sess_after.get("id"), sess_after.get("preview")))
 
         # 对齐基准用**隔离副本**（服务实际读的那一份），不是真实配置：
-        # 服务可能已在加载时归一化并回写副本，拿副本读才是「服务眼里的配置」。
+        # 服务可能已在加载时归一化并回写副本，拿副本读才是“服务眼里的配置”。
         cfg = read_json(iso_settings) if os.path.exists(iso_settings) else {}
         print("   （对齐基准配置：%s）" % (iso_settings if cfg else "未找到，跳过配置对齐"))
 
@@ -441,7 +441,7 @@ def main():
             # 不能拿配置里的 fixedRole 当对齐对象：那只在 selection == "fixed" 时才必然
             # 等于会话里的专员。顺序 / 随机模式（用户可能就是这么设的）会漂到别的专员上，
             # 写死 fixedRole 会把正确行为判成红。所以先按会话里的名字回查目录，再补一条
-            # 「固定模式下必须就是配置那位」的断言把两种模式都盖住。
+            # “固定模式下必须就是配置那位”的断言把两种模式都盖住。
             sup_name = sup.get("name")
             rp = os.path.join(role_dir(ROOT, sup_name) or "", "meta.json")
             if os.path.isfile(rp):
@@ -480,7 +480,7 @@ def main():
             # 顺序 = BUILTIN_ROLE_META 的内置清单顺序（立绘库磁贴与顺序轮换的出场次序）；
             # 不是目录名字典序 —— 这里与其后追加的自定义督休专员拼起来校验前缀。
             # 用户在设置页拖过立绘后，顺序以 settings.json 的 supervisor.order 为准。
-            # 期望值从磁盘现算：用户删掉某个内置专员后目录真的没了，写死「17 个」会误报红。
+            # 期望值从磁盘现算：用户删掉某个内置专员后目录真的没了，写死“17 个”会误报红。
             disk_keys = scan_role_names(ROOT)
             saved_order = ((cfg or {}).get("supervisor") or {}).get("order") or []
             want_order = expected_order(disk_keys, saved_order)
@@ -497,7 +497,7 @@ def main():
 
         # ---- 候选专员顺序持久化（拖拽排序的落点）----
         # 拖动立绘把顺序写进 settings.json 的 supervisor.order（role key 数组）；
-        # 画廊显示顺序与「顺序轮换」的出场次序共用这一份。这里从绑定层走一遍：
+        # 画廊显示顺序与“顺序轮换”的出场次序共用这一份。这里从绑定层走一遍：
         # 写 order → ListRoles 顺序跟着变 → 读回 / 落盘都对得上 → 再复原。
         if isinstance(roles, list) and len(roles) >= 2:
             rev = list(reversed([r.get("name") for r in roles]))
@@ -524,8 +524,8 @@ def main():
                   "清空 order 后回到内置清单顺序", keys3[:3])
 
         # ---- 督休专员显示名唯一：SaveRole 改成别人的名字必须被拒 ----
-        # 需求原文：「提交名称时，软件对现有的督休专员名称进行检查，若有重名的，
-        # 拒绝保存，要求用户重新输入名称」。绑定层是权威判定（设置页的前端检查
+        # 需求原文：“提交名称时，软件对现有的督休专员名称进行检查，若有重名的，
+        # 拒绝保存，要求用户重新输入名称”。绑定层是权威判定（设置页的前端检查
         # 只是提前拦一道）。这条用例只验**拒绝**路径 —— 拒绝是零副作用的，
         # 磁盘上的 meta.json 一个字节都不会变（不碰用户真实的 supervisors/）。
         if isinstance(roles, list) and len(roles) >= 2:
@@ -565,7 +565,7 @@ def main():
 
         # ---- 4. 调度器状态机：动作类绑定真的推动了状态机 ----
         # 走到这里 StartBreak("short") 已经穿过调度器（phase=break、occurrence 已消费），
-        # 正好先验「休息中」的形状，再用 Action 把状态机逐个动作推一遍、每步回读核验。
+        # 正好先验“休息中”的形状，再用 Action 把状态机逐个动作推一遍、每步回读核验。
         # 这里验的是**绑定真的接到了状态机**上（不是只返回了个形状对的壳）——
         # 具体规则的正确性由计划层对拍（verify_plan_parity.py）与 scheduler_test 覆盖。
         st, st0 = call(base, "GetState", [])
@@ -637,8 +637,8 @@ def main():
             check(st3.get("paused") is False, "再次 pauseToggle → paused == false", st3.get("paused"))
             check(st3.get("pauseReasons") == [], "恢复后 pauseReasons 清空", st3.get("pauseReasons"))
 
-        # ③ 推迟：nextAt = 「原定时刻 + 该身份的 postponeMs」——推迟只能往后推，
-        # 基准是原定时刻而不是「现在」（否则还剩 10 分钟的提醒会被拉到 2 分钟后，P2-1）
+        # ③ 推迟：nextAt = “原定时刻 + 该身份的 postponeMs”——推迟只能往后推，
+        # 基准是原定时刻而不是“现在”（否则还剩 10 分钟的提醒会被拉到 2 分钟后，P2-1）
         if isinstance(st3, dict) and st3.get("nextAt"):
             pm = _postpone_ms(cfg, st3.get("nextType"))
             t0 = int(time.time() * 1000)
@@ -657,7 +657,7 @@ def main():
                        if isinstance(v, (int, float))}
                 took_over = got in ats and any(t0 < a <= want for a in ats)
                 check(abs(got - want) <= 3000 or took_over,
-                      "postpone 把 nextAt 推到「原定时刻 + %s 的 postponeMs」（只往后推；固定线接管时除外）"
+                      "postpone 把 nextAt 推到“原定时刻 + %s 的 postponeMs”（只往后推；固定线接管时除外）"
                       % st3.get("nextType"),
                       "got=%d want=%d orig=%d ats=%s" % (got, want, orig, sorted(ats)))
 
@@ -672,7 +672,7 @@ def main():
         # ---- 5. 系统能力：空闲 / 勿扰 / 进程 / 自启动 ----
         # 无头模式下**不启动**会改调度器状态的四条监视（冒烟机始终空闲，会把调度器
         # 随机挂起、把上面那些确定性断言搞成掷骰子），但探测本身是照常做的 ——
-        # 所以这里验的是「几个系统调用真的通了、字段形状对」，不是「暂停链路跑起来了」
+        # 所以这里验的是“几个系统调用真的通了、字段形状对”，不是“暂停链路跑起来了”
         # （暂停链路由 sys_test.go 用假宿主 + 真进程名驱动）。
         st, probe = call(base, "SysProbe", [])
         check(st == 200 and isinstance(probe, dict), "SysProbe 返回系统能力自检对象", str(probe)[:200])
@@ -690,7 +690,7 @@ def main():
                   and isinstance(dnd.get("active"), bool) and bool(dnd.get("detail")),
                   "勿扰探测返回 {supported, active, detail}", dnd)
 
-            # 2026-11-06 的「全屏或演示」判据（QUNS 2 / 3 / 4 合并），以及 WNF 勿扰档位原始值
+            # 2026-11-06 的“全屏或演示”判据（QUNS 2 / 3 / 4 合并），以及 WNF 勿扰档位原始值
             for key in ("fullscreen",):
                 item = probe.get(key) or {}
                 check(isinstance(item, dict) and isinstance(item.get("supported"), bool)
@@ -712,7 +712,7 @@ def main():
             check(isinstance(cast, dict) and isinstance(cast.get("supported"), bool)
                   and isinstance(cast.get("active"), bool) and bool(cast.get("detail")),
                   "投屏探测返回 {supported, active, mirror, wireless, detail}", cast)
-            # 判据互斥性：active 必须由某条判据撑起来，否则就是「凭空空转」
+            # 判据互斥性：active 必须由某条判据撑起来，否则就是“凭空空转”
             check(not cast.get("active") or bool(cast.get("mirror") or cast.get("wireless")),
                   "判定投屏时 mirror / wireless 至少一条为真", cast)
 
@@ -730,25 +730,25 @@ def main():
 
         # ListRunningApps 必须是 **{supported, names, detail} 对象**：
         # 设置页按 r.supported 分流，返回数组会让 .supported 恒为 undefined，
-        # 「从运行中的程序选择」永远停在「当前平台不支持」。
+        # “从运行中的程序选择”永远停在“当前平台不支持”。
         st, running = call(base, "ListRunningApps", [])
         check(st == 200 and isinstance(running, dict) and running.get("supported") is True,
               "ListRunningApps 返回对象且 supported == true（不是字符串数组）", str(running)[:200])
         if isinstance(running, dict):
             names = [str(n).lower() for n in (running.get("names") or [])]
             check(bool(names), "ListRunningApps.names 非空", len(names))
-            check("chibingren_server.exe" in names,
-                  "运行中程序列表里有本服务自己的进程", [n for n in names if "chibingren" in n][:3])
+            check("rest_server.exe" in names,
+                  "运行中程序列表里有本服务自己的进程", [n for n in names if n.startswith("rest")][:3])
 
         # ---- 6. 提前提示窗口（右下角小窗）：prebreak:state / prebreak:action ----
         # 无头构建没有原生窗口，但**状态与动作照常可用**，所以这一节验两件事：
         #   ① PreBreakState 的六个字段真的从调度器来（渲染层每 500ms 轮询它刷新倒计时，
         #      少一个字段不会报错、只会静默显示错内容）；
         #   ② 四个动作真的汇聚到调度器（不是只返回了个形状对的壳）。
-        # 「那个小窗真的弹出来了」由 scripts/probe_gui_boot.py 拉起 GUI 产物读日志覆盖。
+        # “那个小窗真的弹出来了”由 scripts/probe_gui_boot.py 拉起 GUI 产物读日志覆盖。
 
         def arm_prebreak():
-            """把配置改成「马上进入提前提示区间」：短休息 60 秒倒计时、提前 60 秒提示。
+            """把配置改成“马上进入提前提示区间”：短休息 60 秒倒计时、提前 60 秒提示。
 
             每次动作前都要重来一遍：推迟 / 跳过会把 nextAt 推到两分钟外，不再落在提前
             区间里，不重设就等不到下一次 pre（调度器只在 idle→pre 那一刻发通知）。
@@ -776,7 +776,7 @@ def main():
             check(pb.get("custom") is False, "内置短休息走内置版式（custom=false）", pb.get("custom"))
             check(pb.get("title") in ("您已连续工作较长时间，建议您短休息",
                                         "您已连续工作较长时间，建议您长休息"),
-                  "标题是内置劝说文案（按长短休息区分；自定义提醒才用「XX时间到」）", pb.get("title"))
+                  "标题是内置劝说文案（按长短休息区分；自定义提醒才用“XX时间到”）", pb.get("title"))
             check(pb.get("countdownTail") == " 秒进入休息",
                   "倒计时后缀是内置那套（含前导空格，接在数字后面）", repr(pb.get("countdownTail")))
             rm = pb.get("remainMs")
@@ -796,8 +796,8 @@ def main():
         check(isinstance(pb_resumed, dict) and pb_resumed.get("paused") is False,
               "再次 PreBreakAction(pause) → 恢复", (pb_resumed or {}).get("paused"))
 
-        # 推迟：nextAt = 「原定时刻 + short.postponeMs」（提前提示窗弹出时原定时刻还在
-        # 未来，基准必须取原定时刻，否则推迟会把提醒提前到「现在」附近）
+        # 推迟：nextAt = “原定时刻 + short.postponeMs”（提前提示窗弹出时原定时刻还在
+        # 未来，基准必须取原定时刻，否则推迟会把提醒提前到“现在”附近）
         arm_prebreak()
         mapi_short = _postpone_ms(read_json(iso_settings), "short")
         st, gs_pb_before = call(base, "GetState", [])
@@ -813,7 +813,7 @@ def main():
                       if isinstance(v, (int, float))}
             took_over_pb = got_pb in ats_pb and any(t_pb < a <= want_pb for a in ats_pb)
             check(abs(got_pb - want_pb) <= 3000 or took_over_pb,
-                  "PreBreakAction(postpone) 把 nextAt 推到「原定时刻 + short.postponeMs」",
+                  "PreBreakAction(postpone) 把 nextAt 推到“原定时刻 + short.postponeMs”",
                   "got=%d want=%d orig=%d" % (got_pb, want_pb, orig_pb))
 
         # 跳过：重排下一条、且不进入休息。
@@ -832,7 +832,7 @@ def main():
                   "跳过重排了下一条（nextAt 变了）",
                   "%s -> %s" % (before_skip, gs_skip.get("nextAt")))
 
-        # 立即休息：与托盘「立即休息」同一入口，真的开始一次休息
+        # 立即休息：与托盘“立即休息”同一入口，真的开始一次休息
         arm_prebreak()
         call(base, "PreBreakAction", ["breakNow"])
         time.sleep(0.3)
@@ -841,7 +841,7 @@ def main():
               "PreBreakAction(breakNow) → phase == break（真的进了调度器）",
               (gs_now or {}).get("phase"))
 
-        # 未知动作必须被拒绝：静默无事是「按名调用」链路最容易漏的坑
+        # 未知动作必须被拒绝：静默无事是“按名调用”链路最容易漏的坑
         st_bad, bad = call(base, "PreBreakAction", ["fly"])
         bad_text = bad if isinstance(bad, str) else json.dumps(bad, ensure_ascii=False)
         check(st_bad != 200 or "未知的提前提示动作" in bad_text,
@@ -851,17 +851,17 @@ def main():
         # ---- 7. 提示音：内置音资源 / 自定义音路由 / 播放链路 ----
         # 无头构建放不出声（没有承载 <audio> 的原生窗口），但**选曲与播放指令这条链路照走**，
         # 所以这一节验三件事：
-        #   ① 内置提示音真的随包可访问（资源服务 /sounds/…）——「开箱就有声」的前提；
+        #   ① 内置提示音真的随包可访问（资源服务 /sounds/…）——“开箱就有声”的前提；
         #   ② 用户导入的音乐能经本进程的只读路由取到，且白名单外的文件被拒；
         #   ③ 休息开始 / 结束时真的按配置播了那一首（日志留痕）。
-        # 「真的发出声音」只有 GUI 下才验得到，由 scripts/probe_gui_boot.py 覆盖。
+        # “真的发出声音”只有 GUI 下才验得到，由 scripts/probe_gui_boot.py 覆盖。
 
         st, u_builtin = call(base, "SoundFileURL", ["short_start.wav"])
         check(st == 200 and u_builtin == "/sounds/short_start.wav",
               "SoundFileURL(内置音) → 资源服务的 /sounds/…", u_builtin)
         st, u_missing = call(base, "SoundFileURL", ["nope.wav"])
         check(st == 200 and u_missing == "",
-              "SoundFileURL(不存在的文件) → 空串（渲染层据此提示「找不到该音频文件」）",
+              "SoundFileURL(不存在的文件) → 空串（渲染层据此提示“找不到该音频文件”）",
               repr(u_missing))
 
         status, wav = http("GET", base + "/sounds/short_start.wav")
@@ -869,7 +869,7 @@ def main():
               "资源服务能取到内置提示音（RIFF 头）",
               "status=%s head=%r len=%d" % (status, wav[:4], len(wav)))
 
-        # 用户导入的音乐：造一条放在「配置目录旁的 sounds/」（Go 版 customSoundDir 的落点）
+        # 用户导入的音乐：造一条放在“配置目录旁的 sounds/”（Go 版 customSoundDir 的落点）
         music_dir = os.path.join(ISO, "sounds")
         os.makedirs(music_dir, exist_ok=True)
         my_music = os.path.join(music_dir, "music-smoke.wav")
@@ -891,10 +891,10 @@ def main():
         status, _ = http("GET", base + "/__sound/?p=" + urllib.parse.quote(outsider))
         check(status == 403, "音频目录外的文件被拒（403）", status)
 
-        # 播放链路：把音乐列表换成「只有刚造的那一条」的单曲循环，于是每次播放都该是它。
-        # 轮换（随机 / 顺序）的规则在单测里逐条钉死了，这里只需要「真的走到播放」。
+        # 播放链路：把音乐列表换成“只有刚造的那一条”的单曲循环，于是每次播放都该是它。
+        # 轮换（随机 / 顺序）的规则在单测里逐条钉死了，这里只需要“真的走到播放”。
         #
-        # 连带把「声音测试」这条自定义提醒也建出来：下一步要用它当 StartBreak 的身份，
+        # 连带把“声音测试”这条自定义提醒也建出来：下一步要用它当 StartBreak 的身份，
         # 而前面 arm_prebreak 已经把 customBreaks 清空过。
         def set_sound(enabled, single_id):
             call(base, "SaveSettings", [{
@@ -914,7 +914,7 @@ def main():
             }])
             time.sleep(0.4)
 
-        # 只统计「改配置之后」的播放日志（前面第 6 段的立即休息也播过一次）
+        # 只统计“改配置之后”的播放日志（前面第 6 段的立即休息也播过一次）
         def count_plays():
             if not os.path.exists(LOG):
                 return 0
@@ -956,12 +956,12 @@ def main():
                   "周期顺序为 周 → 月 → 季 → 年", pkeys)
             check(all(isinstance(p.get("workMs"), int) for p in periods),
                   "每个周期都带 workMs（聚合字段齐全）", "")
-            # 提前结束次数也要按周期聚合（休息报表那条「提前结束」折线的数据源）
+            # 提前结束次数也要按周期聚合（休息报表那条“提前结束”折线的数据源）
             check(all(isinstance(p.get("endEarlyCount"), int) for p in periods),
                   "每个周期都带 endEarlyCount",
                   [p.get("endEarlyCount") for p in periods])
 
-        # today 的字段清单就是渲染层的读法（「今天」卡三块面板直接遍历它）
+        # today 的字段清单就是渲染层的读法（“今天”卡三块面板直接遍历它）
         STAT_KEYS = ("date", "workMs", "breakMs", "awayMs", "shortMs", "longMs",
                      "shortCount", "longCount", "customCount", "customCounts",
                      "postponeCount", "postponeMs", "skipCount", "skipMs",
@@ -1040,7 +1040,7 @@ def main():
         check(st == 200 and isinstance(tk, dict), "TakeoutCurrent 返回会话对象",
               "status=%s %s" % (st, str(tk)[:200]))
         if isinstance(tk, dict):
-            # 渲染层 takeout.ts 读的字段：少一个就「Cannot read properties of undefined」
+            # 渲染层 takeout.ts 读的字段：少一个就“Cannot read properties of undefined”
             TK_KEYS = ("id", "at", "hour", "minute", "firedAt", "preview", "meal",
                        "leadSec", "postponeMin", "postponedCount", "message",
                        "appearance", "supervisor", "redPacketData")
@@ -1062,15 +1062,15 @@ def main():
                   "红包地址指向固定领取页（查询串只有 t）", rd_url)
             check(rd_url.split("?t=", 1)[-1].isdigit(), "红包地址的 t 是毫秒时间戳", rd_url)
             check("id=" not in rd_url, "红包地址不带任何设备标识", rd_url)
-        # 动作：预览态点「不点了」→ 只关会话，不记真实统计（预览不算次数）
+        # 动作：预览态点“不点了”→ 只关会话，不记真实统计（预览不算次数）
         st, _ = call(base, "TakeoutAction", ["takeout", "skip"], window="takeout")
         check(st == 200, "TakeoutAction(skip) 可调用", "status=%s" % st)
         st, tk2 = call(base, "TakeoutCurrent", ["takeout"], window="takeout")
         check(tk2 is None or tk2 is False, "动作后会话已清空", tk2)
 
         # ------------------------------------------------ 第 10 段：文件选择 / 导入导出 / 更新
-        # 无头（server）模式下没有原生窗口，这些绑定一律走「取消 / 失败」路径——
-        # 这里验的是「绑定可调用、返回形状正确的取消/失败值、不会因为没窗口而崩溃」。
+        # 无头（server）模式下没有原生窗口，这些绑定一律走“取消 / 失败”路径——
+        # 这里验的是“绑定可调用、返回形状正确的取消/失败值、不会因为没窗口而崩溃”。
         print("\n[10] 文件选择 / 导入导出 / 更新检查（无头走取消/失败路径）")
         st, r = call(base, "PickSupervisorImage", [], window="settings")
         check(st == 200 and r is None, "PickSupervisorImage 无头返回 null（取消）", r)
@@ -1088,7 +1088,7 @@ def main():
         check(st == 200 and isinstance(us, dict) and "status" in us and "current" in us,
               "UpdateStatus 返回 {status,current}", us)
         # 开源鸣谢：清单整份 //go:embed 在 exe 里，无头下照样能读——
-        # 设置页「关于 → 软件信息 → 开源鸣谢」走的就是这条绑定。
+        # 设置页“关于 → 软件信息 → 开源鸣谢”走的就是这条绑定。
         # 断言里同时核对三块结构：开头致谢句、组件清单里的版本号、许可正文关键句。
         st, nt = call(base, "GetThirdPartyNotices", [], window="settings")
         nt_text = nt if isinstance(nt, str) else ""
@@ -1104,7 +1104,7 @@ def main():
         check(st == 200 and isinstance(ex, dict) and ex.get("canceled") is False and ex.get("error"),
               "ExportThirdPartyNotices 无头返回 {canceled:false, error}", ex)
         # 项目许可条款：同样 //go:embed 在 exe 里（license.go）。便携目录不再散放 LICENSE，
-        # 所以「关于页 → 许可条款」与这个绑定是用户读条款的唯一入口 —— 断了就等于没授权。
+        # 所以“关于页 → 许可条款”与这个绑定是用户读条款的唯一入口 —— 断了就等于没授权。
         st, lic = call(base, "GetProjectLicense", [], window="settings")
         lic_text = lic if isinstance(lic, str) else ""
         lic_ok = (lic_text.startswith("MIT License")
@@ -1133,19 +1133,19 @@ def main():
         logtext = open(LOG, encoding="utf-8", errors="replace").read()
         check("前端契约自检通过" in logtext, "启动日志里有契约自检通过", "")
         check("前端契约缺失绑定" not in logtext, "启动日志里没有契约缺失告警", "")
-        # 计划摘要落日志：一眼能从日志看出「下一次休息是什么、什么时候」
+        # 计划摘要落日志：一眼能从日志看出“下一次休息是什么、什么时候”
         check("[plan]" in logtext, "启动日志里有计划摘要（[plan] 行）", "")
         check("[scheduler] 开始休息" in logtext, "日志记录了调度器真实开始过一次休息", "")
-        # 系统能力探测结果落日志（排查「自启动没生效 / 空闲不暂停」时第一眼要看的就是它）
+        # 系统能力探测结果落日志（排查“自启动没生效 / 空闲不暂停”时第一眼要看的就是它）
         check("[sys]" in logtext, "启动日志里有系统能力摘要（[sys] 行）", "")
         check("无头模式：不启动空闲 / 勿扰 / 投屏 / 应用占用监视" in logtext,
               "无头模式明确跳过了会改状态的监视", "")
-        # 提前提示窗口：无头下不建窗，但「进入了提前区间」与「按预期跳过建窗」都要留痕
+        # 提前提示窗口：无头下不建窗，但“进入了提前区间”与“按预期跳过建窗”都要留痕
         check("[prebreak] 即将休息" in logtext,
               "日志记录了进入提前提示区间（onPreNotify 真的被调度器调到）", "")
         check("[prebreak] server 模式无原生窗口" in logtext,
               "无头下提前提示窗按预期跳过建窗（状态与动作照常可用）", "")
-        # 提示音：无头下退化成「算出该播哪一首 + 说明不发声」，日志要留痕
+        # 提示音：无头下退化成“算出该播哪一首 + 说明不发声”，日志要留痕
         all_play = [l for l in logtext.splitlines() if "[sound] 播放" in l]
         played = all_play[play_mark:]
         check(len(played) >= 3,
@@ -1154,18 +1154,18 @@ def main():
         check(bool(played) and all("music-smoke.wav" in l for l in played),
               "播的就是配置里选中的那一首（单曲循环口径）", played[:2] if played else "")
         check("[sound] server 模式不发声" in logtext,
-              "无头模式明确说明「不发声但曲目已算出」", "")
+              "无头模式明确说明“不发声但曲目已算出”", "")
         # 统计：启动与清空都要留痕。**退出那次无条件落盘在 ServiceShutdown 里，
         # 而冒烟是硬杀进程、不走优雅退出**，所以这里不断言它（会假红）。
         check("[stats] 已启动" in logtext,
               "启动日志里有统计启动（含落点路径）", "")
         check("[stats] 已清空全部统计数据" in logtext, "清空统计有留痕", "")
-        # 外卖：预览动作要留痕（预览态的 skip 记「推迟（预览，忽略）」之外的「不点了」）
+        # 外卖：预览动作要留痕（预览态的 skip 记“推迟（预览，忽略）”之外的“不点了”）
         check("[takeout] 用户选择 不点了" in logtext,
-              "外卖动作留痕（预览态点「不点了」）", "")
+              "外卖动作留痕（预览态点“不点了”）", "")
 
         # ---- 隔离铁律：真实配置一个字节都不许被改 ----
-        # 加载路径在「补 installId / 种入预置条目」时会回写，所以冒烟必须走隔离副本；
+        # 加载路径在“补 installId / 种入预置条目”时会回写，所以冒烟必须走隔离副本；
         # 这条断言就是防呆：哪天有人把 WR_SETTINGS_PATH 去掉，这里立刻红。
         if real_settings:
             check(_digest(real_settings) == real_digest,

@@ -2,12 +2,12 @@
 # -*- coding: utf-8 -*-
 """缩放（DPI）对设置窗口布局的影响 —— 起无头服务 + 隔离配置，跑 probe_dpi_layout.js。
 
-回答用户的问题：「设置窗口有默认尺寸，系统缩放会不会让样式出问题？关于页能不能显示全？」
+回答用户的问题：“设置窗口有默认尺寸，系统缩放会不会让样式出问题？关于页能不能显示全？”
 
 三段：
   ① 同一视口换 devicePixelRatio（1 / 1.25 / 1.5 / 2 / 2.5）→ 布局指纹必须一致。
-     这一条验的是「窗口尺寸是 DIP = CSS px」这个前提，不一致就说明某处写死了物理像素。
-  ② 常见「分辨率 × 缩放」组合 → 按 fitSizeToScreen 复算真实窗口尺寸，量每页溢出、
+     这一条验的是“窗口尺寸是 DIP = CSS px”这个前提，不一致就说明某处写死了物理像素。
+  ② 常见“分辨率 × 缩放”组合 → 按 fitSizeToScreen 复算真实窗口尺寸，量每页溢出、
      横向裁切、以及滚到底能不能看到最后一块。
   ③ 宽度下限（760）与常见宽度 → 横向裁切必须为 0。
 
@@ -24,7 +24,7 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 PROBE = os.path.join(HERE, "probe_dpi_layout.js")
 TEMP = os.environ.get("TEMP", ROOT)
 ISO = os.path.join(TEMP, "wr_dpi_iso")
@@ -173,7 +173,7 @@ def main():
             if max(d, d2) > worst:
                 worst = max(d, d2)
                 worst_dpr = "%s(dpr=%s)" % (CN[tab], dpr)
-        check(worst <= 1, "缩放不改「%s」页布局（元素高度之和差 ≤1px）" % CN[tab],
+        check(worst <= 1, "缩放不改“%s”页布局（元素高度之和差 ≤1px）" % CN[tab],
               "最大差 %dpx %s" % (worst, ("@ " + worst_dpr) if worst_dpr else ""))
     # 每档 dpr 的 CSS 视口都必须还是 874×857 —— 若某个 dpr 下 innerWidth 变了，
     # 说明窗口尺寸被当成物理像素用了
@@ -195,7 +195,7 @@ def main():
                                   else "需滚动 %dpx" % m["need"]))
 
     # ---------- ② 真实夹紧尺寸 ----------
-    section("2", "常见「分辨率 × 缩放」组合：窗口被夹成多少、关于页够不够")
+    section("2", "常见“分辨率 × 缩放”组合：窗口被夹成多少、关于页够不够")
     rows = data["CLAMP_MATRIX"]
     print("      %-12s %-6s %-11s %-11s %-9s %s"
           % ("屏幕", "缩放", "工作区DIP", "窗口DIP", "关于页溢出", "结论"))
@@ -225,7 +225,7 @@ def main():
     for tab in ("general", "timing", "supervisor", "shortcuts"):
         bad = [(r["screen"], r["scale"], r["per"][tab]["clipSel"])
                for r in rows if r["per"][tab]["maxClip"] > 0]
-        check(not bad, "「%s」页在全部组合下都无横向裁切" % CN[tab],
+        check(not bad, "“%s”页在全部组合下都无横向裁切" % CN[tab],
               bad[:3] if bad else "0 处")
 
     # 窗口不能比工作区还高（否则底部落到屏幕/任务栏外）。2026-11-05 修的就是这一条：
@@ -235,7 +235,7 @@ def main():
     check(not over_screen, "窗口高度不会超过工作区高度（否则底部跑到屏幕外）",
           over_screen if over_screen else "0 处")
     # 反向：被夹过的窗口不能夹到贴死工作区底边（要留 40 DIP 余量）。
-    # 注意只在「确实被夹」时才成立 —— 默认 857 本来就比工作区矮的屏属于正常放得下。
+    # 注意只在“确实被夹”时才成立 —— 默认 857 本来就比工作区矮的屏属于正常放得下。
     too_short = [(r["screen"], r["scale"], r["win"][1], r["waDip"][1])
                  for r in rows
                  if r["win"][1] != 857 and r["win"][1] < r["waDip"][1] - 40]

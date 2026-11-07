@@ -1,7 +1,7 @@
 # 发布前检查报告 — 2026-11-01
 
 > 对象：重构后（标准 Go 布局 `cmd/workerrest` + `internal/`）的下一版发布
-> 口径：全部结论来自本轮实跑，不引用上一轮报告；跑不起来的写「无法测量」，不写通过。
+> 口径：全部结论来自本轮实跑，不引用上一轮报告；跑不起来的写“无法测量”，不写通过。
 > 结论：**代码与打包链路已就绪，但还不能发 —— 有 2 个阻断项，都在提交动作上。**
 
 ---
@@ -66,7 +66,7 @@ scripts/probe/settings_{ui,modals,flow}_probe.js
 
 > 说明：仓库里 `rsrc_windows_amd64.syso` 的 VERSIONINFO 停在 0.9.5.0 是**设计如此** ——
 > `build_exe()` 在构建那一瞬间用本次 tag 版本现生成一份临时 syso 再链接，之后还原，
-> 这样不必为「syso 版本号」多打一次 commit（否则 tag 永远落不到 HEAD）。
+> 这样不必为“syso 版本号”多打一次 commit（否则 tag 永远落不到 HEAD）。
 
 ### 版本号注入（端到端）
 
@@ -91,7 +91,7 @@ scripts/probe/settings_{ui,modals,flow}_probe.js
 
 ## 三、本轮修掉的问题
 
-### 1. 一条「假绿」的出厂断言（真问题，已修）
+### 1. 一条“假绿”的出厂断言（真问题，已修）
 
 `internal/settings/settings_test.go` 的 `TestDefaultFixedRolePointsAtRealRole` 用
 `role.ResolveRoleDir("../../supervisors", fixed)` 找专员目录 —— 资产挪进 `assets/` 之后
@@ -103,7 +103,7 @@ settings_test.go:594: 磁盘上没有专员 "秦始皇"（内置专员可被用�
 --- PASS
 ```
 
-改成 `../../assets/supervisors`，并把「找不到就跳过」改成「找不到就红」：出厂素材随包分发，
+改成 `../../assets/supervisors`，并把“找不到就跳过”改成“找不到就红”：出厂素材随包分发，
 `fixedRole` 指向一个不存在的目录时首装会静默回退到列表第一个，用户看到的人与
 `default_settings.json` 写的那位不一致，且没有任何报错。现在这条真的会咬人：
 
@@ -118,15 +118,15 @@ settings_test.go:605: 出厂固定专员 秦始皇 → ..\..\assets\supervisors\
 看守新家。改成遍历 `cmd/` + `internal/` 全部生产文件（现覆盖 12 个文件），今天全数合规，
 明天新加未兜底的循环会被逮住。
 
-### 3. 打包缺「脏树」闸门（已补）
+### 3. 打包缺“脏树”闸门（已补）
 
 `docs/QA-AUDIT-2026-10-31.md` 域2 早就建议过，一直没落。**这是当前最危险的一类问题**：
 只要 HEAD 有 tag，`make_portable.py` 不管工作树脏不脏照样打包 —— 编进去的是磁盘上的代码，
-而 tag 指的是另一个快照，「发布包 = 源码」的审计链就断了，而且全程没有任何异常提示。
+而 tag 指的是另一个快照，“发布包 = 源码”的审计链就断了，而且全程没有任何异常提示。
 
 新增 `check_worktree_clean()`：`git status --porcelain` 有输出即 `rc=1`，最多列出 12 项
 （`core.quotepath=false`，中文路径可读）。救援口是 `--allow-dirty`，帮助文本写明
-「仅供排查构建问题，交付禁用」。实测（本进程内假装有 tag）：
+“仅供排查构建问题，交付禁用”。实测（本进程内假装有 tag）：
 
 ```
 [make-portable] 版本: v0.9.8（exe 内注入 0.9.8）
@@ -137,14 +137,14 @@ settings_test.go:605: 出厂固定专员 秦始皇 → ..\..\assets\supervisors\
 ### 4. `verify_portable.py` 的存活断言自相矛盾（已修）
 
 报告里写着 `ok 便携版进程观察期内一直活着 | rc=1` —— 因为附注取的是 `proc.poll()`，
-而那是在 `terminate()` **之后**求值的，永远非 0。读报告的人会以为「明明退出了却判活着」。
+而那是在 `terminate()` **之后**求值的，永远非 0。读报告的人会以为“明明退出了却判活着”。
 改为在 terminate 之前取一次 `alive_rc`，现在是 `rc=None`。
 
 ### 5. 注释腐烂 3 处（已修）
 
 - `cmd/workerrest/main.go`：`不再有 assets/ 目录` —— 现在又有 `assets/` 了（随包素材）。
-  改成「别和模块根的 assets/ 搞混」的对照说明。
-- `cmd/workerrest/repo_path_test.go`：仍说「`supervisors/`、`sounds/` 留在模块根」。
+  改成“别和模块根的 assets/ 搞混”的对照说明。
+- `cmd/workerrest/repo_path_test.go`：仍说“`supervisors/`、`sounds/` 留在模块根”。
 - `scripts/smoke_server.py`：请求示例写 `workerrest.App.<方法>`，实际契约是
   `main.App.<方法>`（`BINDING_PREFIX` 与 `contract_test.go` 都是后者），照抄会调不通。
 
@@ -167,8 +167,8 @@ settings_test.go:605: 出厂固定专员 秦始皇 → ..\..\assets\supervisors\
    `v0.9.7..HEAD` 的提交标题（当前 10 条，全是 refactor 术语），面向用户必须改写成
    人话。脚本跑完会打印待编辑文件路径。
 2. **未签名 → SmartScreen 拦截**。`docs/RISK-ACCEPTANCE-SIGNING.md` 仍然有效
-   （适用 v0.9.6 及此后）。本次仍未签，新用户首次运行会遇到「Windows 已保护你的电脑」。
-   若已拿到证书，按该文「补签路径」插 `signtool` 并撤销记录。
+   （适用 v0.9.6 及此后）。本次仍未签，新用户首次运行会遇到“Windows 已保护你的电脑”。
+   若已拿到证书，按该文“补签路径”插 `signtool` 并撤销记录。
 3. **操作手册是否重拍**。`docs/manual/操作手册.html` 停在 2026-10-31 16:01。本次重构是
    纯内部搬家，界面无变化；上一轮改的是对话框 Esc/焦点（无视觉变化）。按既有约定
    （用户发话才重拍）默认不动。
@@ -203,7 +203,7 @@ python scripts/build/verify_portable.py
 
 ## 六、遗留与小节
 
-- `build/bin/` 里残留 `chibingren_capguard.exe`、`chibingren_winprobe.exe`（探针产物，已 gitignore）；
+- `build/bin/` 里残留 `rest_capguard.exe`、`rest_winprobe.exe`（探针产物，已 gitignore）；
   我临时构建的 14,670,848 字节 `rest.exe` **已删除** —— 它带着 0.9.8 的版本号，
   留着会被 `--no-build` 当成本次发布的产物。`make_portable.py` 默认会重新构建。
 - `probe_capture_guard.py` 在本会话**仍无法测量**（桌面 BitBlt 抓图整块全黑，非黑像素 0.0%），

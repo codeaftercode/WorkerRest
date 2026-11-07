@@ -8,13 +8,13 @@ WebviewWindowOptions 上只有真跑一次才看得见。这里用 Win32 读窗�
 
 三段：
   ① 首次启动（出厂默认）→ 与 default_settings.json 的 window.width/height 一致
-  ② 拖成「默认 −120 / −100」→ 等防抖 → settings.json 里 lastWidth/lastHeight 记下来
+  ② 拖成“默认 −120 / −100”→ 等防抖 → settings.json 里 lastWidth/lastHeight 记下来
   ③ 重启 → 沿用上次尺寸；把 rememberSize 改成 false 再重启 → 回到出厂尺寸
 
 出厂尺寸不写死：从 default_settings.json 现读，改配置即改断言。
 
 隔离：WR_SETTINGS_PATH 指向 %TEMP% 的副本，不碰真实配置。窗口矩形包含无边框窗口的
-不可见拖动边框（约 8px），所以断言留 ±20 DIP 容差 —— 这里要验的是「配置生效了没」，
+不可见拖动边框（约 8px），所以断言留 ±20 DIP 容差 —— 这里要验的是“配置生效了没”，
 不是逐像素对齐。
 """
 import ctypes
@@ -28,7 +28,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_winprobe.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_winprobe.exe")
 TEMP = os.environ.get("TEMP", ROOT)
 ISO = os.path.join(TEMP, "wr_winsize_gui_iso")
 LOG = os.path.join(TEMP, "wr_winsize_gui.log")
@@ -88,7 +88,7 @@ def client_dip(hwnd):
 
     这才是网页真正拿到的视口：无边框窗口靠 WM_NCCALCSIZE 把客户区撑满整个窗口，
     所以它应当**精确等于**配置里的 Width/Height。若小了一截，说明有不可见边框吃了
-    客户区，CSS 视口就比配置窄，而「关于页恰好不出滚动条 = 857」这类实测数字会失效。
+    客户区，CSS 视口就比配置窄，而“关于页恰好不出滚动条 = 857”这类实测数字会失效。
     """
     r = wt.RECT()
     user32.GetClientRect(hwnd, ctypes.byref(r))
@@ -156,7 +156,7 @@ def main():
         os.remove(LOG)
 
     # 出厂尺寸从配置现读（不写死）：用户改默认尺寸后本脚本无需改动。
-    # 拖拽目标刻意与默认值拉开 ≥100 DIP（大于 TOL），否则「沿用上次」与「用了默认」
+    # 拖拽目标刻意与默认值拉开 ≥100 DIP（大于 TOL），否则“沿用上次”与“用了默认”
     # 在容差内无法区分，测试会退化成假绿。
     wd = defaults.get("window") or {}
     DW, DH = int(wd.get("width") or 0), int(wd.get("height") or 0)
@@ -178,7 +178,7 @@ def main():
     check(abs(w1 - DW) <= TOL, "首次启动宽度 = %d DIP" % DW, "%d DIP（dpi=%d）" % (w1, dpi))
     check(abs(h1 - DH) <= TOL, "首次启动高度 = %d DIP" % DH, "%d DIP" % h1)
     # 客户区 = 网页视口。窗口矩形带不可见拖动边框（所以上面留 ±24 容差），客户区不该带：
-    # 这一条把「CSS 视口 == 配置尺寸」钉死，整个 DPI 缩放结论都建立在它上面。
+    # 这一条把“CSS 视口 == 配置尺寸”钉死，整个 DPI 缩放结论都建立在它上面。
     cw, ch, _ = client_dip(hwnd)
     check(abs(cw - DW) <= 2, "客户区宽度 = 网页视口 = %d CSS px" % DW, "%d" % cw)
     check(abs(ch - DH) <= 2, "客户区高度 = 网页视口 = %d CSS px" % DH, "%d" % ch)
@@ -210,7 +210,7 @@ def main():
     check(abs(h2 - TH) <= TOL, "重启后沿用上次高度 %d" % TH, h2)
     kill(proc)
 
-    print("④ 关掉「自动记录」再重启（应回到 %d×%d）…" % (DW, DH))
+    print("④ 关掉“自动记录”再重启（应回到 %d×%d）…" % (DW, DH))
     cfg = read_cfg(cfg_path)
     cfg["window"]["rememberSize"] = False
     with open(cfg_path, "w", encoding="utf-8") as f:

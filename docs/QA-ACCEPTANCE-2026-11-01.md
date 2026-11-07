@@ -2,25 +2,25 @@
 
 > 测试日期：2026-11-01　对象：WorkerRest（吃饼人也敢休息？）重构后工作区（含未提交改动）
 > 结论：**1313 项自动断言全部通过，发现并修复 3 个真实缺陷 + 7 处重构遗留的探针失效**。
-> 口径：不接受「以前跑过」作为证据 —— 所有数字都是本轮重新执行得到的；跑不起来的项如实标为「无法测量」，不写通过。
+> 口径：不接受“以前跑过”作为证据 —— 所有数字都是本轮重新执行得到的；跑不起来的项如实标为“无法测量”，不写通过。
 
 ---
 
 ## 0. 一句话结论
 
-重构没有把功能改坏：六个页面、六个设置页签、十个对话框、52 个前端绑定、全部多值配置项、异常与边界路径均已逐项执行并通过。测试过程中发现的 3 个缺陷（空专员目录白屏、五个对话框无 Esc、关闭对话框后焦点丢失）**都是重构前就存在的老问题**，本轮一并修掉；另有 7 个探针脚本因目录重构静默失效 —— 也就是说「重构后的测试」在修它们之前根本没跑起来过。
+重构没有把功能改坏：六个页面、六个设置页签、十个对话框、52 个前端绑定、全部多值配置项、异常与边界路径均已逐项执行并通过。测试过程中发现的 3 个缺陷（空专员目录白屏、五个对话框无 Esc、关闭对话框后焦点丢失）**都是重构前就存在的老问题**，本轮一并修掉；另有 7 个探针脚本因目录重构静默失效 —— 也就是说“重构后的测试”在修它们之前根本没跑起来过。
 
 ---
 
 ## 1. 环境与构建（修正上一份报告的结论）
 
-上一份报告（`QA-FUNCTIONAL-2026-10-31.md`）写「本机 Go 工具链缺失」，那个结论是错的，本轮已实跑：
+上一份报告（`QA-FUNCTIONAL-2026-10-31.md`）写“本机 Go 工具链缺失”，那个结论是错的，本轮已实跑：
 
 | 项 | 值 |
 |---|---|
 | Go | go1.27.3，`D:/Programs/Go/bin/go.exe`（**不在 PATH**，须用绝对路径） |
 | 构建缓存 | `GOPATH=C:/Users/lwb/go`、`GOCACHE=C:/Users/lwb/AppData/Local/go-build`（本机 LOCALAPPDATA 可用，与旧记录里的 Administrator 路径不同） |
-| 无头产物 | `build/bin/chibingren_server.exe`（本轮重建，`-tags server`） |
+| 无头产物 | `build/bin/rest_server.exe`（本轮重建，`-tags server`） |
 | GUI 产物 | `build/bin/rest.exe`（本轮重建，`-trimpath -ldflags "-H windowsgui -s -w"`） |
 | 浏览器自动化 | Playwright 驱动系统 Edge（`channel: "msedge"`），Node 22 |
 | 配置隔离 | 全部探针用 `WR_SETTINGS_PATH` 指向临时副本，收尾断言仓库内 `config/settings.json` 的 SHA-256 未变 |
@@ -52,12 +52,12 @@
 | 脚本 | 覆盖内容 | 断言 | 结果 |
 |---|---|---|---|
 | `scripts/probe/probe_gui_boot.py` | GUI 产物冷启动 12 秒：`[boot]` 完成、无 panic、系统能力探测、空闲采样、三条监视、调度器、四个快捷键无注册失败、提前提示窗与播放宿主窗真的建出来、`sound.html` 由资源服务交付、休息开始/结束播放链路留痕、启动路径不写注册表 | 17 | 0 失败 |
-| `scripts/probe/probe_window_gui.py` | 首次启动 874×857、拖到 754×757 后落盘 `lastWidth/lastHeight`、重启沿用、关掉「自动记录」回默认 | 9 | 0 失败 |
+| `scripts/probe/probe_window_gui.py` | 首次启动 874×857、拖到 754×757 后落盘 `lastWidth/lastHeight`、重启沿用、关掉“自动记录”回默认 | 9 | 0 失败 |
 | `scripts/verify/verify_window_size.py` | 窗口尺寸端到端断言（含落盘值） | 14 | 0 失败 |
 | `scripts/verify/verify_about.py` | 关于页/鸣谢弹窗截图与字段测量（非断言脚本） | — | 测量值符合规格¹ |
 
 真机小计：**40 项断言，0 失败**。
-¹ 实测：版本行 `dev | 本地构建`，数字 14px/650、时间 12.5px/520、同一行且有分隔线；鸣谢弹窗 12px 等宽、行高 20.4、CRLF 未混入、首行「本程序使用了下列开源项目」；关于页口径文案「不收集个人信息；仅检查更新时联网，且只下载、不上传」（无「不联网」字样）。
+¹ 实测：版本行 `dev | 本地构建`，数字 14px/650、时间 12.5px/520、同一行且有分隔线；鸣谢弹窗 12px 等宽、行高 20.4、CRLF 未混入、首行“本程序使用了下列开源项目”；关于页口径文案“不收集个人信息；仅检查更新时联网，且只下载、不上传”（无“不联网”字样）。
 
 ### 2.3 可访问性
 
@@ -92,26 +92,26 @@
 ### 3.1 空专员目录 → 立绘库白屏（P1，重构前就存在）
 
 - 现象：便携包被删掉 `assets/supervisors/`（或首次运行素材还没落地）时，`ListRoles()` 的 `ScanRoles` 返回 `nil`，JSON 序列化成 `null`；前端是 `for (const r of ROLES)`，拿到 `null` 直接抛 `TypeError`，整个立绘库白屏。
-- 修复：`cmd/workerrest/app_bindings.go` 里空目录统一返回 `[]role.Role{}`，让「没有专员」成为正常状态。
-- 回归：新增 `cmd/workerrest/roles_bindings_test.go`；`probe_edge_cases.py` 的「缺资源目录」用例同时钉住（`ListRoles` 返回 `[]`、`AppInfo.roles == 0`、`SoundFileURL` 空串、服务不崩）。
+- 修复：`cmd/workerrest/app_bindings.go` 里空目录统一返回 `[]role.Role{}`，让“没有专员”成为正常状态。
+- 回归：新增 `cmd/workerrest/roles_bindings_test.go`；`probe_edge_cases.py` 的“缺资源目录”用例同时钉住（`ListRoles` 返回 `[]`、`AppInfo.roles == 0`、`SoundFileURL` 空串、服务不崩）。
 
 ### 3.2 五个对话框没有 Esc（P2）
 
 - 现象：十个 `.modal` 里只有 confirm / prompt / notices / color / app-pick 自己监听了 Esc；批量新增、统计损坏提示、提示音体检、更新提示、更新完成这五个只能点按钮关，键盘用户按 Esc 没反应。
 - 修复：`settings.js` 加 `ESC_DISMISS` 兜底表，Esc 时**点它自己的关闭按钮**（复用原关闭逻辑，不抄第二份语义）。
-- 验证：`settings_modals_probe.js` 十个对话框逐个断言「Esc 能关」，并单独验证「没有对话框时按 Esc 是空操作」。
+- 验证：`settings_modals_probe.js` 十个对话框逐个断言“Esc 能关”，并单独验证“没有对话框时按 Esc 是空操作”。
 
 ### 3.3 关闭对话框后焦点掉到页面顶部（P2）
 
-- 现象：调色弹窗、鸣谢弹窗在**显示自己的同一段同步代码里**就把焦点移进框内，于是 `MutationObserver` 回调跑起来时活动元素已在框内，`modalOpener` 记成 null；关闭后焦点退到「页面第一个可聚焦控件」——实测落到「开机自启动」勾选框，键盘用户的上下文当场丢失。
-- 修复：加 `focusin` 持续记录「最后一个在框外拿到焦点的元素」，打开时若活动元素已在框内就退到它，与打开顺序无关。
+- 现象：调色弹窗、鸣谢弹窗在**显示自己的同一段同步代码里**就把焦点移进框内，于是 `MutationObserver` 回调跑起来时活动元素已在框内，`modalOpener` 记成 null；关闭后焦点退到“页面第一个可聚焦控件”——实测落到“开机自启动”勾选框，键盘用户的上下文当场丢失。
+- 修复：加 `focusin` 持续记录“最后一个在框外拿到焦点的元素”，打开时若活动元素已在框内就退到它，与打开顺序无关。
 - 验证：真点击打开 → Esc → 断言 `document.activeElement === 触发控件`（十个对话框全覆盖）。
 
 ---
 
 ## 4. 重构遗留：7 个探针脚本静默失效（已修）
 
-目录重构把 `node_modules` 移到了 `scripts/`、把 main 包移到了 `cmd/workerrest/`，但脚本里还写死老路径。这些脚本**要么直接报错退出、要么找不到依赖**，等价于「重构后的 Playwright 测试类整体不存在」：
+目录重构把 `node_modules` 移到了 `scripts/`、把 main 包移到了 `cmd/workerrest/`，但脚本里还写死老路径。这些脚本**要么直接报错退出、要么找不到依赖**，等价于“重构后的 Playwright 测试类整体不存在”：
 
 | 脚本 | 失效原因 |
 |---|---|
@@ -126,8 +126,8 @@
 
 1. **假失败 6 项**（`probe_bindings_full`）：`PendingUpdate`、`GetStatsFileNotice`、`GetSoundScanNotice`、`PickSupervisorImage`、`PickAppExe`、`TakeoutAction` 返回 `null` 是设计语义（前端 `if (!picked) return`），原断言写错了判据。
 2. **假失败 13 项**（`probe_config_matrix`）：`GetSettings` 返回的是**合并后的原始 map**，不是生效值 —— `durationMs`/`intervalMs`/`volume` 不在这一层夹取。已改为在正确层断言（极端间隔看实际连发条数、音量看日志里的播放音量、sites 看 `CheckUpdate` 行为）。另修正：`sound.mode` 合法集是 `single|random|sequence`（没有 `music`）。
-3. **环境噪声**：Windows 突发请求下偶发 `WSAEADDRINUSE(10048)` / `WSAENOBUFS(10055)` / Wails 反代 `upstream connect failed`。四支 Python 探针统一加退避重试（只在「请求还没进方法体」的错误上重试，不影响幂等性）。
-4. **`probe_capture_guard.py` 增设桌面预检**：桌面截屏整块黑时，原逻辑会把「我看不见屏幕」判成「捕获保护没生效」，结论正好反了。现在预检不过直接返回**退出码 3 = 无法测量**。
+3. **环境噪声**：Windows 突发请求下偶发 `WSAEADDRINUSE(10048)` / `WSAENOBUFS(10055)` / Wails 反代 `upstream connect failed`。四支 Python 探针统一加退避重试（只在“请求还没进方法体”的错误上重试，不影响幂等性）。
+4. **`probe_capture_guard.py` 增设桌面预检**：桌面截屏整块黑时，原逻辑会把“我看不见屏幕”判成“捕获保护没生效”，结论正好反了。现在预检不过直接返回**退出码 3 = 无法测量**。
 
 ---
 
@@ -135,10 +135,10 @@
 
 | 项 | 原因 | 影响 |
 |---|---|---|
-| **共享屏幕时隐藏（捕获保护）** | 本会话桌面 BitBlt 抓图整块黑（非黑像素 0.0%），对照组拿不到品红，实验组「0% 品红」与「屏幕全黑」不可区分 | 既不算通过也不算失败；需在有人值守的交互式桌面重跑 `python scripts/probe/probe_capture_guard.py` |
-| **真实发声** | 无头构建不建窗口，GUI 构建下探针只能读到「本应播放哪个文件」的日志 | 播放链路已验证（gui_boot 17 项），「音箱是否出声」属人工确认 |
+| **共享屏幕时隐藏（捕获保护）** | 本会话桌面 BitBlt 抓图整块黑（非黑像素 0.0%），对照组拿不到品红，实验组“0% 品红”与“屏幕全黑”不可区分 | 既不算通过也不算失败；需在有人值守的交互式桌面重跑 `python scripts/probe/probe_capture_guard.py` |
+| **真实发声** | 无头构建不建窗口，GUI 构建下探针只能读到“本应播放哪个文件”的日志 | 播放链路已验证（gui_boot 17 项），“音箱是否出声”属人工确认 |
 | **更新链真实下载安装** | 需要真实更新服务器 + 上一版安装包 + 干净 VM | `internal/update` 单测 92.5%，sha256/大小/上限的 fail-closed 分支均有用例 |
-| **注册表自启动写入** | `reg.exe` 在沙箱黑名单 | `internal/autostart` 单测 84.6% 覆盖解析与命令拼装；GUI 启动路径已断言「不写注册表」 |
+| **注册表自启动写入** | `reg.exe` 在沙箱黑名单 | `internal/autostart` 单测 84.6% 覆盖解析与命令拼装；GUI 启动路径已断言“不写注册表” |
 | **多显示器不同 DPI** | 本机单显示器（探针在 192 DPI 下跑过） | — |
 
 ---
@@ -153,7 +153,7 @@ GOPATH=C:/Users/lwb/go GOCACHE=C:/Users/lwb/AppData/Local/go-build \
 
 # 无头产物（所有无头探针的前置）
 GOPATH=C:/Users/lwb/go GOCACHE=C:/Users/lwb/AppData/Local/go-build \
-  /d/Programs/Go/bin/go.exe build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest
+  /d/Programs/Go/bin/go.exe build -tags server -o build/bin/rest_server.exe ./cmd/workerrest
 
 python scripts/smoke_server.py
 python scripts/qa_func_supplement.py

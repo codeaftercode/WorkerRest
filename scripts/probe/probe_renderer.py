@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """渲染层探针驱动：把真实的 web/dist 页面指向无头服务，在浏览器里跑一遍
-完整的「shim.js → Go 绑定 → 渲染层」链路，并断言 DOM 与截图。
+完整的“shim.js → Go 绑定 → 渲染层”链路，并断言 DOM 与截图。
 
 与 smoke_server.py 的分工：
   - smoke_server.py：直接打 HTTP 端点，验绑定能不能按名解析、数据对不对；
@@ -10,7 +10,7 @@
     只有这一层看得见。
 
 前置：先构建无头服务（python 会自动构建）
-    go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest
+    go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest
 用法：python scripts/probe_renderer.py [--port 29732] [--keep]
 """
 
@@ -28,10 +28,10 @@ import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 DIST = os.path.join(ROOT, "cmd", "workerrest", "web", "dist")
 # 印泥变体档数：与 scripts/make_seal_ink.py 的 VARIANTS、两份 JS 的 SEAL_VARIANTS 一致。
-# 这里只断言「挑中的那一档在 1~N 之间且文件存在」——不断言具体是几号（那是随机的）。
+# 这里只断言“挑中的那一档在 1~N 之间且文件存在”——不断言具体是几号（那是随机的）。
 SEAL_VARIANTS = 6
 
 
@@ -67,7 +67,7 @@ ISO = os.path.join(TEMP, "wr_probe_iso")
 
 
 # 内置督休专员的固定出场顺序（与 Go 侧 internal/role 的 DefaultRoleOrder 同源）
-# 注意：这是**顺序**清单，不是「个数」清单 —— 专员的实际个数从磁盘现算（见 scan_role_names）。
+# 注意：这是**顺序**清单，不是“个数”清单 —— 专员的实际个数从磁盘现算（见 scan_role_names）。
 BUILTIN_ROLE_ORDER = [
     "秦始皇", "神秘黑客", "中尉军官", "熊猫侠客",
     "医生", "经济学家", "法官", "体能教练",
@@ -88,7 +88,7 @@ def scan_role_names(root):
 
     身份就是名字（meta.json 里没有 key 字段），目录名是它的文件系统投影。
     顺序：自带清单顺序在前（只含磁盘上确实存在的），其余按目录名排序。
-    写死「内置 17 个」是错的 —— 用户在设置页删掉某个专员后目录真的没了，
+    写死“内置 17 个”是错的 —— 用户在设置页删掉某个专员后目录真的没了，
     断言会必然误报红。这里从磁盘现算，删一个少一个都不误报。
     """
     sup = os.path.join(root, "supervisors")
@@ -237,7 +237,7 @@ def main():
     # 构建无头服务（保证探针跑的是当前源码）
     print("构建无头服务…")
     b = subprocess.run(
-        ["go", "build", "-tags", "server", "-o", os.path.join("build", "bin", "chibingren_server.exe"), "-ldflags", "-s -w", "./cmd/workerrest"],
+        ["go", "build", "-tags", "server", "-o", os.path.join("build", "bin", "rest_server.exe"), "-ldflags", "-s -w", "./cmd/workerrest"],
         cwd=ROOT, capture_output=True, text=True,
         encoding="utf-8", errors="replace",
     )
@@ -258,11 +258,11 @@ def main():
     iso_settings = os.path.join(ISO, "settings.json")
     if real_settings:
         shutil.copyfile(real_settings, iso_settings)
-    # 提前提示窗需要一个**真的处于提前提示区间**的服务：把短休息改成「10 分钟一次、
-    # 提前 10 分钟提示」，`nextAt - notifyBeforeMs <= now` 立刻成立 → 启动后第一跳就进 pre。
+    # 提前提示窗需要一个**真的处于提前提示区间**的服务：把短休息改成“10 分钟一次、
+    # 提前 10 分钟提示”，`nextAt - notifyBeforeMs <= now` 立刻成立 → 启动后第一跳就进 pre。
     # 改的是隔离副本（真实配置在末尾仍有 SHA-256 断言守着）。
     # ---- 开跑前的配置快照 ----
-    # 断言必须拿「页面启动时读到的配置」比对，不能用跑完再读的那份：探针在过程里会
+    # 断言必须拿“页面启动时读到的配置”比对，不能用跑完再读的那份：探针在过程里会
     # 改配置（兜底还原本身也有 bug 历史），拿被改过的值去比开场态只会误报。
     seed_cfg = {}
     if os.path.exists(iso_settings):
@@ -325,13 +325,13 @@ def main():
                 want_msg = it.get("text") or ""
         sup_cfg = cfg.get("supervisor") or {}
         fixed_key = sup_cfg.get("fixedRole")
-        # 只有「固定轮换」模式下，会话里的专员才**必然**是 fixedRole 那位。顺序 / 随机模式
+        # 只有“固定轮换”模式下，会话里的专员才**必然**是 fixedRole 那位。顺序 / 随机模式
         # 会轮换到别的专员（用户可能就这么设的：实机配置被设置页改成过 sequence），那时拿
-        # fixedRole 当基准会把正确行为判成红。所以非固定模式只要求「说话人是磁盘上真实存在
-        # 的某个专员」，固定模式下再额外卡死等于 fixedRole。
+        # fixedRole 当基准会把正确行为判成红。所以非固定模式只要求“说话人是磁盘上真实存在
+        # 的某个专员”，固定模式下再额外卡死等于 fixedRole。
         role_names = set(scan_role_names(ROOT))
         sel_mode = sup_cfg.get("selection") or "random"
-        # fixed_role_name：设置页「提醒内容」面板展示的那位（永远跟 fixedRole 走，与轮换
+        # fixed_role_name：设置页“提醒内容”面板展示的那位（永远跟 fixedRole 走，与轮换
         # 模式无关）；want_role：**会话**里会出场的那位（只有固定模式才必然等于前者）。
         fixed_role_name = ""
         if fixed_key:
@@ -345,33 +345,33 @@ def main():
         # ---- 设置页（真正的主界面）----
         # 这一节的分量最重：设置页没有自己的默认值，拿到 getSettings() 就直接填表，
         # 少一个字段 / 某个绑定没接上 → fillForm() 抛错 → 整页停摆。所以既断言
-        # 「页面无错」，也断言「关键值与配置文件逐项对齐」。
+        # “页面无错”，也断言“关键值与配置文件逐项对齐”。
         stg = m.get("settings") or {}
         check(stg.get("shim") == "go", "设置页跑在 Go 后端上（window.__WR_SHIM=go）", stg.get("shim"))
         check(stg.get("win") == "settings", "设置页窗口标识已注入（__WR_WIN=settings）", stg.get("win"))
         check(not (stg.get("consoleErrors") or []), "设置页加载期间无控制台错误",
               (stg.get("consoleErrors") or [])[:2])
         check(not (stg.get("errs") or []), "设置页无未捕获 JS 异常", (stg.get("errs") or [])[:2])
-        # 主题：删除了「跟随系统」选项，默认浅色
+        # 主题：删除了“跟随系统”选项，默认浅色
         theme_opts = stg.get("themeOptions") or []
-        check("system" not in theme_opts, "主题选项不含「跟随系统」", theme_opts)
-        check(stg.get("themeChecked") == "light", "主题默认选中「浅色」", stg.get("themeChecked"))
+        check("system" not in theme_opts, "主题选项不含“跟随系统”", theme_opts)
+        check(stg.get("themeChecked") == "light", "主题默认选中“浅色”", stg.get("themeChecked"))
         check(stg.get("themeSet"), "设置页已应用主题（data-theme 已写入）", stg.get("themeSet"))
         check((stg.get("navCount") or 0) >= 6, "侧栏页签渲染出来（>=6 个）", stg.get("navCount"))
         # 预览被后端拒弹（真实提醒窗口正在显示）时的反馈：点了不能毫无动静
         pbt = m.get("previewBusyToast") or {}
         check(not pbt.get("err"), "预览拒弹提示：预览按钮与 toast 节点都在", pbt.get("err"))
         check(pbt.get("shown") is True, "预览被拒时弹出提示条", pbt.get("shown"))
-        check("无法预览" in (pbt.get("text") or ""), "提示文案说明「暂时无法预览」", pbt.get("text"))
+        check("无法预览" in (pbt.get("text") or ""), "提示文案说明“暂时无法预览”", pbt.get("text"))
         check(pbt.get("stubRestored") is True, "探针用完已还原 api.previewBreak（不污染后续断言）",
               pbt.get("stubRestored"))
         check((stg.get("tabCount") or 0) >= 6, "各页签内容区都在 DOM 里", stg.get("tabCount"))
         check((stg.get("supGallery") or 0) == EXPECTED_ROLE_COUNT,
               "督休专员画廊渲染出 %d 个督休专员（ListRoles → DOM）" % EXPECTED_ROLE_COUNT,
               stg.get("supGallery"))
-        check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个「新建督休专员」磁贴",
+        check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个“新建督休专员”磁贴",
               stg.get("supGalleryAdd"))
-        # 预览面板的名字牌：必须与真实提醒窗口同款「竖排金字 + 红印泥墨块 + 牌外碎点环」。
+        # 预览面板的名字牌：必须与真实提醒窗口同款“竖排金字 + 红印泥墨块 + 牌外碎点环”。
         # 旧版是圆角胶囊小徽标（纯 --accent 底），预览与真机对不上 —— 这几条钉住四个特征：
         # 竖排、双层 clip、牌底是墨块图、碎点挂在负 inset 的伪元素上。
         _pn = stg.get("supPreviewName") or {}
@@ -400,7 +400,7 @@ def main():
               "督休专员预览：碎点层是比盒子大一圈的伪元素（负 inset）",
               "inset=%s content=%s" % (_pai, _pn.get("afterContent")))
         # 位置：真机里牌面钉在立绘头部左侧的空白区（贴左、中上部、永在对话条之上），
-        # 预览按面板百分比锚。这里必须用「切到督休专员页签之后」量到的那份几何 ——
+        # 预览按面板百分比锚。这里必须用“切到督休专员页签之后”量到的那份几何 ——
         # 首屏其余页签是 display:none，rect 全是 0（越界会误报成 dx=0/dy=0）。
         _pg = m.get("supPreviewGeom") or {}
         _gdx, _gdy = _pg.get("dx"), _pg.get("dy")
@@ -414,9 +414,9 @@ def main():
         check(_pg.get("aboveContent") is True,
               "督休专员预览：名字牌不压台词框（真机里它在头部左侧，不在对话条上）",
               "aboveContent=%s plateH=%s" % (_pg.get("aboveContent"), _pg.get("plateH")))
-        # 磁贴的 key 集合 == 磁盘上的专员集合（不多不少）：只比个数会漏掉「渲染出
-        # 另一个专员」这类错位，比集合才抓得住。个数本身从磁盘现算 —— 用户在应用里
-        # 删掉一个内置专员后目录真的没了，写死「17 个」会必然误报红。
+        # 磁贴的 key 集合 == 磁盘上的专员集合（不多不少）：只比个数会漏掉“渲染出
+        # 另一个专员”这类错位，比集合才抓得住。个数本身从磁盘现算 —— 用户在应用里
+        # 删掉一个内置专员后目录真的没了，写死“17 个”会必然误报红。
         gallery_keys = [k for k in str(stg.get("supGalleryNames") or "").split(",") if k]
         check(sorted(gallery_keys) == sorted(DISK_ROLE_NAMES),
               "画廊磁贴的督休专员集合 == 磁盘上的集合（不多不少）",
@@ -457,25 +457,25 @@ def main():
               "督休专员台词面板渲染出条目（ListRoles 真的下发了 messages）",
               "items=%s empty=%s" % (stg.get("supMsgItems"), stg.get("supMsgEmpty")))
         panel_role = stg.get("supMsgRole")
-        # 「提醒内容」面板标题 = 设置页当前正在编辑的那位，**不是** fixedRole：
+        # “提醒内容”面板标题 = 设置页当前正在编辑的那位，**不是** fixedRole：
         # 固定模式下初始编辑对象按 fixedRole 选，两者必然相等；随机/顺序模式下按
-        # 「第一个已勾选」选（见 settings.js 的 ensureSupEditKey），fixedRole 只是个
-        # 遗留值（2026-11-02 用户切模式后 fixedRole 停在「神秘黑客」、面板显示「秦始皇」
+        # “第一个已勾选”选（见 settings.js 的 ensureSupEditKey），fixedRole 只是个
+        # 遗留值（2026-11-02 用户切模式后 fixedRole 停在“神秘黑客”、面板显示“秦始皇”
         # 曾把这里判红）。所以只有固定模式才卡死等于 fixedRole。
         if sel_mode == "fixed" and fixed_role_name:
             check(panel_role == fixed_role_name, "台词面板标题 == 固定模式下的 fixedRole",
                   "%s vs %s" % (panel_role, fixed_role_name))
         else:
             check(panel_role in role_names, "台词面板标题是磁盘上某个督休专员名", panel_role)
-        # 关于页「软件信息」卡：一行「版本」（版本号 | 发布时间）+ 一行「许可条款 | 开源鸣谢」
+        # 关于页“软件信息”卡：一行“版本”（版本号 | 发布时间）+ 一行“许可条款 | 开源鸣谢”
         # + 该行行尾的协议标识与运行环境。版本值由 -ldflags 注入（源码里是 dev 占位），所以只断言
-        # 「形如 v1.2.3 或 dev」，不钉具体版本号 —— 否则每次发版都要改探针。
+        # “形如 v1.2.3 或 dev”，不钉具体版本号 —— 否则每次发版都要改探针。
         ver = str(stg.get("dVersion") or "").strip()
         check(bool(re.match(r"^(v\d+\.\d+\.\d+|dev)$", ver)),
               "关于页显示版本号（v<主>.<次>.<修订> 或 dev）", ver)
         check(bool(str(stg.get("dBuildTime") or "").strip()), "关于页显示发布时间（与版本同一行）",
               stg.get("dBuildTime"))
-        # 运行环境压进了「许可条款 | 开源鸣谢」那一行的行尾（原本是独立一行，为省高度删掉），
+        # 运行环境压进了“许可条款 | 开源鸣谢”那一行的行尾（原本是独立一行，为省高度删掉），
         # 所以断言它重新出现、且两个指纹都在 —— 只断言非空的话，只填了 Go 也算过。
         rt = str(stg.get("dRuntime") or "").strip()
         check("Go " in rt and "Wails " in rt, "关于页行尾显示运行环境（Go 与 Wails 版本）", rt)
@@ -518,13 +518,13 @@ def main():
               "全屏或演示开关：页面取消后配置真的变成 false",
               fsrt.get("off"))
         # 收尾必须回到初值：真实配置本来开着这个开关时，探针不能把它留成 false
-        # （否则下一条「勾选态 == 磁盘值」自相矛盾，2026-10-29 实测踩到）
+        # （否则下一条“勾选态 == 磁盘值”自相矛盾，2026-10-29 实测踩到）
         check(fsrt.get("restored") == bool(stg.get("fullscreenPause")),
               "全屏或演示开关：探针收尾把配置还原成初值",
               "%s vs %s" % (fsrt.get("restored"), stg.get("fullscreenPause")))
         # 共享屏幕时隐藏：默认开（Go 侧 Flag(true,…)），缺键时页面也必须呈现勾选态。
         # 比对基准是**开跑前的快照** seed_cfg —— 不能用收尾时读的 cfg：探针中途做过
-        # 开关往返，收尾那份已经是「还原后」的值，而还原逻辑读错了字段（见
+        # 开关往返，收尾那份已经是“还原后”的值，而还原逻辑读错了字段（见
         # renderer_probe.js 的 sgWas 注释），历史上恒把 false 改成 true，于是用户真的
         # 关掉过这个开关时，这条断言会稳定误报成 False vs True。
         expect_hide = (seed_cfg.get("appearance") or {}).get("hideOnShare", True) is not False
@@ -545,14 +545,14 @@ def main():
         check(same_num(stg.get("apWidthPct"), (cfg.get("appearance") or {}).get("widthPct")),
               "提醒窗口宽度百分比 == 配置 appearance.widthPct",
               "%s vs %s" % (stg.get("apWidthPct"), (cfg.get("appearance") or {}).get("widthPct")))
-        # 透明度滑条：步长必须 0.01（用户 2026-10-23 要求「每次最少可以调 0.01」），
+        # 透明度滑条：步长必须 0.01（用户 2026-10-23 要求“每次最少可以调 0.01”），
         # 范围仍是 0 ~ 0.5。默认值（现为 0）属配置层口径，由 Go 侧 TestAppearanceTransparencyDefault 覆盖。
         check(stg.get("apOpacityStep") == "0.01",
               "透明度滑条步长 = 0.01", stg.get("apOpacityStep"))
         check(stg.get("apOpacityRange") == ["0", "0.5"],
               "透明度滑条范围 = 0 ~ 0.5", stg.get("apOpacityRange"))
         # 侧栏状态格（下次外卖 / 自定义提醒）：名称在左、时间在右，两段都必须单行 ——
-        # 名字长时由 fitStatusCells 缩字号，这里守住「不换行 / 不裁字 / 不挤出卡片」三条底线。
+        # 名字长时由 fitStatusCells 缩字号，这里守住“不换行 / 不裁字 / 不挤出卡片”三条底线。
         cells = stg.get("statusCells") or []
         check(len(cells) >= 2, "侧栏状态格已渲染（状态 + 下次提醒）", "%d 个" % len(cells))
         for c in cells:
@@ -580,15 +580,15 @@ def main():
                   "侧栏状态格·20 字名称仍单行", ss_detail)
         else:
             check(False, "侧栏状态格压力采集到数据（statusStress）", "缺失")
-        # 暂停态文案：手动暂停 / 系统空闲 / 勿扰 / 应用占用一律显示「暂停休息」，
-        # 原因只挂在 title 上（用户 2026-10-24 要求去掉「（已暂停：…）」长尾巴）。
+        # 暂停态文案：手动暂停 / 系统空闲 / 勿扰 / 应用占用一律显示“暂停休息”，
+        # 原因只挂在 title 上（用户 2026-10-24 要求去掉“（已暂停：…）”长尾巴）。
         ps = m.get("pauseStatus") or {}
         if ps:
             pv = ps.get("v") or ""
-            check(pv == "暂停休息", "暂停时状态格显示「暂停休息」",
+            check(pv == "暂停休息", "暂停时状态格显示“暂停休息”",
                   "%s | title=%s" % (pv, ps.get("title")))
             check("努力工作中" not in pv and "已暂停" not in pv,
-                  "暂停时状态格不再出现「努力工作中（已暂停：…）」", pv)
+                  "暂停时状态格不再出现“努力工作中（已暂停：…）”", pv)
         else:
             check(False, "暂停态采集到数据（pauseStatus）", "缺失")
         check(bool(m.get("pauseResumed")) and "暂停休息" not in (m.get("pauseResumed") or ""),
@@ -603,7 +603,7 @@ def main():
                            ("shortcuts", "快捷键"), ("about", "关于")):
             t = tabs.get(key) or {}
             check(t.get("active") == "tab-" + key and t.get("visible") is True,
-                  "切到「%s」页签后内容可见" % label,
+                  "切到“%s”页签后内容可见" % label,
                   "active=%r visible=%s" % (t.get("active"), t.get("visible")))
         check(not (stg.get("consoleErrorsAfterTabs") or []), "切换页签期间无控制台错误",
               (stg.get("consoleErrorsAfterTabs") or [])[:2])
@@ -611,7 +611,7 @@ def main():
         # ---- 右边缘拖动带：滚动条不许贴住窗口最外缘 ----
         # 无边框窗口是 WS_THICKFRAME + 整窗 extend-frame，系统给的拖动带只有
         # SM_CXSIZEFRAME ≈ 4px（各 DPI 都是 4 DIP）；WebView 的垂直滚动条 10px 宽、正好
-        # 盖在这 4px 上，于是「页面一出现滚动条，右边框就再也拖不动窗口」（2026-10-26）。
+        # 盖在这 4px 上，于是“页面一出现滚动条，右边框就再也拖不动窗口”（2026-10-26）。
         # 修复点：给 #content 加 6px 透明右边框，Chrome 会把滚动条排到边框内侧。
         eg = m.get("edgeGutter") or {}
         if eg:
@@ -629,14 +629,14 @@ def main():
             check(False, "采集到右边缘拖动带数据（edgeGutter）", "缺失")
 
         # ---- 督休专员重名：提交重名 → 拒绝保存、对话框不关、要求重新输入 ----
-        # （需求原文：「导入立绘时…提交名称时检查重名，若有重名的，拒绝保存，
-        #   要求用户重新输入名称」。这条断言把该行为钉死在真实链路上。）
+        # （需求原文：“导入立绘时…提交名称时检查重名，若有重名的，拒绝保存，
+        #   要求用户重新输入名称”。这条断言把该行为钉死在真实链路上。）
         dn = m.get("dupName") or {}
         if dn.get("skipped"):
             check(False, "督休专员重名用例跑起来了（画廊至少 2 块磁贴）", dn.get("skipped"))
         else:
             check(dn.get("opened", {}).get("visible") is True,
-                  "右键 → 「重命名」能弹出命名框", dn.get("opened"))
+                  "右键 → “重命名”能弹出命名框", dn.get("opened"))
             rj = dn.get("rejected") or {}
             check(rj.get("stillOpen") is True,
                   "提交重名后命名框**不关闭**（拒绝保存，要求用户重新输入）",
@@ -660,8 +660,8 @@ def main():
             check(dn.get("closed") is True, "取消后命名框正常关闭（不影响后续用例）", dn.get("closed"))
 
         # ---- 候选专员画廊：滚到顶/底后继续滚 → 整页跟着滚（滚动链）----
-        # （需求原文：「当鼠标在候选专员的立绘列表中滚动时，若立绘已经滚动到顶或到底，
-        #   继续滚已经滚不动了，则令整个页面继续向上或向下滚动。」
+        # （需求原文：“当鼠标在候选专员的立绘列表中滚动时，若立绘已经滚动到顶或到底，
+        #   继续滚已经滚不动了，则令整个页面继续向上或向下滚动。”
         #   实现：.gallery-body 的 overscroll-behavior-y 改成 auto ——
         #   contain 会**掐断**滚动链，滚到边界后滚轮就没反应了。）
         gs = m.get("galleryScroll") or {}
@@ -687,7 +687,7 @@ def main():
             check(ua.get("c", 0) < ub.get("c", 0),
                   "立绘列表滚到顶后继续上滚 → **整个页面**跟着往上滚",
                   "content %s → %s" % (ub.get("c"), ua.get("c")))
-            # C：列表在中间 → 只滚列表，外层不动（不能变成「一滚就带动整页」）
+            # C：列表在中间 → 只滚列表，外层不动（不能变成“一滚就带动整页”）
             mb = (gs.get("middle") or {}).get("before") or {}
             ma = (gs.get("middle") or {}).get("after") or {}
             check(ma.get("g", 0) != mb.get("g", 0),
@@ -697,17 +697,17 @@ def main():
                   "列表在中间时**不会**误带动整页（滚动链只在边界触发）",
                   "content %s → %s" % (mb.get("c"), ma.get("c")))
 
-        # 「检查更新」点下去必须立刻有反馈（2026-10-26：原先点了毫无动静，用户会反复点）
+        # “检查更新”点下去必须立刻有反馈（2026-10-26：原先点了毫无动静，用户会反复点）
         ul = m.get("updateLoading") or {}
         if ul:
             rt = ul.get("right") or {}
             du = ul.get("during") or {}
             af = ul.get("after") or {}
             check(rt.get("btnText") == "检查中…" and rt.get("disabled") is True,
-                  "点「检查更新」后按钮立刻变「检查中…」并禁用",
+                  "点“检查更新”后按钮立刻变“检查中…”并禁用",
                   "btnText=%r disabled=%s" % (rt.get("btnText"), rt.get("disabled")))
             check(rt.get("pill") == "正在检查更新…" and "loading" in str(rt.get("pillClass")),
-                  "点「检查更新」后状态条立刻显示「正在检查更新…」",
+                  "点“检查更新”后状态条立刻显示“正在检查更新…”",
                   "%r class=%r" % (rt.get("pill"), rt.get("pillClass")))
             check(du.get("btnText") == "检查中…" and du.get("pill") == "正在检查更新…",
                   "检查未返回前一直保持加载态",
@@ -719,9 +719,9 @@ def main():
                   "检查结束后状态条显示结果、不再是加载态",
                   "%r class=%r" % (af.get("pill"), af.get("pillClass")))
         else:
-            check(False, "采集到「检查更新」加载态数据（updateLoading）", "缺失")
+            check(False, "采集到“检查更新”加载态数据（updateLoading）", "缺失")
 
-        # 手动检查发现新版本 → 必须弹窗，且不受「该版本已被忽略」「本会话已为同版本弹过」
+        # 手动检查发现新版本 → 必须弹窗，且不受“该版本已被忽略”“本会话已为同版本弹过”
         # 的限制（这两条门控只服务自动检查；用户主动点了就必须拿到结果）
         uf = m.get("updateModalForce") or {}
         if uf:
@@ -751,7 +751,7 @@ def main():
               "ok=%s duration=%s error=%s" % (sp.get("ok"), sp.get("duration"), sp.get("error")))
 
         # ---- 统计页：报表图真的画出来了（数据来自 Go 侧的 stats.go）----
-        # 空表也能画坐标轴，所以判据是「图形节点数够多」而不是「有 svg 就行」。
+        # 空表也能画坐标轴，所以判据是“图形节点数够多”而不是“有 svg 就行”。
         stt = m.get("stats") or {}
         check(stt.get("svg") is True, "统计页报表图 SVG 已画出", stt.get("svg"))
         check((stt.get("marks") or 0) >= 6, "报表图里有真实图形节点（不是空白容器）", stt.get("marks"))
@@ -762,15 +762,15 @@ def main():
               "日期括号里带星期", stt.get("date"))
         check((stt.get("cards") or 0) == 4, "统计页共 4 张卡（今日看板 / 休息报表 / 外卖报表 / 自定义）", stt.get("cards"))
         check(str(stt.get("firstTitle") or "").startswith("今日看板"),
-              "统计页首张卡标题是「今日看板」", stt.get("firstTitle"))
+              "统计页首张卡标题是“今日看板”", stt.get("firstTitle"))
         comp = stt.get("comp") or {}
         check(comp.get("panels") == 3, "今天卡渲染出 3 块面板", comp.get("panels"))
         check(comp.get("segs") == 3, "时间构成画出 3 段堆叠条", comp.get("segs"))
         check(comp.get("bars") == 7, "休息 4 行 + 久坐 3 行，共 7 行条形", comp.get("bars"))
-        # 今天卡不再挂任何「?」说明（时间构成 / 休息 / 久坐 都不带）
+        # 今天卡不再挂任何“?”说明（时间构成 / 休息 / 久坐 都不带）
         check(comp.get("qmarks") == 0, "今天卡没有说明图标", comp.get("qmarks"))
         check("软件运行" in str(comp.get("total") or ""),
-              "时间构成右上角写「软件运行 …」", comp.get("total"))
+              "时间构成右上角写“软件运行 …”", comp.get("total"))
         labels = comp.get("barLabels") or []
         check(labels[:4] == ["完成", "推迟", "跳过", "提前结束"],
               "休息四行 = 完成 / 推迟 / 跳过 / 提前结束", labels[:4])
@@ -779,7 +779,7 @@ def main():
         early_val = str((comp.get("barVals") or [""])[3] or "")
         check(early_val.endswith("次"), "提前结束显示的是次数", early_val)
 
-        # 四项的数据源 = 后端 today 的四个计数，且「完成」只取短 + 长休息：
+        # 四项的数据源 = 后端 today 的四个计数，且“完成”只取短 + 长休息：
         # 自定义提醒（customCount）绝不能混进完成（这条等式就是防它溜进去的哨兵）。
         bk = stt.get("backend") or {}
         check(not bk.get("err"), "统计页能读回后端 today 快照", bk.get("err"))
@@ -793,10 +793,10 @@ def main():
         for i, (name, n) in enumerate(want):
             got = str(vals[i] if i < len(vals) else "")
             check(got == "%d 次" % n,
-                  "「%s」= 后端 %s 计数（自定义提醒 %d 次不计入）" %
+                  "“%s”= 后端 %s 计数（自定义提醒 %d 次不计入）" %
                   (name, name, int(bk.get("customCount") or 0)),
                   "%s vs %d" % (got, n))
-        # 久坐的值是时长（不是次数）：末尾一定是「秒」或「分」
+        # 久坐的值是时长（不是次数）：末尾一定是“秒”或“分”
         sed_vals = (comp.get("barVals") or [])[4:]
         check(len(sed_vals) == 3 and all(v.endswith(("秒", "分")) for v in sed_vals),
               "久坐三行显示的是时长", sed_vals)
@@ -804,16 +804,16 @@ def main():
               "久坐面板有一句小结（提到 45 分钟基准）", comp.get("sedNote"))
         check(not (stt.get("errs") or []), "统计页无未捕获 JS 异常", (stt.get("errs") or [])[:2])
 
-        # 休息报表：表格最后一列是「提前结束次数」（紧跟在「推迟次数」之后），
-        # 图例也多出「提前结束次数」一条折线。
+        # 休息报表：表格最后一列是“提前结束次数”（紧跟在“推迟次数”之后），
+        # 图例也多出“提前结束次数”一条折线。
         heads = [str(h) for h in (stt.get("rcHeads") or [])]
         check(len(heads) == 10, "休息报表表格 10 列（新增提前结束）", heads)
         check(heads[-2].startswith("推迟次数") and heads[-1].startswith("提前结束次数"),
-              "「提前结束次数」列排在「推迟次数」之后", heads[-2:])
+              "“提前结束次数”列排在“推迟次数”之后", heads[-2:])
         legend = [str(x) for x in (stt.get("restLegend") or [])]
         check(len(legend) == 6, "休息报表图例 6 项（2 根柱 + 4 条折线，新增提前结束）", legend)
         check(legend and legend[-1] == "提前结束次数",
-              "图例最后一项是「提前结束次数」", legend[-1:] if legend else [])
+              "图例最后一项是“提前结束次数”", legend[-1:] if legend else [])
 
         # ---- 主窗口（调试控制台） ----
         idx = m.get("index") or {}
@@ -824,7 +824,7 @@ def main():
         check(idx.get("rolesLoaded") == idx.get("roles") and idx.get("roles"),
               "全部督休专员预览图以 data URL 成功装载", "%s/%s" % (idx.get("rolesLoaded"), idx.get("roles")))
         check((idx.get("optCount") or 0) == (idx.get("roles") or 0) + 1, "督休专员下拉选项 = 督休专员数 + 1 个默认项", idx.get("optCount"))
-        # 环境卡片是 dt（标签）/dd（值）成对出现：把「标签 → 值」折成 dict 再核对，
+        # 环境卡片是 dt（标签）/dd（值）成对出现：把“标签 → 值”折成 dict 再核对，
         # 比在一大串文本里找关键字靠谱（旧写法只收 dd，标签永远匹配不上）
         envpairs = idx.get("env") or []
         envmap = {}
@@ -875,7 +875,7 @@ def main():
                 ok_cd = False
             check(ok_cd, "%s提醒窗口：倒计时是秒数且在时长范围内" % label, cd)
             # ---- 倒计时数字 vs 圆环：不越界（含每秒 1.22 倍弹跳峰值）+ 不能太小 ----
-            # break.css 里字号由「环尺寸 × 位数」派生，此处现量 4 组（有/无督休专员 ×
+            # break.css 里字号由“环尺寸 × 位数”派生，此处现量 4 组（有/无督休专员 ×
             # 3/4 位、无专员 2/3 位）。cornerRatio = 数字框四角到环心距离 / 内径半径，
             # >1 就是探出圆环；colRatio = 环内整列（数字+百分比+两行题字）峰值高 / 内径直径。
             # 有专员版式环更小、环内其它元素字号更大，正是原先 3 位就溢出的场景。
@@ -907,26 +907,26 @@ def main():
                 check(str(b.get("accent", "")).lower() == want_color.lower(),
                       "%s提醒窗口：--accent == 配置外观色" % label, "%s vs %s" % (b.get("accent"), want_color))
             check(b.get("badgeHidden") is True, "%s提醒窗口：真实休息不带预览角标（preview=false）" % label, b.get("badgeHidden"))
-            # 立绘几何：内置专员统一「高度 80 / 距左 5 / 距底 0」（2026-10-28 用户要求）。
+            # 立绘几何：内置专员统一“高度 80 / 距左 5 / 距底 0”（2026-10-28 用户要求）。
             # 这三个值是 break.js 从 meta.json 的 geom 写到 documentElement 上的，
-            # 所以这一条直接证明「打包出去的那份配置真的按 80/5 渲染」。
+            # 所以这一条直接证明“打包出去的那份配置真的按 80/5 渲染”。
             check(b.get("figVars") == ["80", "5", "0"],
                   "%s提醒窗口：立绘按 高度 80%% / 距左 5%% / 距底 0 渲染" % label, b.get("figVars"))
 
             # ---- 督休专员版式：游戏对话画面（底部全宽对话框），是 supervisorLayout 的核心 ----
             # 同一个会话，只换窗口尺寸（横 1100x720 / 竖 760x980），两档都应进入对话框
             # 版式：supMetrics.mode == "dialog"、名字标签亮出、倒计时环中心落在
-            # 「立绘右缘~窗口右缘」「对话框顶~窗口顶」两个中点的交点上、
-            # 「提前结束」在环下方与环中心对齐、对话框横贯全宽。
+            # “立绘右缘~窗口右缘”“对话框顶~窗口顶”两个中点的交点上、
+            # “提前结束”在环下方与环中心对齐、对话框横贯全宽。
             sm = b.get("supMetrics") or {}
             check(sm.get("mode") == "dialog",
                   "%s提醒窗口：版式是游戏对话画面（supMetrics.mode == dialog）" % label, sm.get("mode"))
             check(isinstance(sm.get("figLeft"), int) and isinstance(sm.get("figRight"), int),
                   "%s提醒窗口：supMetrics 记录了立绘去透明后的左右缘" % label,
                   "%r / %r" % (sm.get("figLeft"), sm.get("figRight")))
-            # 独立对拍（2026-10-14）：figLeft/figRight/figTop 必须与「图片自然像素
-            # alpha bbox + .trim 计算变换矩阵」独立反推的可见边一致。这条断言不读
-            # 页面的摆位公式，专门抓「trim 补偿几何算错」这类 bug——曾经的错法：
+            # 独立对拍（2026-10-14）：figLeft/figRight/figTop 必须与“图片自然像素
+            # alpha bbox + .trim 计算变换矩阵”独立反推的可见边一致。这条断言不读
+            # 页面的摆位公式，专门抓“trim 补偿几何算错”这类 bug——曾经的错法：
             # 顶缘漏减底部透明边距 bottom、左右缘直接取 .trim 变换后外框（含缩放后的
             # 透明边距），锚点整体偏高/偏外，用户换立绘/改尺寸后必错位。
             fv = b.get("figureVisible") or {}
@@ -956,7 +956,7 @@ def main():
             # 空白区，位置与字号都由渲染层按立绘 alpha 剖面实测，不再有固定 left，
             # 所以不能锁像素值。改锁三条语义约束：
             #   ① 已定位 + 竖排   ② 零遮挡（不压立绘）   ③ 字号不低于可读下限
-            # 「零遮挡」是这一版的核心承诺：渲染层把覆盖区内的不透明像素列数写进
+            # “零遮挡”是这一版的核心承诺：渲染层把覆盖区内的不透明像素列数写进
             # data-rt-hit，探针只断言它为 0，不管题名具体落在哪个像素上。
             check(b.get("dialogNamePositioned") is True,
                   "%s提醒窗口：题名已完成按立绘的实测定位" % label,
@@ -976,7 +976,7 @@ def main():
                   "overflow=%s" % b.get("dialogNameOverflow"))
             # 红印泥牌底必须真的画出来（2026-10-30 实测踩坑）：底色若是
             # background-color，会被第一层 text 裁切吞掉，牌面实际透明 ——
-            # 只有内阴影+内圈高光看着「像红底」，金主题下直接融进背景。
+            # 只有内阴影+内圈高光看着“像红底”，金主题下直接融进背景。
             # 只能断言计算值：双层 image + 双值 clip，两者缺一即红。
             _clip = (b.get("dialogNameClip") or "").replace(" ", "")
             check(_clip == "text,border-box",
@@ -989,8 +989,8 @@ def main():
             check(b.get("dialogNameInk") is True,
                   "%s提醒窗口：牌底是墨块图（印泥不规则轮廓）" % label,
                   "ink=%s" % b.get("dialogNameInk"))
-            # 每次出场随机换一枚「章」：两个变量必须指向同一档，且该档文件真的在包里。
-            # 只认「写死的 url」的旧实现永远报第 1 档，这条会红。
+            # 每次出场随机换一枚“章”：两个变量必须指向同一档，且该档文件真的在包里。
+            # 只认“写死的 url”的旧实现永远报第 1 档，这条会红。
             _seal = b.get("dialogNameSeal") or {}
             _ink, _spk = str(_seal.get("ink") or ""), str(_seal.get("specks") or "")
             _mi = re.search(r"seal-ink-(\d+)\.svg", _ink)
@@ -1004,7 +1004,7 @@ def main():
             check(all(os.path.isfile(os.path.join(DIST, f)) for f in (_ink, _spk) if f),
                   "%s提醒窗口：选中的印泥/碎点文件在包里" % label,
                   "ink=%s specks=%s" % (_ink, _spk))
-            # 碎点必须在 1x 下看得见 —— 这条只能量源文件的半径，因为「看不见」在截图里
+            # 碎点必须在 1x 下看得见 —— 这条只能量源文件的半径，因为“看不见”在截图里
             # 是 1px 的浅色点，任何像素断言都会抖。换算：牌子最窄 35px（2 字名），
             # ::after 画布 = 1.18 倍盒子 → 1 单位 = 0.413px，r=2.6 才够 2.1px 直径。
             # 上一版 r≤2.1（直径 1.7px）实测要放大 8 倍才看得出，等于没有。
@@ -1034,7 +1034,7 @@ def main():
             check(isinstance(_ry, (int, float)) and _ry >= 2.0,
                   "%s提醒窗口：文字上下仍有余量（墨块纵向盖得住）" % label,
                   "y=%s" % _ry)
-            # 二阶段的「凑近 + 脉动」是 CSS scale，立绘绕「盒底边中点（双脚）」放大。
+            # 二阶段的“凑近 + 脉动”是 CSS scale，立绘绕“盒底边中点（双脚）”放大。
             # 题名牌必须绕同一个点放大：原点若留在牌心，8% 的缩放会把牌面往人物身上
             # 挪十几像素（实测 49px 的头部位移里，牌面只跟上 0，看上去牌子掉在原地）。
             _dz = b.get("dialogNameZoom") or {}
@@ -1053,9 +1053,9 @@ def main():
             check(_sx > 1.0,
                   "%s提醒窗口：题名牌确实跟着立绘缩放（scale > 1）" % label,
                   "scale=%s" % _dz.get("scale"))
-            # 用布局框（offset*，不含变换）判定：rect 里含 1.03 / 1.08 的「凑近」缩放，
+            # 用布局框（offset*，不含变换）判定：rect 里含 1.03 / 1.08 的“凑近”缩放，
             # 绕立绘双脚放大时牌子边缘本来就会外扩（立绘自己也一样），那不是布局错。
-            # 这里要钉的是「求解出来就没出窗」——正是这条此前抓过极左立绘下牌子被钳边的问题。
+            # 这里要钉的是“求解出来就没出窗”——正是这条此前抓过极左立绘下牌子被钳边的问题。
             _lay = b.get("dialogNameLayout") or {}
             _dl, _dt = _lay.get("left"), _lay.get("top")
             _dr = (_dl + _lay.get("w")) if _dl is not None and _lay.get("w") is not None else None
@@ -1099,7 +1099,7 @@ def main():
                       "%s提醒窗口：对话框底部两角圆角 == 窗口圆角" % label,
                       "content=%s/%s app=%s/%s" % (ci.get("blRadius"), ci.get("brRadius"),
                                                    b.get("appBlRadius"), b.get("appBrRadius")))
-            # ---- 对话框内的「提醒内容」：四类提醒窗口必须同一套排版 ----
+            # ---- 对话框内的“提醒内容”：四类提醒窗口必须同一套排版 ----
             # 用户报障（2026-10-30）：外卖窗口的提醒内容不居中、自定义提醒的字样式与
             # 短休/长休两个样。根因是两处各写各的（自定义 15px/400/opacity .72，外卖
             # 的 .content 是 display:block + text-align:left）。现在三者同挂 .dialog-text。
@@ -1137,8 +1137,8 @@ def main():
                 cy = (ri.get("rectTop", 0) + ri.get("rectBottom", 0)) / 2
                 want_cx = sm.get("midX")
                 # 框顶 y（距窗顶）= 框底边 y - 框高（实测）。
-                # 环中心垂直锚点（2026-10-13 新规格）=「立绘可见上缘(figTop, 去透明) 与 框顶」的中点，
-                # 不再是「窗口顶与框顶」的中点；二阶段立绘缩放不改变锚点（layoutSupDialog 冻结）。
+                # 环中心垂直锚点（2026-10-13 新规格）=“立绘可见上缘(figTop, 去透明) 与 框顶”的中点，
+                # 不再是“窗口顶与框顶”的中点；二阶段立绘缩放不改变锚点（layoutSupDialog 冻结）。
                 box_top = (ci.get("rectBottom") or 0) - (ci.get("rectH") or 0)
                 # 容差 14px：环放大后（2026-10-13 督休环扩到 32vh/30vw）在窄/竖窗口里
                 # 精确居中到中点会让环缘贴到窗口边，触发 layoutSupDialog 的边缘保护
@@ -1154,15 +1154,15 @@ def main():
                           "%s vs %s" % (round(cy), round(want_cy)))
             sk = b.get("skipInline") or {}
             if sk.get("shown"):
-                # 「提前结束」固定在窗口顶部正中，与预览模式的 #preview-badge 同一位置
+                # “提前结束”固定在窗口顶部正中，与预览模式的 #preview-badge 同一位置
                 # （top:18px 是元素顶边），不再跟随倒计时环。
                 check(abs((sk.get("rectTop") or 0) - 18) <= 2,
-                      "%s提醒窗口：「提前结束」贴在窗口顶部（与预览提示同位）" % label,
+                      "%s提醒窗口：“提前结束”贴在窗口顶部（与预览提示同位）" % label,
                       "rectTop=%s" % sk.get("rectTop"))
                 if vpw:
                     skip_cx = ((sk.get("rectLeft") or 0) + (sk.get("rectRight") or 0)) / 2
                     check(abs(skip_cx - vpw / 2) <= 3,
-                          "%s提醒窗口：「提前结束」水平居中" % label,
+                          "%s提醒窗口：“提前结束”水平居中" % label,
                           "%s vs %s" % (round(skip_cx), vpw / 2))
             if bi.get("rectBottom") is not None and ci.get("rectBottom") is not None:
                 check(bi.get("rectBottom") <= ci.get("rectBottom"),
@@ -1186,9 +1186,9 @@ def main():
         check(ok_sec, "提前提示窗：倒计时是秒数（来自剩余毫秒）", pb.get("seconds"))
         check(pb.get("post") == " 秒进入休息", "提前提示窗：内置倒计时后缀", repr(pb.get("post")))
         check(pb.get("tipsShown") is True, "提前提示窗：内置版式显示两行说明", pb.get("tipsShown"))
-        check(pb.get("pauseShown") is True, "提前提示窗：内置版式带「暂停计时」", pb.get("pauseShown"))
+        check(pb.get("pauseShown") is True, "提前提示窗：内置版式带“暂停计时”", pb.get("pauseShown"))
         check(pb.get("postponeShown") is True,
-              "提前提示窗：默认配置（可推迟>0）显示「推迟」按钮", pb.get("postponeShown"))
+              "提前提示窗：默认配置（可推迟>0）显示“推迟”按钮", pb.get("postponeShown"))
         check(pb.get("buttons") == ["立即休息", "推迟休息", "跳过休息", "暂停计时"],
               "提前提示窗：四个按钮文案（内置版式）", pb.get("buttons"))
         check(not (pb.get("consoleErrors") or []), "提前提示窗：页面无控制台错误",
@@ -1198,29 +1198,29 @@ def main():
         pbc = m.get("preBreakCustom") or {}
         check(pbc.get("shim") == "go", "自定义提醒版式：shim 生效", pbc.get("shim"))
         check(pbc.get("title") == "喝水提醒时间到",
-              "自定义提醒版式：标题是「XX时间到」（来自 Go 的 PreBreakState）", pbc.get("title"))
+              "自定义提醒版式：标题是“XX时间到”（来自 Go 的 PreBreakState）", pbc.get("title"))
         check(pbc.get("post") == " 秒显示喝水提醒",
               "自定义提醒版式：倒计时后缀带提醒名（来自 URL 的 tail）", repr(pbc.get("post")))
         check(pbc.get("tipsShown") is False, "自定义提醒版式：不显示两行说明", pbc.get("tipsShown"))
-        check(pbc.get("pauseShown") is False, "自定义提醒版式：没有「暂停计时」", pbc.get("pauseShown"))
+        check(pbc.get("pauseShown") is False, "自定义提醒版式：没有“暂停计时”", pbc.get("pauseShown"))
         check(pbc.get("postponeShown") is True,
-              "自定义提醒版式：默认配置（可推迟>0）显示「推迟」按钮", pbc.get("postponeShown"))
-        # 「暂停计时」是被加 .hidden 藏起来的（元素还在 DOM 里），所以这里仍是 4 项；
+              "自定义提醒版式：默认配置（可推迟>0）显示“推迟”按钮", pbc.get("postponeShown"))
+        # “暂停计时”是被加 .hidden 藏起来的（元素还在 DOM 里），所以这里仍是 4 项；
         # 它到底露没露由上面的 pauseShown 断言。
         check(pbc.get("buttons") == ["立即提醒", "推迟提醒", "跳过提醒", "暂停计时"],
-              "自定义提醒版式：三颗按钮都改说「提醒」", pbc.get("buttons"))
+              "自定义提醒版式：三颗按钮都改说“提醒”", pbc.get("buttons"))
         check(not (pbc.get("consoleErrors") or []), "自定义提醒版式：页面无控制台错误",
               (pbc.get("consoleErrors") or [])[:2])
         check((pbc.get("appHeight") or 0) >= 140, "自定义提醒版式：172 高窗口里内容铺得开",
               pbc.get("appHeight"))
 
-        # ---- 提前提示窗：底色跟随「提醒窗口 → 背景颜色」+ 文字自动配色 ----
+        # ---- 提前提示窗：底色跟随“提醒窗口 → 背景颜色”+ 文字自动配色 ----
         # 底色由主进程下发（PreBreakInfo.BgColor ← appearance.color），渲染层再按它的
-        # 亮度决定浅底深字 / 深底浅字。只断言「颜色变了」拦不住「深字配深底」，
+        # 亮度决定浅底深字 / 深底浅字。只断言“颜色变了”拦不住“深字配深底”，
         # 所以这里按 WCAG 真算对比度。
         pb_lum = _rel_lum_hex(pb.get("bgSource"))
         check(bool(pb.get("bgSource")) and pb_lum is not None,
-              "提前提示窗：底色取自「提醒窗口 → 背景颜色」（不是写死的深色）", pb.get("bgSource"))
+              "提前提示窗：底色取自“提醒窗口 → 背景颜色”（不是写死的深色）", pb.get("bgSource"))
         check(pb_lum is not None and pb.get("lumMode") == ("light" if pb_lum >= 0.45 else "dark"),
               "提前提示窗：深浅档位与底色亮度自洽", [pb.get("lumMode"), pb_lum])
         pb_ct = pb.get("contrast") or {}
@@ -1268,9 +1268,9 @@ def main():
               "外卖窗口：三个按钮文案（已点好 / 不点了）",
               "%s / %s" % (tk.get("orderedBtn"), tk.get("skipBtn")))
         check(str(tk.get("postponeBtn") or "").startswith("推迟"),
-              "外卖窗口：「推迟」按钮带时长文案", tk.get("postponeBtn"))
+              "外卖窗口：“推迟”按钮带时长文案", tk.get("postponeBtn"))
         check(tk.get("postponeShown") is True,
-              "外卖窗口：默认配置（可推迟>0）显示「推迟」按钮", tk.get("postponeShown"))
+              "外卖窗口：默认配置（可推迟>0）显示“推迟”按钮", tk.get("postponeShown"))
         # 时钟是正向走的（固定时刻无倒计时），格式 HH:MM:SS
         ok_clock = False
         try:
@@ -1415,8 +1415,8 @@ def main():
                           "外卖窗口：红包中心 == 立绘右缘与窗口右缘的中间",
                           "%s vs %s" % (round(rcx), want_rcx))
                     # 垂直：理想中心 = (立绘去透明上缘 figTop + 底部对话框顶 dialogTop) / 2
-                    # （2026-10-14 终版：立绘上缘与「显示督休专员名称的对话框顶」两线中点；
-                    # 之前误用窗顶 y=0）。「外卖提醒」标题浮在框外上方，框贴顶会把标题顶
+                    # （2026-10-14 终版：立绘上缘与“显示督休专员名称的对话框顶”两线中点；
+                    # 之前误用窗顶 y=0）。“外卖提醒”标题浮在框外上方，框贴顶会把标题顶
                     # 出窗口——两线中点离对话框顶不足（框高+标题高）时整组（标题+框）下移
                     # 到刚好留出 TOP_MARGIN（=CD_EDGE=10）：
                     #   midY == max((figTop + dialogTop)/2, TOP_MARGIN + unitH/2)
@@ -1432,11 +1432,11 @@ def main():
                           "%s vs %s（unitH=%s figTop=%s dialogTop=%s）" % (
                             tksm.get("midY"), round(want_rcy), tksm.get("unitH"),
                             fig_top, _dialog_top))
-                    # 标题可见：「外卖提醒」胶囊整枚落在窗口内（曾被贴顶红包顶出窗外）
+                    # 标题可见：“外卖提醒”胶囊整枚落在窗口内（曾被贴顶红包顶出窗外）
                     rt = tk.get("rpTitleInline") or {}
                     check(bool(rt.get("shown")) and (rt.get("rectTop") or -99) >= 0
                           and (rt.get("rectBottom") or -99) <= (rp.get("rectTop") or 0),
-                          "外卖窗口：「外卖提醒」标题完整可见（窗口内且悬于框上方）",
+                          "外卖窗口：“外卖提醒”标题完整可见（窗口内且悬于框上方）",
                           "titleTop=%s titleBottom=%s rpTop=%s" % (rt.get("rectTop"),
                                                                    rt.get("rectBottom"), rp.get("rectTop")))
                     # 红包框中心 == 单元中心 + titleExtra/2（框比整组中心低半标题）
@@ -1450,37 +1450,37 @@ def main():
         check(not (tk.get("consoleErrors") or []), "外卖窗口：页面无控制台错误",
               (tk.get("consoleErrors") or [])[:2])
 
-        # ---- 「可推迟」为 0：提前提示窗与外卖窗口都不显示「推迟」按钮 ----
+        # ---- “可推迟”为 0：提前提示窗与外卖窗口都不显示“推迟”按钮 ----
         # 场景由 renderer_probe.js 的 5b 段造出：short.postponeMs=0、takeout.postponeMin=0，
         # URL 带 postpone=0（真实链路里主进程生成的地址同样带这个参数）
         pbz = m.get("preBreakNoPostpone") or {}
         check(pbz.get("postponeShown") is False,
-              "可推迟为 0：提前提示窗不显示「推迟」按钮", pbz.get("postponeShown"))
+              "可推迟为 0：提前提示窗不显示“推迟”按钮", pbz.get("postponeShown"))
         # 按钮是被 .hidden 藏起来的（元素与文案都还在 DOM 里），不是被删掉。
         # 文案用词兼容内置 / 自定义两种版式（轮询会把版式切成上一次记住的 custom）
         check(any("推迟" in b for b in (pbz.get("buttons") or [])),
-              "可推迟为 0：提前提示窗「推迟」按钮只是被隐藏（DOM 与文案仍在）",
+              "可推迟为 0：提前提示窗“推迟”按钮只是被隐藏（DOM 与文案仍在）",
               pbz.get("buttons"))
         check(not (pbz.get("consoleErrors") or []),
               "可推迟为 0：提前提示窗页面无控制台错误",
               (pbz.get("consoleErrors") or [])[:2])
         tkz = m.get("takeoutNoPostpone") or {}
         check(tkz.get("postponeShown") is False,
-              "可推迟为 0：外卖窗口不显示「推迟」按钮", tkz.get("postponeShown"))
+              "可推迟为 0：外卖窗口不显示“推迟”按钮", tkz.get("postponeShown"))
         check(str(tkz.get("postponeBtn") or "").startswith("推迟"),
-              "可推迟为 0：外卖窗口「推迟」按钮只是被隐藏（文案仍在）",
+              "可推迟为 0：外卖窗口“推迟”按钮只是被隐藏（文案仍在）",
               tkz.get("postponeBtn"))
         check(not (tkz.get("consoleErrors") or []),
               "可推迟为 0：外卖窗口页面无控制台错误",
               (tkz.get("consoleErrors") or [])[:2])
 
         # ---- 全局键鼠活动 → 督休专员二阶段（系统级检测的可观测端）----
-        # 二阶段的触发源必须是「系统级键鼠活动」，不能只在提醒窗口内监听：
+        # 二阶段的触发源必须是“系统级键鼠活动”，不能只在提醒窗口内监听：
         # Go 侧 sup:active 广播（takeout.go 轮询 user32!GetLastInputInfo）→ shim on()
         # → break.js noteActivity。断言分两步：
         #   ① 事件真的到达页面（__WR_SUP_ACTIVE 计数增加）—— 这条是链路证明；
         #   ② 页面把它当二阶段处理（data-stage 升到 2）。
-        # 不校验「触发前一阶段」：探针跑在真机上，用户自己的键鼠活动也会产生
+        # 不校验“触发前一阶段”：探针跑在真机上，用户自己的键鼠活动也会产生
         # sup:active（这正是本功能要的），先验状态不可控。
         ga = m.get("globalActivity") or {}
         check(not ga.get("error"), "提醒窗口：SupActivity 绑定调用成功", ga.get("error"))
@@ -1512,7 +1512,7 @@ def main():
         # 2026-10-25 用户报障：触屏两指捏合会把窗口内容放大缩小。三个页面都引了
         # web/dist/nozoom.js（touch-action 去 pinch-zoom + 拦 Ctrl 滚轮/键盘），
         # Go 侧另有 --disable-pinch（浏览器进程级，无头探针验不到，只能在真机看）。
-        # 这里锁住「守卫装上了、入口都堵住、普通滚轮没被误伤」这三件事。
+        # 这里锁住“守卫装上了、入口都堵住、普通滚轮没被误伤”这三件事。
         nz = m.get("nozoom") or {}
         if not nz:
             check(False, "禁缩放守卫采集到数据（nozoom）", "缺失")
@@ -1525,7 +1525,7 @@ def main():
             check(d.get("ctrlWheelBlocked") is True,
                   "%s：Ctrl+滚轮（触控板捏合）被拦下" % label, d.get("ctrlWheelBlocked"))
             # 普通滚轮必须放行：break.js / takeout.js 靠 wheel 记用户活动，
-            # 拦死会让倒计时把「还在用电脑」误判成「离开」
+            # 拦死会让倒计时把“还在用电脑”误判成“离开”
             check(d.get("plainWheelPassed") is True,
                   "%s：普通滚轮照旧放行（活动上报不受影响）" % label, d.get("plainWheelPassed"))
             check(d.get("ctrlKeyBlocked") is True,
@@ -1535,7 +1535,7 @@ def main():
 
         # ---- 静态不变式：四类提醒窗口共用同一套提醒内容排版 ----
         # 运行时断言只覆盖探针真正打开的那两种窗口（休息 / 外卖）。自定义提醒与
-        # 短休/长休共用同一套 CSS，所以这里再从源码层面钉一遍「共用」本身：
+        # 短休/长休共用同一套 CSS，所以这里再从源码层面钉一遍“共用”本身：
         #   · 两份 CSS 的 body.has-supervisor .dialog-text 声明块逐字相同；
         #   · 两份 CSS 的 --dlg-fs / --dlg-fs-min / --dlg-h 三个值相同；
         #   · 两份 JS 的 fitDialogText() 逐字相同（缩字号 + .tall 长高的唯一实现）；
@@ -1545,7 +1545,7 @@ def main():
                 return f.read().replace("\r\n", "\n")
 
         def _block(src, head, close="\n}"):
-            """从 head 起截到「行首 close」为止。CSS 声明块收在行首的 }，
+            """从 head 起截到“行首 close”为止。CSS 声明块收在行首的 }，
             JS 函数收在两格缩进的 }（close="\n  }"）—— 用错会把后面整份文件都算进去。"""
             i = src.find(head)
             if i < 0:
@@ -1578,7 +1578,7 @@ def main():
               "提醒内容排版：两份 JS 的 fitDialogText() 逐字相同",
               "break=%s takeout=%s" % (len(_f1 or ""), len(_f2 or "")))
         check("--dlg-fs-min" in (_f1 or "") and "classList.add(\"tall\")" in (_f1 or ""),
-              "提醒内容排版：自适应逻辑同时有「15px 下限」与「.tall 长高」两条出口",
+              "提醒内容排版：自适应逻辑同时有“15px 下限”与“.tall 长高”两条出口",
               "min=%s tall=%s" % ("--dlg-fs-min" in (_f1 or ""),
                                   'classList.add("tall")' in (_f1 or "")))
         check('class="supervisor-line dialog-text' in _bh,
@@ -1591,7 +1591,7 @@ def main():
         # ---- 不启用督休专员：四类窗口的提醒内容排版 ----
         # 这一组走替身 shim（supervisor:null），走的是同一份 HTML/CSS/JS。
         # 运行时断言：四类的字号/字重/透明度/对齐完全一致，居中、不越界；
-        # 外卖另外钉块序（红包 → 徽标 → 内容 → 按钮）与「外卖提醒」标题不压内容。
+        # 外卖另外钉块序（红包 → 徽标 → 内容 → 按钮）与“外卖提醒”标题不压内容。
         _ns = m.get("noSup") or {}
         check(set(_ns.keys()) == {"break_short", "break_custom", "takeout_qr", "takeout_noqr"},
               "无督休专员：四类窗口都量到了", sorted(_ns.keys()))
@@ -1603,8 +1603,8 @@ def main():
                   "无督休专员/%s：字重 600、不透明" % _k,
                   "%s / %s" % (_v.get("weight"), _v.get("opacity")))
             check(_v.get("align") == "center", "无督休专员/%s：水平居中（text-align）" % _k, _v.get("align"))
-            # offCenter 是个「0 就是合格」的值，不能写成 `or 99` —— 0 是 falsy，
-            # 会取到兜底的 99 把「刚好居中」判成失败（已踩过一次）。
+            # offCenter 是个“0 就是合格”的值，不能写成 `or 99` —— 0 是 falsy，
+            # 会取到兜底的 99 把“刚好居中”判成失败（已踩过一次）。
             _oc = _v.get("offCenter")
             check(isinstance(_oc, (int, float)) and abs(_oc) <= 0.5,
                   "无督休专员/%s：文字中心与窗口中线重合" % _k, _oc)
@@ -1619,7 +1619,7 @@ def main():
                       "%s vs %s" % (_v.get("fs"), _base.get("fs")))
             _ce = _v.get("consoleErrors") or []
             check(not _ce, "无督休专员/%s：无 console 错误" % _k, _ce[:2])
-        # 外卖块序：红包 → 徽标 → 提醒内容 → 按钮，且「外卖提醒」标题不压内容
+        # 外卖块序：红包 → 徽标 → 提醒内容 → 按钮，且“外卖提醒”标题不压内容
         for _k in ("takeout_qr", "takeout_noqr"):
             _v = _ns.get(_k) or {}
             check(_v.get("orderAsc") is True,
@@ -1628,7 +1628,7 @@ def main():
                   "无督休专员/%s：相邻块依次向下排列，无重叠" % _k, _v.get("gaps"))
         _qr = _ns.get("takeout_qr") or {}
         check(_qr.get("titleOverlap") == 0,
-              "无督休专员/外卖：「外卖提醒」标题未压到提醒内容", _qr.get("titleOverlap"))
+              "无督休专员/外卖：“外卖提醒”标题未压到提醒内容", _qr.get("titleOverlap"))
         check((_qr.get("titleGap") or -99) > 0,
               "无督休专员/外卖：标题与提醒内容之间留有空隙", _qr.get("titleGap"))
         _noqr = _ns.get("takeout_noqr") or {}
@@ -1636,7 +1636,7 @@ def main():
               "无督休专员/外卖：红包开不开不影响字号",
               "%s vs %s" % (_qr.get("fs"), _noqr.get("fs")))
 
-        # 源码级：无督休专员那一段也是「只定义一次」
+        # 源码级：无督休专员那一段也是“只定义一次”
         _n1 = _block(_bc, "body:not(.has-supervisor) .dialog-text {")
         _n2 = _block(_tc, "body:not(.has-supervisor) .dialog-text {")
         check(bool(_n1) and _n1 == _n2,

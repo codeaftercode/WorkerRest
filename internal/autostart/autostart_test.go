@@ -19,9 +19,9 @@ func TestBuildRunCommandLine(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"无空格不加引号", `C:\wr\chibingren.exe`, []string{"--autostart"}, `C:\wr\chibingren.exe --autostart`},
-		{"含空格加引号", `C:\Program Files\吃饼人\chibingren.exe`, []string{"--autostart"}, `"C:\Program Files\吃饼人\chibingren.exe" --autostart`},
-		{"没有参数也行", `C:\wr\chibingren.exe`, nil, `C:\wr\chibingren.exe`},
+		{"无空格不加引号", `C:\wr\rest.exe`, []string{"--autostart"}, `C:\wr\rest.exe --autostart`},
+		{"含空格加引号", `C:\Program Files\吃饼人\rest.exe`, []string{"--autostart"}, `"C:\Program Files\吃饼人\rest.exe" --autostart`},
+		{"没有参数也行", `C:\wr\rest.exe`, nil, `C:\wr\rest.exe`},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -76,7 +76,7 @@ func TestAutostartRegistryRoundTrip(t *testing.T) {
 		t.Fatal("临时键初始应是干净的")
 	}
 
-	cmd := BuildRunCommandLine(`C:\Program Files\吃饼人\chibingren.exe`, []string{"--autostart"})
+	cmd := BuildRunCommandLine(`C:\Program Files\吃饼人\rest.exe`, []string{"--autostart"})
 	r := WriteRunEntry(cmd)
 	if !r.OK {
 		t.Fatalf("写入临时键失败（沙箱可能拦了注册表写）：%s", r.Detail)
@@ -88,11 +88,11 @@ func TestAutostartRegistryRoundTrip(t *testing.T) {
 		t.Fatalf("读回的命令行应逐字一致，得到 %v", got)
 	}
 	if d := ApprovalDisabled(); d == nil || *d {
-		t.Fatalf("刚写完、没有任何「启动已批准」记录时不该是禁用态，得到 %v", d)
+		t.Fatalf("刚写完、没有任何“启动已批准”记录时不该是禁用态，得到 %v", d)
 	}
 
 	// 重复写入 = 覆盖成最新命令行（换了目录 / 装了新版要能纠正）
-	cmd2 := BuildRunCommandLine(`C:\wr\chibingren.exe`, []string{"--autostart"})
+	cmd2 := BuildRunCommandLine(`C:\wr\rest.exe`, []string{"--autostart"})
 	if r := WriteRunEntry(cmd2); !r.OK {
 		t.Fatalf("覆盖写入失败：%s", r.Detail)
 	}
@@ -100,7 +100,7 @@ func TestAutostartRegistryRoundTrip(t *testing.T) {
 		t.Fatalf("覆盖后应读到新命令行，得到 %v", got)
 	}
 
-	// 「启动已批准」里的禁用标记：首字节 03 = 用户在任务管理器里禁用过
+	// “启动已批准”里的禁用标记：首字节 03 = 用户在任务管理器里禁用过
 	k, _, err := registry.CreateKey(registry.CURRENT_USER, approvedKeyPath, registry.SET_VALUE)
 	if err != nil {
 		t.Fatalf("建临时批准键失败：%v", err)
@@ -113,7 +113,7 @@ func TestAutostartRegistryRoundTrip(t *testing.T) {
 	}
 	_ = k.Close()
 	if d := ApprovalDisabled(); d == nil || !*d {
-		t.Fatalf("首字节 03 应读成「已禁用」，得到 %v", d)
+		t.Fatalf("首字节 03 应读成“已禁用”，得到 %v", d)
 	}
 	// 02 = 启用
 	buf[0] = 0x02
@@ -122,10 +122,10 @@ func TestAutostartRegistryRoundTrip(t *testing.T) {
 		_ = k2.Close()
 	}
 	if d := ApprovalDisabled(); d == nil || *d {
-		t.Fatalf("首字节 02 应读成「启用」，得到 %v", d)
+		t.Fatalf("首字节 02 应读成“启用”，得到 %v", d)
 	}
 	if r := ClearApproval(); !r.OK {
-		t.Fatalf("清「启动已批准」失败：%s", r.Detail)
+		t.Fatalf("清“启动已批准”失败：%s", r.Detail)
 	}
 	if r := ClearApproval(); !r.OK || r.Detail != "absent" {
 		t.Fatalf("再清一次应报 absent 且算成功，得到 %+v", r)

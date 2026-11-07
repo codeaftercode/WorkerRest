@@ -3,9 +3,9 @@
 """提示音目录体检探针：随包 sounds/ 多出来的音频 → 询问导入；配置里的死条目 → 询问删除。
 
 对着**真实二进制**（-tags server 的无头服务）走前端同一条 HTTP 调用链，断言五件事：
-  1. 启动扫描同时报出「新音频」与「条目文件已不存在」，且内置 4 条不算新文件；
+  1. 启动扫描同时报出“新音频”与“条目文件已不存在”，且内置 4 条不算新文件；
   2. ImportScannedSounds 把文件**原地登记**成相对名条目 —— 不复制、不改名、
-     不生成用户音频目录（复制一份会让原文件下次启动又被当成「新」，变成每次开机都问）；
+     不生成用户音频目录（复制一份会让原文件下次启动又被当成“新”，变成每次开机都问）；
   3. 导入过的项从待办里消失，缺失待办仍在（两段各自独立）；
   4. DropMissingSounds 只删待办里的那个 id，导入的条目与 singleId 都不受牵连；
   5. 全部处理完 GetSoundScanNotice 归 null，**重启后不再重复提示**。
@@ -13,7 +13,7 @@
 用法：python scripts/probe_sound_scan.py [--port 29752] [--keep]
 退出码 0 = 全部通过。
 
-前置：go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest（脚本不重建二进制）
+前置：go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest（脚本不重建二进制）
 """
 
 import argparse
@@ -30,7 +30,7 @@ import secrets
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
 TEMP = os.environ.get("TEMP", ROOT)
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_server.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 REPORT = os.path.join(TEMP, "wr_sound_scan_report.txt")
 
 try:
@@ -131,7 +131,7 @@ def main():
     args = ap.parse_args()
 
     if not os.path.isfile(EXE):
-        print("找不到 %s —— 先 go build -tags server -o build/bin/chibingren_server.exe ./cmd/workerrest" % EXE)
+        print("找不到 %s —— 先 go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest" % EXE)
         return 2
 
     iso = os.path.join(TEMP, "wr_sound_scan_probe")
@@ -139,8 +139,8 @@ def main():
     os.makedirs(os.path.join(iso, "config"), exist_ok=True)
     cfgpath = os.path.join(iso, "config", "settings.json")
 
-    # 出厂配置 + 一条「文件根本不存在」的条目。seeded=True 关掉首次种入内置 4 条，
-    # 否则列表会被预置项污染，断言就分不清「用户条目」和「补进来的内置音」。
+    # 出厂配置 + 一条“文件根本不存在”的条目。seeded=True 关掉首次种入内置 4 条，
+    # 否则列表会被预置项污染，断言就分不清“用户条目”和“补进来的内置音”。
     cfg = read_json(os.path.join(ROOT, "internal", "settings", "default_settings.json"))
     cfg.setdefault("sound", {})
     cfg["sound"]["seeded"] = True
@@ -187,7 +187,7 @@ def main():
             new_files = [f.get("file") for f in (notice.get("new") or [])]
             miss_ids = [m.get("id") for m in (notice.get("missing") or [])]
             check(new_files == ["my-alarm.mp3"],
-                  "只把未登记的音频报成「新」（内置 4 条不算）", new_files)
+                  "只把未登记的音频报成“新”（内置 4 条不算）", new_files)
             check(miss_ids == ["sm-ghost"], "把条目文件缺失报出来", miss_ids)
             check(str(notice.get("dir", "")).replace("\\", "/").endswith("/sounds"),
                   "扫描的是 exe 旁的 sounds/", notice.get("dir"))
@@ -243,7 +243,7 @@ def main():
         proc = start(exe_local, iso, port, logpath)
         check(wait_ready(base), "重启后就绪", base)
         n4, raw4 = rpc(base, "GetSoundScanNotice")
-        check(n4 is None, "重启后不再重复提示（导入过的文件不再算「新」）", raw4)
+        check(n4 is None, "重启后不再重复提示（导入过的文件不再算“新”）", raw4)
     finally:
         stop(proc)
 

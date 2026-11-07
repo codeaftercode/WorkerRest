@@ -3,16 +3,16 @@
 """自动暂停（应用占用）的端到端探针：真 GUI 产物 + 真实进程占用 + 真实窗口关闭。
 
 为什么不能用无头服务验：`-tags server` 构建**故意不启动**会改调度器状态的几条监视器
-（冒烟机始终空闲，会把调度器随机挂起、毁掉确定性断言）。所以「系统判定 → 暂停 → 收窗 →
-条件消失 → 恢复 + 重锚」这条链路只有跑真 GUI 才验得到。
+（冒烟机始终空闲，会把调度器随机挂起、毁掉确定性断言）。所以“系统判定 → 暂停 → 收窗 →
+条件消失 → 恢复 + 重锚”这条链路只有跑真 GUI 才验得到。
 
-判据用**真实进程**触发，不靠开关配置假装：配置里把 `ping.exe` 列成「指定应用运行时暂停」，
+判据用**真实进程**触发，不靠开关配置假装：配置里把 `ping.exe` 列成“指定应用运行时暂停”，
 探针自己起一个 `ping -t 127.0.0.1`（无窗口、无交互），杀掉了条件就消失。
 
 验的事：
-  1. 目标进程起来后，日志出现「命中 ping.exe，暂停提醒」与「暂停（应用占用）」；
+  1. 目标进程起来后，日志出现“命中 ping.exe，暂停提醒”与“暂停（应用占用）”；
   2. 暂停那一刻**所有提醒窗口被收掉**（[autoPause] 自动暂停：收掉全部提醒窗口）；
-  3. 暂停期间到点也不弹休息窗（这一段时间里没有新的「开始休息」日志）；
+  3. 暂停期间到点也不弹休息窗（这一段时间里没有新的“开始休息”日志）；
   4. 进程退出后自动恢复（不需要点按钮），并且**内置倒计时重新计时**（不是接着冻结的旧账走）。
   5. 全程没有 panic。
 
@@ -36,7 +36,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 TEMP = os.environ.get("TEMP", ROOT)
 # 与 probe_gui_boot.py 同口径：GUI 产物带 -H windowsgui 拿不到 stdout，单独构建一个
 # 去掉该标记的探针产物（build/bin 属 .gitignore）
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_probe.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_probe.exe")
 ISO = os.path.join(TEMP, "wr_pause_auto_iso")
 LOG = os.path.join(TEMP, "wr_pause_auto.log")
 
@@ -106,15 +106,15 @@ def main():
     with open(factory, encoding="utf-8") as f:
         cfg = json.load(f)
 
-    # 短休息 8 秒一条、3 秒、不提前提示：观察窗里一定会碰到「休息中被打断」这一支。
+    # 短休息 8 秒一条、3 秒、不提前提示：观察窗里一定会碰到“休息中被打断”这一支。
     cfg["short"] = dict(cfg.get("short") or {}, enabled=True, mode="countdown",
                         intervalMs=8000, durationMs=3000, notifyBeforeMs=0, postponeMs=60000,
                         slots=[])
     cfg["long"] = dict(cfg.get("long") or {}, enabled=False)
     cfg["takeout"] = dict(cfg.get("takeout") or {}, enabled=False)
     cfg["customBreaks"] = []
-    # 其余自动原因全关：这条用例只验「应用占用」这一条，别的任何一条命中都会让
-    # 「恢复」永远等不到（勿扰 / 全屏 / 投屏的条件消失不自动恢复）
+    # 其余自动原因全关：这条用例只验“应用占用”这一条，别的任何一条命中都会让
+    # “恢复”永远等不到（勿扰 / 全屏 / 投屏的条件消失不自动恢复）
     cfg["dndPause"] = False
     cfg["fullscreenPause"] = False
     cfg["castMirrorPause"] = False
@@ -149,7 +149,7 @@ def main():
             if not check(wait_for(text, "[sys] 空闲=", 20), "GUI 产物起来了（系统能力摘要落日志）"):
                 return 1
 
-            # 先等一次休息窗口：这样「暂停时收掉全部提醒窗口」才有对象可收
+            # 先等一次休息窗口：这样“暂停时收掉全部提醒窗口”才有对象可收
             got_break = wait_for(text, "[scheduler] 开始休息 short", 25)
             check(got_break, "观察窗内先弹出过一次真实休息窗口")
 
@@ -162,7 +162,7 @@ def main():
                                       creationflags=flags)
 
             hit = wait_for(text, "[appPause] 命中", 20)
-            check(hit, "目标进程起来后命中「指定应用占用」")
+            check(hit, "目标进程起来后命中“指定应用占用”")
             check("[scheduler] 暂停（应用占用）" in text(), "调度器真的进入了暂停（原因=应用占用）")
             check("[autoPause] 自动暂停：收掉全部提醒窗口" in text(),
                   "暂停那一刻收掉了屏幕上的提醒窗口（含正在进行的休息窗）")
@@ -178,7 +178,7 @@ def main():
             pinger.wait(timeout=10)
             pinger = None
             resumed = wait_for(text, "[appPause] 目标应用已退出", 20)
-            check(resumed, "进程退出后自动恢复（没让用户去点「恢复休息」）")
+            check(resumed, "进程退出后自动恢复（没让用户去点“恢复休息”）")
             check("[scheduler] 恢复（应用占用）" in text(), "调度器真的退出了暂停")
             check("[scheduler] 自动暂停恢复：内置倒计时重新计时" in text(),
                   "恢复时内置倒计时重新计时（不是接着冻结的旧账走）")

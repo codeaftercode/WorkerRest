@@ -1,34 +1,34 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""共享屏幕时隐藏：真机验证「提醒窗口到底能不能被捕获到」。
+"""共享屏幕时隐藏：真机验证“提醒窗口到底能不能被捕获到”。
 
 为什么必须有这个探针：Wails v3 的 `ContentProtectionEnabled` 只对顶层 HWND 调
 SetWindowDisplayAffinity，而本项目的提醒窗口是半透明无边框窗、内容由 WebView2
-的渲染进程合成。只设顶层时 GetWindowDisplayAffinity 回读是 0x11（看着「成功了」），
+的渲染进程合成。只设顶层时 GetWindowDisplayAffinity 回读是 0x11（看着“成功了”），
 可捕获结果里照样有整块内容 —— 这个自相矛盾只有真抓一次图才看得见。
 
 做法（单进程、无外部依赖）：
   ① 起一个隔离配置的实例：一次只让**一类**提醒在 6 秒后弹出（其余全关），
      startMinimized 让设置窗口不出现；窗口底色改成品红 #ff00ff —— 判据是
-     「窗口矩形里有多少像素偏品红」，不看「和基线差多少」（后台桌面会自己动，
+     “窗口矩形里有多少像素偏品红”，不看“和基线差多少”（后台桌面会自己动，
      差异法实测三次里两次误报）。
   ② 等该类窗口出现，再抓整屏、裁出窗口矩形，数品红占比
   ③ 对照组（只跑短休息）：
      - hideOnShare=false：品红占比必须很高 → 证明抓图链路**确实能看见**提醒窗口
-       （否则「看不见」这个结论毫无意义，抓图本身坏了也会显示成通过）
+       （否则“看不见”这个结论毫无意义，抓图本身坏了也会显示成通过）
   ④ 实验组（hideOnShare=true）：五类窗口逐个跑一遍，品红占比必须都接近 0 ——
      short / long / custom 走同一段建窗代码（休息窗口），prebreak 是另一段
      （提前提示小窗），takeout 也是另一段（外卖提醒），三条路径必须各自验证，
      不能拿一类的结论推另一类。
   ⑤ 顺带记录顶层 / 后代窗口回读到的亲和性（跨进程读不到属正常，写进报告便于排障）
 
-用屏幕 DC 的 BitBlt 抓图（不依赖 GDI+ / PIL）：这是截图类工具与「共享窗口」预览
+用屏幕 DC 的 BitBlt 抓图（不依赖 GDI+ / PIL）：这是截图类工具与“共享窗口”预览
 最常走的一条路径，也会尊重 WDA 亲和性。
 
-前置预检（2026-11 加）：跑之前先抓一块桌面，判断「到底有没有画面可抓」。远程会话、
+前置预检（2026-11 加）：跑之前先抓一块桌面，判断“到底有没有画面可抓”。远程会话、
 锁屏、部分虚拟显卡下 BitBlt 会拿到一整块黑图，这时对照组必然数不到品红 —— 没有
-预检的话，探针会把「我看不见屏幕」报成「捕获保护没生效」，结论正好反了。预检不过
-直接返回退出码 3（= 无法测量），与「失败」区分开。
+预检的话，探针会把“我看不见屏幕”报成“捕获保护没生效”，结论正好反了。预检不过
+直接返回退出码 3（= 无法测量），与“失败”区分开。
 
 隔离：WR_SETTINGS_PATH 指向 %TEMP% 的副本，绝不碰用户真实配置。
 用法：python scripts/probe_capture_guard.py [--keep] [--no-build]
@@ -46,7 +46,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_capguard.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_capguard.exe")
 TEMP = os.environ.get("TEMP", ROOT)
 ISO = os.path.join(TEMP, "wr_capguard_iso")
 LOG = os.path.join(TEMP, "wr_capguard.log")
@@ -60,19 +60,19 @@ SRCCOPY = 0x00CC0020
 WDA_EXCLUDEFROMCAPTURE = 0x11
 WDA_MONITOR = 0x01
 
-# 判据：窗口底色被探针配置成纯品红（#ff00ff），数窗口矩形内「明显偏品红」的像素占比。
+# 判据：窗口底色被探针配置成纯品红（#ff00ff），数窗口矩形内“明显偏品红”的像素占比。
 #
-# 早先比的是「与窗口出现前的基线之差」，结果不可靠：窗口背后是用户自己的桌面，
-# 两次抓图之间后台页面自己滚动/重绘，差异能凭空冲到 6%，甚至把「整屏换了内容」
+# 早先比的是“与窗口出现前的基线之差”，结果不可靠：窗口背后是用户自己的桌面，
+# 两次抓图之间后台页面自己滚动/重绘，差异能凭空冲到 6%，甚至把“整屏换了内容”
 # 当成 99% 泄漏（实测三次里两次误报红）。品红占比不需要静态背景 —— 桌面不是品红，
 # 提醒窗口一出现就是大面积品红，有没有被排除一目了然。
 MAGENTA_VISIBLE = 0.40   # 看得见时整窗都被染色
 MAGENTA_HIDDEN = 0.05    # 被排除时只剩背后桌面，偶尔有一点品红也不会超过这个量级
-MAGENTA_MIN_RG = 25      # R、B 都比 G 高这么多才算「偏品红」
+MAGENTA_MIN_RG = 25      # R、B 都比 G 高这么多才算“偏品红”
 
 # 场景表：键 → (中文名, 窗口标题, 等窗口出现的超时秒数)
-# 短 / 长 / 自定义三种休息的标题都是「休息一下」（同一个建窗函数），所以一次只放一类出来，
-# 否则分不清抓到的是哪一种。外卖按「时:分」触发，得等最多一分钟。
+# 短 / 长 / 自定义三种休息的标题都是“休息一下”（同一个建窗函数），所以一次只放一类出来，
+# 否则分不清抓到的是哪一种。外卖按“时:分”触发，得等最多一分钟。
 SCENES = {
     "short":    ("短休息",     "休息一下", 40),
     "long":     ("长休息",     "休息一下", 40),
@@ -141,10 +141,10 @@ def grab(x, y, w, h):
 
 
 def diff_ratio(a, b, w, h):
-    """两块同尺寸画面的「明显不同」像素占比（通道差之和 > 24 算不同）。
+    """两块同尺寸画面的“明显不同”像素占比（通道差之和 > 24 算不同）。
 
     抽样看（每 3 像素取 1 个）：窗口动辄一百多万像素，纯 Python 逐像素跑要好几秒，
-    而这里只判「整块内容在不在」，20% / 1.5% 的阈值对抽样完全不敏感。
+    而这里只判“整块内容在不在”，20% / 1.5% 的阈值对抽样完全不敏感。
     """
     if len(a) != len(b) or not a:
         return 1.0
@@ -163,7 +163,7 @@ def diff_ratio(a, b, w, h):
 
 
 def magenta_ratio(data, w, h):
-    """窗口矩形内「明显偏品红」的像素占比（抽样，够用且快）。"""
+    """窗口矩形内“明显偏品红”的像素占比（抽样，够用且快）。"""
     if not data:
         return 0.0
     step = 3
@@ -181,11 +181,11 @@ def magenta_ratio(data, w, h):
 
 
 def desktop_lit_ratio():
-    """抓一块桌面，返回「非黑像素占比」—— 判断这台机器到底有没有画面可抓。
+    """抓一块桌面，返回“非黑像素占比”—— 判断这台机器到底有没有画面可抓。
 
     远程会话 / 锁屏 / 部分虚拟显卡下 BitBlt 会返回整块黑图（实测过：mean=0、
-    非黑 0.0%，而 qwinsta 还显示 Console）。这种环境下「窗口没被抓到」与「屏幕
-    本身就看不见」无法区分，必须先把结论降级成「无法测量」，否则会把环境限制
+    非黑 0.0%，而 qwinsta 还显示 Console）。这种环境下“窗口没被抓到”与“屏幕
+    本身就看不见”无法区分，必须先把结论降级成“无法测量”，否则会把环境限制
     报成产品缺陷。
     """
     vx, vy, vw, vh = virtual_screen()
@@ -288,13 +288,13 @@ def make_cfg(hide_on_share, scene="short"):
         cfg["customBreaks"] = [{"id": "cb-probe", "name": "探针提醒", "config": dict(on)}]
     elif scene == "prebreak":
         # 提前提示窗：14 秒后开始休息、提前 6 秒提示 —— 窗口 8 秒左右出现，
-        # 到 14 秒才切走，留得下「等亲和性 2.8 秒 + 抓图」的余量
+        # 到 14 秒才切走，留得下“等亲和性 2.8 秒 + 抓图”的余量
         pb = dict(on)
         pb["intervalMs"] = 14000
         pb["notifyBeforeMs"] = 6000
         cfg["short"] = pb
     elif scene == "takeout":
-        # 外卖只在「时:分」命中时触发（isTimeSlotDue 精确到分钟），所以挑未来的
+        # 外卖只在“时:分”命中时触发（isTimeSlotDue 精确到分钟），所以挑未来的
         # 下一分钟：+70 秒保证落在下一分钟里，整分钟内随时命中，最多等 60 秒
         t = time.localtime(time.time() + 70)
         cfg["takeout"] = {
@@ -310,7 +310,7 @@ def make_cfg(hide_on_share, scene="short"):
     cfg["dndPause"] = False
     cfg["fullscreenPause"] = False
     # 投屏检测读的是显示拓扑：跑探针的机器如果正好在复制模式（= 正在镜像），
-    # 调度器会一启动就「暂停（投屏）」，后面所有「到点必弹」的断言都会踩空，
+    # 调度器会一启动就“暂停（投屏）”，后面所有“到点必弹”的断言都会踩空，
     # 而失败信息指向的是投屏、跟被测的捕获保护毫无关系。两条判据都必须显式关掉。
     cfg["castWirelessPause"] = False
     cfg["castMirrorPause"] = False
@@ -319,7 +319,7 @@ def make_cfg(hide_on_share, scene="short"):
     cfg["sound"] = dict(cfg.get("sound") or {}, enabled=False)
     cfg["supervisor"] = dict(cfg.get("supervisor") or {}, enabled=False)
     ap = dict(cfg.get("appearance") or {})
-    # 品红底色 + 近乎不透明：让「窗在不在」变成一个有确定色彩特征的判断题，
+    # 品红底色 + 近乎不透明：让“窗在不在”变成一个有确定色彩特征的判断题，
     # 不依赖背后桌面是什么（见文件顶部说明）
     ap["color"] = "#ff00ff"
     ap["transparency"] = 0.02
@@ -476,7 +476,7 @@ def main():
     lines = []
     print("共享屏幕时隐藏：真机捕获验证")
 
-    # 预检：屏幕抓不到东西就别往下跑 —— 否则对照组必然「失败」，把环境限制写成缺陷
+    # 预检：屏幕抓不到东西就别往下跑 —— 否则对照组必然“失败”，把环境限制写成缺陷
     try:
         lit = desktop_lit_ratio()
     except Exception as e:
@@ -486,11 +486,11 @@ def main():
     if lit < 0.02:
         print()
         print("结论：本机无法测量（桌面截屏整块是黑的，非黑像素 %.1f%%）。" % (lit * 100))
-        print("      BitBlt 抓不到画面时，「窗口被隐藏」与「屏幕本身看不见」无法区分，")
+        print("      BitBlt 抓不到画面时，“窗口被隐藏”与“屏幕本身看不见”无法区分，")
         print("      因此本项既不算通过也不算失败。请在有人值守的交互式桌面上重跑。")
         return 3
 
-    # 对照组只跑短休息：它证明「抓图链路能看见提醒窗口」，一类就够
+    # 对照组只跑短休息：它证明“抓图链路能看见提醒窗口”，一类就够
     ok1, why1, d1 = run_case(False, "short")
     check(ok1, "对照组（开关=关·短休息）跑通", why1)
     if ok1:

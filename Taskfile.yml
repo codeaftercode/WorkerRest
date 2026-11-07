@@ -4,8 +4,8 @@ version: "3"
 #   安装：go install github.com/go-task/task/v3/cmd/task@latest
 #   用法：task --list
 # 没装也能干活：每条任务的命令都写在下面对应的 cmds 里，README 的
-# 「运行 / 打包 / 测试与验证」三节保留了等价的手敲写法。
-# 这里不做任何「包装逻辑」，只是把散在 scripts/ 各处的命令收进一张表。
+# “运行 / 打包 / 测试与验证”三节保留了等价的手敲写法。
+# 这里不做任何“包装逻辑”，只是把散在 scripts/ 各处的命令收进一张表。
 
 vars:
   BIN: build/bin
@@ -53,7 +53,7 @@ tasks:
   build:server:
     desc: 构建无头产物（探针/冒烟用，没有原生窗口）
     cmds:
-      - go build -trimpath -tags server -o {{.BIN}}/chibingren_server.exe -ldflags "-s -w" ./cmd/workerrest
+      - go build -trimpath -tags server -o {{.BIN}}/rest_server.exe -ldflags "-s -w" ./cmd/workerrest
 
   # ---------- 资源生成 ----------
 

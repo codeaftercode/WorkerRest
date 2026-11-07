@@ -2,14 +2,14 @@
 # -*- coding: utf-8 -*-
 """系统托盘端到端：真实 GUI 进程 → 托盘的宿主窗口 → 单击打开设置 / 右键弹出菜单。
 
-托盘的文案逻辑（tooltip、菜单状态行、「约 X 分钟后」）有纯函数单测（tray_test.go），
-但「点了到底有没有反应」永远只有真窗口能验。这里不去碰任务栏的像素，而是直接找到
+托盘的文案逻辑（tooltip、菜单状态行、“约 X 分钟后”）有纯函数单测（tray_test.go），
+但“点了到底有没有反应”永远只有真窗口能验。这里不去碰任务栏的像素，而是直接找到
 Wails 给托盘建的那个**消息专属窗口**（HWND_MESSAGE 的子窗，EnumWindows 看不到它），
 往里投递它自己注册的回调消息（WM_USER+1，lParam 带鼠标事件），看真实反应：
 
   A 对照组：不最小化启动 → 设置窗口一开始就可见
   B 主用例：startMinimized=true 启动 → 设置窗口不可见
-            → 向托盘宿主投 WM_LBUTTONUP → 设置窗口出现（这就是「单击打开设置」）
+            → 向托盘宿主投 WM_LBUTTONUP → 设置窗口出现（这就是“单击打开设置”）
             → 向托盘宿主投 WM_RBUTTONUP → 出现 #32768 菜单窗口（右键菜单真的弹了）
 
 为什么消息号写死 WM_USER+1 与 WM_LBUTTONUP：这两个值来自 Wails v3.0.0
@@ -30,7 +30,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
-EXE = os.path.join(ROOT, "build", "bin", "chibingren_winprobe.exe")
+EXE = os.path.join(ROOT, "build", "bin", "rest_winprobe.exe")
 DEFAULTS = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 TEMP = os.environ.get("TEMP", ROOT)
 ISO = os.path.join(TEMP, "wr_tray_e2e_iso")
@@ -236,7 +236,7 @@ def main():
     cfg_path, app_name = make_cfg(True)
     proc = start(cfg_path)
     try:
-        # 先确认窗口对象存在（只是不可见）——「不存在」和「藏着」是两回事
+        # 先确认窗口对象存在（只是不可见）——“不存在”和“藏着”是两回事
         hwnd = wait_for(lambda: find_titled(proc.pid, app_name))
         if not hwnd:
             check(False, "B · 设置窗口对象已创建", "25s 内没找到标题为 %s 的窗口" % app_name)
