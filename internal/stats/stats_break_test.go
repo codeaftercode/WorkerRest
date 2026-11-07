@@ -137,6 +137,61 @@ func TestBeginAwayNotCrossDay(t *testing.T) {
 	}
 }
 
+// 关掉“系统空闲”开关时走 EndAway：离开段的尾账必须一次性补齐，且工作段从那一刻
+// 重新起算。否则用户取消勾选后，离开关之前那一段空闲会凭空消失（工作没记、离开也没记）。
+// 这是 2026-11-07 新增开关的连带路径，钉住它免得以后有人把 EndAway 换成单纯的标志位清零。
+func TestEndAwaySettlesTailAndRestartsWorkSegment(t *testing.T) {
+	c := &statsClock{}
+	c.set(localTime(2026, 10, 8, 10, 0))
+	st, _ := newTestStats(t, c)
+
+	st.mu.Lock()
+	st.touchTodayLocked().WorkMs = 10 * 60_000
+	st.workSegStartAt = c.now() - 10*60_000
+	st.mu.Unlock()
+
+	// 空闲阈值 5 分钟：BeginAway 先搬 5 分钟进离开
+	moved := st.BeginAway(c.now() - 5*60_000)
+	if moved != 5*60_000 {
+		t.Fatalf("前置：应搬 5 分钟，得到 %d", moved)
+	}
+	if d := st.Today(); d.WorkMs != 5*60_000 || d.AwayMs != 5*60_000 {
+		t.Fatalf("前置：搬完应工作/离开各 5 分钟，得到 %+v", d)
+	}
+
+	// 又过了 20 分钟才关开关：落盘值在此之前是冻结的（没有周期 OnAwayTick）
+	c.add(20 * time.Minute)
+	if d := st.Today(); d.AwayMs != 5*60_000 {
+		t.Fatalf("离开期间不该提前入账，得到 awayMs=%d", d.AwayMs)
+	}
+
+	st.EndAway()
+	if d := st.Today(); d.AwayMs != 25*60_000 {
+		t.Fatalf("EndAway 应把 20 分钟尾账补齐到 25 分钟，得到 %d", d.AwayMs)
+	}
+	if d := st.Today(); d.WorkMs != 5*60_000 {
+		t.Fatalf("尾账不该动工作时长，得到 %d", d.WorkMs)
+	}
+	if info := st.AwayInfo(); info.Open {
+		t.Fatalf("结束后不该仍在离开中：%+v", info)
+	}
+
+	// 工作段从结束时刻重新起算：之后再来一次 BeginAway 不能把上一段的账搬走
+	c.add(2 * time.Minute)
+	// accountWorkTick 自己持锁，外面不能再包一层 st.mu.Lock()（会自锁死）
+	st.accountWorkTick(c.now()-2*60_000, c.now())
+	if d := st.Today(); d.WorkMs != 7*60_000 {
+		t.Fatalf("恢复后工作时长应从 5 分钟继续涨到 7 分钟，得到 %d", d.WorkMs)
+	}
+	again := st.BeginAway(c.now() - 1*60_000)
+	if again != 1*60_000 {
+		t.Fatalf("新一段只该搬 1 分钟，不该把上一段的账重算，得到 %d", again)
+	}
+	if d := st.Today(); d.AwayMs != 26*60_000 {
+		t.Fatalf("离开时长应累计到 26 分钟，得到 %d", d.AwayMs)
+	}
+}
+
 func TestOnAwayTickNotCrossDay(t *testing.T) {
 	c := &statsClock{}
 	c.set(localTime(2026, 10, 8, 23, 0))

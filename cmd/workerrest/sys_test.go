@@ -107,6 +107,201 @@ func TestIdleWatchSkippedWhileBreakShowing(t *testing.T) {
 	}
 }
 
+// “系统空闲”关掉时整条空闲检测都不做（2026-11-07 从“始终开启”改成可关闭）：
+// 多久没动都不判离开、不暂停、统计也不记离开。
+func TestIdleWatchSkippedWhenSwitchOff(t *testing.T) {
+	a, s := newWatchApp(t, `{"idlePause":false,`+strings.TrimPrefix(shortCountdown, "{"))
+	a.idle.ForceIdle(9_999_999) // 远远超过 5 分钟阈值
+	if away := a.idleWatchTick(false); away {
+		t.Fatal("开关关掉后不该判离开")
+	}
+	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("开关关掉后不该暂停，reasons=%v", st.PauseReasons)
+	}
+	if a.statsIsIdle() {
+		t.Fatal("开关关掉后统计也不该把这段时间记成离开")
+	}
+}
+
+// 用户点名的“设置的分钟数”：改的值必须**立刻改变判定阈值**，而不只是存进配置里。
+// 这里在同一个 App 上改 cfg（与设置页保存走同一个 Settings 指针），逐档检查边界：
+// 4 分钟空闲在 5 分钟阈值下不判、改成 2 分钟就判、改回去又不判。
+func TestIdleWatchThresholdFollowsMinutes(t *testing.T) {
+	a, s := newWatchApp(t, shortCountdown) // 出厂 idlePauseMin=5
+	a.idle.ForceIdle(4 * 60_000)
+
+	if away := a.idleWatchTick(false); away {
+		t.Fatal("5 分钟阈值下 4 分钟空闲不该判离开")
+	}
+	if st := s.StateCopy(); st.Paused {
+		t.Fatal("前置：不该已暂停")
+	}
+
+	// JSON 反序列化后的数字是 float64，ToNumber 不认 Go 的 int —— 与真实配置同口径
+	a.cfg.Raw()["idlePauseMin"] = float64(2)
+	if away := a.idleWatchTick(false); !away {
+		t.Fatal("把阈值改成 2 分钟后，同一段 4 分钟空闲应立刻判离开")
+	}
+	if st := s.StateCopy(); !st.Paused || len(st.PauseReasons) != 1 ||
+		st.PauseReasons[0] != scheduler.PauseReasonIdle {
+		t.Fatalf("应恰好因 idle 暂停，得到 %+v", st.PauseReasons)
+	}
+
+	// 人回来，回到未离开态
+	a.idle.ForceIdle(0)
+	if away := a.idleWatchTick(true); away {
+		t.Fatal("前置：人回来了应结束离开态")
+	}
+
+	// 阈值放大到 10 分钟：4 分钟空闲重新变得不够
+	a.idle.ForceIdle(4 * 60_000)
+	a.cfg.Raw()["idlePauseMin"] = float64(10)
+	if away := a.idleWatchTick(false); away {
+		t.Fatal("10 分钟阈值下 4 分钟空闲不该判离开")
+	}
+	if st := s.StateCopy(); st.Paused {
+		t.Fatalf("恢复后不该还挂着暂停，reasons=%v", st.PauseReasons)
+	}
+}
+
+// 开关与分钟数是两个独立维度：关掉开关后，哪怕阈值调到最小的 1 分钟、空闲拉到
+// 远超阈值，也必须整条不判。反过来勾上之后仍按当前分钟数判（不被上次关闭弄脏）。
+func TestIdleWatchSwitchOffIgnoresAnyMinutes(t *testing.T) {
+	a, s := newWatchApp(t, `{"idlePause":false,"idlePauseMin":`+itoa(1)+`,`+
+		strings.TrimPrefix(shortCountdown, "{"))
+	a.idle.ForceIdle(9_999_999)
+	if away := a.idleWatchTick(false); away {
+		t.Fatal("关着的时候 1 分钟阈值也不该判离开")
+	}
+	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("关着的时候不该暂停，reasons=%v", st.PauseReasons)
+	}
+	if a.statsStore().AwayInfo().Open {
+		t.Fatal("关着的时候不该打开离开段（统计不能记离开）")
+	}
+
+	a.cfg.Raw()["idlePause"] = true
+	if away := a.idleWatchTick(false); !away {
+		t.Fatal("重新勾上后应按 1 分钟阈值立刻判离开")
+	}
+	if !a.statsStore().AwayInfo().Open {
+		t.Fatal("重新勾上后应打开离开段")
+	}
+}
+
+// 关闭开关那一刻正停在空闲暂停上：按“条件消失”收尾 —— 恢复提醒、解除暂停原因、
+// 并把离开段结束掉（否则统计里的离开会一直敞着）。判据是同一拍就恢复，不必等人回来。
+func TestIdleWatchSwitchOffResumesInFlightPause(t *testing.T) {
+	a, s := newWatchApp(t, shortCountdown)
+	a.idle.ForceIdle(6 * 60_000)
+	if away := a.idleWatchTick(false); !away {
+		t.Fatal("前置：达到阈值应判离开并暂停")
+	}
+	if st := s.StateCopy(); !st.Paused || len(st.PauseReasons) != 1 {
+		t.Fatalf("前置：应恰好因 idle 暂停，得到 %v", st.PauseReasons)
+	}
+
+	// 模拟用户在设置里取消勾选（App.cfg 与测试宿主共用同一个 Settings 指针）
+	a.cfg.Raw()["idlePause"] = false
+	if away := a.idleWatchTick(true); away {
+		t.Fatal("关掉开关后应立刻结束离开态")
+	}
+	st := s.StateCopy()
+	if st.Paused || len(st.PauseReasons) != 0 {
+		t.Fatalf("关掉开关应恢复提醒，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+	if st.Phase != "idle" {
+		t.Fatalf("恢复后应处于 idle，得到 %q", st.Phase)
+	}
+	if a.statsIsIdle() {
+		t.Fatal("关掉开关后不该再记离开")
+	}
+}
+
+// 关掉“系统空闲”只摘它自己那一条：同时挂着的别的自动原因（勿扰 / 投屏…）是别人的条件，
+// 不该被顺手一起解掉。
+func TestIdleWatchSwitchOffKeepsOtherAutoReasons(t *testing.T) {
+	a, s := newWatchApp(t, shortCountdown)
+	a.idle.ForceIdle(6 * 60_000)
+	if away := a.idleWatchTick(false); !away {
+		t.Fatal("前置：达到阈值应判离开并暂停")
+	}
+	s.Pause("勿扰") // 另一条自动原因，与空闲无关
+	if st := s.StateCopy(); len(st.PauseReasons) != 2 {
+		t.Fatalf("前置：应同时有 idle 与勿扰，得到 %v", st.PauseReasons)
+	}
+
+	a.cfg.Raw()["idlePause"] = false
+	if away := a.idleWatchTick(true); away {
+		t.Fatal("关掉开关后应结束离开态")
+	}
+	st := s.StateCopy()
+	if !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != "勿扰" {
+		t.Fatalf("只该摘掉 idle，勿扰必须还在：paused=%v reasons=%v", st.Paused, st.PauseReasons)
+	}
+}
+
+// 关掉再打开：检测立刻恢复（不残留“上一拍还是离开”的状态），统计口径同步跟回来。
+func TestIdleWatchSwitchOffThenOnAgain(t *testing.T) {
+	a, s := newWatchApp(t, `{"idlePause":false,`+strings.TrimPrefix(shortCountdown, "{"))
+	a.idle.ForceIdle(9_999_999)
+	if away := a.idleWatchTick(false); away {
+		t.Fatal("前置：关着的时候不该判离开")
+	}
+	if a.statsIsIdle() {
+		t.Fatal("前置：关着的时候统计不该记离开")
+	}
+
+	a.cfg.Raw()["idlePause"] = true
+	if away := a.idleWatchTick(false); !away {
+		t.Fatal("重新勾上后应立刻恢复空闲检测")
+	}
+	if st := s.StateCopy(); !st.Paused || len(st.PauseReasons) != 1 || st.PauseReasons[0] != scheduler.PauseReasonIdle {
+		t.Fatalf("重新勾上后应因 idle 暂停，得到 %v", st.PauseReasons)
+	}
+	if !a.statsIsIdle() {
+		t.Fatal("重新勾上后统计应恢复记离开")
+	}
+	if !a.statsStore().AwayInfo().Open {
+		t.Fatal("重新勾上后应重开离开段")
+	}
+}
+
+// 离开期间用户先手动点了“恢复休息”（原因牌摘了、离开段还开着），随后才关掉“系统空闲”：
+// 收尾只该做该做的事 —— 把离开记账关掉、保持“未暂停”，不重复走一遍恢复，也不把倒计时
+// 忽然推后（`ReanchorCountdown` 在倒计时模式下本来就是幂等的，这里顺带钉住这个前提）。
+func TestIdleWatchSwitchOffAfterManualResumeClosesAwayOnly(t *testing.T) {
+	a, s := newWatchApp(t, shortCountdown)
+	a.idle.ForceIdle(6 * 60_000)
+	if away := a.idleWatchTick(false); !away {
+		t.Fatal("前置：达到阈值应判离开并暂停")
+	}
+	if !a.statsStore().AwayInfo().Open {
+		t.Fatal("前置：离开段应已打开")
+	}
+
+	// 用户点“恢复休息”：空闲这条被忽略，原因牌摘掉，away 仍是 true
+	s.Resume(scheduler.PauseReasonIdle)
+	if st := s.StateCopy(); st.Paused {
+		t.Fatalf("前置：手动恢复后不该还暂停，reasons=%v", st.PauseReasons)
+	}
+	nextAt := s.StateCopy().NextAt
+
+	a.cfg.Raw()["idlePause"] = false
+	if away := a.idleWatchTick(true); away {
+		t.Fatal("关掉开关后应把 away 清掉")
+	}
+	if got := s.StateCopy().NextAt; got != nextAt {
+		t.Fatalf("不该动倒计时锚点：NextAt %d → %d", nextAt, got)
+	}
+	if st := s.StateCopy(); st.Paused {
+		t.Fatalf("关掉开关不该重新挂上暂停：reasons=%v", st.PauseReasons)
+	}
+	if a.statsStore().AwayInfo().Open {
+		t.Fatal("离开段应在关掉开关时收尾")
+	}
+}
+
 // 休息窗口关闭（break-end 的唯一真实调用点 closeBreakWindows）必须清零空闲基准：
 // 否则“刚休息完、还没动鼠标”进入 idle 后，第一次空闲判定会立刻把状态判成离开并暂停。
 func TestIdleResetBaselineOnBreakEnd(t *testing.T) {

@@ -601,6 +601,67 @@ func TestDefaultDisplayIDsEmptyThenFilled(t *testing.T) {
 	}
 }
 
+// 空闲这一条 2026-11-07 从“始终开启”改成可关闭：出厂必须是 true，缺键兜底也是 true，
+// 只有显式 false 才关。分钟数（idlePauseMin）与开关（idlePause）是两个独立的键 ——
+// 关掉开关不该把用户调的分钟数清掉，重新勾上要还是原值。
+func TestIdlePauseSwitch(t *testing.T) {
+	def := DefaultSettingsMap()
+	if v, ok := def["idlePause"].(bool); !ok || !v {
+		t.Fatalf("出厂默认 idlePause 必须是 true，得到 %v", def["idlePause"])
+	}
+	if !New(map[string]any{}, "").IdlePause() {
+		t.Fatal("缺键必须兜底为“开”")
+	}
+	if New(map[string]any{"idlePause": false}, "").IdlePause() {
+		t.Fatal("显式 false 必须关掉")
+	}
+	// 分钟数走 JSON 反序列化后的 float64（ToNumber 不认 Go 的 int，这是全库口径）
+	s := New(map[string]any{"idlePause": false, "idlePauseMin": float64(12)}, "")
+	if s.IdlePause() || s.IdlePauseMin() != 12 {
+		t.Fatalf("开关与分钟数必须互不干扰：pause=%v min=%d", s.IdlePause(), s.IdlePauseMin())
+	}
+}
+
+// 分钟数取值口径：缺键 / 类型不对 / 非数字一律回落到 5，下限夹到 1，小数四舍五入。
+// 上限在后端不设 120（那是输入框的 max，改配置的人自己负责），只挡 int 溢出级的荒唐值。
+func TestIdlePauseMinParsing(t *testing.T) {
+	cases := []struct {
+		name string
+		raw  any
+		want int
+	}{
+		{"缺键回落到 5", nil, 5},
+		{"0 夹到 1", float64(0), 1},
+		{"负数夹到 1", float64(-3), 1},
+		{"1 原样", float64(1), 1},
+		{"小数四舍五入", 2.6, 3},
+		{"120 原样", float64(120), 120},
+		{"字符串不认（回落 5）", "45", 5},
+		{"布尔不认（回落 5）", true, 5},
+		{"NaN 不认（回落 5）", math.NaN(), 5},
+	}
+	for _, c := range cases {
+		m := map[string]any{}
+		if c.raw != nil {
+			m["idlePauseMin"] = c.raw
+		}
+		if got := New(m, "").IdlePauseMin(); got != c.want {
+			t.Fatalf("%s：want %d got %d", c.name, c.want, got)
+		}
+	}
+}
+
+// 开关只认真正的布尔：手改配置写成字符串 "false" 时按“没给”处理（回落 true，与 dndPause
+// 同一口径）。宁可多暂停一次，也不要因为写错类型就把保护悄悄关掉。
+func TestIdlePauseSwitchIgnoresNonBool(t *testing.T) {
+	if !New(map[string]any{"idlePause": "false"}, "").IdlePause() {
+		t.Fatal("字符串 \"false\" 不是布尔，应按缺键回落为“开”")
+	}
+	if !New(map[string]any{"idlePause": float64(0)}, "").IdlePause() {
+		t.Fatal("0 不是布尔，应按缺键回落为“开”")
+	}
+}
+
 // 出厂默认里两条系统状态开关都在，且访问器各自读自己的键（互不相关）。
 func TestSplitPauseAccessors(t *testing.T) {
 	def := DefaultSettingsMap()
