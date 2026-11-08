@@ -503,7 +503,11 @@ const PROBE_SETTINGS = `(function () {
         var kcs = k ? getComputedStyle(k) : null;
         return {
           k: k ? k.textContent : '',
+          // v 的 textContent 是 .sr-only 里的中文读法（“9分56秒”），视觉层是数码管；
+          // led/dg 用来确认这一格真的走了段码，而不是退化成普通文本。
           v: v ? v.textContent : '',
+          led: !!(v && v.querySelector('.led')),
+          dg: v ? v.querySelectorAll('.dg').length : 0,
           kOver: k ? k.scrollWidth - k.clientWidth : 0,
           vOver: v ? v.scrollWidth - v.clientWidth : 0,
           cellOver: c.scrollWidth - c.clientWidth,
@@ -1477,7 +1481,9 @@ async function run() {
     const cells = document.querySelectorAll("#data-status .status-cell");
     const cell = cells[cells.length - 1];
     const k = cell.querySelector(".k"), v = cell.querySelector(".v");
-    window.__wrStress = { k: k.textContent, v: v.textContent };
+    // v 里现在是数码管 + .sr-only 读法：记 innerHTML 才能原样还原，
+    // 记 textContent 会把段码节点冲掉，后续截图里的倒计时会退化成纯文本。
+    window.__wrStress = { k: k.textContent, v: v.innerHTML };
     k.style.fontSize = ""; v.style.fontSize = ""; cell.style.columnGap = "";
     delete cell.dataset.fitDone;
     delete k.dataset.full;
@@ -1500,7 +1506,7 @@ async function run() {
       title: k.getAttribute("title") || "",
     };
     k.textContent = window.__wrStress.k;
-    v.textContent = window.__wrStress.v;
+    v.innerHTML = window.__wrStress.v;
     delete cell.dataset.fitDone;
     return r;
   });

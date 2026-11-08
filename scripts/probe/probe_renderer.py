@@ -566,6 +566,16 @@ def main():
             check((c.get("kH") or 0) <= kfs * 1.9,
                   "侧栏状态格《%s》名称保持单行" % cell_label,
                   "高=%s 字号=%s" % (c.get("kH"), kfs))
+        # 倒计时改用 7 段数码管：至少一格走段码，位数为 4（MM:SS）或 6（H:MM:SS）；
+        # 视觉层 aria-hidden，中文读法留在 .sr-only 里，读屏仍然念得出时间。
+        led_cells = [c for c in cells if c.get("led")]
+        check(bool(led_cells), "侧栏倒计时用 7 段数码管渲染", "%d 个 LED 格" % len(led_cells))
+        if led_cells:
+            check(all(c.get("dg") in (4, 6) for c in led_cells),
+                  "数码管位数 = 4（MM:SS）或 6（H:MM:SS）",
+                  [c.get("dg") for c in led_cells])
+            check(all(("分" in (c.get("v") or "")) or ("秒" in (c.get("v") or "")) for c in led_cells),
+                  "数码管格保留中文读法（.sr-only）", [c.get("v") for c in led_cells][:2])
         # 压力测试：注入 20 字名字后必须缩字号/中间省略，仍然不裁字、不溢出、不换行
         ss = m.get("statusStress") or {}
         if ss:
