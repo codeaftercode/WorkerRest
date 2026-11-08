@@ -147,13 +147,167 @@
   }
   function refreshPauseHints() {
     const text = pauseScopeHint();
-    for (const el of document.querySelectorAll(".pause-scope-help")) el.title = text;
+    for (const el of document.querySelectorAll(".pause-scope-help")) setQTip(el, text);
   }
+
+  // ------------------------------------------------------- “?” 提示（自绘浮层）
+  // 为什么要自绘：原生 title 只能挂在一个元素上 —— 挂在“?”上，左侧文字就触发不了；
+  // 而且是系统画的（延迟约 1 秒、长文案拉成横条、跟主题无关）。
+  // 现在文案存在 data-tip 上，指针落在“?”或它左侧那段文字上都会弹出同一块浮层。
+  // 左侧文字需要先打上 .q-tip-host 才能精确命中：整行算触发会把相邻勾选框也卷进来。
+  let qTipEl = null;
+  let qTipCur = null;        // 当前显示（或即将显示）的那个“?”
+  let qTipShowTimer = 0;
+  let qTipHideTimer = 0;
+
+  // 找到“?”左侧那段可读文字并打标。已经是元素的（如下拉的当前值）直接加 class；
+  // 纯文本节点则包一层 span —— 只包文字本身，flex 的 gap / 行高都不受影响。
+  function qTipHostOf(q) {
+    let node = q.previousSibling;
+    while (node && node.nodeType === 3 && !node.textContent.trim()) node = node.previousSibling;
+    if (!node) return null;
+    if (node.nodeType === 1) {
+      node.classList.add("q-tip-host");
+      return node;
+    }
+    if (node.nodeType !== 3) return null;
+    const span = document.createElement("span");
+    span.className = "q-tip-host";
+    node.parentNode.insertBefore(span, node);
+    span.appendChild(node);
+    return span;
+  }
+
+  // 文案可能变（“暂停休息时”的空闲分钟数、下拉每一项各自的说明），统一走这里。
+  // role=note + aria-label 是给读屏的：去掉 title 之后总得有人把这段话读出来。
+  function setQTip(q, text) {
+    const t = String(text == null ? "" : text).trim();
+    if (t) q.dataset.tip = t; else delete q.dataset.tip;
+    q.removeAttribute("title");   // 只留自绘浮层，否则会冒出两个提示
+    if (t) q.setAttribute("aria-label", t); else q.removeAttribute("aria-label");
+    q.setAttribute("role", "note");
+    if (qTipCur === q && qTipEl) qTipEl.textContent = t;
+  }
+
+  function bindQTip(q) {
+    if (!q || q.dataset.tipBound === "1") return;
+    setQTip(q, q.dataset.tip || q.getAttribute("title") || "");
+    q.dataset.tipBound = "1";
+    qTipHostOf(q);
+  }
+
+  // 从事件目标找回对应的“?”：直接命中，或者命中它左侧那段文字（兄弟关系）
+  function qTipAnchor(target) {
+    if (!target || !target.closest) return null;
+    const mark = target.closest(".q-mark");
+    if (mark) {
+      bindQTip(mark);
+      return mark.dataset.tip ? mark : null;
+    }
+    const host = target.closest(".q-tip-host");
+    if (!host) return null;
+    let n = host.nextElementSibling;
+    while (n && !n.classList.contains("q-mark")) n = n.nextElementSibling;
+    if (!n) return null;
+    bindQTip(n);
+    return n.dataset.tip ? n : null;
+  }
+
+  function qTipPlace(q) {
+    const el = qTipEl;
+    if (!el || !q) return;
+    const r = q.getBoundingClientRect();
+    const w = el.offsetWidth;
+    const h = el.offsetHeight;
+    // 与圆圈居中对齐，但左右夹在视口内 8px：贴着窗口边缘的“?”不能把气泡顶出去
+    const left = Math.max(8, Math.min(r.left + r.width / 2 - w / 2, window.innerWidth - w - 8));
+    let top = r.bottom + 9;
+    if (top + h > window.innerHeight - 8) {
+      // 下方放不下就翻到上方；上方也放不下（窗口极矮）就贴住底边
+      const up = r.top - h - 9;
+      top = up >= 8 ? up : Math.max(8, window.innerHeight - h - 8);
+    }
+    el.style.left = Math.round(left) + "px";
+    el.style.top = Math.round(top) + "px";
+  }
+
+  function qTipShow(q) {
+    clearTimeout(qTipShowTimer);
+    clearTimeout(qTipHideTimer);
+    qTipCur = q;
+    if (!qTipEl) return;
+    const text = q.dataset.tip || "";
+    if (!text) return;
+    qTipEl.textContent = text;
+    qTipEl.classList.remove("hidden");
+    qTipEl.classList.remove("show");
+    // 先离屏量一次宽高再定位：hidden 时 offsetWidth 是 0，直接算会贴到左上角闪一下
+    qTipEl.style.left = "-9999px";
+    qTipEl.style.top = "0px";
+    qTipPlace(q);
+    requestAnimationFrame(() => {
+      if (qTipCur === q) qTipEl.classList.add("show");
+    });
+  }
+
+  function qTipHide(now) {
+    clearTimeout(qTipShowTimer);
+    clearTimeout(qTipHideTimer);
+    qTipCur = null;
+    if (!qTipEl) return;
+    qTipEl.classList.remove("show");
+    // 留 180ms 再真正 display:none：从文字移到“?”的那一瞬间会先 out 再 over，
+    // 淡出期间不清场才不会让气泡闪一下
+    qTipHideTimer = setTimeout(() => {
+      if (!qTipEl.classList.contains("show")) qTipEl.classList.add("hidden");
+    }, now ? 0 : 180);
+  }
+
+  // 悬停 140ms 才弹：鼠标扫过一行时不该闪出一串气泡。已经在显示时直接换内容，
+  // 不再等延迟 —— 否则从相邻的另一个“?”移过来会先空一段。
+  function qTipSchedule(q) {
+    if (qTipCur === q) { clearTimeout(qTipHideTimer); return; }
+    clearTimeout(qTipShowTimer);
+    clearTimeout(qTipHideTimer);
+    const showing = qTipEl && qTipEl.classList.contains("show");
+    if (qTipCur || showing) { qTipShow(q); return; }
+    qTipShowTimer = setTimeout(() => qTipShow(q), 140);
+  }
+
+  function initQTips() {
+    qTipEl = document.getElementById("q-tip");
+    for (const q of document.querySelectorAll(".q-mark")) bindQTip(q);
+    if (!qTipEl) return;
+    document.addEventListener("pointerover", (e) => {
+      const q = qTipAnchor(e.target);
+      if (!q) return;
+      if (e.relatedTarget && q.contains(e.relatedTarget)) return;
+      qTipSchedule(q);
+    });
+    document.addEventListener("pointerout", (e) => {
+      const q = qTipAnchor(e.target);
+      if (!q) return;
+      if (qTipCur !== q) return;
+      // 在“?”与它左侧那段文字之间来回移动不算离开：两者共用同一块浮层，
+      // 真让它收起再弹出，中间那一下会看见气泡闪一下
+      const host = q.previousElementSibling;
+      if (e.relatedTarget && (q.contains(e.relatedTarget) || (host && host.contains(e.relatedTarget)))) return;
+      qTipHide(false);
+    });
+    // 位置一旦变了，气泡就必须收掉：它用的是 fixed 定位，不会跟着祖先滚动
+    document.addEventListener("pointerdown", () => qTipHide(true), true);
+    document.addEventListener("keydown", (e) => { if (e.key === "Escape") qTipHide(true); });
+    window.addEventListener("scroll", () => qTipHide(true), true);
+    window.addEventListener("resize", () => qTipHide(true));
+  }
+
   function mkQMark(cls, title) {
     const q = document.createElement("span");
     q.className = "q-mark " + cls;
     q.textContent = "?";
-    q.title = title;
+    // 文案先存 data-tip，绑定（打标左侧文字）由插入文档后的 bindQTip 负责 ——
+    // 这里还没 parent，取不到左侧文字
+    if (title) q.dataset.tip = title;
     return q;
   }
   // 自绘下拉：“暂停休息时”与“触发方式”共用这一套（外观见 settings.css 的 .cdrop）。
@@ -212,6 +366,9 @@
     }
     root.append(btn, menu);
     host.appendChild(root);
+    // 插入文档之后才能找到“?”左侧的文字（触发器的当前值 / 选项的标签），
+    // 所以绑定放在这里，而不是 mkQMark 里（那时还没有 parent）
+    for (const q of root.querySelectorAll(".q-mark")) bindQTip(q);
 
     let outside = null;
     function focusItem(which) {
@@ -243,7 +400,9 @@
     function render() {
       const opt = items.find((a) => a.value === root.dataset.value) || items[0];
       cur.textContent = opt.label;
-      btn.querySelector(".q-mark").title = opt.hint || "";
+      // 触发器上的“?”跟着当前选项换说明（每项的 hint 不同）
+      const btnQ = btn.querySelector(".q-mark");
+      if (btnQ) setQTip(btnQ, opt.hint);
       // 宿主上也留一份取值：探针 / 外部脚本按 dataset.value 读，代替原生 select 的 .value
       host.dataset.value = opt.value;
       for (const item of menu.children) {
@@ -2665,6 +2824,8 @@
     pauseHost.id = `${cb.id}-pause`;
     pauseRow.append(pauseLabel, pauseHost);
     card.querySelector(":scope > .row.check.has-btn")?.after(pauseRow);
+    // 插进文档之后才能找到“?”左侧的“暂停休息时”并打标
+    bindQTip(pauseLabel.querySelector(".q-mark"));
     mountPauseDrop(pauseHost, cb.config?.pauseAction);
     card.querySelector(".tk-list").innerHTML = "";
     const msgList = card.querySelector(".msg-list");
@@ -6582,6 +6743,9 @@
   async function init() {
     S = await window.api.getSettings();
     applyTheme();
+    // “?” 提示要在任何渲染之前接手：之后动态插入的卡片（自定义提醒、下拉菜单）
+    // 由各自的 bindQTip 补绑
+    initQTips();
     for (const btn of document.querySelectorAll(".nav-item")) {
       btn.addEventListener("click", () => {
         exitAllMsgEditing();

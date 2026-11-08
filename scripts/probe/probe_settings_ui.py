@@ -44,6 +44,9 @@ PROBE_JS = [
     # 放在最后：它逐个操作控件、改配置，会让页面停在“刚改完又改回去”的状态上，
     # 前三个探针都假定初始形态，所以它必须收尾跑。
     os.path.join(HERE, "settings_options_probe.js"),
+    # 最后跑：它只做 hover 与几何测量、不写配置，但会切 tab / 展开下拉，
+    # 放在写配置的 options 之后，前面的探针才都看到初始形态。
+    os.path.join(HERE, "settings_tip_probe.js"),
 ]
 OUT = os.path.join(tempfile.gettempdir(), "wr_settings_ui")
 

@@ -68,7 +68,7 @@
           <div class="row check"><label class="switch-row"><input type="checkbox" id="startMinimized" /> 启动时最小化到托盘</label></div>
         </div>
         <div class="card">
-          <h3>自动暂停<span class="q-mark" title="满足以下任意条件时自动暂停">?</span></h3>
+          <h3>自动暂停<span class="q-mark" data-tip="满足以下任意条件时自动暂停">?</span></h3>
           <!-- 系统空闲：与其他四条系统状态开关同一形态（勾选框 + 名称 + 行内窄数字框），
                文字因此和下面四行落在同一条列上。未勾选时分钟框置灰不可编辑 ——
                “不检测空闲”是整条关掉（不暂停、也不记“离开”），不是只停暂停。 -->
@@ -76,14 +76,14 @@
             <label class="switch-row"><input type="checkbox" id="idlePause" /> 系统空闲</label>
             <input type="number" id="idlePauseMin" min="1" max="120" aria-label="系统空闲阈值（分钟）" />
             <!-- “?”挂在句尾而不是名称后面：这一行在名称后还要接分钟数，插在中间会把句子断开 -->
-            <span class="tail">分钟<span class="q-mark" title="无鼠标动作、无键盘输入持续时间超过设置值时自动暂停">?</span></span>
+            <span class="tail">分钟<span class="q-mark" data-tip="无鼠标动作、无键盘输入持续时间超过设置值时自动暂停">?</span></span>
           </div>
           <!-- 四条系统状态开关并排一行：选项名只留最短的辨识词，判据与边界都写在各自的“?”里 -->
           <div class="row check check-inline">
-            <label class="switch-row"><input type="checkbox" id="dndPause" /> 勿扰/专注<span class="q-mark" title="系统处于“请勿打扰”模式时自动暂停">?</span></label>
-            <label class="switch-row"><input type="checkbox" id="fullscreenPause" /> 全屏/演示<span class="q-mark" title="播放器、浏览器、游戏等真全屏窗口或 Windows 演示设置生效时自动暂停（要求整个屏幕被无边框窗口铺满；最大化不算，它留了边框和任务栏）">?</span></label>
-            <label class="switch-row"><input type="checkbox" id="castWirelessPause" /> 无线投放<span class="q-mark" title="连接到无线显示器时自动暂停">?</span></label>
-            <label class="switch-row"><input type="checkbox" id="castMirrorPause" /> 复制投影<span class="q-mark" title="投影方式为“复制”时自动暂停">?</span></label>
+            <label class="switch-row"><input type="checkbox" id="dndPause" /> 勿扰/专注<span class="q-mark" data-tip="系统处于“请勿打扰”模式时自动暂停">?</span></label>
+            <label class="switch-row"><input type="checkbox" id="fullscreenPause" /> 全屏/演示<span class="q-mark" data-tip="播放器、浏览器、游戏等真全屏窗口或 Windows 演示设置生效时自动暂停（要求整个屏幕被无边框窗口铺满；最大化不算，它留了边框和任务栏）">?</span></label>
+            <label class="switch-row"><input type="checkbox" id="castWirelessPause" /> 无线投放<span class="q-mark" data-tip="连接到无线显示器时自动暂停">?</span></label>
+            <label class="switch-row"><input type="checkbox" id="castMirrorPause" /> 复制投影<span class="q-mark" data-tip="投影方式为“复制”时自动暂停">?</span></label>
           </div>
           <div class="row check">
             <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 运行应用：</label>
@@ -119,7 +119,7 @@
                不勾选=始终用配置里的默认尺寸。默认尺寸与最小尺寸都不在这里改 ——
                那是 layout 常量，用户能改的只有“记不记” -->
           <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="win-remember" /> 自动记录窗口尺寸<span class="q-mark" title="勾选后每次打开设置窗口都沿用上次关闭时的尺寸；取消勾选则始终用默认尺寸">?</span></label>
+            <label class="switch-row"><input type="checkbox" id="win-remember" /> 自动记录窗口尺寸<span class="q-mark" data-tip="勾选后每次打开设置窗口都沿用上次关闭时的尺寸；取消勾选则始终用默认尺寸">?</span></label>
           </div>
         </div>
         <div class="card">
@@ -136,12 +136,12 @@
           <div class="row field"><label for="ap-opacity">透明度</label><div class="slider-row"><input type="range" id="ap-opacity" min="0" max="0.5" step="0.01" /><span class="slider-val" id="ap-opacity-val"></span></div></div>
           <div class="row field"><label for="ap-widthPct">窗口宽度（屏幕百分比）</label><input type="number" id="ap-widthPct" min="20" max="100" /></div>
           <div class="row field"><label for="ap-heightPct">窗口高度（屏幕百分比）</label><input type="number" id="ap-heightPct" min="20" max="100" /></div>
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-fullscreen" /> 全屏显示<span class="q-mark" title="忽略窗口宽度、窗口高度参数">?</span> </label></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-fullscreen" /> 全屏显示<span class="q-mark" data-tip="忽略窗口宽度、窗口高度参数">?</span> </label></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-alwaysOnTop" /> 窗口置顶 </label></div>
           <!-- 共享屏幕时隐藏：给提醒窗口打上“排除出屏幕捕获”（Windows 10 2004+）。
                明说是“提醒窗口”：设置窗口、督休画廊不受影响，自己截图也照样看不见它 -->
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-hideOnShare" /> 共享屏幕时隐藏提醒窗口<span class="q-mark" title="腾讯会议、飞书、钉钉、Zoom、Teams、Google Meet 等共享屏幕时，参会者看不到提醒窗口。副作用：自己截图、录屏也看不到。需要 Windows 10 2004 及以上；更老的系统会变成一块黑色矩形，那种情况建议关掉">?</span></label></div>
-          <div class="row field"><label id="ap-displays-label">在以下屏幕显示<span class="q-mark" title="只在勾选的屏上出现；插拔屏后点“刷新”重新检测">?</span></label><div id="ap-displays"></div></div>
+          <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-hideOnShare" /> 共享屏幕时隐藏提醒窗口<span class="q-mark" data-tip="腾讯会议、飞书、钉钉、Zoom、Teams、Google Meet 等共享屏幕时，参会者看不到提醒窗口。副作用：自己截图、录屏也看不到。需要 Windows 10 2004 及以上；更老的系统会变成一块黑色矩形，那种情况建议关掉">?</span></label></div>
+          <div class="row field"><label id="ap-displays-label">在以下屏幕显示<span class="q-mark" data-tip="只在勾选的屏上出现；插拔屏后点“刷新”重新检测">?</span></label><div id="ap-displays"></div></div>
         </div>
         <div class="card">
           <div class="card-head">
@@ -253,7 +253,7 @@
           <div class="row field"><label for="long-notify">提前通知（秒）</label><input type="number" id="long-notify" min="0" max="300" /></div>
           <div class="row field"><label for="long-postpone">可推迟（分钟）</label><input type="number" id="long-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示“推迟”按钮" /></div>
           <div class="row field" id="longEveryNRow">
-            <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" title="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
+            <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" data-tip="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
             <input type="number" id="longEveryNShort" min="1" max="20" />
           </div>
           <div class="slot-fixed" data-break="long">
@@ -294,7 +294,7 @@
                下拉本体由 settings.js 的 mountPauseDrop 画（原生 select 装不下每一项的“?”）；
                标签上的“?”说明“暂停休息”包括哪几种情况，空闲分钟数由 settings.js 补全 -->
           <div class="row field">
-            <label>暂停休息时<span class="q-mark pause-scope-help" title="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+            <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
             <div class="cdrop-host" id="tk-pause"></div>
           </div>
           <div class="row field"><label for="tk-lead">提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>
@@ -843,6 +843,11 @@
       </div>
     </div>
   </div>
+  <!-- “?” 提示的浮层：单例、挂在 body 末尾。放在 body 而不是就地内联，是因为
+       卡片和面板普遍有 overflow:hidden，浮层画在祖先里会被裁掉；用 position:fixed
+       定位到圆圈下方，就能跳出所有裁剪上下文。 -->
+  <div class="q-tip hidden" id="q-tip" role="tooltip"></div>
+
   <script src="./shim.js"></script>
   <script src="./role_thumb.js"></script>
   <script src="./settings.js"></script>

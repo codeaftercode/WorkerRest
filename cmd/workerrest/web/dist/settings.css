@@ -453,31 +453,90 @@ input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width
    注意不要改成"文字在左、勾选框被 space-between 推到行尾"的写法——那会让框与文字
    分居两端，看起来和这一行没关系；也不必为了与相邻输入框右对齐而牺牲这一点。 */
 .switch-row { display: flex; align-items: center; gap: 8px; color: var(--text) !important; }
-/* 开关行里的“?”：gap 已经隔开了，再叠 .q-mark 自带的 6px 左边距会显得脱开 */
-.switch-row > .q-mark { margin-left: 0; }
+/* 开关行里的“?”：这是 flex 行，vertical-align 不起作用。**不要**用 align-self: baseline
+   —— `.q-mark` 是 inline-flex，它内部的文字是 align-items:center 的匿名 flex 项，按规范
+   容器自身基线只能「用边框盒合成」，也就是把圆圈**下边缘**（而不是“?”的字形基线）贴到
+   文字基线上，圆圈于是整块浮在基线上方 4~5px，看起来像右上角的上标（2026-11-08 实测
+   off=-5.5px）。正解是让 flex 行把它当普通项居中：行盒 19px、汉字只占其中 12px，
+   居中后圆心与汉字字形中心只差 0.5px，这才是肉眼“在一条线上”的位置。
+   margin-left 取 -5px 是为了抵掉行内 8px 的 flex gap，实际视觉间距仍是 3px。 */
+.switch-row > .q-mark { margin-left: -5px; align-self: center; }
 
 .hint { font-size: 12px; color: var(--text-2); line-height: 1.6; }
 /* 说明文字里的外链（开源许可 / 素材声明）：主题色 + 下划线，与 hint 同字号 */
 .hint .ext-link { color: var(--accent); text-decoration: underline; cursor: pointer; }
 .hint .ext-link:hover { filter: brightness(1.1); }
-/* 参数说明问号：行内小圆圈，悬浮显示 title 提示（不占一行，替代原说明段落） */
+/* 参数说明问号：行内小圆圈，悬浮显示说明（不占一行，替代原说明段落）。
+   三条尺寸/对齐是有实测依据的，别随手改：
+   1) 左边距 3px —— 边框本身自带 1px 的视觉空隙，再加 6px 会看着与文字脱开；
+   2) 13px 直径配 14px 正文字号：汉字实际字高约 12px，圆再大就比字还高；
+   3) 垂直基准是「汉字字形中心」而不是行盒中心 —— 行盒 19px、汉字只占其中 12px，
+      要的是圆片中心落在字上，而不是落在行盒中间。
+      inline 上下文靠 vertical-align 抬过去；flex 行里 vertical-align 无效，交给
+      .switch-row / .cdrop-* 的 align-self: center（别写成 baseline，见那条注释）。 */
 .q-mark {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 14px;
-  height: 14px;
-  margin-left: 6px;
+  flex: none;
+  width: 13px;
+  height: 13px;
+  margin-left: 3px;
   border: 1px solid var(--border, var(--text-2));
   border-radius: 50%;
-  font-size: 10px;
+  font-size: 9.5px;
   font-weight: 700;
   line-height: 1;
   color: var(--text-2);
   cursor: help;
   user-select: none;
-  vertical-align: 1px;
+  vertical-align: 1.75px;
+  transition: color 0.12s, border-color 0.12s;
 }
+/* 指向圆圈或它左侧文字时一起变色：否则「文字也能触发提示」这件事没有可见反馈 */
+.q-mark:hover,
+.q-tip-host:hover + .q-mark,
+.q-tip-host:hover > .q-mark {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+/* 浮层：单例、fixed 定位，由 JS 贴到圆圈下方（下方放不下时翻到上方）。
+   它不是卡片里的一块，而是“浮在界面之上”的一层，所以描边比卡片重一档、
+   阴影也更实 —— 与底下的白卡片同色又同边框的话，边界会糊在一起。 */
+.q-tip {
+  position: fixed;
+  z-index: 300;
+  max-width: 320px;
+  padding: 9px 11px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--text) 12%, var(--border));
+  background: var(--panel);
+  box-shadow: 0 10px 26px rgba(0, 0, 0, 0.18);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.65;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.q-tip.show { opacity: 1; transform: translateY(0); }
+.q-tip.hidden { display: none; }
+/* 深色下背景提亮一档：这里 --panel 与卡片同色，不提亮就只能靠边框分辨 */
+[data-theme='dark'] .q-tip {
+  background: color-mix(in srgb, var(--text) 7%, var(--panel));
+  border-color: color-mix(in srgb, var(--text) 16%, var(--border));
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+}
+/* 被说明的那段文字：只是触发区标记，不改变排版 */
+.q-tip-host { cursor: help; }
+/* 但下拉里那段文字本身就在按钮内，整块都该是可点的 pointer —— 别让 help 光标
+   把「这个按钮不能点」的信号发出去 */
+button .q-tip-host,
+.cdrop-btn .q-tip-host,
+.cdrop-item .q-tip-host { cursor: inherit; }
 /* 卡片内的次级小标题（如预览卡里紧挨舞台的"尺寸与位置"） */
 .subhead { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 12px 0 2px; }
 
@@ -1705,9 +1764,15 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .cdrop-btn:hover { border-color: var(--accent); }
 .cdrop.open .cdrop-btn { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-weak); }
-.cdrop-cur { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cdrop-btn > .q-mark { margin-left: 0; flex-shrink: 0; }
-.cdrop-caret { color: var(--text-2); font-size: 10px; line-height: 1; transition: transform 0.15s; }
+/* 当前值文字不能吃掉整行剩余宽度：它一旦 flex:1 撑满，紧跟其后的“?”就被顶到触发器
+   最右端，看着像贴在框子右上角、和文字毫无关系（2026-11-08 用户明确否掉这种排法）。
+   改成「按内容宽、可压缩」，圆圈就紧贴着当前值文字；剩下的横向空间交给箭头用
+   margin-left: auto 吃掉，箭头仍钉在右端。 */
+.cdrop-cur { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 下拉触发器 / 选项也是 flex 行：同 .switch-row，抵掉 6px gap 让圆圈贴紧文字；
+   垂直位置同样走 align-self: center（baseline 会整块浮到基线上方，见 .switch-row 的注释） */
+.cdrop-btn > .q-mark { margin-left: -3px; align-self: center; flex-shrink: 0; }
+.cdrop-caret { margin-left: auto; color: var(--text-2); font-size: 10px; line-height: 1; transition: transform 0.15s; }
 .cdrop.open .cdrop-caret { transform: rotate(180deg); }
 .cdrop-menu {
   position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px);
@@ -1740,7 +1805,11 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   border-radius: 999px; background: currentColor;
 }
 .cdrop-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cdrop-item > .q-mark { margin-left: 0; flex-shrink: 0; }
+/* 只有「文字后面跟着“?”」的选项才把文字收成内容宽 —— 否则 flex:1 会把圆圈推到菜单
+   最右端，看着像单独一个角标（2026-11-08）。多选项没有“?”，它靠 flex:1 把分辨率
+   排在同一列上，所以这里用 :has 精确限定，别改成全局。 */
+.cdrop-item:has(> .q-mark) > .cdrop-label { flex: 0 1 auto; }
+.cdrop-item > .q-mark { margin-left: -3px; align-self: center; flex-shrink: 0; }
 
 /* “显示的屏幕”多选下拉：单选那套用左侧竖条表示选中，多选要能一眼看出“勾了哪几块”，
    所以每项前面换成方框。面板允许比触发器宽 —— “DELL U2719DS · 2560×1440 · 主屏”
@@ -1752,6 +1821,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 型号名与分辨率之间留够间隔：最长的那一项会把面板撑到刚好放下两者，
    6px 时右侧分辨率会贴着型号名，看着像连在一起 */
 .cdrop-multi .cdrop-item { gap: 10px; }
+/* 多选项的 gap 是 10px（型号与分辨率之间要留够），圆圈要单独抵掉多出的 4px */
+.cdrop-multi .cdrop-item > .q-mark { margin-left: -7px; }
 .cdrop-box {
   flex-shrink: 0; width: 13px; height: 13px; box-sizing: border-box;
   border: 1.5px solid var(--border); border-radius: 4px; background: var(--bg);
