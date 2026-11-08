@@ -941,6 +941,93 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 #data-status .status-cell .k { font-size: 12px; color: var(--text-2); margin: 0; white-space: nowrap; min-width: 0; flex: 0 1 auto; overflow: hidden; }
 #data-status .status-cell .v { font-size: 15px; font-weight: 600; margin: 0; text-align: right; white-space: nowrap; flex: 0 0 auto; }
 
+/* 侧栏倒计时：7 段数码管。
+   为什么不用字体：系统里没有可信的段码字体（Windows 的七段字体要另装），缺字时
+   fallback 会退回普通数字，等于白改；这里用 7 个绝对定位的小段拼字，亮灭只由
+   data-d 决定，不依赖任何字形。
+   尺寸按 240px 侧栏算：11×19 的数字位，MM:SS 整块约 78px、H:MM:SS 约 105px，
+   与左侧 12px 标签同一量级，长名字交给 fitStatusCells 缩字号/省略。
+   颜色全部走主题变量，没有写死的亮段/灭段色。 */
+#data-status .status-cell.has-led { align-items: center; }
+#data-status .v-led { display: flex; align-items: center; justify-content: flex-end; line-height: 1; }
+/* 亮段 / 灭段 / 屏面三组值按主题各配一套。这版刻意压住分量：
+   屏面只比卡片深 3%，靠 1px 内描边和顶部内阴影定形 —— 它是一格读数，
+   不是一块要抢视线的仪表；浅色下亮段不加光晕，浅底上发光只会发糊。
+   深色主题屏面压暗、亮段给 2px 微光，够了 —— 再加就只有“炫技”，没有“读得清”。 */
+#data-status {
+  --led-screen: color-mix(in srgb, var(--text) 4%, var(--bg));
+  --led-on: var(--accent);
+  --led-off: color-mix(in srgb, var(--text) 9%, transparent);
+  --led-glow: none;
+  --led-screen-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text) 6%, transparent),
+    inset 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+[data-theme='dark'] #data-status {
+  --led-screen: color-mix(in srgb, #000 22%, var(--bg));
+  /* 深底 + 1.9px 细笔画，亮段必须明显亮于正文（--text-2 #9aa1b5）才读得出来 */
+  --led-on: color-mix(in srgb, var(--accent) 58%, #fff);
+  --led-off: color-mix(in srgb, var(--text) 9%, transparent);
+  --led-glow: 0 0 3px color-mix(in srgb, var(--accent) 60%, transparent);
+  --led-screen-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--text) 7%, transparent),
+    inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+/* 屏面：比卡片深一档的凹槽。1px 内描边 + 顶部内阴影给出厚度；不做外投影
+   —— 外投影会让它浮起来，变成贴纸而不是读数框。 */
+.led {
+  display: inline-flex; align-items: center; gap: 2.5px;
+  padding: 3px 4px; border-radius: 5px;
+  background: var(--led-screen);
+  box-shadow: var(--led-screen-shadow);
+}
+/* 一个数字位：11×19，段厚 1.9（≈ 位宽的 1/6，与真实数码管同比例）。
+   尺寸跟左侧 12px 标签相称：再高就会从“一行读数”变成“一块仪表”，
+   与软件整体的安静调子打架。
+   a 上 / b 右上 / c 右下 / d 下 / e 左下 / f 左上 / g 中。 */
+.dg { position: relative; width: 11px; height: 19px; flex: none; }
+.dg i { position: absolute; background: var(--led-off); }
+/* 段端斜切但不切满 45°：切角取段厚一半的七成（8%/10%），缝隙够看出是“两段”，
+   又不会露出底下的灭段。换圆角会变成“计算器字体”，直角会变成方块。 */
+.dg i:nth-child(1), .dg i:nth-child(4), .dg i:nth-child(7) {
+  left: 1.5px; right: 1.5px; height: 1.9px;
+  clip-path: polygon(0 50%, 8% 0, 92% 0, 100% 50%, 92% 100%, 8% 100%);
+}
+.dg i:nth-child(1) { top: 0; }
+.dg i:nth-child(4) { top: 17.1px; }
+.dg i:nth-child(7) { top: 8.55px; }
+/* 垂直段同一套斜切，只是方向转 90°；上下两段各与中段搭接 0.2px，
+   视觉上仍断开，但不会露出发丝级白缝。 */
+.dg i:nth-child(2), .dg i:nth-child(3), .dg i:nth-child(5), .dg i:nth-child(6) {
+  width: 1.9px; height: 6.85px;
+  clip-path: polygon(50% 0, 100% 10%, 100% 90%, 50% 100%, 0 90%, 0 10%);
+}
+.dg i:nth-child(2) { top: 1.9px; right: 0; }
+.dg i:nth-child(3) { top: 10.25px; right: 0; }
+.dg i:nth-child(5) { top: 10.25px; left: 0; }
+.dg i:nth-child(6) { top: 1.9px; left: 0; }
+/* 点亮：段序 a b c d e f g = nth-child 1..7。一条规则列完 0-9，
+   每秒重绘只改 data-d，段本身不重建。 */
+.dg[data-d='0'] i:is(:nth-child(1), :nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6)),
+.dg[data-d='1'] i:is(:nth-child(2), :nth-child(3)),
+.dg[data-d='2'] i:is(:nth-child(1), :nth-child(2), :nth-child(7), :nth-child(5), :nth-child(4)),
+.dg[data-d='3'] i:is(:nth-child(1), :nth-child(2), :nth-child(7), :nth-child(3), :nth-child(4)),
+.dg[data-d='4'] i:is(:nth-child(6), :nth-child(7), :nth-child(2), :nth-child(3)),
+.dg[data-d='5'] i:is(:nth-child(1), :nth-child(6), :nth-child(7), :nth-child(3), :nth-child(4)),
+.dg[data-d='6'] i:is(:nth-child(1), :nth-child(6), :nth-child(7), :nth-child(5), :nth-child(3), :nth-child(4)),
+.dg[data-d='7'] i:is(:nth-child(1), :nth-child(2), :nth-child(3)),
+.dg[data-d='8'] i:is(:nth-child(1), :nth-child(2), :nth-child(3), :nth-child(4), :nth-child(5), :nth-child(6), :nth-child(7)),
+.dg[data-d='9'] i:is(:nth-child(1), :nth-child(2), :nth-child(3), :nth-child(4), :nth-child(6), :nth-child(7)) {
+  background: var(--led-on);
+  /* 亮段光晕已收进 --led-glow：浅色一层薄光、深色近实远虚两层 */
+  box-shadow: var(--led-glow);
+}
+/* 冒号：两个 2px 的方点（0.8px 圆角）。真实数码屏的冒号是方点不是圆点，
+   圆点在这套斜切的段里显得软；常亮不闪 —— 状态格每秒整段重建，
+   CSS 动画会被一直重置，真要做闪烁得改成增量更新 DOM，为这点效果不值得。 */
+.led-colon { display: inline-flex; flex-direction: column; align-items: center; justify-content: center; gap: 3.6px; width: 5px; height: 19px; flex: none; }
+.led-colon i { width: 2px; height: 2px; border-radius: 0.8px; background: var(--led-on); box-shadow: var(--led-glow); }
+
 /* “今天”卡：上一条满宽的时间堆叠条 + 下面两块（休息动作次数条形 / 久坐时长条形）。
    休息动作的条长只表示各自次数，不做部分-整体（推迟是中间动作，不能与其他项相加）；
    久坐的条长按 45 分钟基准归一，超基准满格标红。 */

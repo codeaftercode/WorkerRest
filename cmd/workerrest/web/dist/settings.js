@@ -3447,6 +3447,32 @@
     if (r > 0) out += `${r}秒`;
     return out;
   }
+  // 侧栏倒计时的 7 段数码管：只画时间，不引入 LED 字体 —— 系统里没有可信的段码字体，
+  // 缺字时 fallback 会变成普通数字，等于白改。这里用 7 个绝对定位的小段拼字：
+  // 段序固定 a b c d e f g，对应 CSS 里的 i:nth-child(1..7)；每个数字只带一个 data-d，
+  // 点亮哪几段由 CSS 属性选择器决定，所以每秒重绘只换属性，没有逐段的 JS 计算。
+  function ledDigits(txt) {
+    return Array.from(txt, (ch) =>
+      ch === ":"
+        ? '<span class="led-colon"><i></i><i></i></span>'
+        : `<span class="dg" data-d="${ch}"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>`
+    ).join("");
+  }
+  // 数码管只显示数字和冒号：不足 1 小时 MM:SS，超过 1 小时 H:MM:SS（秒也保留，
+  // 否则最后一分钟会一直停在同一格）。中文读法放进 .sr-only：读屏软件念
+  // “9 分 56 秒”，不会逐位念“零九冒号五六”；视觉层 aria-hidden，避免重复朗读。
+  function fmtRemainLed(ms) {
+    const total = Math.max(0, Math.ceil(ms / 1e3));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const p2 = (n) => String(n).padStart(2, "0");
+    return h > 0 ? `${h}:${p2(m)}:${p2(s)}` : `${p2(m)}:${p2(s)}`;
+  }
+  function ledHTML(ms) {
+    return `<span class="led" aria-hidden="true">${ledDigits(fmtRemainLed(ms))}</span>` +
+      `<span class="sr-only">${fmtRemain(ms)}</span>`;
+  }
   // 定时暂停的结束时刻（24 小时制）。只用于状态格的悬停提示，不参与判定。
   function fmtClockMs(ms) {
     const d = new Date(ms);
@@ -3569,23 +3595,31 @@
       : "";
     const now = st.paused && !(st.phase === "break" && st.breakWhilePaused) ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
-    const todayOnly = (at) => dayDiffOf(at) > 0 ? "今日已无提醒" : fmtRemain(Math.max(0, at - now));
+    // 一个格子的值有两种形态：{text} 给中文结论（未安排 / 今日已无提醒 / —），
+    // {led} 给剩余毫秒、交给数码管。只有真正的倒计时才走段码 ——「今日已无提醒」
+    // 不是时间，硬画成段码只会得到一串没有意义的笔画。
+    const remainCell = (at) => dayDiffOf(at) > 0
+      ? { text: "今日已无提醒" }
+      : { led: Math.max(0, at - now) };
     // “下次提醒”取外卖/自定义里最近的一次（st.other 已合并两者）；
     // 仅当该最近提醒落在“今天”（at 在当天剩余时间）才显示，否则隐藏整格。
     const otherCell = st.other && dayDiffOf(st.other.at) === 0
-      ? [otherKey(st.other.name), todayOnly(st.other.at)]
+      ? [otherKey(st.other.name), remainCell(st.other.at)]
       : null;
-    const cells = [["状态", phaseVal, pauseTitle]];
+    const cells = [["状态", { text: phaseVal }, pauseTitle]];
     if (st.phase === "break") {
-      cells.push(["正在休息", fmtRemain(Math.max(0, st.breakEndsAt - now))]);
-      if (otherCell) cells.push(["下次提醒", "—"]);
+      cells.push(["正在休息", { led: Math.max(0, st.breakEndsAt - now) }]);
+      if (otherCell) cells.push(["下次提醒", { text: "—" }]);
     } else {
       cells.push(
-        st.rest ? [`下次${st.rest.name}`, todayOnly(st.rest.at)] : ["下次休息提醒", "未安排"]
+        st.rest ? [`下次${st.rest.name}`, remainCell(st.rest.at)] : ["下次休息提醒", { text: "未安排" }]
       );
       if (otherCell) cells.push(otherCell);
     }
-    $("data-status").innerHTML = cells.map(([k, v, t]) => `<div class="status-cell"${t ? ` title="${String(t).replace(/"/g, "&quot;")}"` : ""}><div class="k">${k}</div><div class="v">${v}</div></div>`).join("");
+    $("data-status").innerHTML = cells.map(([k, cell, t]) => {
+      const isLed = cell && cell.led != null;
+      return `<div class="status-cell${isLed ? " has-led" : ""}"${t ? ` title="${String(t).replace(/"/g, "&quot;")}"` : ""}><div class="k">${k}</div><div class="v${isLed ? " v-led" : ""}">${isLed ? ledHTML(cell.led) : (cell.text || "")}</div></div>`;
+    }).join("");
     fitStatusCells();
     updateTakeoutSummary();
     for (const t of allBreakIds()) updateBreakSummary(t);
