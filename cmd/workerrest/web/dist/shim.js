@@ -109,6 +109,12 @@
     listDisplays: function () {
       return call("ListDisplays");
     },
+    // 历史显示器目录：曾经检测到过的屏（含名字与分辨率），面板用它把“接过的、
+    // 现在没接”的屏列在已连接项下面。与 listDisplays 分开是因为前者是“现在有谁”，
+    // 后者是“见过谁”，合并成一个返回值会打破 listDisplays 既有的数组契约。
+    knownDisplays: function () {
+      return call("KnownDisplays");
+    },
     builtinMsgDefaults: function () {
       return call("BuiltinMsgDefaults");
     },

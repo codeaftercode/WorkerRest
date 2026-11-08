@@ -222,9 +222,11 @@ async function main() {
         optsInBox: box ? box.querySelectorAll('[role="option"]').length : -1,
       };
     });
-    check(foot.hasFoot, "多选面板有底部的检测信息 + 刷新行", JSON.stringify(foot));
-    check(foot.note.includes("检测到") && foot.note.includes(String(disp.n)),
-      "底部写明本次检测到几块屏", foot.note);
+    check(foot.hasFoot, "多选面板有底部的刷新行", JSON.stringify(foot));
+    // 已连接的屏就列在上面，再数一遍“检测到 N 块”是噪音；空串或枚举失败时的
+    // “点刷新重新检测”都不含这个口径，两种环境都成立。
+    check(!/检测到\s*\d+\s*个/.test(foot.note),
+      "刷新按钮左边不报“检测到 N 块”", foot.note);
     check(!!foot.label, "刷新按钮有可访问名", String(foot.label));
     check(!foot.inListbox, "刷新按钮不在 listbox 内（否则会被读成一块屏）", String(foot.inListbox));
     check(foot.optsInBox === disp.n, "listbox 里只有显示器选项", `opts=${foot.optsInBox} n=${disp.n}`);
@@ -258,6 +260,33 @@ async function main() {
   if (disp.n > 0) {
     await page.click("#ap-displays .cdrop-btn");
     await delay(150);
+    // 左列名字、右列分辨率：两列各司其职（2026-11-08 用户定的版式）。
+    // 名字列绝不能写成“2560×1440”这种分辨率 —— 那等于把右列的话说第二遍，
+    // 用户还会以为这块屏没有名字。左/右按几何位置判，不按 DOM 顺序判。
+    const cols = await page.evaluate(() => {
+      const host = document.getElementById("ap-displays");
+      return Array.from(host.querySelectorAll('[role="option"]')).map((o) => {
+        const l = o.querySelector(".cdrop-label");
+        const h = o.querySelector(".cdrop-hint");
+        const lr = l && l.getBoundingClientRect();
+        const hr = h && h.getBoundingClientRect();
+        return {
+          label: l ? l.textContent.trim() : "",
+          hint: h ? h.textContent.trim() : "",
+          leftOfHint: !!(lr && hr && lr.right <= hr.left + 1),
+          sameRow: !!(lr && hr && Math.abs((lr.top + lr.bottom) / 2 - (hr.top + hr.bottom) / 2) < 6),
+        };
+      });
+    });
+    const resLike = /^\d+\s*[×x]\s*\d+$/;
+    check(cols.length === disp.opts, "每块屏都渲染了名字列与提示列",
+      `cols=${cols.length} opts=${disp.opts}`);
+    check(cols.every((c) => c.label && !resLike.test(c.label)),
+      "选项左列是显示器名字，不是分辨率", JSON.stringify(cols.map((c) => c.label)));
+    check(cols.every((c) => /^\d+\s*×\s*\d+/.test(c.hint)),
+      "选项右列是分辨率", JSON.stringify(cols.map((c) => c.hint)));
+    check(cols.every((c) => c.leftOfHint && c.sameRow),
+      "名字在分辨率左侧、两者同一行", JSON.stringify(cols.map((c) => [c.leftOfHint, c.sameRow])));
     const beforeRefresh = await page.evaluate(() => ({
       opts: document.querySelectorAll("#ap-displays [role='option']").length,
       val: document.getElementById("ap-displays").dataset.value,
@@ -282,7 +311,7 @@ async function main() {
     check(afterRefresh.open, "刷新后面板仍打开（就地替换选项，不重挂控件）",
       String(afterRefresh.open));
     check(!afterRefresh.busy, "刷新结束后按钮恢复可点", String(afterRefresh.busy));
-    check(afterRefresh.toast.includes("已检测到"), "刷新有可见反馈（提示条）", afterRefresh.toast);
+    check(afterRefresh.toast.includes("检测到"), "刷新有可见反馈（提示条）", afterRefresh.toast);
     await page.keyboard.press("Escape");
     await delay(120);
   }

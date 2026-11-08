@@ -6,11 +6,13 @@ import (
 	"runtime"
 	"runtime/debug"
 	"strings"
+	"time"
 	"workerrest/internal/display"
 	"workerrest/internal/model"
 	"workerrest/internal/plan"
 	"workerrest/internal/role"
 	"workerrest/internal/scheduler"
+	"workerrest/internal/settings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -30,10 +32,48 @@ func (a *App) settingsWindow() application.Window {
 //
 // 主屏排在最前。枚举失败（远程会话、无桌面会话、非 Windows）返回空数组而不是 error：
 // 前端拿到空列表时显示“未检测到显示器”并退回旧行为，不值得为此弹错误框。
+//
+// 顺带把这次枚举结果并进“历史显示器目录”（配置的 displayKnown）：面板要把“曾经
+// 接过、现在没接”的屏也列出来，而那需要一份跨会话记得住的名字与分辨率。只有目录
+// 真的变了才落盘，避免每打开一次设置页就重写一遍配置。
 func (a *App) ListDisplays() []display.Info {
 	list, err := display.List()
 	if err != nil {
 		return []display.Info{}
+	}
+	a.rememberDisplays(list)
+	return list
+}
+
+// rememberDisplays 把枚举结果记进历史目录（调用方已确认 list 非空）。
+func (a *App) rememberDisplays(list []display.Info) {
+	if len(list) == 0 {
+		return
+	}
+	a.mu.Lock()
+	if a.cfg == nil || !a.cfg.RememberDisplays(list, time.Now()) {
+		a.mu.Unlock()
+		return
+	}
+	err := a.cfg.Save()
+	a.mu.Unlock()
+	if err != nil {
+		log.Printf("[display] 历史显示器目录落盘失败: %v", err)
+	}
+}
+
+// KnownDisplays 历史显示器目录：设置页“显示的屏幕”面板用它把“曾经检测到、当前没接”
+// 的屏列在已连接项下面（灰掉、只读、可删除）。枚举失败时仍返回目录本身 —— 正因为
+// 枚举不到，这些“接过的屏”才是用户唯一能看见的线索。
+func (a *App) KnownDisplays() []settings.KnownDisplay {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil {
+		return []settings.KnownDisplay{}
+	}
+	list := a.cfg.DisplayKnown()
+	if list == nil {
+		return []settings.KnownDisplay{}
 	}
 	return list
 }

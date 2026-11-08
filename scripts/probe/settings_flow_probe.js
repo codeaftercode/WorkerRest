@@ -177,7 +177,7 @@ async function main() {
       check(afterRefresh.opts === dispN, "点“刷新”重新枚举后选项数仍 == ListDisplays 的屏数",
         `opts=${afterRefresh.opts} n=${dispN}`);
       check(afterRefresh.open, "刷新后面板不收起（就地替换选项）", String(afterRefresh.open));
-      check(afterRefresh.note.includes(String(dispN)), "刷新后底部说明同步为本次检测结果",
+      check(!/检测到\s*\d+\s*个/.test(afterRefresh.note), "刷新后刷新行左边依旧不报屏数",
         afterRefresh.note);
       check(JSON.stringify((await cfg()).displayIds || []) === refreshBefore,
         "刷新本身不写配置（勾选归用户）", refreshBefore);
@@ -315,24 +315,74 @@ async function main() {
       check(added.opts === dispN + 1, "选项数 +1", `opts=${added.opts} n=${dispN}`);
       check(added.selected === "false", "新接入的屏默认未勾选（插新屏不被自动带上）",
         `aria-selected=${added.selected}`);
-      check(added.note.includes(String(dispN + 1)), "底部说明同步成新的屏数", added.note);
+      check(!/检测到\s*\d+\s*个/.test(added.note), "新屏接上后刷新行左边仍不报屏数", added.note);
       check(JSON.stringify((await cfg()).displayIds || []) === cfgBeforeHotplug,
         "刷新本身不写配置", cfgBeforeHotplug);
 
-      // ② 拔掉一块“配置里勾着”的真屏（配置为空时没有可拔的对象，跳过这一段）
+      // ② 拔掉一块“配置里勾着”的屏（配置为空时没有可拔的对象，跳过这一段）
+      //
+      // 远程桌面 / 无头会话里唯一那块屏的 ID 是会话级的（DEFAULT_MONITOR#… / pos:x,y），
+      // 按规则不进历史目录 —— “拔掉后落到历史栏”在这块屏上根本无从发生。这时改用刷新桩
+      // 造出来的假屏（__fake_display__，非会话级）：先把它补进勾选，再从枚举里拔掉，
+      // 验证的仍是同一条链路（记住过 → 历史栏 → 只读 → 删除）。
+      let hotplugBaseline = cfgBeforeHotplug;
       const cfgIds = JSON.parse(cfgBeforeHotplug);
+      const sessionScoped = (id) => /^pos:/i.test(id) || /^DEFAULT_MONITOR#/i.test(id);
       // “拔屏”的前提是这块屏此刻确实在枚举结果里。隔离配置从别处拷来、或换了接口、
       // 重装驱动后 ID 变了时，勾着的 ID 可能一块都不在当前列表里 —— 按 ID 过滤删不到
       // 任何东西，opts-1 的期望根本不成立。这属于场景不适用，不是断言失败。
       const listedIds = await page.evaluate(async () =>
         (await window.__wrRealListDisplays()).map((d) => d.id));
-      const ticked = cfgIds.find((id) => listedIds.includes(id));
-      if (cfgIds.length === 0) {
-        console.log("  [skip] 配置里没有具体屏 ID（本机只补了空数组），跳过“拔屏保留”断言");
-      } else if (!ticked) {
-        console.log(`  [skip] 配置勾着的 ${cfgIds.length} 块都不在当前枚举里` +
-          `（当前 ${listedIds.join(",") || "无"}），跳过“拔屏保留”断言`);
-      } else {
+      let ticked = cfgIds.find((id) => listedIds.includes(id) && !sessionScoped(id));
+      let expectedOpts = dispN - 1;
+      if (!ticked) {
+        ticked = "__fake_display__";
+        expectedOpts = dispN;
+        await page.evaluate(async (id) => {
+          const s = await window.api.getSettings();
+          if (!(s.displayIds || []).includes(id)) {
+            s.displayIds = (s.displayIds || []).concat([id]);
+          }
+          // 桩只替换前端的枚举结果，不经过 Go 侧的“记住这次枚举”，所以历史目录得手写一条：
+          // 拔掉之后“这条屏以前见过”才有据可依。
+          if (!(s.displayKnown || []).some((k) => k.id === id)) {
+            s.displayKnown = (s.displayKnown || []).concat([{
+              id: id, label: "FAKE 测试屏", width: 1024, height: 768,
+              lastSeen: "2026-11-01T09:00:00+08:00",
+            }]);
+          }
+          await window.api.saveSettings(s);
+        }, ticked);
+        // 面板的勾选基准是打开那一刻的配置快照，改完盘必须重新加载才看得见
+        await page.reload({ waitUntil: "networkidle" });
+        await delay(1600);
+        await page.evaluate(() => { window.__wrRealListDisplays = window.api.listDisplays; });
+        await page.click("#ap-displays .cdrop-btn");
+        await delay(250);
+        hotplugBaseline = JSON.stringify((await cfg()).displayIds || []);
+        console.log("  [桩] 勾着的屏不在枚举里或是会话级虚拟屏，改用假屏验证“拔掉→历史栏”");
+      }
+      {
+      if (ticked === "__fake_display__") {
+        // 先让假屏“接上”：桩返回 真实列表 + 假屏 → 刷新后它是已连接项、勾着、不在历史栏，
+        // 再拔掉才谈得上“落到历史栏”。
+        await page.evaluate(async (f) => {
+          const all = await window.__wrRealListDisplays();
+          window.api.listDisplays = async () => all.concat([f]);
+        }, fake);
+        await page.click("#ap-displays .cdrop-refresh");
+        await waitRefresh();
+        const attached = await page.evaluate((id) => {
+          const opt = document.querySelector(`#ap-displays .cdrop-opts [data-value='${id}']`);
+          return {
+            inOpts: !!opt,
+            sel: opt ? opt.getAttribute("aria-selected") : null,
+            stale: !!document.querySelector(`#ap-displays .cdrop-stale[data-value='${id}']`),
+          };
+        }, ticked);
+        check(attached.inOpts && attached.sel === "true" && !attached.stale,
+          "假屏接上后是已连接项（勾着、不在历史栏）", JSON.stringify(attached));
+      }
       await page.evaluate(async (drop) => {
         const all = await window.__wrRealListDisplays();
         window.api.listDisplays = async () => all.filter((d) => d.id !== drop);
@@ -340,23 +390,38 @@ async function main() {
       await page.click("#ap-displays .cdrop-refresh");
       await waitRefresh();
       const removed = await page.evaluate((drop) => {
+        const row = document.querySelector(`#ap-displays .cdrop-stale[data-value='${drop}']`);
         return {
           opts: document.querySelectorAll("#ap-displays [role='option']").length,
-          gone: !document.querySelector(`#ap-displays [data-value='${drop}']`),
+          inOpts: !!document.querySelector(`#ap-displays .cdrop-opts [data-value='${drop}']`),
+          stale: row
+            ? {
+                role: row.getAttribute("role"),
+                sel: row.getAttribute("aria-selected"),
+                del: !!row.querySelector(".cdrop-del"),
+                name: (row.querySelector(".cdrop-label") || {}).textContent || "",
+              }
+            : null,
           note: (document.querySelector("#ap-displays .cdrop-foot-note") || {}).textContent || "",
         };
       }, ticked);
-      check(removed.gone, "被拔掉的屏从选项里消失", JSON.stringify(removed));
-      check(removed.opts === dispN - 1, "选项数 -1", `opts=${removed.opts} n=${dispN}`);
-      // 只剩一块屏的机器上“拔掉唯一一块”会拔到 0 个选项：此时没有“未接入”可言，
-      // 底部该给的是可重试的“点刷新重新检测”。按剩余数量分支断言，两种机器都成立。
+      check(!removed.inOpts, "被拔掉的屏从“已连接”选项里消失", JSON.stringify(removed));
+      check(removed.opts === expectedOpts, "已连接选项数按桩减少",
+        `opts=${removed.opts} want=${expectedOpts}`);
+      check(!!removed.stale, "被拔掉的屏落到下面的历史栏（不再凭空消失）", JSON.stringify(removed.stale));
+      check(removed.stale && removed.stale.role === "group",
+        "历史行不是可选项（点不动，只能删）", removed.stale && removed.stale.role);
+      check(removed.stale && removed.stale.sel === "true",
+        "配置里勾着的历史屏仍显示勾选", removed.stale && removed.stale.sel);
+      check(removed.stale && removed.stale.del, "历史行右侧有删除按钮");
+      // 只剩一块屏的机器上“拔掉唯一一块”会拔到 0 个选项：此时列表全空，底部该给的是
+      // 可重试的“点刷新重新检测”。还有已连接项时，刷新行左边什么都不写 —— 被拔掉的屏
+      // 由下面的灰色分组承担说明，不再数一遍。按剩余数量分支断言，两种机器都成立。
       check(
-        removed.opts === 0
-          ? removed.note.includes("刷新")
-          : removed.note.includes("未接入"),
+        removed.opts === 0 ? removed.note.includes("刷新") : !/检测到\s*\d+\s*个/.test(removed.note),
         removed.opts === 0
           ? "拔到 0 块时底部提示改为“点刷新重新检测”"
-          : "底部提示“勾选的 N 块未接入”",
+          : "刷新行左边不再报屏数",
         removed.note,
       );
       const cfgAfterRemove = JSON.parse(JSON.stringify((await cfg()).displayIds || []));
@@ -374,15 +439,195 @@ async function main() {
       await waitRefresh();
       const backToReality = await page.evaluate(() => ({
         opts: document.querySelectorAll("#ap-displays [role='option']").length,
-        fake: !!document.querySelector("#ap-displays [data-value='__fake_display__']"),
+        fake: !!document.querySelector("#ap-displays .cdrop-opts [data-value='__fake_display__']"),
+        fakeStale: !!document.querySelector("#ap-displays .cdrop-stale[data-value='__fake_display__']"),
       }));
       check(backToReality.opts === dispN, "换回真实枚举后选项数复原",
         `opts=${backToReality.opts} n=${dispN}`);
-      check(!backToReality.fake, "桩造出来的假屏已消失", String(backToReality.fake));
-      check(JSON.stringify((await cfg()).displayIds || []) === cfgBeforeHotplug,
-        "整轮刷新下来配置一字未改", cfgBeforeHotplug);
+      // 假屏只在前端桩里存在过。走过假屏分支时它被手写进了历史目录（模拟“以前见过”），
+      // 换回真实枚举后应当退回历史栏，而不是从面板上凭空消失；否则整个 `[data-value]`
+      // 都不该命中它。
+      check(!backToReality.fake && (ticked === "__fake_display__"
+          ? backToReality.fakeStale
+          : !backToReality.fakeStale),
+        ticked === "__fake_display__"
+          ? "换回真实枚举后假屏退回历史栏（它确实“以前见过”）"
+          : "桩造出来的假屏已消失",
+        `opt=${backToReality.fake} stale=${backToReality.fakeStale}`);
+      check(JSON.stringify((await cfg()).displayIds || []) === hotplugBaseline,
+        "整轮刷新下来配置一字未改", hotplugBaseline);
       await page.keyboard.press("Escape");
       await delay(120);
+
+      // ---------- 零·二c、历史显示器：排在已连接项后面、置灰只读、可删除 ----------
+      // 真机没法凭空多一块屏，所以往配置里塞一条“幽灵”目录（同时加进勾选，验证
+      // “勾过的那块要显示为已勾选”）。写完必须**重新加载页面**：面板的勾选基准是
+      // 打开页面那一刻的配置快照，绕过它直接改盘，面板当然看不见。
+      console.log("\n[F0·2c] 历史显示器：置灰、只读、可删除");
+      const ghost = {
+        id: "__ghost_display__", label: "GHOST 测试屏", width: 1920, height: 1200,
+        lastSeen: "2026-11-01T10:00:00+08:00",
+      };
+      const idsBeforeGhost = JSON.parse(JSON.stringify((await cfg()).displayIds || []));
+      await page.evaluate(async (g) => {
+        const s = await window.api.getSettings();
+        s.displayKnown = (s.displayKnown || []).concat([g]);
+        s.displayIds = (s.displayIds || []).concat([g.id]);
+        await window.api.saveSettings(s);
+      }, ghost);
+      await page.reload({ waitUntil: "networkidle" });
+      await delay(1600);
+      await page.click("#ap-displays .cdrop-btn");
+      await delay(300);
+      const ghostView = await page.evaluate(() => {
+        const menu = document.querySelector("#ap-displays .cdrop-menu");
+        const row = menu.querySelector(".cdrop-stale[data-value='__ghost_display__']");
+        const opts = [...menu.querySelectorAll(".cdrop-opts [role='option']")];
+        const det = opts[0] ? opts[0].querySelector(".cdrop-label") : null;
+        const order = [...menu.querySelectorAll("[role='option'], .cdrop-stale")]
+          .map((e) => (e.classList.contains("cdrop-stale") ? "stale" : "opt"));
+        const firstStale = order.indexOf("stale");
+        return {
+          exists: !!row,
+          order,
+          orderOk: firstStale > 0 && order.slice(firstStale).every((x) => x === "stale"),
+          role: row && row.getAttribute("role"),
+          sel: row && row.getAttribute("aria-selected"),
+          del: !!(row && row.querySelector(".cdrop-del")),
+          aria: row && row.getAttribute("aria-label"),
+          group: (menu.querySelector(".cdrop-group") || {}).textContent || "",
+          staleColor: row ? getComputedStyle(row.querySelector(".cdrop-label")).color : "",
+          optColor: det ? getComputedStyle(det).color : "",
+          note: document.querySelector("#ap-displays .cdrop-foot-note").textContent,
+        };
+      });
+      check(ghostView.exists, "历史显示器出现在面板里（曾经检测到就算）", JSON.stringify(ghostView.order));
+      check(ghostView.orderOk, "已连接的排在前面、历史的排在后面", ghostView.order.join(","));
+      check(ghostView.group.includes("历史记录"), "历史栏有分组说明文字", ghostView.group);
+      check(ghostView.role === "group", "历史行是 role=group（不是可选项）", ghostView.role);
+      check(ghostView.sel === "true", "勾过的那块历史屏显示为已勾选", ghostView.sel);
+      check(ghostView.del, "历史行右侧给出“删除”按钮");
+      check(ghostView.staleColor !== ghostView.optColor,
+        "历史行文字置灰（与已连接项不同色）", `${ghostView.staleColor} vs ${ghostView.optColor}`);
+      check(/未连接/.test(ghostView.aria || "") && /已勾选/.test(ghostView.aria || ""),
+        "历史行的读屏文案说清“未连接 / 勾没勾”", ghostView.aria);
+      // 枚举不到屏时（远程会话 / 无桌面）底部那句“点刷新重新检测”是兜底，不算文案堆砌
+      check(!/检测到\s*\d+\s*个/.test(ghostView.note),
+        "有历史项时刷新行左边不堆文案", ghostView.note);
+
+      // 复选框只读：点行（不是删除）不改勾选
+      const idsBeforeClick = JSON.stringify((await cfg()).displayIds || []);
+      await page.click("#ap-displays .cdrop-stale[data-value='__ghost_display__'] .cdrop-label");
+      await delay(SAVE_WAIT);
+      check(JSON.stringify((await cfg()).displayIds || []) === idsBeforeClick,
+        "点灰色行不改变勾选（复选框只读）", idsBeforeClick);
+
+      // 删除要先过确认框：取消不动配置，确认才真删
+      const delSel = "#ap-displays .cdrop-stale[data-value='__ghost_display__'] .cdrop-del";
+      await page.locator(delSel).click();
+      await delay(250);
+      const promptShown = await page.evaluate(() => {
+        const box = document.getElementById("confirm-modal");
+        return {
+          open: !box.classList.contains("hidden"),
+          title: (document.getElementById("cf-title") || {}).textContent || "",
+          ok: (document.getElementById("cf-ok") || {}).textContent || "",
+        };
+      });
+      check(promptShown.open, "点“删除”先弹确认框", JSON.stringify(promptShown));
+      check(/删除/.test(promptShown.title + promptShown.ok), "确认框文案说的是“删除”", promptShown.title);
+
+      await page.click("#cf-cancel");
+      await delay(300);
+      const afterCancel = await page.evaluate(() => ({
+        still: !!document.querySelector("#ap-displays .cdrop-stale[data-value='__ghost_display__']"),
+        menuOpen: !document.querySelector("#ap-displays .cdrop-menu").classList.contains("hidden"),
+      }));
+      check(afterCancel.still, "取消后那条历史记录还在");
+      check(afterCancel.menuOpen, "取消后面板没被确认框顶掉", String(afterCancel.menuOpen));
+      check(JSON.stringify((await cfg()).displayIds || []) === idsBeforeClick,
+        "取消不动配置", idsBeforeClick);
+
+      await page.locator(delSel).click();
+      await delay(250);
+      await page.click("#cf-ok");
+      await delay(SAVE_WAIT);
+      const goneView = await page.evaluate(() => ({
+        gone: !document.querySelector("#ap-displays .cdrop-stale[data-value='__ghost_display__']"),
+        open: !document.querySelector("#ap-displays .cdrop-menu").classList.contains("hidden"),
+      }));
+      const cfgAfterGhost = JSON.parse(JSON.stringify(await cfg()));
+      check(goneView.gone, "删除后历史行消失");
+      check(goneView.open, "删除后面板不收起（可以连着删）", String(goneView.open));
+      check(!(cfgAfterGhost.displayKnown || []).some((k) => k.id === "__ghost_display__"),
+        "删除后历史目录里不留它", JSON.stringify((cfgAfterGhost.displayKnown || []).map((k) => k.id)));
+      const idsAfterGhost = cfgAfterGhost.displayIds || [];
+      check(!idsAfterGhost.includes("__ghost_display__"), "删除后勾选里不留它", JSON.stringify(idsAfterGhost));
+      if (idsBeforeGhost.length) {
+        check(idsBeforeGhost.every((id) => idsAfterGhost.includes(id)),
+          "其余真实屏的勾选不受影响", JSON.stringify(idsAfterGhost));
+      }
+      // 面板只往下展开：条目一多（接了屏 + 一串历史屏）就会掉出窗口下沿。
+      // 打开时按剩余高度限高、菜单自己滚，底部“刷新”钉在面板底 —— 否则要滚到底才够得着。
+      const fit = await page.evaluate(() => {
+        const m = document.querySelector("#ap-displays .cdrop-menu");
+        const f = document.querySelector("#ap-displays .cdrop-foot");
+        const mr = m.getBoundingClientRect();
+        const fr = f.getBoundingClientRect();
+        return {
+          maxH: m.style.maxHeight || "",
+          bottom: Math.round(mr.bottom), vh: window.innerHeight,
+          scrollable: m.scrollHeight > m.clientHeight + 1,
+          footInside: fr.bottom <= mr.bottom + 1 && fr.top >= mr.top - 1,
+        };
+      });
+      check(fit.bottom <= fit.vh + 1, "面板不越出窗口下沿", JSON.stringify(fit));
+      check(fit.footInside, "“刷新”钉在面板底部（限高滚动时也够得着）", JSON.stringify(fit));
+      await page.keyboard.press("Escape");
+      await delay(120);
+
+      // ---------- 零·二d、换会话后勾选按“数量”沿用（远程 ↔ 真机） ----------
+      // 真机没法切会话，所以直接模拟“配置里躺着两枚当前枚举不到的 ID”。面板必须按
+      // “勾了几块”把它们映射到当前屏上，而不是只留主屏 —— 否则用户在两块屏上勾的两块，
+      // 切一次会话就静默退化成一块（2026-11-08 用户问的场景）。
+      console.log("\n[F0·2d] 换会话后勾选按数量沿用");
+      const idsBeforeForeign = JSON.parse(JSON.stringify((await cfg()).displayIds || []));
+      const foreign = ["OTHER_SESSION#1", "OTHER_SESSION#2"];
+      await page.evaluate(async (ids) => {
+        const s = await window.api.getSettings();
+        s.displayIds = ids.slice();
+        s.displayKnown = (s.displayKnown || []).concat(
+          ids.filter((id) => !(s.displayKnown || []).some((k) => k.id === id))
+            .map((id) => ({ id: id, label: "OTHER 会话屏", width: 1920, height: 1080,
+                            lastSeen: "2026-10-01T09:00:00+08:00" })));
+        await window.api.saveSettings(s);
+      }, foreign);
+      await page.reload({ waitUntil: "networkidle" });
+      await delay(1600);
+      await page.click("#ap-displays .cdrop-btn");
+      await delay(250);
+      const carried = await page.evaluate(() => {
+        const opts = [...document.querySelectorAll("#ap-displays [role='option']")];
+        const host = document.getElementById("ap-displays");
+        return {
+          opts: opts.length,
+          on: opts.filter((o) => o.getAttribute("aria-selected") === "true").length,
+          value: JSON.parse(host.dataset.value || "[]"),
+        };
+      });
+      const wantOn = Math.min(2, carried.opts);
+      check(carried.on === wantOn, "勾选全失配时按“勾了几块”沿用到当前屏",
+        JSON.stringify(carried) + ` want=${wantOn}`);
+      check(foreign.every((id) => carried.value.includes(id)),
+        "沿用不改写配置（勾选仍是那套快照）", JSON.stringify(carried.value));
+      await page.keyboard.press("Escape");
+      await delay(120);
+      // 恢复，别把“别的会话”留给后面的段落
+      await page.evaluate(async (ids) => {
+        const s = await window.api.getSettings();
+        s.displayIds = ids.slice();
+        await window.api.saveSettings(s);
+      }, idsBeforeForeign);
     }
 
     // ---------- 一、快捷键录入 ----------

@@ -161,6 +161,11 @@ func normalizeLoad(raw map[string]any) (presetSeeded, idsRenumbered, displayFill
 	// ⑥·1 出厂 displayIds 是空的：枚举一次，把主屏 ID 记进配置（首次启动就落盘，
 	// 之后用户看到的是“主屏已勾”；枚举不可用时保持空，运行时兜底主屏）
 	displayFilled = fillPrimaryDisplayID(raw)
+	// ⑥·2 历史显示器目录（“见过就算”的那份）：只做形状收敛，不在这里按业务删条目 ——
+	// 正常条目的删除入口只有设置页面板上的“删除”按钮；唯一例外是会话级虚拟屏
+	// （远程桌面的 DEFAULT_MONITOR / pos:x,y 兜底），它们跨会话永远匹配不上，
+	// 留着就是一条用户删了还会再回来的历史。
+	raw["displayKnown"] = normalizeDisplayKnown(raw["displayKnown"])
 	// ⑦ 设置窗口尺寸（window 块，缺就按出厂默认补一块）
 	normalizeWindow(raw)
 	// ⑧ 提醒内容
@@ -192,6 +197,9 @@ func normalizeForSave(raw map[string]any) {
 	raw["appPause"] = normalizeAppPause(raw)
 	normalizeToggles(raw)
 	normalizeWindow(raw)
+	// 历史显示器目录：保存路径也要过一遍 —— 删除是前端按 ID 过滤后整份回写的，
+	// 这里只是兜住形状（别让半个对象或不存在的 ID 落盘）
+	raw["displayKnown"] = normalizeDisplayKnown(raw["displayKnown"])
 }
 
 // NormalizeForSave 保存 / 导入后要跑的归一化（跨包导出，供 main 的提示音导入复用）。

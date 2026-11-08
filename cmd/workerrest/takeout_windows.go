@@ -38,7 +38,17 @@ func (a *App) targetDisplays() []*application.Screen {
 		// 枚举不可用（远程会话 / 无桌面）：按主屏处理，与 Resolve 的空配置兜底同语义
 		return a.primaryScreen(all)
 	}
-	picked := display.Resolve(ids, infos)
+	// 历史目录只用于“勾选的 ID 全对不上”时的取舍：优先挑见过的真屏，
+	// 别把刚插上的投影算进兜底的 N 块里（见 display.fallbackByCount）。
+	var known []string
+	if cfg := a.CfgSnapshot(); cfg != nil {
+		for _, k := range cfg.DisplayKnown() {
+			if k.ID != "" {
+				known = append(known, k.ID)
+			}
+		}
+	}
+	picked := display.Resolve(ids, infos, known)
 	out := make([]*application.Screen, 0, len(picked))
 	seen := make(map[string]bool, len(picked)) // 按 Wails 的屏 ID 去重，见下
 	var unmatched []string

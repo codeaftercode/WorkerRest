@@ -34,6 +34,7 @@ var wiredCalls = []string{
 	"WindowMaximized",
 	"QuitApp",
 	"ListDisplays",
+	"KnownDisplays",
 
 	// ---- 设置读写 ----
 	"GetSettings",

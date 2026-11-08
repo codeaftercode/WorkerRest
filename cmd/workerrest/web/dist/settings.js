@@ -471,20 +471,60 @@
   // 取值口径与 Go 侧 display.Resolve 严格对齐：**勾选结果是具体 ID 的快照**。
   // 刻意不提供“全部”这种动态语义 —— 让新接入的屏自动进入显示范围，等于用户接上投影仪
   // 的那一刻提醒就弹到投影上，而投影仪恰恰是最不该弹的那块屏。想多屏显示请自己勾，
-  // 插了新屏也请自己回来补勾（面板底部会写出当前检测到几块）。
+  // 插了新屏也请自己回来补勾。
   // 空数组不是“全部”，而是“还没挑过”→ Go 侧兜底主屏，这里也按主屏显示勾选态。
-  var displayDrop = null;   // { get, setValue }
+  var displayDrop = null;   // { get, setValue, forget }
   var displayCache = [];    // 最近一次枚举结果
+  // 历史显示器目录（Go 侧 displayKnown 的当前值）：曾经检测到过的屏，含当时看到的名字
+  // 与分辨率。面板要把“接过、现在没接”的屏列在已连接项下面，靠的就是它 ——
+  // 光凭 displayIds 只有“勾过的”，用户从没勾过的屏在界面上永远没有入口。
+  var displayKnown = [];
 
+  // 目录里减去当前枚举到的 = “曾经检测到、现在没接上”。
+  function staleDisplays() {
+    if (!displayKnown.length) return [];
+    var live = {};
+    displayCache.forEach(function (d) { live[d.id] = 1; });
+    return displayKnown.filter(function (k) { return k && k.id && !live[k.id]; });
+  }
+
+  // 左列名字、右列分辨率 —— 这两列不互相代班（2026-11-08 用户定的版式）。
+  // 名字只可能来自三处：这一拍 OS 报的型号名、历史目录里给同一块屏记过的名字、
+  // Go 补的“显示器 N”占位。**分辨率永远不进名字列**：那等于把一件事说两遍，
+  // 而用户要的是“这是哪块屏 / 它多大”两条互相独立的信息。
+  function resolutionLike(s) { return /^\d+\s*[×x]\s*\d+$/.test(s || ""); }
+  function rememberedName(id) {
+    for (var i = 0; i < displayKnown.length; i++) {
+      var k = displayKnown[i];
+      if (k && k.id === id) return k.label && !resolutionLike(k.label) ? k.label : "";
+    }
+    return "";
+  }
+  // 这一拍拿不到型号名（远程会话 / 驱动抽风 / 虚拟显示驱动）时用历史名字顶上：
+  // 否则同一块屏会在“LG 27UL850”和“显示器 1”之间来回跳，而下面历史记录那一栏
+  // 写的一直是真名，两处对不上会让人以为换了一块屏。
+  function displayName(d) {
+    var label = (d.label || "").trim();
+    if (label && !resolutionLike(label) && !/^显示器\s*\d+$/.test(label)) return label;
+    return rememberedName(d.id) || label || "显示器";
+  }
   function displayItems(list) {
     return list.map(function (d) {
+      var res = d.width + "×" + d.height;
       return {
         value: d.id,
-        label: d.label || "显示器",
-        hint: d.width + "×" + d.height + (d.isPrimary ? " · 主屏" : ""),
+        label: displayName(d),
+        // 右列只有分辨率；主屏挂个标记 —— “哪块是主屏”没别的地方可写
+        hint: d.isPrimary ? res + " · 主屏" : res,
         isPrimary: !!d.isPrimary,
       };
     });
+  }
+  // 历史记录那一栏的名字：老版本把分辨率当名字存进过目录，那批记录现在会让左列和
+  // 右列写同一串数字，统一退回“显示器”—— 分辨率本来就在右边。
+  function staleName(k) {
+    var label = ((k && k.label) || "").trim();
+    return label && !resolutionLike(label) ? label : "显示器";
   }
 
   // 现场枚举一次显示器，返回下拉要的 items。
@@ -498,16 +538,25 @@
   // 但**绝不清空配置**：清空等于把“只显示副屏”悄悄改成“所有屏”。
   async function fetchDisplays() {
     let list = [];
+    let known = [];
     try {
       list = await window.api.listDisplays();
     } catch (err) {
       console.warn("[settings] 枚举显示器失败:", err);
     }
+    // 目录单独取：listDisplays 的返回值是“现在有谁”，契约不能改；而“见过谁”还要
+    // 包含本进程刚记下的（Go 在 ListDisplays 里已经并进目录了），所以紧接着再读一次。
+    try {
+      known = await window.api.knownDisplays();
+    } catch (err) {
+      console.warn("[settings] 读取历史显示器目录失败:", err);
+    }
     displayCache = Array.isArray(list) ? list : [];
+    displayKnown = Array.isArray(known) ? known : [];
     return displayItems(displayCache);
   }
 
-  function mountMultiDrop(host, items, selected, onChange, name, reload) {
+  function mountMultiDrop(host, items, selected, onChange, name, reload, staleList, onForget) {
     if (!host) return null;
     host.classList.add("cdrop-host");
     host.innerHTML = "";
@@ -543,6 +592,13 @@
     var empty = document.createElement("div");
     empty.className = "cdrop-empty hidden";
     empty.textContent = "未检测到显示器";
+    // 曾经检测到、现在没接上的屏：单独一栏，放在已连接项下面。
+    // **不能塞进 optsBox** —— 那里面的 [role=option] 会被键盘导航和 toggle 直接接管，
+    // 按 Enter 就成了“勾选一块根本不存在的屏”。这一栏的复选框只反映配置里的勾选态
+    // （只读），唯一的操作是右边那个“删除”。
+    var staleBox = document.createElement("div");
+    staleBox.className = "cdrop-stale-box hidden";
+    staleBox.setAttribute("role", "group");
     var foot = document.createElement("div");
     foot.className = "cdrop-foot";
     var note = document.createElement("span");
@@ -551,7 +607,7 @@
     refresh.type = "button";
     refresh.className = "cdrop-refresh";
     refresh.setAttribute("aria-label", "重新检测显示器");
-    refresh.title = "重新检测显示器：新接上的屏、拔掉的屏都会在这里更新";
+    refresh.title = "刷新显示器列表";
     var refreshIcon = document.createElement("span");
     refreshIcon.className = "cdrop-refresh-icon";
     refreshIcon.textContent = "↻";
@@ -559,7 +615,7 @@
     refreshLabel.textContent = "刷新";
     refresh.append(refreshIcon, refreshLabel);
     foot.append(note, refresh);
-    menu.append(optsBox, empty, foot);
+    menu.append(optsBox, staleBox, empty, foot);
     root.append(btn, menu);
     host.appendChild(root);
 
@@ -577,27 +633,26 @@
     function value() { return effective(); }
     function labelOf(id) {
       var hit = items.filter(function (i) { return i.value === id; })[0];
-      return hit ? hit.label : "1 块屏幕";
+      return hit ? hit.label : "1 个显示器";
     }
     function isOn(id) { return picked.has(id); }
     function summary() {
       if (allIds.length === 0) return "未检测到显示器";
       if (picked.size === 1) return labelOf(picked.values().next().value);
-      return picked.size + " 块屏幕";
+      return picked.size + " 个显示器";
     }
+    // 刷新按钮左边不报“检测到 N 块”：已连接的屏就列在上面，再数一遍是噪音。
+    // 只有一块都枚举不到时才给一句话 —— 那时列表是空的，不说点什么就只剩一个刷新区。
     function renderNote() {
+      var stale = staleList ? staleList() : [];
       if (allIds.length === 0) {
         note.textContent = "点“刷新”重新检测";
-        note.title = "枚举不到显示器：远程桌面、无桌面会话，或显卡驱动未就绪";
+        note.title = "枚举不到显示器：远程桌面、无桌面会话，或显卡驱动未就绪" +
+          (stale.length ? "；下面灰着的是曾经检测到的 " + stale.length + " 块" : "");
         return;
       }
-      var missing = effective().filter(function (id) { return allIds.indexOf(id) < 0; });
-      note.textContent = "检测到 " + allIds.length + " 块" +
-        (missing.length ? "，勾选的 " + missing.length + " 块未接入" : "");
-      note.title = missing.length
-        ? "已勾选但当前没接上的屏：" + missing.join("、") +
-          "（脚本层面会忽略它，接回来后点一次刷新即可）"
-        : "列表来自最近一次检测。接了新屏或拔了屏，点右边“刷新”";
+      note.textContent = "";
+      note.title = "";
     }
     function render() {
       cur.textContent = summary();
@@ -631,24 +686,135 @@
       item.addEventListener("click", function () { toggle(opt.value); });
       return item;
     }
+
+    // “曾经检测到、现在没接上”的那一栏。
+    //
+    // 三条必须同时成立，否则用户会以为软件在骗他：① 排在已连接项后面、并有一句
+    // 分组说明；② 整行置灰、复选框只反映配置里的勾选态（点不动，勾了就显示勾）；
+    // ③ 右边给“删除”——这是唯一能把一条接不回去的记录清出配置的入口。
+    // 勾选态取 effective()：它包含“配置里勾着但当前枚举不到”的 ID。
+    function renderStale() {
+      var list = (staleList && staleList()) || [];
+      staleBox.innerHTML = "";
+      staleBox.classList.toggle("hidden", list.length === 0);
+      if (!list.length) return;
+      var basis = effective();
+      var sep = document.createElement("div");
+      sep.className = "cdrop-sep";
+      var head = document.createElement("div");
+      head.className = "cdrop-group";
+      head.textContent = "历史记录:";
+      head.title = "曾经连接过，现在检测不到的显示器";
+      head.id = "ap-displays-stale-head";
+      staleBox.setAttribute("aria-labelledby", head.id);
+      staleBox.append(sep, head);
+      list.forEach(function (k) {
+        var row = document.createElement("div");
+        row.className = "cdrop-stale";
+        row.dataset.value = k.id;
+        var on = basis.indexOf(k.id) >= 0;
+        row.setAttribute("aria-selected", on ? "true" : "false");
+        // role=group + aria-label：这行不是可选项（点不动），但读屏得能听到
+        // “这是哪块屏、勾没勾、现在没接上”，否则整行对读屏用户只有两个字“删除”。
+        row.setAttribute("role", "group");
+        // tabindex=-1：点这一行时焦点落到行上，而不是掉到 body —— 否则面板的 focusout
+        // 逻辑会立刻判定“焦点离开”，用户只是想看看这行写了什么，菜单就没了。
+        // 不进 Tab 序（-1），键盘用户只停在行尾的“删除”上。
+        row.tabIndex = -1;
+        row.setAttribute("aria-label",
+          staleName(k) + "，" + (k.width > 0 ? k.width + "×" + k.height + "，" : "") +
+          "当前未连接，" + (on ? "已勾选" : "未勾选"));
+        var box = document.createElement("span");
+        box.className = "cdrop-box";
+        box.setAttribute("aria-hidden", "true");
+        var label = document.createElement("span");
+        label.className = "cdrop-label";
+        label.textContent = staleName(k);
+        var hint = document.createElement("span");
+        hint.className = "cdrop-hint";
+        hint.textContent = k.width > 0 ? k.width + "×" + k.height : "未连接";
+        var del = document.createElement("button");
+        del.type = "button";
+        del.className = "cdrop-del";
+        del.textContent = "删除";
+        del.title = "";
+        del.setAttribute("aria-label", "删除显示器：" + staleName(k));
+        del.addEventListener("click", function (e) {
+          e.stopPropagation();
+          if (!onForget) return;
+          var idx = Array.prototype.slice.call(staleBox.querySelectorAll(".cdrop-stale")).indexOf(row);
+          // 确认框会把焦点抢到它自己的按钮上，面板的 focusout 逻辑立刻判定“焦点离开”
+          // 并把菜单收掉 —— 用户点“取消”回来发现面板已经没了。这里加锁挡住。
+          hold++;
+          void confirmDialog({
+            title: "删除「" + staleName(k) + "」？",
+            desc: "从历史记录中删除该显示器。",
+            detail: "以后重新接上这块屏，仍可作为新显示器重新出现。",
+            okText: "删除",
+          }).then(function (ok) {
+            hold--;
+            if (!ok) {
+              if (document.body.contains(del)) del.focus();
+              return;
+            }
+            onForget(k.id);
+            // 重绘会把被点的按钮整条移出文档，焦点掉到 body，面板的 focusout 逻辑随即
+            // 判定“焦点离开”并把菜单关掉。这里把焦点接到下一行的“删除”上：连删几条不必重开面板。
+            var rest = staleBox.querySelectorAll(".cdrop-del");
+            if (rest.length) rest[Math.min(idx, rest.length - 1)].focus();
+            else if (refresh) refresh.focus();
+          });
+        });
+        row.append(box, label, hint, del);
+        row.addEventListener("click", function (e) {
+          if (e.target.closest(".cdrop-del")) return;
+          toast("不能选择未连接的显示器！");
+        });
+        staleBox.append(row);
+      });
+    }
+
     function renderOptions() {
       optsBox.innerHTML = "";
       for (var n = 0; n < items.length; n++) optsBox.appendChild(buildOption(items[n]));
       empty.classList.toggle("hidden", items.length > 0);
+      renderStale();
       render();
+      // 刷新会增减条目（新接上的屏 / 拔掉的屏进历史栏），高度跟着变，得重新量
+      fitMenu();
     }
 
-    // 按当前 items 重算勾选：认不得的 ID（换过接口 / 屏被拔了）直接忽略，一块都不剩时兜底主屏
-    // —— 与 Go 的 Resolve 同口径（空 / 全失配 = 主屏，绝不是“所有屏”）。
+    // 按当前 items 重算勾选：认不得的 ID（换过接口 / 换过会话 / 屏被拔了）直接忽略；
+    // 一块都不剩时按“勾了几块”沿用（与 Go 的 display.fallbackByCount 同口径）。
+    // 空配置仍然只兜底主屏 —— 绝不是“所有屏”。
     function syncSelection() {
       var basis = effective();
       var next = new Set();
       for (var k = 0; k < basis.length; k++) {
         if (allIds.indexOf(basis[k]) >= 0) next.add(basis[k]);
       }
-      if (next.size === 0) {
-        var pd = items.filter(function (i) { return i.isPrimary; })[0] || items[0];
-        if (pd) next.add(pd.value);
+      if (next.size === 0 && items.length) {
+        if (basis.length === 0) {
+          // 空配置 = 只主屏（绝不是“所有屏”）：接投影时不该自动带上
+          var pd = items.filter(function (i) { return i.isPrimary; })[0] || items[0];
+          if (pd) next.add(pd.value);
+        } else {
+          // ID 一个都对不上（换了远程会话 / 换了接法）→ 按“勾了几块”沿用，
+          // 与 Go 的 display.Resolve / fallbackByCount 同口径。只留主屏的话，
+          // 用户勾的两块会静默退化成一块，每次换会话都得重勾。
+          var n = Math.min(basis.length, items.length);
+          var known = {};
+          (displayKnown || []).forEach(function (k) { if (k && k.id) known[k.id] = 1; });
+          // 见过的优先（真屏），不够再按位置补 —— 别把刚插上的投影算进来
+          for (var pass = 0; pass < 2 && next.size < n; pass++) {
+            for (var j = 0; j < items.length && next.size < n; j++) {
+              var id = items[j].value;
+              if (next.has(id)) continue;
+              if (pass === 0 && !known[id]) continue;
+              next.add(id);
+            }
+          }
+        }
       }
       picked = next;
     }
@@ -656,7 +822,7 @@
       if (picked.has(id)) {
         if (picked.size === 1) {
           // 全不勾 = 提醒窗口一块屏都不弹，用户只会以为软件坏了
-          toast("至少要保留一块屏幕。想彻底不弹提醒，请去关上面的提醒开关");
+          toast("至少要选择1个显示器！");
           return;
         }
         picked.delete(id);
@@ -690,7 +856,7 @@
       var tail = [];
       if (added) tail.push("新增 " + added + " 块");
       if (removed) tail.push("移除 " + removed + " 块");
-      return "已检测到 " + allIds.length + " 块屏幕" +
+      return "检测到 " + allIds.length + " 个显示器" +
         (tail.length ? "（" + tail.join("，") + "）" : "");
     }
     async function doRefresh() {
@@ -719,11 +885,25 @@
     refresh.addEventListener("click", function () { void doRefresh(); });
 
     var outside = null;
+    // >0 = 有东西临时接管了焦点（删除确认框），这段时间不许因 focusout 收起面板，
+    // 否则用户一点“删除”菜单就没了，“取消”回来还得重开。
+    var hold = 0;
+    // 菜单只往下展开：历史分组一多，底部（连同“刷新”）就掉到窗口外面。纯 CSS 没有
+    // “下面还剩多少”的概念，所以打开时量一次，放不下就限高让菜单自己滚。
+    function fitMenu() {
+      if (menu.classList.contains("hidden")) return;
+      menu.style.maxHeight = "";
+      var r = menu.getBoundingClientRect();
+      var room = window.innerHeight - r.top - 8;
+      if (room > 0 && r.height > room) menu.style.maxHeight = Math.floor(room) + "px";
+    }
     function open() {
       root.classList.add("open");
       menu.classList.remove("hidden");
       btn.setAttribute("aria-expanded", "true");
-      outside = function (e) { if (!root.contains(e.target)) close(); };
+      fitMenu();
+      // 确认框里的按钮也不在 root 里，点它同样会命中“点外面”这条 —— hold 期间一并放行
+      outside = function (e) { if (hold > 0) return; if (!root.contains(e.target)) close(); };
       document.addEventListener("pointerdown", outside, true);
       var first = optEls()[0] || refresh;
       if (first) first.focus();
@@ -766,8 +946,8 @@
         var tail = optEls().pop();
         if (tail) { e.preventDefault(); tail.focus(); }
       } else if (e.key === "Enter" || e.key === " ") {
-        // “刷新”是普通按钮，交给它自己处理：这里 preventDefault 会把键盘激活一起吞掉
-        if (act === refresh) return;
+        // “刷新”“删除”是普通按钮，交给它自己处理：这里 preventDefault 会把键盘激活一起吞掉
+        if (act === refresh || (act && act.classList && act.classList.contains("cdrop-del"))) return;
         // 多选不关菜单：勾完一块接着勾下一块是常态
         e.preventDefault();
         if (act && act.dataset && act.dataset.value != null) toggle(act.dataset.value);
@@ -781,6 +961,7 @@
     // 这样 Tab 也能走到“刷新”上，真正退出面板时才关。
     root.addEventListener("focusout", function () {
       setTimeout(function () {
+        if (hold > 0) return;
         if (root.contains(document.activeElement)) return;
         close();
       }, 0);
@@ -789,6 +970,20 @@
     var api = {
       get: value,
       setValue: function (v) { original = (v || []).slice(); touched = false; syncSelection(); renderOptions(); },
+      // 删掉一条历史记录：勾选与配置基准一起摘掉，再按“至少留一块”的口径重算。
+      // touched 归零，让 effective() 回到 original 口径 —— 否则它会从旧的 original
+      // 里把刚删掉的 ID 当“未接入”的屏又补回来。
+      forget: function (id) {
+        picked.delete(id);
+        original = original.filter(function (x) { return x !== id; });
+        touched = false;
+        syncSelection();
+        // 原来只勾了这块、删完就空了：syncSelection 已经兜底勾上主屏，但 value() 在
+        // touched=false 时读的是 original，得把兜底结果显式写回 —— 否则落盘是空数组，
+        // 界面上却显示主屏勾着，两边对不上（空数组在 Go 侧也等于“还没挑过”）。
+        if (original.length === 0 && picked.size) original = Array.from(picked);
+        renderOptions();
+      },
     };
     syncSelection();
     renderOptions();
@@ -803,7 +998,21 @@
     const items = await fetchDisplays();
     // 勾一下就落盘（同卡片里其它控件的 autoSave 节奏）；多选不关菜单，连勾几块会存几次，
     // 每次都是整份配置，开销可以忽略
-    displayDrop = mountMultiDrop(host, items, S.displayIds || [], function () { void autoSave(); }, "显示的屏幕", fetchDisplays);
+    displayDrop = mountMultiDrop(host, items, S.displayIds || [], function () { void autoSave(); },
+      "显示的屏幕", fetchDisplays, staleDisplays, forgetDisplay);
+  }
+
+  // 删掉一条“曾经检测到、现在没接上”的记录：目录里去掉、勾选里去掉，整份配置落盘。
+  // 现实里接不回来的屏（换了接口 ID 变了、屏已经搬走了）只能靠这个入口清掉，
+  // 否则它会永远占着“未连接”那一栏。
+  function forgetDisplay(id) {
+    displayKnown = displayKnown.filter(function (k) { return k && k.id !== id; });
+    S.displayKnown = displayKnown.slice();
+    S.displayIds = (S.displayIds || []).filter(function (x) { return x !== id; });
+    // 先同步下拉内部状态：autoSave 里的 collectForm 会把 displayDrop.get() 写回 S.displayIds
+    if (displayDrop) displayDrop.forget(id);
+    void autoSave();
+    toast("已删除");
   }
 
   // “暂停休息时”：选中即存盘（原生 select 的 change 原来由 bindAutoSaveEl 兜着）。

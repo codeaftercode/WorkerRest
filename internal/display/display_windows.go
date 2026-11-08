@@ -4,6 +4,7 @@ package display
 
 import (
 	"strconv"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -14,6 +15,7 @@ var (
 	procGetDisplayConfigBufferSizes = modUser32.NewProc("GetDisplayConfigBufferSizes")
 	procQueryDisplayConfig          = modUser32.NewProc("QueryDisplayConfig")
 	procDisplayConfigGetDeviceInfo  = modUser32.NewProc("DisplayConfigGetDeviceInfo")
+	procEnumDisplayDevicesW         = modUser32.NewProc("EnumDisplayDevicesW")
 )
 
 const (
@@ -121,6 +123,78 @@ func utf16z(b []uint16) string {
 	return syscall.UTF16ToString(b[:n])
 }
 
+// ---- GDI 兜底取名字（EDID 没喂 friendlyName 时用）----
+
+// DISPLAY_DEVICEW：cb + DeviceName[32] + DeviceString[128] + StateFlags + DeviceID[128] + DeviceKey[128]
+type displayDevice struct {
+	cb           uint32
+	deviceName   [32]uint16
+	deviceString [128]uint16
+	stateFlags   uint32
+	deviceID     [128]uint16
+	deviceKey    [128]uint16
+}
+
+const (
+	// eddGetDeviceInterfaceName 让 DeviceID 返回设备接口路径（\\?\DISPLAY#…#{GUID}），
+	// 与 DisplayConfig 的 monitorDevicePath 同一种形式，才能直接对上。
+	eddGetDeviceInterfaceName = 0x00000001
+	// displayDeviceActive 置位 = 这块设备当前在用；拔掉的屏还会被枚举出来，要滤掉。
+	displayDeviceActive = 0x00000001
+)
+
+// genericMonitorName 判断一个名字是不是 Windows 的通用占位名 —— 这类名字没法区分
+// 是哪块屏（远程会话 / 虚拟显示驱动 / 驱动没喂 EDID 时全是它），不如不要。
+func genericMonitorName(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(name)) {
+	case "", "default monitor", "generic pnp monitor", "generic non-pnp monitor",
+		"默认监视器", "通用即插即用监视器", "通用的非即插即用监视器",
+		"default_monitor":
+		return true
+	}
+	return false
+}
+
+// monitorNamesViaGDI 用 GDI 的 EnumDisplayDevices 取“屏幕分辨率对话框里显示的那个名字”。
+//
+// 为什么需要：DisplayConfig 的 monitorFriendlyDeviceName 来自 EDID，个别输出（虚拟显示
+// 驱动、转接头、远程会话）拿回来就是空串，ui 上只能退化成“显示器 N”，用户没法凭它认出
+// 是哪块屏。GDI 那一路走的是驱动上报的 DeviceString，能覆盖到一部分 EDID 缺失的场景。
+//
+// 返回的键是**大写**的设备接口路径；调用方拿 DisplayConfig 的路径 toUpper 后查。
+func monitorNamesViaGDI() map[string]string {
+	out := make(map[string]string, 4)
+	var adapter, monitor displayDevice
+	adapter.cb = uint32(unsafe.Sizeof(adapter))
+	for i := uint32(0); ; i++ {
+		adapter.cb = uint32(unsafe.Sizeof(adapter))
+		if r, _, _ := procEnumDisplayDevicesW.Call(
+			0, uintptr(i), uintptr(unsafe.Pointer(&adapter)), 0,
+		); r == 0 {
+			break
+		}
+		for j := uint32(0); ; j++ {
+			monitor.cb = uint32(unsafe.Sizeof(monitor))
+			if r, _, _ := procEnumDisplayDevicesW.Call(
+				uintptr(unsafe.Pointer(&adapter.deviceName[0])), uintptr(j),
+				uintptr(unsafe.Pointer(&monitor)), eddGetDeviceInterfaceName,
+			); r == 0 {
+				break
+			}
+			if monitor.stateFlags&displayDeviceActive == 0 {
+				continue
+			}
+			id := utf16z(monitor.deviceID[:])
+			name := utf16z(monitor.deviceString[:])
+			if id == "" || genericMonitorName(name) {
+				continue
+			}
+			out[strings.ToUpper(id)] = strings.TrimSpace(name)
+		}
+	}
+	return out
+}
+
 // queryRaw 取所有活动显示路径及其模式表。ok=false 表示两种 flags 组合都失败。
 func queryRaw() ([]displayPathInfo, []displayModeInfo, bool) {
 	for _, flags := range []uint32{qdcOnlyActivePaths | qdcVirtualModeAware, qdcOnlyActivePaths} {
@@ -185,6 +259,14 @@ func List() ([]Info, error) {
 	}
 	out := make([]Info, 0, len(paths))
 	seenRect := make(map[[4]int]bool, len(paths))
+	// GDI 补名表按需才建（只有真要补名时才枚举一遍所有显示设备）
+	var gdiNames map[string]string
+	needGDI := func() map[string]string {
+		if gdiNames == nil {
+			gdiNames = monitorNamesViaGDI()
+		}
+		return gdiNames
+	}
 	for _, p := range paths {
 		if p.flags&displayConfigPathActive == 0 {
 			continue
@@ -213,6 +295,19 @@ func List() ([]Info, error) {
 			// 这种标识换布局就会变，但总比“没有 ID 可以存”好。
 			id = "pos:" + itoa(rect[0]) + "," + itoa(rect[1])
 			name = ""
+		}
+		// 名字三级链路：EDID（DisplayConfig 的 friendly name）→ 注册表里的 EDID 名称
+		// 描述符 → GDI 设备名。三处都拿不到才留空，交给 sortInfos 补“显示器 N”占位。
+		// **绝不能用分辨率冒充名字**：列表左列是名字、右列是分辨率，把分辨率塞进左列
+		// 等于同一件事说两遍（2026-11-08 用户定的版式）。
+		if genericMonitorName(name) {
+			name = ""
+		}
+		if name == "" && path != "" {
+			name = edidMonitorName(path)
+		}
+		if name == "" && path != "" {
+			name = needGDI()[strings.ToUpper(path)]
 		}
 		seenRect[rect] = true
 		out = append(out, Info{

@@ -109,3 +109,42 @@ func TestListRealDisplays(t *testing.T) {
 			map[bool]string{true: " · 主屏"}[d.IsPrimary])
 	}
 }
+
+// DISPLAY_DEVICEW 也必须是 840 字节，否则 EnumDisplayDevices 拿回来的字段全是错位的。
+func TestDisplayDeviceLayout(t *testing.T) {
+	if got := unsafe.Sizeof(displayDevice{}); got != 840 {
+		t.Fatalf("DISPLAY_DEVICEW 应为 840 字节，得到 %d", got)
+	}
+}
+
+// 通用占位名不能当显示器名字用：远程会话 / 虚拟显示驱动下所有屏都会叫这个名字。
+func TestGenericMonitorName(t *testing.T) {
+	generic := []string{
+		"", "  ", "Default Monitor", "Generic PnP Monitor",
+		"Generic Non-PnP Monitor", "默认监视器", "通用即插即用监视器", "Default_Monitor",
+	}
+	for _, s := range generic {
+		if !genericMonitorName(s) {
+			t.Fatalf("%q 应判为通用占位名", s)
+		}
+	}
+	real := []string{"DELL U2720Q", "LG 27UL850", "SAMSUNG S27R650", "AOC Q27G2S/D"}
+	for _, s := range real {
+		if genericMonitorName(s) {
+			t.Fatalf("%q 是真实型号名，不该被过滤", s)
+		}
+	}
+}
+
+// 型号名拿不到时补的是“显示器 N”占位名，**不能**是分辨率 —— 分辨率在面板右列单独显示。
+func TestListNeverUsesResolutionAsName(t *testing.T) {
+	list, err := List()
+	if err != nil {
+		t.Skipf("本机枚举不可用：%v", err)
+	}
+	for _, d := range list {
+		if want := itoa(d.Width) + "×" + itoa(d.Height); d.Label == want {
+			t.Fatalf("名字不能用分辨率冒充（左列名字 / 右列分辨率），得到 %+v", d)
+		}
+	}
+}

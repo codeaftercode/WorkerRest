@@ -1781,6 +1781,10 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   border-radius: 8px;
   box-shadow: 0 10px 26px rgba(0, 0, 0, 0.22);
   padding: 4px;
+  /* 面板只会往下展开，条目一多（比如下面还有一串“曾检测到”的屏）就会掉到窗口外。
+     打开时由 JS 量剩余高度写 max-height，这里只负责让超出的部分能滚而不是被切掉。 */
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .cdrop-menu.hidden { display: none; }
 /* 选项文字左缘必须与同列其它控件（原生 <select> / 输入框 / 本控件按钮）的内容左缘对齐：
@@ -1835,15 +1839,58 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   transform: rotate(-45deg);
 }
 .cdrop-hint { flex-shrink: 0; color: var(--text-2); font-size: 11.5px; }
+
+/* ---------- “曾经检测到，当前未连接”那一栏 ---------- */
+/* 分隔线 + 分组说明 + 置灰行。置灰走 --text-2 系而不是整体 opacity：深色下 opacity 会把
+   行连同勾选框一起糊掉，看不出“勾着还是没勾”。勾选框只反映配置里的勾选态（点不动），
+   唯一的操作是行尾那个“删除”。 */
+.cdrop-sep { height: 1px; margin: 5px 6px; background: var(--border); }
+.cdrop-group { padding: 1px 6px 4px; font-size: 11px; color: var(--text-2); }
+/* 接过很多块屏的机器上别把菜单撑到窗口外：这一栏自己滚，已连接项始终在上方 */
+.cdrop-stale-box { max-height: 168px; overflow-y: auto; }
+.cdrop-stale {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 6px; border-radius: 6px;
+  color: var(--text-2); font-size: 13px; cursor: default;
+}
+.cdrop-stale .cdrop-label { flex: 1; color: var(--text-2); }
+.cdrop-stale .cdrop-box {
+  border-color: color-mix(in srgb, var(--text-2) 40%, var(--border));
+  background: transparent;
+  cursor: default;
+}
+.cdrop-stale[aria-selected='true'] .cdrop-box {
+  border-color: color-mix(in srgb, var(--text-2) 55%, var(--border));
+  background: color-mix(in srgb, var(--text-2) 55%, var(--panel));
+}
+.cdrop-stale[aria-selected='true'] .cdrop-box::after {
+  content: ''; position: absolute; left: 2px; top: 3px; width: 6px; height: 3px;
+  border-left: 1.8px solid var(--panel); border-bottom: 1.8px solid var(--panel);
+  transform: rotate(-45deg);
+}
+.cdrop-del {
+  flex: none; height: 22px; padding: 0 8px; border-radius: 6px;
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, var(--border));
+  background: transparent; color: var(--danger);
+  font-family: inherit; font-size: 12px; line-height: 1; cursor: pointer;
+  transition: background 0.12s, border-color 0.12s;
+}
+.cdrop-del:hover { background: var(--danger-weak); border-color: var(--danger); }
+.cdrop-del:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .cdrop-btn[disabled] { opacity: 0.6; cursor: not-allowed; }
 
-/* 多选面板底部的“检测到 N 块 + 刷新”条：显示器是热插拔的，选项来自一次枚举快照，
-   没有这个按钮就只能重启软件才能看到新接上的屏。左侧说明用省略号收住（面板最宽 340px），
-   完整口径放在 title 里；按钮固定在右侧不参与收缩。 */
+/* 多选面板底部的“刷新”条：显示器是热插拔的，选项来自一次枚举快照，
+   没有这个按钮就只能重启软件才能看到新接上的屏。按钮固定在右侧不参与收缩。
+   面板限高后选项区会滚，底部这条跟着滚走就白给了（要滚到底才能刷新），
+   所以钉在底部：sticky + 实底背景挡住从下面滚过去的历史行，不留接缝。
+   z-index 高于选项行，否则行的 hover 底色会盖在它上面。 */
 .cdrop-foot {
+  position: sticky; bottom: 0; z-index: 1;
   display: flex; align-items: center; gap: 8px;
   margin-top: 4px; padding: 6px 6px 2px;
   border-top: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: 0 -4px 0 var(--panel);
 }
 .cdrop-foot-note {
   flex: 1; min-width: 0;

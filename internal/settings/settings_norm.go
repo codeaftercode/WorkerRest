@@ -333,6 +333,60 @@ func normalizeDisplayIDs(v any) []any {
 	return out
 }
 
+// normalizeDisplayKnown 历史显示器目录（“见过就算”的那份，与勾选无关）。
+// 只留 {id,label,width,height,lastSeen}：id 必须非空字符串、同 ID 后写的覆盖先写的；
+// 名字截断到 64 字（EDID 里可能是某些驱动的乱码长串）；宽高只认正数，坏值退化成 0
+// （面板上就不显示“0×0”，退化成只显示名字）。
+func normalizeDisplayKnown(v any) []any {
+	arr, ok := v.([]any)
+	if !ok {
+		return []any{}
+	}
+	out := make([]any, 0, len(arr))
+	idx := make(map[string]int, len(arr))
+	for _, it := range arr {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		id := strings.TrimSpace(mapStr(m, "id", ""))
+		// 会话级虚拟屏（远程桌面的 DEFAULT_MONITOR、无路径兜底的 pos:x,y）不进目录。
+		// 这里也过滤一次，是为了把老版本已经写进配置的这类记录顺手清掉：
+		// 它们对应的屏在本地会话里永远“没接上”，留着只会是一条删不完的历史。
+		if id == "" || display.IsSessionScopedID(id) {
+			continue
+		}
+		label := strings.TrimSpace(mapStr(m, "label", ""))
+		if r := []rune(label); len(r) > 64 {
+			label = string(r[:64])
+		}
+		seenAt := strings.TrimSpace(mapStr(m, "lastSeen", ""))
+		if r := []rune(seenAt); len(r) > 40 {
+			seenAt = ""
+		}
+		entry := map[string]any{
+			"id":       id,
+			"label":    label,
+			"width":    float64(0),
+			"height":   float64(0),
+			"lastSeen": seenAt,
+		}
+		if n, ok := jsonx.ToNumber(m["width"]); ok && n > 0 {
+			entry["width"] = math.Round(n)
+		}
+		if n, ok := jsonx.ToNumber(m["height"]); ok && n > 0 {
+			entry["height"] = math.Round(n)
+		}
+		if at, dup := idx[id]; dup {
+			out[at] = entry
+			continue
+		}
+		idx[id] = len(out)
+		out = append(out, entry)
+	}
+	return out
+}
+
 // fillPrimaryDisplayID 出厂 displayIds 是空数组（= 还没挑过屏）。启动加载时补一次：
 // 枚举当前所有显示器，把主屏的稳定 ID 写进配置，并回报 true 让磁盘一起落盘。
 //
