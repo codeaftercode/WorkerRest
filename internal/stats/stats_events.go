@@ -145,8 +145,11 @@ func (st *StatsStore) StartNotify() {
 func (st *StatsStore) StartAutoFlush(intervalMs int) {
 	st.mu.Lock()
 	st.autoFlushIntervalMs = intervalMs
+	done := make(chan struct{})
+	st.autoFlushDone = done
 	st.mu.Unlock()
 	go func() {
+		defer close(done)
 		t := time.NewTicker(time.Duration(intervalMs) * time.Millisecond)
 		defer t.Stop()
 		for {
@@ -182,9 +185,24 @@ func (st *StatsStore) AutoFlushInfo() StatsAutoFlushInfo {
 	return StatsAutoFlushInfo{Ticks: st.autoFlushTicks, IntervalMs: st.autoFlushIntervalMs, Dirty: st.dirty}
 }
 
-// Stop 停止后台 goroutine（退出清理）
+// Stop 停止后台 goroutine（退出清理）。
+//
+// 除了发停止信号，还要**等自动落盘真的退出**：Flush 是“先清脏标记、再写文件”，
+// 只发信号就返回的话，调用方（App 退出、单测的 TempDir 清理）可能在一次写盘的中途
+// 就把目录删掉，文件随即被重建 —— 表现成“目录删不干净”。
+// 顺手作废 2 秒防抖定时器：它同样会写盘，停了就不该再触发。
 func (st *StatsStore) Stop() {
 	st.stopOnce.Do(func() { close(st.stopCh) })
+	st.mu.Lock()
+	if st.saveTimer != nil {
+		st.saveTimer.Stop()
+		st.saveTimer = nil
+	}
+	done := st.autoFlushDone
+	st.mu.Unlock()
+	if done != nil {
+		<-done
+	}
 }
 
 // file 当前统计文件路径（每次现算：便携判据可能随配置来源变化）

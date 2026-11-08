@@ -335,6 +335,12 @@ type StatsStore struct {
 
 	stopCh   chan struct{}
 	stopOnce sync.Once
+	// autoFlushDone 自动落盘 goroutine 的退出信号：Stop 要等它真的退出。
+	// 不等的话，Stop 返回时可能正有一次 Flush 在写盘 —— Flush 是先清脏标记再写文件，
+	// 于是“已经停了却还在写”。退出清理（以及测试的 TempDir 清理）会撞上这一笔写：
+	// 目录刚删掉，文件又被建回来（2026-11-08 本机连跑三次都红：TempDir RemoveAll:
+	// directory is not empty）。
+	autoFlushDone chan struct{}
 
 	// notifyCh “统计数据已变”的合并通知通道（容量 1）：工作时长每秒都在涨，
 	// 连续的多次改动合并成一次通知 —— 渲染层只需要知道“后来变了”，中间态没意义。
