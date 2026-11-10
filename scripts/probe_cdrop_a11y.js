@@ -76,13 +76,15 @@ if (SHIM_STUB === SHIM_SRC) {
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(500);
 
-  // 目标：短休息的“触发方式”下拉（#short-mode），它在“时间规划”tab 里，默认折叠
+  // 目标：外卖卡“暂停休息时”的自绘下拉（#tk-pause），它在“时间规划”tab 里，默认折叠
   // （section.tab 是 display:none，按钮收不了焦点）。先切过去，与真实用户路径一致。
+  // 注：2026-11-09 起“计时方法”由自绘下拉改成两段式段控（.mode-seg），不再是 cdrop 的
+  // 用户；它的键盘可达性由 settings_options_probe.js 的 verifyModeSeg 负责。
   await page.evaluate(() => {
     document.querySelector('.nav-item[data-tab="timing"]').click();
   });
   await page.waitForTimeout(100);
-  const host = '#short-mode';
+  const host = '#tk-pause';
 
   // 1) 静态语义
   console.log('[cdrop] 静态语义');
@@ -99,9 +101,9 @@ if (SHIM_STUB === SHIM_SRC) {
       itemRole: menu.children[0] ? menu.children[0].getAttribute('role') : null,
     };
   }, host);
-  check(!!stat, '短休息“触发方式”有 .cdrop-btn 与 .cdrop-menu', stat);
+  check(!!stat, '外卖卡“暂停休息时”有 .cdrop-btn 与 .cdrop-menu', stat);
   if (stat) {
-    check(stat.label === '触发方式', '按钮有 aria-label="触发方式"', stat.label);
+    check(stat.label === '暂停休息时', '按钮有 aria-label="暂停休息时"', stat.label);
     check(stat.haspopup === 'listbox', '按钮 aria-haspopup=listbox', stat.haspopup);
     check(stat.expanded === 'false', '初始 aria-expanded=false', stat.expanded);
     check(stat.menuRole === 'listbox', '菜单 role=listbox', stat.menuRole);
