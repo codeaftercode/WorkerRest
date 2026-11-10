@@ -60,16 +60,22 @@ async function run() {
   await set.evaluate(`(function(){var r=document.querySelector('#content input[name=theme][value=light]');if(r){r.checked=true;r.dispatchEvent(new Event('change',{bubbles:true}));} })()`);
   await delay(500);
 
-  // 0c. 时间规划：展开所有折叠面板（提醒内容 / 提醒时间），并把一个自定义提醒卡造出来
+  // 0c. 时间规划：截图不能跟着**真实配置**漂 —— 用户把短休息改成固定时间后，
+  // 截图里就没有“间隔”那一行了，手册正文的表格会对不上。这里钉一份确定的状态：
+  // 短休息 = 固定时间 + 两条时刻（正好展示“提醒时间”那块清单），长休息 = 倒计时，
+  // 于是同一张图上两种计时方法各出现一次。再把“提醒时间”面板摊开。
   await set.evaluate(`(function(){var b=document.querySelector('#nav .nav-item[data-tab="timing"]');if(b)b.click();})()`);
   await delay(700);
-  // 先注入一个自定义提醒卡（喝水提醒），再重渲染时间规划页
-  await set.evaluate(`(function(){return window.api.saveSettings({customBreaks:[{id:'cb-manual',name:'喝水提醒',enabled:true,config:{enabled:true,mode:'countdown',intervalMs:180000,durationMs:20000,notifyBeforeMs:10000,postponeMs:120000,slots:[]},messages:{order:'fixed',fixedId:'',items:[]}}]});})()`);
+  // 先注入一个自定义提醒卡（喝水提醒）+ 钉住短 / 长休息的计时方法，再重渲染时间规划页
+  await set.evaluate(`(function(){return window.api.saveSettings({short:{mode:'fixed',slots:[{hour:9,minute:30,enabled:true,repeat:'daily',days:[]},{hour:14,minute:0,enabled:true,repeat:'weekly',days:[1,2,3,4,5]}]},long:{mode:'countdown',slots:[]},customBreaks:[{id:'cb-manual',name:'喝水提醒',enabled:true,config:{enabled:true,mode:'countdown',intervalMs:180000,durationMs:20000,notifyBeforeMs:10000,postponeMs:120000,slots:[]},messages:{order:'fixed',fixedId:'',items:[]}}]});})()`);
   await delay(800);
   await set.reload({ waitUntil: "domcontentloaded" });
   await delay(1400);
   await set.evaluate(`(function(){var b=document.querySelector('#nav .nav-item[data-tab="timing"]');if(b)b.click();})()`);
   await delay(600);
+  // 提醒时间面板默认收起（只有“切换计时方法”那一下才自动摊开），截图前手动点开
+  await set.evaluate(`(function(){document.querySelectorAll('.slot-fixed').forEach(function(p){var b=p.querySelector('.slot-head .msg-toggle');if(b&&!p.classList.contains('open'))b.click();});})()`);
+  await delay(400);
   await shot(set, "m_timing");
 
   // 0c-2. 自定义提醒卡：滚动到“喝水提醒”卡与“新建自定义提醒”虚线卡
@@ -104,12 +110,19 @@ async function run() {
   await shot(set, "m_supervisor");
 
   // 0g. 督休专员 · 高级选项（尺寸与位置）展开
-  await set.evaluate(`(function(){var s=document.querySelector('#sup-advanced');if(s&&!s.open)s.click();})()`);
+  // 注意：必须点 <summary> 才能开合 —— 直接对 <details> 调 click() 不会切换展开态，
+  // 之前这步一直没生效（拍出来的两张图逐字节相同）。
+  // 展开后再滚到视口中间，否则内容留在折叠线以下，截图里只能看到标题行。
+  await set.evaluate(`(function(){var s=document.querySelector('#sup-advanced');if(s&&!s.open){var h=s.querySelector('summary');if(h)h.click();}})()`);
   await delay(600);
+  await set.evaluate(`(function(){var s=document.querySelector('#sup-advanced');if(s)s.scrollIntoView({block:'center'});})()`);
+  await delay(400);
   await shot(set, "m_supervisor_advanced");
-  // 收起高级选项，避免影响后续（无所谓）
-  await set.evaluate(`(function(){var s=document.querySelector('#sup-advanced');if(s&&s.open)s.click();})()`);
+  // 收起高级选项并回到顶部，避免影响后续
+  await set.evaluate(`(function(){var s=document.querySelector('#sup-advanced');if(s&&s.open){var h=s.querySelector('summary');if(h)h.click();}})()`);
   await delay(300);
+  await set.evaluate(`(function(){var c=document.getElementById('content');if(c)c.scrollTop=0;})()`);
+  await delay(200);
 
   // 0h. 统计报表页
   await set.evaluate(`(function(){var b=document.querySelector('#nav .nav-item[data-tab="stats"]');if(b)b.click();})()`);
@@ -138,7 +151,7 @@ async function run() {
   // 1b. 提前提示窗：自定义提醒版式（先让服务端记住一个自定义提醒）
   await main.evaluate(`(function(){return window.api.saveSettings({customBreaks:[{id:'cb-manual',name:'喝水提醒',enabled:true,config:{enabled:true,mode:'countdown',intervalMs:180000,durationMs:20000,notifyBeforeMs:180000,postponeMs:120000,slots:[]},messages:{order:'fixed',fixedId:'',items:[]}}]});})()`);
   await delay(1000);
-  const preC = await open(browser, BASE + "/prebreak.html?win=prebreak&custom=1&tail=" + encodeURIComponent(" 秒显示喝水提醒") + "&postpone=1", 400, 172, { transparent: true });
+  const preC = await open(browser, BASE + "/prebreak.html?win=prebreak&custom=1&tail=" + encodeURIComponent(" 秒显示喝水提醒"), 400, 172, { transparent: true });
   await delay(700);
   await shot(preC, "m_prebreak_custom");
 
