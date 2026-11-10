@@ -73,9 +73,8 @@ async function run() {
   await delay(1400);
   await set.evaluate(`(function(){var b=document.querySelector('#nav .nav-item[data-tab="timing"]');if(b)b.click();})()`);
   await delay(600);
-  // 提醒时间面板默认收起（只有“切换计时方法”那一下才自动摊开），截图前手动点开
-  await set.evaluate(`(function(){document.querySelectorAll('.slot-fixed').forEach(function(p){var b=p.querySelector('.slot-head .msg-toggle');if(b&&!p.classList.contains('open'))b.click();});})()`);
-  await delay(400);
+  // 「提醒时间」这一层不再折叠（2026-11-10 起常驻展开），截图前无需再点开
+  await delay(300);
   await shot(set, "m_timing");
 
   // 0c-2. 自定义提醒卡：滚动到“喝水提醒”卡与“新建自定义提醒”虚线卡

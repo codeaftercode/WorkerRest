@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
 
-WIDTHS = [874, 800]
+WIDTHS = [874, 800, 760]
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -74,9 +74,7 @@ const { chromium } = require('playwright-core');
     [...document.querySelectorAll('.nav-item')].find((b) => b.dataset.tab === 'timing').click();
   });
   await page.waitForTimeout(700);
-  // 短休息：固定时间 + 摊开时刻表（三种态里最复杂的一种）
-  await page.locator("#short-card .slot-fixed .msg-toggle").click();
-  await page.waitForTimeout(300);
+  // 短休息：固定时间 + 时刻表（2026-11-10 起这一层不再折叠，始终展开，无需点开）
   const geo = await page.evaluate(() => {
     const r = (sel) => {
       const el = document.querySelector(sel);
@@ -123,6 +121,27 @@ const { chromium } = require('playwright-core');
   await page.locator('#long-card .card-head .card-switch').click();
   await page.waitForTimeout(350);
   await page.locator('#tk-card').screenshot({ path: out + '/timing_' + w + '_tk.png' });
+  // 展开态：“暂停休息时”菜单里选中项不该再有左侧竖条，下拉下方也不该再有说明文字
+  await page.locator('#tk-pause .cdrop-btn').click();
+  await page.waitForTimeout(280);
+  const drop = await page.evaluate(() => {
+    const it = document.querySelector('#tk-pause .cdrop-item[aria-selected="true"]');
+    const pb = it ? getComputedStyle(it, '::before') : null;
+    const row = document.getElementById('tk-pause').parentElement;
+    return {
+      selected: it ? it.dataset.value : null,
+      beforeContent: pb ? pb.content : null,
+      beforeWidth: pb ? pb.width : null,
+      rowKids: [...row.children].map((e) => e.tagName.toLowerCase()),
+      hintCount: document.querySelectorAll('.pause-hint').length,
+    };
+  });
+  await page.locator('#tk-card').screenshot({ path: out + '/timing_' + w + '_tk_open.png' });
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(200);
+  // 收起后把焦点放掉，否则后面的整页截图会带着一圈 focus 描边
+  await page.evaluate(() => document.activeElement && document.activeElement.blur());
+  await page.waitForTimeout(120);
   await page.screenshot({ path: out + '/timing_' + w + '.png', fullPage: true });
   // 深色同一张卡：段控的凹槽/浮起是这套里最依赖明度差的地方，两套主题都要看一眼
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
@@ -130,7 +149,7 @@ const { chromium } = require('playwright-core');
   await page.locator('#short-card').screenshot({ path: out + '/timing_' + w + '_short_dark.png' });
   await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'light'));
   await page.waitForTimeout(200);
-  console.log(JSON.stringify({ w, geo, offGeo, errors: errs.slice(0, 5) }));
+  console.log(JSON.stringify({ w, drop, geo, offGeo, errors: errs.slice(0, 5) }));
   await browser.close();
 })().catch((e) => { console.error(e); process.exit(1); });
 """
