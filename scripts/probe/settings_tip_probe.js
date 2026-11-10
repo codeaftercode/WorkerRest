@@ -183,50 +183,11 @@ const TIP = `(function () {
   check(longTip && longTip.right <= longTip.vw && longTip.left >= 0, "长文案仍在视口内", Math.round(longTip ? longTip.left : 0));
   await page.screenshot({ path: path.join(OUT, "tip_long.png") });
 
-  console.log("[?] 下拉菜单里的“?”");
-  await page.mouse.move(600, 760);
-  await delay(200);
-  await page.click('.nav-item[data-tab="timing"]');
-  await delay(500);
-  await page.locator("#tk-pause .cdrop-btn").click();
-  await delay(350);
-  const itemQ = page.locator("#tk-pause .cdrop-item .q-mark").first();
-  await itemQ.hover();
-  await delay(400);
-  const dropTip = await page.evaluate(() => {
-    const t = document.getElementById("q-tip");
-    const menu = document.querySelector("#tk-pause .cdrop-menu");
-    return {
-      shown: t.classList.contains("show"),
-      text: t.textContent,
-      tipZ: parseInt(getComputedStyle(t).zIndex, 10) || 0,
-      menuZ: parseInt(getComputedStyle(menu).zIndex, 10) || 0,
-    };
-  });
-  check(dropTip.shown, "菜单项的“?”也能弹");
-  check(dropTip.text.length > 4, "菜单项文案非空", dropTip.text.slice(0, 16));
-  check(dropTip.tipZ > dropTip.menuZ, "浮层层级高于下拉菜单", dropTip.tipZ + " > " + dropTip.menuZ);
-
-  // 下拉里的“?”最常见的一种翻车：文字是 flex:1，圆圈被挤到行尾，看着像贴在框子
-  // 右上角的一个角标，跟文字没关系。这里对“展开后的菜单项”和“触发器当前值”都量一遍。
-  console.log("[?] 下拉里也要贴着文字");
-  const dropGeo = (await page.evaluate(GEOM)).filter((g) => g.host === "item" || g.host === "btn");
-  check(dropGeo.length >= 2, "下拉里量到的“?”数量", dropGeo.length);
-  const badDropGap = dropGeo.filter((g) => g.gap == null || g.gap > 4);
-  check(badDropGap.length === 0, "下拉“?”紧贴文字（≤ 4px，不被推到行尾）",
-    badDropGap.map((g) => g.gap + "px/" + g.text).join(", ") || "ok");
-  const badDropOff = dropGeo.filter((g) => Math.abs(g.off) > 1);
-  check(badDropOff.length === 0, "下拉“?”与文字同高（≤ 1px）",
-    badDropOff.map((g) => g.off + "px/" + g.text).join(", ") || "ok");
-  const caret = await page.evaluate(() => {
-    const b = document.querySelector("#tk-pause .cdrop-btn");
-    const c = b.querySelector(".cdrop-caret").getBoundingClientRect();
-    const r = b.getBoundingClientRect();
-    return Math.round(r.right - c.right);
-  });
-  check(caret >= 8 && caret <= 14, "箭头仍钉在触发器右端（没被文字带走）", caret + "px");
-  await page.keyboard.press("Escape");
-  await delay(200);
+  // 2026-11-10：「暂停休息时」的每项不再各挂一个“?”（下拉里点开一次满屏问号），
+  // 改成选中项那一句摊在控件下方；它虽然仍是自绘下拉，但菜单里已没有“?”。显示器那块
+  // 是**多选**，每项只有分辨率 / 主屏标注，也没有“?”。原来这一段（菜单项的“?”能弹、
+  // 浮层层级高于菜单、圆圈贴着文字）因此没有宿主了，删掉比钉一个不存在的控件诚实。
+  // “?”紧贴文字这条规则仍由上面的字段行 / 卡片标题断言守着。
 
   console.log("[?] 深色主题");
   await page.click('.nav-item[data-tab="general"]');

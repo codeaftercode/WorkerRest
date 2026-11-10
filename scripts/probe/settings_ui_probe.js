@@ -480,10 +480,11 @@ async function main() {
   check(opVal !== opBeforeText && opVal !== "", "透明度滑块改动后数值标签跟着变",
     `${opBefore}(${opBeforeText}) → ${midVal}(${opVal})`);
 
-  // 自绘下拉在“时间规划”tab 的提醒卡里（通用 tab 的那几个收在折叠区里，不可见）
-  await page.locator('.nav-item[data-tab="timing"]').click();
+  // 自绘下拉现在有两处：#ap-displays（多选，显示器）与 #tk-pause（单选，“暂停休息时”）。
+  // 这里锚前者 —— 它就在当前页，不用切页；单选那套的展开 / 选中 / 落盘 / 键盘行为
+  // 由 settings_options_probe.js 的“暂停休息时”一段钉住。
   await delay(180);
-  const cdrop = page.locator(".tab.active .cdrop-host .cdrop-btn:visible").first();
+  const cdrop = page.locator("#ap-displays .cdrop-btn:visible").first();
   if (await cdrop.count()) {
     await cdrop.click();
     await delay(120);
