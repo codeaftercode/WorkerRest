@@ -124,13 +124,12 @@
   // “暂停休息时”下拉：三种处置，默认“推迟提醒”。每一项都带一个“?”，悬停看该项
   // 的具体行为；行标签上的“?”解释“暂停休息”包括哪几种情况（空闲分钟数动态取，
   // 跟着时间规划页的“空闲 N 分钟后自动暂停”走，每次保存后刷新一遍）。
+  // 三项互斥的处置。只有 value / label：界面上不再逐项解释（说明文字与逐项“?”都已按
+  // 用户要求删掉，2026-11-10），每种处置的含义写在操作手册里。
   var PAUSE_ACTIONS = [
-    { value: "remind", label: "正常提醒",
-      hint: "暂停休息期间到了提醒时间，仍照常弹出提前提示小窗和提醒窗口，不跳过也不推迟。" },
-    { value: "postpone", label: "推迟提醒",
-      hint: "暂停休息期间到了提醒时间不弹窗，按本卡“推迟时长”填的时长往后推；推迟后到点若仍在暂停休息，就继续往后推，恢复后按推迟后的时刻弹出。" },
-    { value: "skip", label: "跳过提醒",
-      hint: "暂停休息期间到了提醒时间，不弹提前提示小窗、也不弹提醒窗口，直接按“跳过”记一次，计入统计报表的跳过。" }
+    { value: "remind", label: "正常提醒" },
+    { value: "postpone", label: "推迟提醒" },
+    { value: "skip", label: "跳过提醒" }
   ];
   // 下拉实例按宿主元素记（WeakMap）：自定义提醒卡片每次重建都换新元素，
   // 用 id 记会指到已经脱离文档的旧节点。
@@ -312,163 +311,9 @@
     if (title) q.dataset.tip = title;
     return q;
   }
-  // 自绘下拉：“暂停休息时”与“计时方法”共用这一套（外观见 settings.css 的 .cdrop）。
-  // 原生 <select> 的选项由浏览器绘制，缩进改不了、也放不下每项的“?”，所以自己画。
-  // items = [{value,label,hint}]，def = 取值非法时的兜底项，onPick = 用户选中后的回调。
-  // name = 下拉的可访问名（兄弟 <label> 是纯视觉文字、不带 for，读屏念不到），
-  //        挂在按钮的 aria-label 上；缺省空串表示没有独立名字（调用方应传入）。
-  // 实例按宿主元素记（WeakMap，见 PAUSE_DROPS）：自定义提醒卡每次重建都换新元素。
-  function mountDrop(host, items, value, def, onPick, name) {
-    if (!host) return null;
-    // 宿主宽度来自 .cdrop-host（180px，与输入框同列同宽）：静态那处写在 HTML 里，
-    // JS 新建的卡片这里统一补上，免得下拉铺满整列。
-    host.classList.add("cdrop-host");
-    const exists = PAUSE_DROPS.get(host);
-    if (exists) {
-      exists.set(value);
-      return exists;
-    }
-    const norm = (v) => (items.some((i) => i.value === v) ? v : def || items[0].value);
-    host.innerHTML = "";
-    const root = document.createElement("div");
-    root.className = "cdrop";
-    root.dataset.value = norm(value);
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "cdrop-btn";
-    btn.setAttribute("aria-haspopup", "listbox");
-    btn.setAttribute("aria-expanded", "false");
-    if (name) btn.setAttribute("aria-label", name);
-    const cur = document.createElement("span");
-    cur.className = "cdrop-cur";
-    const caret = document.createElement("span");
-    caret.className = "cdrop-caret";
-    caret.textContent = "▾";
-    btn.append(cur, mkQMark("", ""), caret);
-    const menu = document.createElement("div");
-    menu.className = "cdrop-menu hidden";
-    menu.setAttribute("role", "listbox");
-    for (const opt of items) {
-      const item = document.createElement("button");
-      item.type = "button";
-      item.className = "cdrop-item";
-      item.dataset.value = opt.value;
-      item.setAttribute("role", "option");
-      const label = document.createElement("span");
-      label.className = "cdrop-label";
-      label.textContent = opt.label;
-      // 选中标识由 CSS 的 ::before 竖条承担（不再插勾选列，避免把文字顶离左缘）
-      item.append(label, mkQMark("", opt.hint));
-      item.addEventListener("click", () => {
-        api.set(opt.value);
-        close();
-        if (onPick) onPick(opt.value);
-      });
-      menu.appendChild(item);
-    }
-    root.append(btn, menu);
-    host.appendChild(root);
-    // 插入文档之后才能找到“?”左侧的文字（触发器的当前值 / 选项的标签），
-    // 所以绑定放在这里，而不是 mkQMark 里（那时还没有 parent）
-    for (const q of root.querySelectorAll(".q-mark")) bindQTip(q);
-
-    let outside = null;
-    function focusItem(which) {
-      // 键盘/点击都要落到同一个“当前项”，焦点随选中项走；菜单收起时给回按钮。
-      const el = which && which.isConnected ? which : menu.children[0];
-      if (el) el.focus();
-    }
-    function open(focus) {
-      root.classList.add("open");
-      menu.classList.remove("hidden");
-      btn.setAttribute("aria-expanded", "true");
-      outside = (e) => { if (!root.contains(e.target)) close(); };
-      document.addEventListener("pointerdown", outside, true);
-      if (focus) {
-        const idx = Array.from(menu.children).findIndex(
-          (it) => it.dataset.value === root.dataset.value);
-        focusItem(menu.children[idx >= 0 ? idx : 0]);
-      }
-    }
-    function close() {
-      root.classList.remove("open");
-      menu.classList.add("hidden");
-      btn.setAttribute("aria-expanded", "false");
-      if (outside) {
-        document.removeEventListener("pointerdown", outside, true);
-        outside = null;
-      }
-    }
-    function render() {
-      const opt = items.find((a) => a.value === root.dataset.value) || items[0];
-      cur.textContent = opt.label;
-      // 触发器上的“?”跟着当前选项换说明（每项的 hint 不同）
-      const btnQ = btn.querySelector(".q-mark");
-      if (btnQ) setQTip(btnQ, opt.hint);
-      // 宿主上也留一份取值：探针 / 外部脚本按 dataset.value 读，代替原生 select 的 .value
-      host.dataset.value = opt.value;
-      for (const item of menu.children) {
-        const on = item.dataset.value === opt.value;
-        item.setAttribute("aria-selected", on ? "true" : "false");
-      }
-    }
-    // 键盘导航（listbox 语义）：按钮上 Enter/Space/↑/↓ 展开，菜单内 ↑/↓/Home/End 移动焦点、
-    // Enter/Space 选中、Escape 关闭回按钮、Tab 关闭让焦点自然移出。
-    function moveTo(e, dir) {
-      const all = Array.from(menu.children);
-      const i = all.indexOf(document.activeElement);
-      const next = all[(i < 0 ? -1 : i) + dir];
-      if (next) { e.preventDefault(); next.focus(); }
-    }
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      if (root.classList.contains("open")) close(); else open(true);
-    });
-    btn.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
-        e.preventDefault();
-        open(true);
-        if (e.key === "ArrowUp") {
-          const all = Array.from(menu.children);
-          (all[all.length - 1] || menu.children[0]).focus();
-        }
-      } else if (e.key === "Escape") {
-        close();
-      }
-    });
-    menu.addEventListener("keydown", (e) => {
-      if (e.key === "ArrowDown") moveTo(e, 1);
-      else if (e.key === "ArrowUp") moveTo(e, -1);
-      else if (e.key === "Home") { e.preventDefault(); menu.children[0].focus(); }
-      else if (e.key === "End") { e.preventDefault(); menu.children[menu.children.length - 1].focus(); }
-      else if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        const act = document.activeElement;
-        if (act && act.dataset && act.dataset.value != null) {
-          root.dataset.value = act.dataset.value;
-          render();
-          close();
-          btn.focus();
-          if (onPick) onPick(act.dataset.value);
-        }
-      } else if (e.key === "Escape") {
-        close();
-        btn.focus();
-      } else if (e.key === "Tab") {
-        close();
-      }
-    });
-    const api = {
-      get: () => root.dataset.value,
-      set: (v) => { root.dataset.value = norm(v); render(); }
-    };
-    PAUSE_DROPS.set(host, api);
-    render();
-    return api;
-  }
   // ---- “显示的屏幕”多选下拉 ----
   //
-  // 与上面 mountDrop 的关键差别：单选点一下就收起菜单，这里要能连续勾选，所以点击只切换、不关闭。
+  // 与段控 / 输入框都不同：这里是**多选**，要能连续勾选，所以点击只切换、不关闭。
   //
   // 取值口径与 Go 侧 display.Resolve 严格对齐：**勾选结果是具体 ID 的快照**。
   // 刻意不提供“全部”这种动态语义 —— 让新接入的屏自动进入显示范围，等于用户接上投影仪
@@ -1017,14 +862,189 @@
     toast("已删除");
   }
 
-  // “暂停休息时”：选中即存盘（原生 select 的 change 原来由 bindAutoSaveEl 兜着）。
+  // “暂停休息时”：自绘下拉（单选），每项前面带图标（2026-11-10 二次回退）。
+  //
+  // 走过一段弯路：先由下拉改成并排三档段控，但控件列被标签列固定占去 200px，
+  // 三格一分每格只剩 60 来 px —— 字号得跟着收、图标在窄窗口还得藏起来。用户判断
+  // “不好，把其他控件都挤小了”，要求回下拉、并保留每项前面的图标。
+  // 唯一保留的改进是图标：每项和触发器都带（铃铛＝照常提醒 / 顺时针箭头＝往后推 /
+  // 带斜杠的圆＝跳过）。逐项长解释与选中项说明都已按用户要求删除 —— 菜单里不再挂“?”，
+  // 控件下方也不再有小字，含义写在操作手册里。
+  // 取值接口不变（get / set，注册进 PAUSE_DROPS），fillBreakForm / collectForm 一行不改。
+  var PAUSE_ICONS = {
+    // 铃铛 = 照常响；顺时针箭头 = 往后推；带斜杠的圆 = 跳过
+    remind: '<path d="M6.6 16.4V11a5.4 5.4 0 0 1 10.8 0v5.4"/><path d="M4.8 16.4h14.4"/><path d="M10.3 19.4a2 2 0 0 0 3.4 0"/>',
+    postpone: '<path d="M20.6 12a8.6 8.6 0 1 1-2.52-6.08"/><path d="M20.6 4.6v4.6h-4.6"/>',
+    skip: '<circle cx="12" cy="12" r="8.6"/><path d="M7.6 16.4 16.4 7.6"/>'
+  };
+  // 24 网格的空 SVG 壳：图标只写内层 path，viewBox 与装饰属性统一在这里给
+  function mkIco(cls) {
+    const el = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    el.setAttribute("class", cls);
+    el.setAttribute("viewBox", "0 0 24 24");
+    el.setAttribute("aria-hidden", "true");
+    return el;
+  }
+  // 自绘单选下拉（listbox 语义）。items = [{ value, label, icon }]，icon 是 SVG 内层。
+  function mountDrop(host, items, value, def, onPick, name) {
+    if (!host) return null;
+    // 宿主宽度来自 .cdrop-host（180px，与输入框同列同宽）：静态那处写在 HTML 里，
+    // JS 新建的卡片这里统一补上，免得下拉铺满整列。
+    host.classList.add("cdrop-host");
+    const exists = PAUSE_DROPS.get(host);
+    if (exists) {
+      exists.set(value);
+      return exists;
+    }
+    const norm = (v) => (items.some((i) => i.value === v) ? v : def || items[0].value);
+    host.innerHTML = "";
+    const root = document.createElement("div");
+    root.className = "cdrop";
+    root.dataset.value = norm(value);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "cdrop-btn";
+    btn.setAttribute("aria-haspopup", "listbox");
+    btn.setAttribute("aria-expanded", "false");
+    if (name) btn.setAttribute("aria-label", name);
+    // 触发器 = 当前项的图标 + 当前值 + 箭头（图标跟着当前项换，见 render）
+    const ico = mkIco("cdrop-ico");
+    const cur = document.createElement("span");
+    cur.className = "cdrop-cur";
+    const caret = document.createElement("span");
+    caret.className = "cdrop-caret";
+    caret.textContent = "▾";
+    btn.append(ico, cur, caret);
+    const menu = document.createElement("div");
+    menu.className = "cdrop-menu hidden";
+    menu.setAttribute("role", "listbox");
+    for (const opt of items) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "cdrop-item";
+      item.dataset.value = opt.value;
+      item.setAttribute("role", "option");
+      // 每项前面的图标（用户 2026-11-10 明确要求保留）
+      const optIco = mkIco("cdrop-ico");
+      optIco.innerHTML = opt.icon || "";
+      const label = document.createElement("span");
+      label.className = "cdrop-label";
+      label.textContent = opt.label;
+      // 选中标识由 CSS 的 ::before 竖条承担（不再插勾选列，避免把文字顶离左缘）
+      item.append(optIco, label);
+      item.addEventListener("click", () => {
+        api.set(opt.value);
+        close();
+        if (onPick) onPick(opt.value);
+      });
+      menu.appendChild(item);
+    }
+    root.append(btn, menu);
+    host.appendChild(root);
+
+    let outside = null;
+    function focusItem(which) {
+      // 键盘/点击都要落到同一个“当前项”，焦点随选中项走；菜单收起时给回按钮。
+      const el = which && which.isConnected ? which : menu.children[0];
+      if (el) el.focus();
+    }
+    function open(focus) {
+      root.classList.add("open");
+      menu.classList.remove("hidden");
+      btn.setAttribute("aria-expanded", "true");
+      outside = (e) => { if (!root.contains(e.target)) close(); };
+      document.addEventListener("pointerdown", outside, true);
+      if (focus) {
+        const idx = Array.from(menu.children).findIndex(
+          (it) => it.dataset.value === root.dataset.value);
+        focusItem(menu.children[idx >= 0 ? idx : 0]);
+      }
+    }
+    function close() {
+      root.classList.remove("open");
+      menu.classList.add("hidden");
+      btn.setAttribute("aria-expanded", "false");
+      if (outside) {
+        document.removeEventListener("pointerdown", outside, true);
+        outside = null;
+      }
+    }
+    function render() {
+      const opt = items.find((a) => a.value === root.dataset.value) || items[0];
+      cur.textContent = opt.label;
+      ico.innerHTML = opt.icon || "";
+      // 宿主上也留一份取值：探针 / 外部脚本按 dataset.value 读，代替原生 select 的 .value
+      host.dataset.value = opt.value;
+      for (const item of menu.children) {
+        item.setAttribute("aria-selected", item.dataset.value === opt.value ? "true" : "false");
+      }
+    }
+    // 键盘导航（listbox 语义）：按钮上 Enter/Space/↑/↓ 展开，菜单内 ↑/↓/Home/End 移动焦点、
+    // Enter/Space 选中、Escape 关闭回按钮、Tab 关闭让焦点自然移出。
+    function moveTo(e, dir) {
+      const all = Array.from(menu.children);
+      const i = all.indexOf(document.activeElement);
+      const next = all[(i < 0 ? -1 : i) + dir];
+      if (next) { e.preventDefault(); next.focus(); }
+    }
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (root.classList.contains("open")) close(); else open(true);
+    });
+    btn.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+        e.preventDefault();
+        open(true);
+        if (e.key === "ArrowUp") {
+          const all = Array.from(menu.children);
+          (all[all.length - 1] || menu.children[0]).focus();
+        }
+      } else if (e.key === "Escape") {
+        close();
+      }
+    });
+    menu.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") moveTo(e, 1);
+      else if (e.key === "ArrowUp") moveTo(e, -1);
+      else if (e.key === "Home") { e.preventDefault(); menu.children[0].focus(); }
+      else if (e.key === "End") { e.preventDefault(); menu.children[menu.children.length - 1].focus(); }
+      else if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        const act = document.activeElement;
+        if (act && act.dataset && act.dataset.value != null) {
+          root.dataset.value = act.dataset.value;
+          render();
+          close();
+          btn.focus();
+          if (onPick) onPick(act.dataset.value);
+        }
+      } else if (e.key === "Escape") {
+        close();
+        btn.focus();
+      } else if (e.key === "Tab") {
+        close();
+      }
+    });
+    const api = {
+      get: () => root.dataset.value,
+      set: (v) => { root.dataset.value = norm(v); render(); }
+    };
+    PAUSE_DROPS.set(host, api);
+    render();
+    return api;
+  }
+  // “暂停休息时”：三个互斥处置装进下拉，每项带图标
   function mountPauseDrop(host, value) {
-    return mountDrop(host, PAUSE_ACTIONS, pauseActionOf(value), "postpone", () => { void autoSave(); }, "暂停休息时");
+    const items = PAUSE_ACTIONS.map((a) => ({
+      value: a.value, label: a.label, icon: PAUSE_ICONS[a.value] || ""
+    }));
+    return mountDrop(host, items, pauseActionOf(value), "postpone",
+      () => { void autoSave(); }, "暂停休息时");
   }
   // “计时方法”：两段式单选，取代原来的自绘下拉（2026-11-09）。
   // 两个选项互斥，而且直接决定组里显示“间隔”还是“提醒时间”：并排两段各带一句解释，
   // 一眼就能看出“有几种触发方式、各自什么意思”，不用点开才知道。
-  // 取值接口与 mountDrop 一致（get / set，同样注册进 PAUSE_DROPS），
+  // 取值接口与 mountDrop / mountPauseDrop 一致（get / set，同样注册进 PAUSE_DROPS），
   // fillBreakForm / collectForm 因此一行都不用改。
   var MODE_ICONS = {
     // 循环箭头 = 每隔一段时间循环一次；钟面 = 具体时刻
@@ -1063,9 +1083,8 @@
       if (!cfg) return;
       cfg.mode = norm(v);
       applyBreakModeUI();
-      // 切到固定时间时把“提醒时间”面板摊开：此刻组里只剩这一块能填的东西，
-      // 收着的话看起来像“切过去什么也没有”。只动 open / hidden 两个类，不写配置。
-      if (cfg.mode === "fixed") expandSlotFold(id);
+      // 「提醒时间」这一层不再折叠（2026-11-10 起常驻展开），所以切到固定时间时
+      // 不需要再摊开什么 —— 整块随 applyBreakModeUI 显隐即可。
       updateBreakSummary(id);
       void autoSave();
     };
@@ -1102,12 +1121,6 @@
     PAUSE_DROPS.set(host, api);
     paint(norm(c && c.mode));
     return api;
-  }
-  function expandSlotFold(id) {
-    const panel = document.querySelector(`.slot-fixed[data-break="${id}"]`);
-    if (!panel) return;
-    panel.classList.add("open");
-    panel.querySelector(".slot-body")?.classList.remove("hidden");
   }
   function dropValue(host, def) {
     const api = host ? PAUSE_DROPS.get(host) : null;
@@ -3126,25 +3139,27 @@
     }
     // “启用”下一行：暂停休息期间怎么处置（短 / 长休息没有这一行，保持原状）。
     // 必须跟在克隆之后插：短休息卡片本身没有这个控件，模板只作骨架。
-    // 标签后的“?”说明“暂停休息”包括哪几种情况，下拉每一项自己也带一个“?”。
-    const pauseRow = document.createElement("div");
-    pauseRow.className = "row field";
+    // 版式与外卖卡逐字相同（普通 .row.field：标签 | 下拉），
+    // 标签后的“?”说明“暂停休息”包括哪几种情况。
+    const pauseBlock = document.createElement("div");
+    pauseBlock.className = "row field";
     const pauseLabel = document.createElement("label");
     pauseLabel.append(document.createTextNode("暂停休息时"),
       mkQMark("pause-scope-help", pauseScopeHint()));
     const pauseHost = document.createElement("div");
     pauseHost.id = `${cb.id}-pause`;
-    pauseRow.append(pauseLabel, pauseHost);
+    pauseBlock.append(pauseLabel, pauseHost);
     // 插进“弹窗设置”组的**首位**（组标题下、提醒时长之上）：
     // 2026-11-09 起卡内参数分成“触发方式 / 弹窗设置”两组，暂停休息时属于后一组 ——
     // 它描述的是“该弹的时候正在暂停怎么处置”，是这张卡最常用的开关（默认推迟），
     // 2026-11-10 按用户要求从组末提到组首，省得每次都要越过三个数字才看见。
-    // 注意必须先跳过 .pg-head：组标题是组的第一个孩子，直接 prepend 会把它挤到下面去。
+    // 2026-11-10 起组是可折叠的描边盒（.pg-head + .pg-body），插的是**内容体首位**，
+    // 不是组的首位 —— 直接 prepend 会把头部挤到下面去。
     // 组是模板里必有的骨架，取不到就说明模板本身坏了，此时不插也不影响其余功能。
     const remindGroup = card.querySelector(':scope > .pg[data-pg="reminder"]');
     if (remindGroup) {
-      const pgHead = remindGroup.querySelector(':scope > .pg-head');
-      if (pgHead) pgHead.after(pauseRow); else remindGroup.prepend(pauseRow);
+      const pgBody = remindGroup.querySelector(':scope > .pg-body');
+      if (pgBody) pgBody.prepend(pauseBlock); else remindGroup.prepend(pauseBlock);
     }
     // 插进文档之后才能找到“?”左侧的“暂停休息时”并打标
     bindQTip(pauseLabel.querySelector(".q-mark"));
@@ -3157,10 +3172,7 @@
     const panel = card.querySelector(".msg-panel");
     panel.classList.remove("open");
     panel.querySelector(".msg-body").classList.add("hidden");
-    // 提醒时间面板现在藏在“触发方式”组里，不再直属于卡片（:scope > .slot-fixed 会取不到）
-    const slotFold = card.querySelector(".pg .slot-fixed");
-    slotFold?.classList.remove("open");
-    slotFold?.querySelector(".slot-body")?.classList.add("hidden");
+    // 「提醒时间」这一层不再折叠（时刻表常驻展开），克隆卡因此不需要复位任何开合态
     return card;
   }
   function setupCustomBreakCard(card, cb) {
@@ -3192,6 +3204,9 @@
       $(`${id}-${suffix}`).addEventListener("change", () => updateBreakSummary(id));
     }
     setupMsgPanel(card.querySelector(".msg-panel"));
+    // 克隆来的两个参数组带着模板里的 .open 与 aria-expanded，但一个监听器都没有
+    // （克隆不复制事件）：这里按新宿主重挂开合，否则自定义卡的两组点不动。
+    setupPgFolds(card);
   }
   function renderCustomCard(cb) {
     const addCard = $("cb-add-card");
@@ -3434,10 +3449,6 @@
     // “暂停休息时”只有自定义提醒卡片有（短 / 长休息的模板本身没有这行）
     setDropValue($(`${id}-pause`), c.pauseAction);
     renderBreakList(id);
-    // 固定时间但一条时刻都没有时，把面板摊开：收着的话“触发方式”组里只剩“系统空闲”，
-    // 看着像“这儿没东西可填”；摊开后第一行就是“还没有提醒时间，点上方＋添加”。
-    // 已有时刻时不强制展开 —— 收起是用户自己的选择，顶部摘要也写了“固定时间 · N 条”。
-    if (c.mode === "fixed" && !(c.slots || []).length) expandSlotFold(id);
   }
   function applyBreakModeUI() {
     for (const id of allBreakIds()) {
@@ -3908,6 +3919,29 @@
     renderAllMsgLists();
     for (const panel of document.querySelectorAll(".msg-panel")) setupMsgPanel(panel);
   }
+  // 参数组（触发方式 / 弹窗设置）的开合（2026-11-10）
+  // ————————————————————————————————————————————————————————————————
+  // 这两组原来只是“有标题的区块”，不可折叠；现在与「提醒内容」同构：头部是一枚
+  // .msg-toggle，内容体是 .pg-body。开合状态只在这个页面会话里有效，不落盘 ——
+  // 它是“临时看一眼/收起”的阅读状态，和卡片级的折叠（localStorage）不是一回事。
+  // 模板里默认带 .open 与 aria-expanded="true"（见 settings.html）；克隆出的自定义卡
+  // 继承同一份标记，所以这里只补事件，不改初始态。
+  var pgFoldBound = /* @__PURE__ */ new WeakSet();
+  function setupPgFold(pg) {
+    if (pgFoldBound.has(pg)) return;
+    const btn = pg.querySelector(":scope > .pg-head > .msg-toggle");
+    const body = pg.querySelector(":scope > .pg-body");
+    if (!btn || !body) return;
+    pgFoldBound.add(pg);
+    btn.addEventListener("click", () => {
+      const open = pg.classList.toggle("open");
+      body.classList.toggle("hidden", !open);
+      btn.setAttribute("aria-expanded", open ? "true" : "false");
+    });
+  }
+  function setupPgFolds(root) {
+    for (const pg of (root ?? document).querySelectorAll(".pg")) setupPgFold(pg);
+  }
   function mkBtn(label, title, onClick) {
     const b = document.createElement("button");
     b.className = "btn mini";
@@ -4230,14 +4264,8 @@
     $("tab-timing").addEventListener("click", onFoldClick);
     $("tab-stats").addEventListener("click", onFoldClick);
   }
-  document.addEventListener("click", (e) => {
-    const btn = e.target.closest(".slot-head > .msg-toggle");
-    if (!btn) return;
-    const panel = btn.closest(".slot-fixed");
-    if (!panel) return;
-    const open = panel.classList.toggle("open");
-    panel.querySelector(".slot-body")?.classList.toggle("hidden", !open);
-  });
+  // 2026-11-10 起「提醒时间」不再可折叠（用户：不准折叠，必须展开），
+  // 这里原来那条 `.slot-head > .msg-toggle` 的委托已删除；组级折叠见 setupPgFold。
   var TL_COLOR_FIXED = { short: "#2f9e63", long: "#4c6ef5", takeout: "#e8890c" };
   var TL_COLOR_PALETTE = ["#c2255c", "#9c36b5", "#0c8599", "#e8590c", "#5f3dc4", "#2b8a3e", "#1971c2", "#d9480f"];
   function tlColorOf(it) {
@@ -7197,6 +7225,7 @@
     setupShortcutCapture();
     BUILTIN_MSGS = await window.api.builtinMsgDefaults();
     setupMsgPanels();
+    setupPgFolds();
     renderTakeoutList();
     setupAppPause();
     setupColorPicker();

@@ -508,20 +508,20 @@ body {
    就等于在页面上多出一种输入框长相，和别处的输入框对不上。 */
 .row.mixed > input[type='number']:disabled { opacity: .45; cursor: not-allowed; }
 
-/* 度量字段行：标签列写参数名，控件列里是“窄数字框 + 紧跟的单位/后半句”。
+/* 度量字段行：标签列写参数名，控件列里是“数字框 + 紧跟的单位/后半句”。
    ————————————————————————————————————————————————————————————————
-   2026-11-09 改：单位原本折在标签里写成“提醒时长（秒）”，框却是 180px 整宽、里面只有
-   两位数 —— 每行右侧吊着 130px 空白，而且框比内容宽一倍，“没对齐”的感觉全从这来。
-   现在单位出框、框收到 80px（放得下“3600”四位），一行读成“提醒时长 20 秒”：
-   控件列里是一个紧凑的度量单元，右侧留白回归安静的留白。
-   系统空闲门（“☐ 系统空闲达 [30] 秒再提醒”）走同一套 —— 它的尾巴长一点而已，
-   于是卡里所有数字框同宽、所有单位同位，不存在第二种度量长相。
+   单位出框、跟在框右侧（一行读成“提醒时长 20 秒”），但**框本身回到 180px** ——
+   与全站其它输入框、也与同组的“暂停休息时”下拉同宽（2026-11-10 下午用户要求：
+   “其他输入控件的宽度太小了，改成原来那样相同的宽度”）。
+   中途试过把框收到 80px（“紧凑度量单元”），在卡片里读起来一排小方框，与 180 的下拉
+   并排时更明显 —— 已撤回。左对齐也一并恢复：180px 里 2~4 位数左对齐才是输入框的常态，
+   居中只在 80px 那种窄框里才成立。
+   系统空闲门（“☐ 系统空闲达 [30] 秒再提醒”）同一套 —— 它尾巴长一点，窄窗口让框收缩。
    2026-11-09 早先撤掉了“分 + 秒”双窄框与自动进位：现在就是一个秒数框，填 90 显示 90。 */
 .field-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
-/* 框窄到 80px 之后，两位数字左对齐会在右侧留下近一半空白，看着像“框没填满”；
-   居中之后 2~4 位数（2 / 30 / 3600）在框里都是光学平衡的。全站其余输入框是整宽
-   文本字段，仍左对齐 —— 这条只作用于 .field-line 里的窄数值框。 */
-.field-line > input[type='number'] { flex: 0 1 80px; width: 80px; min-width: 64px; text-align: center; }
+/* 宽 180 = 全局输入框宽度；min-width 96 兜住“系统空闲达 […] 秒再提醒”这种长尾巴：
+   760 宽窗口控件列约 232，180 + 6 + 48 差 2px，靠 flex 收缩而不是顶出卡片右缘。 */
+.field-line > input[type='number'] { flex: 0 1 180px; width: 180px; min-width: 96px; }
 .field-line > .unit { flex: none; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
 /* 不勾 = 这条门槛不生效：秒数框置灰，但值留着（下次勾回来还是原来那个数）。
    只降不透明度，不另造一套“禁用样式”—— 与 .row.mixed 的“空闲 N 分钟”同一处理。 */
@@ -530,35 +530,36 @@ body {
    它与时刻表是组内并列的两个触发条件，不是一张表的延续。 */
 .pg .idle-gate { margin-top: 12px; }
 
-/* 参数分组 .pg：把一类参数收进同一个标题下（“触发方式”＝计时方法 / 间隔 / 提醒时间 /
-   系统空闲，“弹窗设置”＝提醒时长 / 提前通知 / 推迟时长 …）。
+/* 参数分组 .pg：把一类参数收进同一个**可折叠**的头部下（“触发方式”＝计时方法 / 间隔 /
+   提醒时间 / 系统空闲，“弹窗设置”＝暂停休息时 / 提醒时长 / 提前通知 / 推迟时长）。
    ————————————————————————————————————————————————————————————————
-   2026-11-09 第三次改版：组从“标题 + 发丝线”升级成“一块淡色区域”。
-   上一版只靠 3px 竖条 + 12px 灰标题 + 标题右侧一道 1px 线来划界，三组看起来是三条
-   一样重、一样淡的“分节线”，谁也没比谁更重要 —— 用户的原话是“各区域区分不显”。
-   现在每组落在一块 --bg 底的圆角区域里（无描边、无投影），组与组之间是 10px 的卡片白，
-   “这里是一块”由面而不是由线表达。字号层级不变，组标题只加深到 --text 并去掉右侧线：
-   块已经把范围说明白了，再画线就是两套边界。
-   关键一点：**块的水平内边距用负外边距抵掉**。.row.field 的网格坐标就是全卡片的坐标，
-   组内一旦真的内缩，组里的标签列就会整体右移十几像素，与卡头、与其他组错开 —— 那正是
-   这套版式最忌的（全卡只有一条标签列、一条控件列）。`padding: 11px 12px` 配
-   `margin: 0 -12px`，内容盒位置分毫不动，只有底色往外扩。 */
-.pg {
-  margin: 0 -12px;
-  padding: 11px 12px 12px;
-  border-radius: 12px;
-  background: var(--bg);
-}
-.pg + .pg { margin-top: 10px; }
+   2026-11-10 第四次改版：卡内的**灰底分区全部撤掉**，全卡只剩一种分区长相 ——
+   “可折叠的描边盒”。触发方式 / 弹窗设置 / 提醒内容（以及提示音、候选专员、高级选项）
+   现在逐像素同构：1px 描边 + 10px 圆角 + 一行头部（▸ + 12.5/700 标题）+ 一道发丝线 + 内容。
+   为什么撤灰底：卡片本身就是白底 + 描边，里面再铺两块 --bg 的圆角块，等于在卡里又画了
+   两张卡；三块灰面叠起来，一屏出现四种底色（页面 / 卡片 / 灰面 / 白控件），没有一层
+   读得出“这是背景”。描边盒只用一个 1px 的边界说明范围，底色从三档回到两档。
+   盒子的外观与其它折叠分区共用一条规则（见下方「卡内分区」一节），这里只写组自己的部分：
+   行距更紧一档、头部是一枚 .msg-toggle（不是另造的标题）。
+   几何：盒子 margin 取 -13px、内容内边距 12px 加 1px 描边正好抵回原位 ——
+   .row.field 的网格坐标就是全卡片的坐标，组内一旦真的内缩，标签列就会整体右移，
+   与卡头错开（全卡只有一条标签列、一条控件列）。
+   **盒子绝不能加 overflow:hidden**：弹窗设置里“暂停休息时”的菜单是绝对定位，
+   要越出盒子的下缘；圆角改由头部自己带（见 .msg-toggle 的 border-radius）。 */
 /* 组内行比卡片其它地方紧一档（40 → 36）：一组的几行读起来要像一段，
    而不是几根各自独立的行。卡片外的行（督休专员、统计页）保持 40 的宽松节奏。 */
 .pg .row { min-height: 36px; padding: 3px 0; }
-/* 组标题行：加高的竖条 + 加深的字，让“这是组的名字”先于行标签被读到 */
-.pg-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
-/* 标题左侧的品牌色小竖条：12px 高、3px 宽，只做“这里开了一个组”的记号。
-   高度取标题字号的 1 倍左右，比 16px 的小圆点更稳、也不像状态点。 */
-.pg-head::before { content: ""; flex: none; width: 3px; height: 12px; border-radius: 1.5px; background: var(--accent); }
-.pg-title { font-size: 12.5px; font-weight: 700; letter-spacing: .02em; color: var(--text); white-space: nowrap; }
+/* 头部行：折叠开关占满整行（与 .msg-head / .snd-music-head 同一套） */
+.pg-head { display: flex; align-items: stretch; }
+.pg-head .msg-toggle { flex: 1; }
+/* 标题只是开关里的一段文字，字号字重颜色全部继承 .msg-toggle —— 三级标题共用一套 */
+.pg-title { flex: none; }
+/* 组的内容体：水平内边距 12 抵消盒子的 -13 外边距（+1px 描边），标签列因此纹丝不动；
+   顶上留 10px，否则第一件东西（计时方法的凹槽、或第一条字段行）会贴住标题下面那道
+   发丝线，读起来像“线断了”而不是“内容开始”。 */
+.pg-body { padding: 10px 12px 12px; border-top: 1px solid var(--border); }
+/* 组里第一个东西是子块（外卖卡的“提醒时间”）时，它自带的上外边距就多余了 */
+.pg-body > .slot-fixed:first-child { margin-top: 2px; }
 
 /* 计时方法：两段式单选（2026-11-09 取代自绘下拉）
    ————————————————————————————————————————————————————————————————
@@ -583,23 +584,17 @@ body {
 }
 [data-theme='dark'] .mode-seg { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35); }
 
-/* 组内的计时方法（2026-11-09）：不再套第二层凹槽。
-   组底本身就是 --bg，凹槽也是 --bg —— 同色叠同色，未选中的一段直接融进组底，
-   读起来像“左半截是空的”。改成两片与卡片同材质的白片：未选中白底 + 灰描边，
-   选中者品牌色描边 + accent-weak 底。材质的层数回到两层（卡片白 / 分区块灰），
-   段控与组内其他控件同族，整体性才立得住。 */
-.pg .mode-seg {
-  background: transparent; border-color: transparent; box-shadow: none;
-  padding: 0; gap: 8px; margin: 0 0 8px;
-}
-.pg .mode-opt { background: var(--panel); border-color: var(--border); }
-.pg .mode-opt:hover { background: var(--panel); border-color: var(--text-2); }
-.pg .mode-opt.on {
-  background: var(--accent-weak); border-color: var(--accent);
-  box-shadow: 0 1px 2px rgba(20, 26, 45, .05);
-}
-.pg .mode-opt.on:hover { background: var(--accent-weak); }
-[data-theme='dark'] .pg .mode-opt.on { box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+/* 组内的段控（2026-11-10 二次收敛）：整块凹槽，不是 N 片独立白片。
+   ————————————————————————————————————————————————————————————————
+   上一版是「透明容器 + 每片白底灰描边 + 8px 间隙」，片片自带一圈描边、彼此留缝，
+   读起来是「N 个独立按钮」而不是「一个开关里选了一档」。现在回到与全页版同一套材质：
+   一块凹槽（底 + 描边 + 内阴影 + 3px 内衬），未选中段**透明**、融进槽里，
+   只有选中段浮起成白片 + 加深描边。
+   2026-11-10 撤掉卡内灰底之后，组底就是卡片白，凹槽直接沿用全局那套 --bg 材质即可 ——
+   曾经那层“比组底深一档”的 color-mix 是为了在灰面上把槽挖出来，现在没有灰面了。
+   注意：这套只服务「计时方法」—— 2026-11-10「暂停休息时」试过三档段控后被否
+   （三格把控件列挤窄），已退回下拉，见下面“暂停休息时”那段。 */
+.pg .mode-seg { margin: 0 0 10px; }
 .mode-opt {
   display: flex; align-items: center; justify-content: center; gap: 8px;
   padding: 5px 8px;
@@ -630,6 +625,29 @@ body {
 .mode-txt b { font-size: 13px; font-weight: 600; line-height: 1.25; }
 .mode-txt i { font-size: 11px; font-style: normal; line-height: 1.25; color: var(--text-2); }
 
+/* “暂停休息时”：自绘下拉（单选，每项带图标）—— 2026-11-10 二次回退。
+   ————————————————————————————————————————————————————————————————
+   中间试过“并排三档段控”，被否掉：三格铺在控件列里，控件列又被标签列固定占去 200px，
+   于是每格只剩 60~100px，字号得跟着收、图标在窄窗口还得藏起来 —— 用户的原话是
+   “把其他控件都挤小了”，要求回下拉并保留每项前面的图标。
+   它就是一条**普通字段行**（.row.field）：标签第 1 列、下拉第 2 列（180px，与输入框
+   左缘同列同宽），没有额外的行、额外的类。控件下方那行说明已按用户要求删除
+   （2026-11-10 下午），每种处置的含义留在操作手册里。 */
+
+/* 下拉项前面的图标（2026-11-10 起“暂停休息时”用它区分三种处置）。
+   画法沿用段控时代的 .mode-ico：1.7 描边、圆角端点、几何取 24 网格；
+   尺寸收到 16px 以配合 13px 的行高，触发器与菜单项各用一份。 */
+.cdrop-ico {
+  width: 16px; height: 16px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+  color: var(--text-2);
+}
+/* 选中项的图标跟着文字一起用品牌色，别让一行里出现“黑字灰图”的错位 */
+.cdrop-item[aria-selected='true'] .cdrop-ico { color: var(--accent); }
+/* 触发器上的图标：中性灰，不与右侧当前值的黑字抢视线 */
+.cdrop-btn > .cdrop-ico { color: var(--text-2); }
+
 /* 属于上一行的说明：缩进到控件列起点，与它解释的字段对齐；卡片级说明仍用 .hint 全宽 */
 .hint.sub { margin-left: calc(var(--label-w) + var(--row-gap)); }
 
@@ -645,17 +663,8 @@ input[type='number'], input[type='text'], input[type='time'], select {
   font-size: 13px;
   width: 180px;
 }
-/* 分区块（.pg / .msg-panel …）里的输入面改用卡片白。
-   ————————————————————————————————————————————————————————————————
-   组块自己的底色就是 --bg，而上面这条全局规则也给输入框铺 --bg —— 同色叠同色，
-   框的“输入面”直接消失，只剩一圈描边浮在灰底上（深色主题下尤其明显，框和背景糊成一片）。
-   改成白底之后层次是：卡片白 > 分区块灰 > 控件白 > 选中段 accent-weak，
-   控件像浮在灰区域里的白片，与计时方法的两片白同族 —— 这也是“组内是一整块”的观感来源。
-   必须写在这条全局规则之后：两者特异性相同，靠先后顺序取胜。 */
-.pg input[type='number'],
-.pg input[type='text'],
-.pg input[type='time'],
-.pg select { background: var(--panel); }
+/* 2026-11-10：卡内分区不再是灰面，输入框的 --bg 输入面重新与分区拉开（卡片白 > 控件灰），
+   于是原先“分区里把输入框改成白底”的那条覆盖规则整段删除 —— 同色叠同色的问题不存在了。 */
 input[type='date'] {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -786,56 +795,67 @@ button .q-tip-host,
 /* 卡片内的次级小标题（如预览卡里紧挨舞台的"尺寸与位置"） */
 .subhead { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 12px 0 2px; }
 
-/* 折叠分区（提醒内容 .msg-panel ↔ 提示音 / 候选专员 .fold-panel ↔ 高级选项 details.advanced）
+/* 卡内分区：卡里唯一的一种分区长相 —— 可折叠的描边盒
    ————————————————————————————————————————————————————————————————
-   2026-11-09 第二次改版：**不再画框**。
-   上一版三者共用一套“描边 + 圆角 + 卡片底”的外壳，于是提醒卡里出现了“卡中卡”：
-   卡片（--panel 底 + 描边）里套一个同色描边盒，盒里再缩进 12px 放内容。后果是全卡
-   唯一一条左对齐线在盒子边缘断掉，最底下的“提醒内容”像是另一张卡硬塞进来的。
-   现在它与 .pg（触发方式 / 弹窗设置 两组）说同一种语言：无底色、无描边、无圆角、无内缩，
-   只用“标题行 + 20px 上留白”表达“这里开了个分区”，组与组、组与面板之间距离一致。
-   标题行 = 折叠箭头 + 12px/700 灰字 + 右侧发丝线，与 .pg-head 的层级完全相同 ——
-   差别只在记号：.pg 用品牌色竖条（不可折叠），这里用 ▸（本身就要点开，再叠竖条是两层记号）。
+   适用：触发方式 / 弹窗设置（.pg）、提醒内容 / 提示音 / 候选专员（.msg-panel / .fold-panel）、
+   高级选项（details.advanced）。
+   2026-11-10 按用户要求把“卡片内部再铺一块灰底”的做法整体撤掉，全部回到 2026-11-09 之前
+   折叠分区的样子（1px 描边 + 圆角 + 一行可点的头部 + 发丝线 + 内容），并把触发方式 /
+   弹窗设置也改成可折叠 —— 于是卡里只存在一种分区，而且每一个都能开合。
+   为什么撤灰底：卡片本身就是白底 + 描边，里面再铺两块 --bg 圆角块，等于在卡里又画两张卡；
+   三块灰面叠起来，一屏出现四种底色（页面 / 卡片 / 灰面 / 白控件），没有一层读得出“背景”。
+   几何：margin 取 -13px、内容内边距 12px 加 1px 描边正好抵回原位，标签列与卡头仍是同一条
+   竖线（全卡只有一条标签列、一条控件列）。头部圆角由 .msg-toggle 自带，盒子**不能**
+   overflow:hidden —— 弹窗设置里“暂停休息时”的下拉菜单要越出盒子下缘。
    提醒时间 .slot-fixed 不在这组：它比分区更内一层（组内子块），见下方同名一节。 */
+.pg,
 .msg-panel,
 .fold-panel,
 details.advanced {
-  /* 与 .pg 同族的分区块：淡底 + 圆角、无描边、无投影，水平内边距用负外边距抵掉 */
-  margin: 10px -12px 0;
-  padding: 11px 12px 12px;
-  border-radius: 12px;
-  background: var(--bg);
+  margin: 10px -13px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
 
+/* 头部行：三类分区共用一枚 .msg-toggle（▸ + 12.5/700 标题），高度、内边距、悬停态全一致。
+   padding 9/12 让悬停底色铺满盒子整宽，顶上两角跟着盒子的圆角走。 */
 .msg-toggle,
 details.advanced > summary {
   display: flex; align-items: center; gap: 7px; width: 100%;
   background: transparent; border: none; cursor: pointer;
   color: var(--text); font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
   font-family: inherit; /* <button> 默认不继承字体，显式继承才能与 <summary> 字形一致 */
-  padding: 0 0 6px; text-align: left;
+  padding: 9px 12px 8px; text-align: left;
+  border-radius: 9px 9px 0 0;
   list-style: none; user-select: none;
 }
-/* 悬停只提亮箭头：块内标题已是最深的一档灰，再换色会跳 */
+/* 悬停给一条极浅的品牌底色：它是一整行可点的开合开关，需要“这里能点”的反馈 */
 .msg-toggle:hover,
-details.advanced > summary:hover { color: var(--text); }
-/* 2026-11-09 第三次改版删掉了标题后的发丝线：分区块的边界由“面”承担，
-   再叠一条线就是两套边界。标题右侧的图标按钮由 .msg-toggle{flex:1} 顶到行尾，不靠线撑开。 */
-/* 提示音标题行：折叠开关占满剩余宽度，右侧“＋”导入按钮同高同悬停态 */
+details.advanced > summary:hover { background: var(--accent-weak); }
+/* 收起时头部就是整个盒子：底下两角也得跟着盒子的圆角走，否则悬停底色会在盒角外
+   露出两个方角（盒子没有 overflow:hidden —— 下拉菜单要越出去）。 */
+.pg:not(.open) .msg-toggle,
+.msg-panel:not(.open) .msg-toggle,
+.fold-panel:not(.open) .msg-toggle,
+details.advanced:not([open]) > summary { border-radius: 9px; }
+/* 提示音标题行：折叠开关占满剩余宽度，右侧动作组（播放方式 + ＋）同高 */
 .snd-music-head { display: flex; align-items: stretch; }
 .snd-music-head .msg-toggle { flex: 1; }
+/* 头部行尾的动作组与盒子圆角之间留 4px：按钮的悬停底色是 6px 圆角的小块，
+   贴到盒子的圆角上会露出一个方角。 */
+.snd-music-actions { padding-right: 4px; }
 .snd-music-add {
   border: none; border-radius: 6px; background: transparent; cursor: pointer;
   color: var(--text-2); font-size: 16px; line-height: 1;
-  padding: 3px 9px; font-family: inherit;
+  padding: 0 10px; font-family: inherit;
 }
 .snd-music-add:hover { background: var(--accent-weak); color: var(--text); }
 details.advanced > summary::-webkit-details-marker { display: none; }
 /* “▸”三角箭头：展开时转向下方（.msg-arrow 是行内元素、details 用 ::before 生成，故声明分开写） */
 .msg-arrow { display: inline-block; transition: transform 0.15s ease; font-size: 11px; }
+.pg.open .msg-arrow,
 .msg-panel.open .msg-arrow,
-.fold-panel.open .msg-arrow,
-.slot-fixed.open .msg-arrow { transform: rotate(90deg); }
+.fold-panel.open .msg-arrow { transform: rotate(90deg); }
 details.advanced > summary::before {
   content: '▸'; display: inline-block; flex-shrink: 0;
   transition: transform 0.15s ease; font-size: 11px;
@@ -851,21 +871,20 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 /* 偏离默认值时高亮，收起状态也能看出这张图调过 */
 .adv-summary.customized { color: var(--accent); font-weight: 600; }
-/* 内容区不再缩进 12px、不再画上边框：无框分区里它就是标题行的自然延续。
-   行分隔交给内容自身（提醒内容是 .msg-item 的描边行、提示音是 .snd-row 的浅底行），
-   与 .pg 里“组内不画线、组间靠留白”是同一条规则。 */
+/* 内容体：水平内边距 12 抵消盒子的 -13 外边距，内容因此与头部标题、与卡头同一条左缘；
+   顶上一道发丝线把“标题行 / 内容”分开（收起时体是 display:none，不会留一条孤线）。 */
 .msg-body,
-.adv-body { padding: 0; border-top: 0; }
+.adv-body { padding: 10px 12px 12px; border-top: 1px solid var(--border); }
 /* 展开后的第一个小标题（“显示”“尺寸与位置”）只是分节记号，别在标题行下面再空一大段 */
 .adv-body .subhead { margin-top: 12px; }
 .adv-body .subhead:first-child { margin-top: 2px; }
-/* 提醒内容面板标题行：折叠开关占满剩余宽度，右侧“＋”按钮（与提示音标题行同一套） */
+/* 提醒内容面板标题行：折叠开关占满剩余宽度，右侧动作组（显示方式 + ＋）与提示音同一套 */
 .msg-head { display: flex; align-items: stretch; }
 .msg-head .msg-toggle { flex: 1; }
 .msg-add {
   border: none; border-radius: 6px; background: transparent; cursor: pointer;
   color: var(--text-2); font-size: 16px; line-height: 1;
-  padding: 3px 9px; font-family: inherit;
+  padding: 0 10px; font-family: inherit;
 }
 .msg-add:hover { background: var(--accent-weak); color: var(--text); }
 
@@ -875,11 +894,11 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .gallery-tip {
   /* 拖拽排序说明：放在面板头与列表体之间（列表体是固定高度 + 滚动区，
      说明写在列表体内会被滚走）。
-     与 .gallery-body 一样不做水平内缩 —— 无框分区里内容必须与标题同一条左缘。 */
-  padding: 0 0 8px; font-size: 11.5px; color: var(--text-2); line-height: 1.5;
+     水平内边距 12 与 .gallery-body / 头部标题同一条左缘（盒子本身不吃内边距）。 */
+  padding: 0 12px 8px; font-size: 11.5px; color: var(--text-2); line-height: 1.5;
 }
 .gallery-body {
-  padding: 0 0 10px;
+  padding: 0 12px 10px;
   overflow-y: auto;
   /* 纵向允许**滚动链**（scroll chaining）：列表滚到顶 / 到底后，继续滚同一个滚轮
      会接着带动外层页面（#content）继续滚，而不是“卡住不动”。
@@ -1644,20 +1663,17 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    层级 = 卡片标题 > 组标题 > 子标签 > 行标签，左缘与组内各行同一条。 */
 .slot-fixed { margin-top: 12px; }
 
-/* 头部 = 一行子标签：可点折叠，但悬停只换文字与箭头颜色。
-   整行铺 --accent-weak 是描边卡片时代的做法，在无框的组里会像一条高亮条。 */
+/* 头部 = 一行**静态**子标签 + “＋ 添加”。
+   2026-11-10 起这一层不再折叠（用户：「提醒时间」不准折叠，必须展开），
+   因此没有 ▸、没有 hover、没有 cursor:pointer —— 它已经不是按钮，
+   留一套悬停反馈只会让人以为还能点。层级仍靠“没有竖条、位置在组内”表达。 */
 .slot-head { display: flex; align-items: center; gap: 2px; }
-.slot-fixed .msg-toggle {
-  flex: 0 1 auto; width: auto;
-  padding: 2px 0; gap: 5px;
-  /* 12px/700 + 同样的灰，与 .pg-head 的组标题同一个字号字重：层级只靠“没有竖条、
-     箭头代替竖条、位置在组内”表达。上一版给的是 12.5px/600，`字号更大 + 颜色更深`
-     反而比「触发方式」还抢眼 —— 那是全卡最明显的一处层级倒挂，现已抹平。 */
+.slot-head .slot-title {
+  padding: 2px 0;
+  /* 12px/700 + 同样的灰，与 .pg-head 的组标题同一个字号字重：比组标题不能再大，
+     否则又是那处层级倒挂（上一版给过 12.5px/600 的深色，比「触发方式」还抢眼）。 */
   font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--text-2);
 }
-.slot-fixed .msg-toggle:hover { color: var(--text); }
-.slot-fixed .msg-arrow { font-size: 10px; }
-.slot-fixed.open .msg-arrow { color: var(--accent); }
 
 /* “＋ 添加”紧跟标签右侧，做成低调文字按钮：hover 才描边显色 */
 .slot-add {
@@ -1682,8 +1698,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   display: grid;
   grid-template-columns: 16px 108px 104px minmax(0, 1fr) 26px;
   align-items: center; column-gap: 12px;
-  /* 行间线在分区块的 --bg 底上要比在卡片白底上淡一档：同一条 --border 铺在灰底上
-     对比更强，三条线会把“触发方式”切成四条横带，组又散了。 */
+  /* 行间线比卡片上其它描边淡一档：三条同深的线会把“触发方式”切成四条横带，
+     组又散了（2026-11-10 撤掉卡内灰底后这条线直接落在卡片白上，淡一档更必要）。 */
   border: 0; border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
   border-radius: 0;
   padding: 6px 0;
@@ -2187,8 +2203,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .cdrop-menu.hidden { display: none; }
 /* 选项文字左缘必须与同列其它控件（原生 <select> / 输入框 / 本控件按钮）的内容左缘对齐：
    三者都是“边框 1px + 内边距 10px”= 11px。菜单自身是“1px 边框 + 4px 内边距”，
-   所以选项左内边距取 6px → 1 + 4 + 6 = 11px。选中标识不能再占一行横向空间
-   （原先左侧 10px 勾选列 + 6px 间距把文字顶到 29px），改为左侧绝对定位的竖条。 */
+   所以选项左内边距取 6px → 1 + 4 + 6 = 11px。选中态只靠文字与图标的品牌色，
+   不再另加标记（左侧竖条 2026-11-10 按用户要求删除；勾选列早在 2026-11-08 就没了，
+   因为占横向空间会把文字顶离左缘）。 */
 .cdrop-item {
   position: relative;
   display: flex; align-items: center; gap: 6px;
@@ -2202,10 +2219,6 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .cdrop-item:hover { background: var(--bg); }
 .cdrop-item:focus-visible { background: var(--bg); outline: 2px solid var(--accent); outline-offset: -2px; }
 .cdrop-item[aria-selected='true'] { color: var(--accent); }
-.cdrop-item[aria-selected='true']::before {
-  content: ''; position: absolute; left: 2px; top: 7px; bottom: 7px; width: 3px;
-  border-radius: 999px; background: currentColor;
-}
 .cdrop-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 只有「文字后面跟着“?”」的选项才把文字收成内容宽 —— 否则 flex:1 会把圆圈推到菜单
    最右端，看着像单独一个角标（2026-11-08）。多选项没有“?”，它靠 flex:1 把分辨率
@@ -2217,7 +2230,6 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    所以每项前面换成方框。面板允许比触发器宽 —— “DELL U2719DS · 2560×1440 · 主屏”
    塞不进 180px，但触发器本身仍与同列控件同宽对齐。 */
 .cdrop-multi .cdrop-menu { right: auto; width: max-content; min-width: 100%; max-width: 340px; }
-.cdrop-multi .cdrop-item[aria-selected='true']::before { display: none; }
 /* 多选里“选中”已经由方框表达了，文字不必再染色 —— 一次勾好几项时整片变蓝太吵 */
 .cdrop-multi .cdrop-item[aria-selected='true'] { color: var(--text); }
 /* 型号名与分辨率之间留够间隔：最长的那一项会把面板撑到刚好放下两者，
