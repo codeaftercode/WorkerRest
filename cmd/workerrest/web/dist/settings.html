@@ -224,26 +224,34 @@
               <button type="button" class="msg-toggle" aria-expanded="true"><span class="msg-arrow">▸</span><span class="pg-title">触发方式</span></button>
             </div>
             <div class="pg-body">
-              <!-- 计时方法：两段式单选（倒计时 / 固定时间），取代原来的自绘下拉。
-               两个选项互斥，而且直接决定组内出现“间隔”还是“提醒时间”——并排摆着、
-               各自带一句解释，比“点开下拉才知道有哪些选项、每个选项什么意思”直观得多。
-               段控内容由 settings.js 的 mountBreakSeg 按 BREAK_MODES 生成
-               （图标 + 主标签 + 一句说明）；role=radiogroup / radio 保留单选语义。 -->
-              <div class="mode-seg" id="short-mode"></div>
-              <div class="row field bk-countdown" data-break="short"><label for="short-interval">间隔</label><div class="field-line"><input type="number" id="short-interval" min="1" max="480" /><span class="unit">分钟</span></div></div>
-              <!-- 提醒时间：固定时间方式的时刻表。它是“触发方式”组里的一个子块，
-               所以不画外框（组标题的层级 + 行间发丝线就够），头部是一行子标签，
-               “＋ 添加”紧跟标签右侧。行不可拖动，只有行首的启停勾选框。
-               2026-11-10 按用户要求**取消这一层的折叠**：时刻表永远摊开，头部只剩一行
-               静态子标签（没有 ▸、不可点）——“不准折叠，必须展开”。
-               整块仍随计时方法显隐（倒计时时整块隐藏，见 applyBreakModeUI）。 -->
-              <div class="slot-fixed" data-break="short">
-                <div class="slot-head">
-                  <span class="slot-title">提醒时间</span>
-                  <button type="button" class="slot-add" id="short-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+              <!-- 计时方法：两个并列面板（2026-11-10 重做，取代两段式段控）。
+               左面板 = 倒计时（里面只有“间隔”），右面板 = 固定时间（里面是提醒时间列表）。
+               面板既是说明也是开关：点面板头即选中该方式，选中面板高亮、未选中的整体压淡
+               但仍可编辑（在里面输入数字会自动切过去）。
+               面板骨架写在这里（里面是静态表单，JS 搬不动也不该搬），头部由 settings.js 的
+               mountBreakPanes 按 BREAK_MODES 生成（图标 + 主标签 + 一句说明），
+               role=radiogroup / radio 保留单选语义。
+               「系统空闲」不属于任何一种方式，留在两个面板之外、组的最下面。 -->
+              <div class="mode-panes" id="short-mode">
+                <div class="mode-pane" data-mode="countdown">
+                  <div class="pane-body">
+                    <div class="row field"><label for="short-interval">间隔</label><div class="field-line"><input type="number" id="short-interval" min="1" max="480" /><span class="unit">分钟</span></div></div>
+                  </div>
                 </div>
-                <div class="slot-body">
-                  <div id="short-list" class="tk-list"></div>
+                <div class="mode-pane" data-mode="fixed">
+                  <div class="pane-body">
+                    <!-- 提醒时间：固定时间方式的时刻表，常驻展开（2026-11-10 起不再折叠）。
+                      “＋ 添加”紧跟子标签右侧，行首勾选框控制单条启停。 -->
+                    <div class="slot-fixed" data-break="short">
+                      <div class="slot-head">
+                        <span class="slot-title">提醒时间</span>
+                        <button type="button" class="slot-add" id="short-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+                      </div>
+                      <div class="slot-body">
+                        <div id="short-list" class="tk-list"></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <!-- 系统空闲：勾上之后，到点先等键鼠连续静默满这么多秒，再走提前通知与正式提醒。
@@ -300,21 +308,33 @@
               <button type="button" class="msg-toggle" aria-expanded="true"><span class="msg-arrow">▸</span><span class="pg-title">触发方式</span></button>
             </div>
             <div class="pg-body">
-              <div class="mode-seg" id="long-mode"></div>
-              <div class="row field bk-countdown" data-break="long"><label for="long-interval">间隔</label><div class="field-line"><input type="number" id="long-interval" min="1" max="480" /><span class="unit">分钟</span></div></div>
-              <!-- “每 N 次短休息后 1 次长休息”也是触发条件（只在短、长都走倒计时时才有意义），
-               所以留在“触发方式”组里、紧挨“间隔” -->
-              <div class="row field bk-countdown" data-break="long" id="longEveryNRow">
-                <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" data-tip="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
-                <div class="field-line"><input type="number" id="longEveryNShort" min="1" max="20" /><span class="unit">次</span></div>
-              </div>
-              <div class="slot-fixed" data-break="long">
-                <div class="slot-head">
-                  <span class="slot-title">提醒时间</span>
-                  <button type="button" class="slot-add" id="long-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+              <!-- 计时方法：两个并列面板（与短休息同一套，见上方注释）。
+               左面板 = 倒计时：间隔 + “每 N 次短休息后 1 次长休息”；
+               右面板 = 固定时间：提醒时间列表。 -->
+              <div class="mode-panes" id="long-mode">
+                <div class="mode-pane" data-mode="countdown">
+                  <div class="pane-body">
+                    <div class="row field"><label for="long-interval">间隔</label><div class="field-line"><input type="number" id="long-interval" min="1" max="480" /><span class="unit">分钟</span></div></div>
+                    <!-- “每 N 次短休息后 1 次长休息”也是倒计时路径的条件（只在短、长都走
+                     倒计时时才有意义），所以留在左面板里、紧挨“间隔” -->
+                    <div class="row field" id="longEveryNRow">
+                      <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" data-tip="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
+                      <div class="field-line"><input type="number" id="longEveryNShort" min="1" max="20" /><span class="unit">次</span></div>
+                    </div>
+                  </div>
                 </div>
-                <div class="slot-body">
-                  <div id="long-list" class="tk-list"></div>
+                <div class="mode-pane" data-mode="fixed">
+                  <div class="pane-body">
+                    <div class="slot-fixed" data-break="long">
+                      <div class="slot-head">
+                        <span class="slot-title">提醒时间</span>
+                        <button type="button" class="slot-add" id="long-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+                      </div>
+                      <div class="slot-body">
+                        <div id="long-list" class="tk-list"></div>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="row field idle-gate" data-break="long">

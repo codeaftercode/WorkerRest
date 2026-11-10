@@ -1041,39 +1041,43 @@
     return mountDrop(host, items, pauseActionOf(value), "postpone",
       () => { void autoSave(); }, "暂停休息时");
   }
-  // “计时方法”：两段式单选，取代原来的自绘下拉（2026-11-09）。
-  // 两个选项互斥，而且直接决定组里显示“间隔”还是“提醒时间”：并排两段各带一句解释，
-  // 一眼就能看出“有几种触发方式、各自什么意思”，不用点开才知道。
-  // 取值接口与 mountDrop / mountPauseDrop 一致（get / set，同样注册进 PAUSE_DROPS），
+  // “计时方法”：两个并列面板（2026-11-10 重做，取代两段式段控）。
+  // 左面板 = 倒计时（里面只有“间隔”），右面板 = 固定时间（里面是提醒时间列表）。
+  // 面板骨架与里面的表单写在 HTML 里（JS 不该搬运用户正在编辑的输入框），这里只
+  // ① 给每个面板补一枚面板头（图标 + 主标签 + 一句说明）；
+  // ② 挂选择逻辑：点面板头、键盘方向键、在未选中的面板里动控件，都切到那一侧。
+  // 取值接口与 mountDrop / mountPauseDrop 一致（get / set，同样进 PAUSE_DROPS），
   // fillBreakForm / collectForm 因此一行都不用改。
   var MODE_ICONS = {
     // 循环箭头 = 每隔一段时间循环一次；钟面 = 具体时刻
     countdown: '<path d="M20.6 12a8.6 8.6 0 1 1-2.52-6.08"/><path d="M20.6 4.6v4.6h-4.6"/>',
     fixed: '<circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.3 1.95"/>'
   };
-  function mountBreakSeg(id) {
+  function mountBreakPanes(id) {
     const host = $(`${id}-mode`);
     if (!host) return null;
-    const c = breakCfg(id);
     const norm = (v) => (v === "fixed" ? "fixed" : "countdown");
+    const panes = Array.from(host.querySelectorAll(":scope > .mode-pane"));
+    if (!panes.length) return null;
     const exists = PAUSE_DROPS.get(host);
     if (exists) {
-      exists.set(c && c.mode);
+      exists.set(breakCfg(id) && breakCfg(id).mode);
       return exists;
     }
-    host.classList.add("mode-seg");
     host.setAttribute("role", "radiogroup");
     host.setAttribute("aria-label", "计时方法");
-    host.innerHTML = "";
+    const headOf = (pane) => pane.querySelector(":scope > .pane-head");
     const paint = (v) => {
       // 宿主上留一份取值：探针 / 外部脚本按 dataset.value 读，代替原生 select 的 .value
       host.dataset.value = v;
-      for (const b of host.querySelectorAll(".mode-opt")) {
-        const on = b.dataset.mode === v;
-        b.classList.toggle("on", on);
-        b.setAttribute("aria-checked", on ? "true" : "false");
+      for (const pane of panes) {
+        const on = norm(pane.dataset.mode) === v;
+        pane.classList.toggle("on", on);
+        const head = headOf(pane);
+        if (!head) continue;
+        head.setAttribute("aria-checked", on ? "true" : "false");
         // radio 组的标准键盘模型：整组只有一个 tab 停靠点，组内移动交给方向键
-        b.tabIndex = on ? 0 : -1;
+        head.tabIndex = on ? 0 : -1;
       }
     };
     const api = { get: () => norm(host.dataset.value), set: (v) => paint(norm(v)) };
@@ -1083,43 +1087,56 @@
       if (!cfg) return;
       cfg.mode = norm(v);
       applyBreakModeUI();
-      // 「提醒时间」这一层不再折叠（2026-11-10 起常驻展开），所以切到固定时间时
-      // 不需要再摊开什么 —— 整块随 applyBreakModeUI 显隐即可。
       updateBreakSummary(id);
       void autoSave();
     };
     for (const opt of BREAK_MODES) {
-      const b = document.createElement("button");
-      b.type = "button";
-      b.className = "mode-opt";
-      b.dataset.mode = opt.value;
-      b.setAttribute("role", "radio");
-      b.innerHTML =
-        '<svg class="mode-ico" viewBox="0 0 24 24" aria-hidden="true">' +
-        (MODE_ICONS[opt.value] || "") +
-        "</svg>" +
-        '<span class="mode-txt"><b>' + opt.label + "</b><i>" + opt.sub + "</i></span>";
+      const pane = panes.find((p) => p.dataset.mode === opt.value);
+      if (!pane) continue;
+      // 克隆出来的卡片带着面板头节点，但 addEventListener 不会被克隆 —— 所以这里
+      // 不是“有头就跳过”，而是“有头就只补事件、没头才造一个”。
+      let b = headOf(pane);
+      if (!b) {
+        b = document.createElement("button");
+        b.type = "button";
+        b.className = "pane-head";
+        b.setAttribute("role", "radio");
+        b.innerHTML =
+          '<svg class="pane-ico" viewBox="0 0 24 24" aria-hidden="true">' +
+          (MODE_ICONS[opt.value] || "") +
+          "</svg>" +
+          '<span class="pane-txt"><b>' + opt.label + "</b><i>" + opt.sub + "</i></span>";
+        pane.prepend(b);
+      }
       b.addEventListener("click", () => pick(opt.value));
-      host.appendChild(b);
     }
-    // 左右 / 上下方向键在组内换项，Home / End 到首末项（radiogroup 的标准交互；
-    // 少了它，键盘用户只能在两段之间 Tab 一遍 —— 中间那段 tabIndex=-1 根本进不去）
+    // 在未选中的那半张里动任何控件 = 想用这种方式：先把它切成生效的一侧。
+    // 没有这条，用户改了“间隔”却发现卡的摘要还是“固定时间 · 2 条”，改动也真的不生效。
+    host.addEventListener("pointerdown", (e) => {
+      if (e.target.closest(".pane-head")) return; // 头部走 click，别在这里重复 pick
+      const pane = e.target.closest(".mode-pane");
+      if (!pane) return;
+      const v = norm(pane.dataset.mode);
+      if (v !== api.get()) pick(v);
+    });
+    // 左右 / 上下方向键在两侧之间换项，Home / End 到首末项（radiogroup 的标准交互；
+    // 少了它，键盘用户只能在两半之间 Tab 一遍 —— 未选中那侧 tabIndex=-1 根本进不去）
     host.addEventListener("keydown", (e) => {
-      const all = Array.from(host.querySelectorAll(".mode-opt"));
-      const i = all.indexOf(document.activeElement);
+      const heads = panes.map(headOf).filter(Boolean);
+      const i = heads.indexOf(document.activeElement);
       if (i < 0) return;
       let j = -1;
-      if (e.key === "ArrowRight" || e.key === "ArrowDown") j = Math.min(all.length - 1, i + 1);
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") j = Math.min(heads.length - 1, i + 1);
       else if (e.key === "ArrowLeft" || e.key === "ArrowUp") j = Math.max(0, i - 1);
       else if (e.key === "Home") j = 0;
-      else if (e.key === "End") j = all.length - 1;
+      else if (e.key === "End") j = heads.length - 1;
       if (j < 0) return;
       e.preventDefault();
-      all[j].focus();
-      pick(all[j].dataset.mode);
+      pick(norm(panes[j].dataset.mode));
+      heads[j].focus();
     });
     PAUSE_DROPS.set(host, api);
-    paint(norm(c && c.mode));
+    paint(norm(breakCfg(id) && breakCfg(id).mode));
     return api;
   }
   function dropValue(host, def) {
@@ -3182,10 +3199,10 @@
     // 调度器不重算 ——“倒计时切固定时间且无时刻”后下次提醒与今日时间线
     // 仍显示按倒计时算出的旧时刻（bug 实测来源）。
     for (const el of card.querySelectorAll("input, select")) bindAutoSaveEl(el);
-    // 计时方法改成两段式段控：整卡是克隆来的，克隆出的段控节点没有事件，
-    // 这里按新宿主重新挂一遍实例（宿主是空的或装着克隆来的死按钮，mountBreakSeg
-    // 会先清空再按 BREAK_MODES 重建，且不重复注册）。
-    mountBreakSeg(id);
+    // 计时方法改成并列面板：整卡是克隆来的，克隆出的面板头没有事件，
+    // 这里按新宿主重新挂一遍实例（PAUSE_DROPS 按宿主元素做键，新宿主必然未注册，
+    // 所以会补面板头并重新绑定，且不会重复注册）。
+    mountBreakPanes(id);
     bindIdleGate(id);
     // 克隆节点的“已绑过”标记已在 buildCustomBreakCard 里清掉：把卡里每个“?”重绑一遍，
     // 否则只有“暂停休息时”那一枚（下面是新造的）有提示，克隆来的几枚点不出浮层。
@@ -3451,17 +3468,10 @@
     renderBreakList(id);
   }
   function applyBreakModeUI() {
-    for (const id of allBreakIds()) {
-      const c = breakCfg(id);
-      if (!c) continue;
-      const fixed = c.mode === "fixed";
-      for (const el of document.querySelectorAll(`.bk-countdown[data-break="${id}"]`)) {
-        el.classList.toggle("hidden", fixed);
-      }
-      for (const el of document.querySelectorAll(`.slot-fixed[data-break="${id}"]`)) {
-        el.classList.toggle("hidden", !fixed);
-      }
-    }
+    // 2026-11-10 起「间隔」与「提醒时间」是并列的两个面板，两边同时可见、都能编辑，
+    // 只有“哪一侧生效”靠 .mode-pane.on 表达 —— 所以这里不再隐藏任何一块内容。
+    // 唯一还要按条件显隐的是长休息的“每 N 次短休息后 1 次长休息”：
+    // 它只在短、长都走倒计时时才有意义。
     const bothCountdown = S.short.mode === "countdown" && S.long.mode === "countdown";
     $("longEveryNRow")?.classList.toggle("hidden", !bothCountdown);
   }
@@ -7328,7 +7338,7 @@
     });
     $("cb-add").addEventListener("click", () => void addCustomBreak());
     for (const t of ["short", "long"]) {
-      mountBreakSeg(t);
+      mountBreakPanes(t);
       $(`${t}-add`).addEventListener("click", async () => {
         const cfg = breakCfg(t);
         if (!cfg) return;

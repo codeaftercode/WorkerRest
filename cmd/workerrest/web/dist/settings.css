@@ -561,69 +561,74 @@ body {
 /* 组里第一个东西是子块（外卖卡的“提醒时间”）时，它自带的上外边距就多余了 */
 .pg-body > .slot-fixed:first-child { margin-top: 2px; }
 
-/* 计时方法：两段式单选（2026-11-09 取代自绘下拉）
+/* 计时方法：两个并列面板（2026-11-10 重做，取代两段式段控）
    ————————————————————————————————————————————————————————————————
-   为什么不是下拉：计时方法只有两个互斥选项，而且它直接决定组里出现“间隔”还是
-   “提醒时间”。折在下拉里，用户要先点开才知道“有几种、每种是什么意思”；摊成
-   并排两段之后，“两种触发方式”本身就成了版式的一部分 —— 这个组件是全卡唯一
-   需要先做决定的地方，给它一块比字段行更宽的地盘是合适的。
+   段控只在“上面一排说明”那一层表达选择，选完还得低头去下面一组行里找“间隔”或
+   “提醒时间”，两者隔着一整块。用户要的是面板：**左边倒计时、右边固定时间，
+   各自的东西就在各自面板里**，一眼就能对上是哪一边。
 
-   视觉：凹槽（--bg 底 + 描边）里浮起选中的一段（--panel 底 + 极轻投影）。
-   圆角与输入框同族（外 11 / 内 8），高度略高于字段行的输入框 —— 它是组里的主开关，
-   不是又一条“标签 + 输入框”。整宽占满内容区，不与标签列对齐：它不是字段。
-   每段 = 图标 + 主标签 + 一句说明（11px 灰），说明用“每隔一段时间 / 每天指定时刻”
-   这样的日常说法，而不是“按间隔触发 / 固定时刻”这种说明书腔。 */
-.mode-seg {
-  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
-  margin: 3px 0 5px; padding: 3px;
-  border: 1px solid var(--border); border-radius: 11px;
-  background: var(--bg);
-  /* 极轻的内阴影把凹槽“压”下去：光靠 #f5f6fa / #fff 这 3% 的明度差，
-     在部分屏幕上看不出“这是个槽”，选中的一段就浮不起来。 */
-  box-shadow: inset 0 1px 2px rgba(20, 26, 45, .035);
-}
-[data-theme='dark'] .mode-seg { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35); }
+   于是面板既是说明也是开关 —— 点面板头即选中，被选中那半张浮起（--panel 底 +
+   品牌色描边 + 极轻投影），未选中那半张整体压到 0.62 但仍可编辑：在里面输入数字会
+   自动切到这一侧（见 settings.js 的 mountBreakPanes）。不做 disabled 是刻意的，
+   置灰会让用户以为“这半边坏了”。
 
-/* 组内的段控（2026-11-10 二次收敛）：整块凹槽，不是 N 片独立白片。
-   ————————————————————————————————————————————————————————————————
-   上一版是「透明容器 + 每片白底灰描边 + 8px 间隙」，片片自带一圈描边、彼此留缝，
-   读起来是「N 个独立按钮」而不是「一个开关里选了一档」。现在回到与全页版同一套材质：
-   一块凹槽（底 + 描边 + 内阴影 + 3px 内衬），未选中段**透明**、融进槽里，
-   只有选中段浮起成白片 + 加深描边。
-   2026-11-10 撤掉卡内灰底之后，组底就是卡片白，凹槽直接沿用全局那套 --bg 材质即可 ——
-   曾经那层“比组底深一档”的 color-mix 是为了在灰面上把槽挖出来，现在没有灰面了。
-   注意：这套只服务「计时方法」—— 2026-11-10「暂停休息时」试过三档段控后被否
-   （三格把控件列挤窄），已退回下拉，见下面“暂停休息时”那段。 */
-.pg .mode-seg { margin: 0 0 10px; }
-.mode-opt {
-  display: flex; align-items: center; justify-content: center; gap: 8px;
-  padding: 5px 8px;
-  border: 1px solid transparent; border-radius: 8px;
-  background: transparent; color: var(--text-2);
-  font: inherit; text-align: left; cursor: pointer;
-  transition: background .15s ease, color .15s ease, box-shadow .15s ease, border-color .15s ease;
+   两半等宽等高（grid 1fr 1fr + stretch）：一张“每隔一段时间”、一张“每天指定时刻”，
+   高度不一致就会被读成“两张各说各话的卡”而不是“一个开关的两档”。
+   min-width: 0 必须有 —— 面板里的时刻行是 5 列网格，缺了它 grid 子项不肯收缩，
+   内容会把整块顶宽、越出面板边界。 */
+.mode-panes {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+  margin: 0 0 10px; align-items: stretch;
 }
-.mode-opt:hover { color: var(--text); background: color-mix(in srgb, var(--panel) 55%, transparent); }
-.mode-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-/* 选中段浮起：投影极轻，暗色下换成纯黑（亮色投影在深底上等于没画）。
-   边框比凹槽描边实一档 —— 卡片和选中段都是 --panel，只靠投影分不出边界。 */
-.mode-opt.on {
-  background: var(--panel); border-color: color-mix(in srgb, var(--border) 55%, var(--text-2)); color: var(--text);
-  box-shadow: 0 1px 2px rgba(20, 26, 45, .07), 0 2px 8px rgba(20, 26, 45, .05);
+.mode-pane {
+  display: flex; flex-direction: column; min-width: 0;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: transparent;
+  transition: border-color .15s ease, background .15s ease, opacity .15s ease;
 }
-.mode-opt.on:hover { background: var(--panel); }
-[data-theme='dark'] .mode-opt.on { box-shadow: 0 1px 3px rgba(0, 0, 0, .45); }
-.mode-ico {
-  width: 17px; height: 17px; flex: none;
+.mode-pane:not(.on) { opacity: .62; }
+.mode-pane.on {
+  border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+  background: var(--panel);
+  box-shadow: 0 1px 2px rgba(20, 26, 45, .05);
+}
+[data-theme='dark'] .mode-pane.on { box-shadow: 0 1px 3px rgba(0, 0, 0, .4); }
+/* 面板头：图标 + 主标签 + 一句人话说明；整条都是点选区（不是只有图标或文字可点） */
+.pane-head {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; border: 0; background: transparent;
+  border-radius: 9px 9px 0 0;
+  font: inherit; color: var(--text-2); text-align: left; cursor: pointer;
+  transition: background .15s ease, color .15s ease;
+}
+.pane-head:hover { background: var(--accent-weak); color: var(--text); }
+.pane-head:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 选中那半张的头部下面画一道线：面板里“标题 / 内容”的分界，与卡内其它盒子同一套语言 */
+.mode-pane.on .pane-head { color: var(--text); border-bottom: 1px solid var(--border); }
+.pane-ico {
+  width: 16px; height: 16px; flex: none;
   fill: none; stroke: currentColor; stroke-width: 1.7;
   stroke-linecap: round; stroke-linejoin: round;
-  color: var(--text-2);
-  transition: color .15s ease;
 }
-.mode-opt.on .mode-ico { color: var(--accent); }
-.mode-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
-.mode-txt b { font-size: 13px; font-weight: 600; line-height: 1.25; }
-.mode-txt i { font-size: 11px; font-style: normal; line-height: 1.25; color: var(--text-2); }
+.mode-pane.on .pane-ico { color: var(--accent); }
+.pane-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.pane-txt b { font-size: 12.5px; font-weight: 600; line-height: 1.3; }
+.pane-txt i { font-size: 11px; font-style: normal; line-height: 1.3; color: var(--text-2); }
+/* 面板内容不能再走全卡的 .row.field 两列网格：那一列是 200px 标签 + 控件列，
+   而面板只有 ~234px 宽，标签一占就把控件挤成两半。面板内改成“标签一行、控件一行”。 */
+.pane-body {
+  padding: 9px 10px 10px;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.mode-pane .row.field {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px; min-height: 0; padding: 0; align-items: start;
+}
+.mode-pane .row.field > label { font-size: 12.5px; }
+/* 面板里的数字框不再硬撑 180px：跟着面板走，面板够宽时才到 180 */
+.mode-pane .field-line > input[type='number'] { flex: 0 1 180px; width: 100%; min-width: 72px; }
+/* 时刻表嵌在右侧面板里：面板 body 已经有 gap，那 12px 上留白就多余了 */
+.mode-pane .slot-fixed { margin-top: 0; }
 
 /* “暂停休息时”：自绘下拉（单选，每项带图标）—— 2026-11-10 二次回退。
    ————————————————————————————————————————————————————————————————
@@ -635,7 +640,7 @@ body {
    （2026-11-10 下午），每种处置的含义留在操作手册里。 */
 
 /* 下拉项前面的图标（2026-11-10 起“暂停休息时”用它区分三种处置）。
-   画法沿用段控时代的 .mode-ico：1.7 描边、圆角端点、几何取 24 网格；
+   画法沿用段控时代的图标风格：1.7 描边、圆角端点、几何取 24 网格；
    尺寸收到 16px 以配合 13px 的行高，触发器与菜单项各用一份。 */
 .cdrop-ico {
   width: 16px; height: 16px; flex: none;
@@ -1696,8 +1701,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .slot-body .tk-list { display: block; margin: 2px 0 0; }
 .slot-body .tk-item {
   display: grid;
-  grid-template-columns: 16px 108px 104px minmax(0, 1fr) 26px;
-  align-items: center; column-gap: 12px;
+  grid-template-columns: 16px 76px 64px minmax(0, 1fr) 24px;
+  align-items: center; column-gap: 8px;
   /* 行间线比卡片上其它描边淡一档：三条同深的线会把“触发方式”切成四条横带，
      组又散了（2026-11-10 撤掉卡内灰底后这条线直接落在卡片白上，淡一档更必要）。 */
   border: 0; border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
@@ -1728,16 +1733,57 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .slot-body .tk-item .tk-time { gap: 0; }
 /* 原生 time 框：与同行下拉同高（6px 内边距），等宽数字让上下两行的数位对齐。
-   右侧小表盘是原生取值入口，常驻但压到半透明 —— 满色时三行排下来像三枚按钮。 */
+   **2026-11-10 收窄并去掉框内小表盘**：时刻表现在住在右侧半张面板里（内容宽 ~234px），
+   原尺寸 108 + 104 + 26 + 3×12 的间距加起来就顶出面板了。现在 76 / 64 / 24 + 8px 间距，
+   一行放得下“勾选 / 时刻 / 每天 / 删除”且不换行。
+   表盘图标一并去掉（display:none）：它要占十几像素还带一圈留白，正是压垮这一行的
+   最后一根稻草；改时刻仍可直接键入数字，或用框内上下方向键调。 */
 .slot-body .tk-time input[type='time'] {
-  width: 108px; padding: 6px 8px; text-align: center;
+  width: 76px; padding: 6px 4px; text-align: center;
   font-variant-numeric: tabular-nums;
   color-scheme: light;
 }
-.slot-body .tk-time input[type='time']::-webkit-calendar-picker-indicator { opacity: .45; cursor: pointer; }
-.slot-body .tk-time input[type='time']:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+.slot-body .tk-time input[type='time']::-webkit-calendar-picker-indicator { display: none; }
 [data-theme='dark'] .slot-body .tk-time input[type='time'] { color-scheme: dark; }
-.slot-body .tk-repeat { width: 104px; }
+.slot-body .tk-repeat { width: 64px; }
+/* 面板里的时刻行再紧一档。
+   ————————————————————————————————————————————————————————————————
+   76 + 64 + 24 + 3×8 的外面那套是按“满宽时刻表”（外卖卡、520px 以上）定的；
+   搬进右侧半张面板后内容宽只剩 234（874 窗口）→ 180（760 窗口），照搬会顶出面板
+   （760 实测删除键溢出 30px）。这里按面板宽度分两档收：
+     · 面板内一律 68 / 58 / 20 + 6px 间距（内容宽 234 与 200 都放得下）
+     · 容器 < 190px（760 窗口就是这一档）再收到 62 / 54 / 18 + 4px
+   两档都靠 .mode-pane 前缀限定，不会影响外卖卡那张满宽时刻表。 */
+.mode-pane .slot-body .tk-item {
+  /* 除了勾选框与删除列（24 = ✕ 按钮的实测宽度），中间三列都写成 minmax(0, N)：
+     面板一窄就整体等比收缩，而不是让固定列把整行顶出面板。
+     DPI 探针在 1366×768@125% 上抓到过 2-4px 的溢出，就是固定列凑不出来导致的。 */
+  grid-template-columns: 16px minmax(0, 72px) minmax(0, 68px) minmax(0, 1fr) 24px;
+  column-gap: 6px;
+}
+.mode-pane .slot-body .tk-time input[type='time'] { width: 100%; min-width: 0; padding: 6px 2px; }
+/* 68px 是「每天」两个字 + 下拉箭头的舒适宽度：54px 时原生 select 只画得出“每”。
+   写成 100% 是为了跟着列宽收缩 —— 列本身有 minmax(0, …) 兜底。
+   右侧内边距收到 2px 是必须的：全局 select 是 7px 10px，光左右内边距就吃掉 20px，
+   760 宽下“每天”两个字正好被箭头挤掉一半（实测只画出“每”）。 */
+.mode-pane .slot-body .tk-repeat {
+  width: 100%; min-width: 0;
+  padding-left: 7px; padding-right: 2px;
+}
+@container (max-width: 190px) {
+  .mode-pane .slot-body .tk-item {
+    grid-template-columns: 16px minmax(0, 58px) minmax(0, 66px) minmax(0, 1fr) 24px;
+    column-gap: 4px;
+  }
+  .mode-pane .slot-body .tk-time input[type='time'] { padding: 6px 1px; }
+}
+/* 面板内的星期方块：**均分整行**，7 个才排得进一行。
+   定宽 26px 时第二行只放得下 6 个，“日”会被挤到第三行（2026-11-10 实测），
+   所以这里改成 flex: 1 1 0 + width: auto，并把第二行从勾选框列铺到删除列之前
+   （grid-column: 1 / 5）—— 可用宽度从「列 2~4」的 189 拉到接近整行 234（760 窗口 180）。 */
+.mode-pane .slot-body .tk-item > .tk-days { grid-column: 1 / 5; }
+.mode-pane .slot-body .tk-days { width: 100%; gap: 3px; }
+.mode-pane .slot-body .tk-day { flex: 1 1 0; min-width: 0; width: auto; }
 .slot-body .tk-days { flex-wrap: wrap; }
 /* 停用的那条：只把“数据”压淡（时刻 / 重复 / 星期）。
    整行 opacity .5 会把这行唯一能点的勾选框一起变灰，看着像坏了。 */
