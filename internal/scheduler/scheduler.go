@@ -24,6 +24,10 @@ type Host interface {
 	OnSchedulerState()
 	OnPreNotify(kind string, notifyBeforeMs int64)
 	OnPaused()
+	// IdleMs 系统级“鼠标键盘连续无活动”时长（毫秒）：空闲门（等用户离开工位才提醒）
+	// 的唯一读数。读不到系统输入 tick 的机器上恒为 0 —— 那种机器上空闲门永远不达标，
+	// 表现是“一直等待空闲”，所以设置页对空闲门给的默认是不勾。
+	IdleMs() int64
 	// OnAutoPause 自动原因（空闲 / 勿扰 / 全屏 / 投屏 / 应用占用）进入暂停：立刻收掉
 	// **所有**提醒窗口 —— 休息窗、提前提示窗、外卖提醒窗与外卖预通知窗。
 	// 与 OnPaused 的区别：那个只收提前提示窗（手动暂停时休息窗要继续挂着走完）。
@@ -33,6 +37,9 @@ type Host interface {
 	CloseBreakWindows()
 	TakeoutPostponedSnapshot() *model.TakeoutPostponed
 	TakeoutFiredSnapshot() map[string]bool
+	// TakeoutIdleWaitSnapshot 外卖“到点了、还在等空闲”的那一笔（nil = 没有）。
+	// 外卖不走调度器，但状态卡上它和自定义提醒共用一个格子，所以由宿主报给快照。
+	TakeoutIdleWaitSnapshot() *model.TakeoutIdleWait
 	// 推迟 / 跳过休息时各记一笔统计（对应 上一版的 scheduler.on('postpone' / 'skip')）
 	OnBreakPostponed(kind string, postponeMs int64)
 	OnBreakSkipped(kind string, skippedMs int64)
@@ -75,6 +82,8 @@ type Scheduler struct {
 	// 零点前几分钟合盖睡觉，空闲检测还没来得及挂上就到了期；不重锚的话，第二天
 	// 开机会接着昨夜冻结的剩余时间走，几分钟后就弹“该休息了”。
 	pauseTimed bool
+	// idleWait 正在等空闲的那一跳（见 idleGate.go）。nil = 没有在等。
+	idleWait *idleWait
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -235,6 +244,11 @@ func (s *Scheduler) onTick() {
 			}
 			return
 		}
+		// 等待空闲的那一跳碰上“系统空闲自动暂停”不算拦阻：人已经离开工位达到设定时长，
+		// 正是这次提醒要等的那一刻（详见 idleGate.go 的 fireIdleGateWhileIdlePaused）。
+		if s.fireIdleGateWhileIdlePaused() {
+			return
+		}
 		if s.AutoPauseActive() {
 			s.pausedSkip(true)
 			return
@@ -260,6 +274,8 @@ func (s *Scheduler) onTick() {
 	if s.flushPostponed() {
 		return
 	}
+	// 空闲读数在 s.mu 之外取：Host 走 App，避免调度器锁与 App 锁交叉
+	idleMs := s.host.IdleMs()
 	s.mu.Lock()
 	if s.state.NextAt == 0 {
 		s.mu.Unlock()
@@ -282,6 +298,37 @@ func (s *Scheduler) onTick() {
 		}
 	}
 	due := now >= nextAt
+	// 空闲门：到点先看“鼠标键盘连续无活动”够不够长（详见 idleGate.go）。
+	// 不够 → 停在等待态；够了 → 把这一跳就地重排成 now+提前量，之后走原来的老链路。
+	if due && cfgOK && cfg.Enabled {
+		if gateMs := cfg.IdleGateWaitMs(); gateMs > 0 {
+			if idleMs < gateMs {
+				changed := s.idleWait == nil
+				if changed {
+					src := "countdown"
+					if s.state.NextSource != nil {
+						src = *s.state.NextSource
+					}
+					s.idleWait = &idleWait{kind: nextType, at: nextAt, source: src, name: s.state.NextName}
+				}
+				s.mu.Unlock()
+				// 只在刚进入等待态时推一次状态：这之后的每一拍都在等同一个条件，
+				// 半秒推一次会把设置页与托盘刷成动画。
+				if changed {
+					log.Printf("[scheduler] %s 已到点，等键鼠连续无活动 %d 秒后再提醒",
+						nextType, gateMs/1000)
+					s.emitState()
+				}
+				return
+			}
+			if s.armGatedBreakLocked(cfg, nextType, nextAt, now) {
+				s.mu.Unlock()
+				s.emitState()
+				return
+			}
+			// 提前通知为 0：达标即弹正式提醒窗，落到下面的 startBreak
+		}
+	}
 	s.mu.Unlock()
 
 	if preNotifyMs > 0 {
@@ -458,28 +505,19 @@ func (s *Scheduler) pausedFire() {
 	s.startBreakAt(pick.id, pick.at)
 }
 
-// pauseDisposition 这条自定义提醒在暂停休息期间的实际处置。把“推迟但没有推迟时长”
-// 降级成跳过：没有时长可推，硬推会每跳原地打转、永远不弹。未知取值按默认的推迟。
+// pauseDisposition 这条自定义提醒在暂停休息期间的实际处置。
+// 未知取值按默认的推迟。
 func pauseDisposition(c model.BreakConfig) string {
 	switch c.PauseAction {
-	case settings.PauseActionRemind:
-		return settings.PauseActionRemind
-	case settings.PauseActionPostpone:
-		if c.PostponeMs <= 0 {
-			return settings.PauseActionSkip
-		}
-		return settings.PauseActionPostpone
-	case settings.PauseActionSkip:
-		return settings.PauseActionSkip
+	case settings.PauseActionRemind, settings.PauseActionPostpone, settings.PauseActionSkip:
+		return c.PauseAction
 	}
 	return settings.PauseActionPostpone
 }
 
-// pausedPostpone 暂停期间的“推迟提醒”：到点不弹窗，按该提醒的“可推迟（分钟）”
+// pausedPostpone 暂停期间的“推迟提醒”：到点不弹窗，按该提醒的“推迟时长”
 // 把弹出时间往后推；推完再到期时若仍在暂停休息状态，就继续往后推，如此往复。
 // 推迟不是吞掉：恢复后由 flushPostponed 在推迟后的时刻弹出。
-//
-// “可推迟”填 0 的配置已经被 pauseDisposition 降级成跳过，这里不会看到。
 func (s *Scheduler) pausedPostpone() {
 	cfg := s.host.CfgSnapshot()
 	now := nowMs()

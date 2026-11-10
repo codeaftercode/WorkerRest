@@ -126,10 +126,15 @@ func autoResumeOnClear(reason string) bool {
 //
 // 空闲**采样**本身照旧启动（只读、不改任何状态），这样无头模式下也能断言探测能力可用。
 func (a *App) startSystemWatchers() {
+	// 建空闲状态机这一步必须与调度器的读取互斥：调度器在 Start 时就跑起来了，
+	// 空闲门（IdleMs）随时可能来读 a.idle —— 无锁赋值会与那次读构成数据竞争。
+	a.mu.Lock()
 	if a.idle == nil {
 		a.idle = idle.NewIdleState()
 	}
-	a.idle.Start()
+	id := a.idle
+	a.mu.Unlock()
+	id.Start()
 	dnd := windnd.GetDndStatus()
 	cast := windnd.GetCastStatus()
 	procs := winproc.ListProcessNames()
@@ -195,6 +200,30 @@ func (a *App) watchLoop(stop <-chan struct{}, name string, intervalMs int, immed
 			logx.GuardRun("sys."+name, fn)
 		}
 	}
+}
+
+// IdleMs 系统空闲时长（毫秒）：键鼠连续多久没有活动。**所有提醒空闲门的唯一读数**。
+//
+// 读的是 idle 包每秒钟刷新的全局快照（IdleState.SystemIdleMs），不是现算 —— 四类提醒
+// （短休息 / 长休息 / 外卖 / 自定义）共用同一个值、同一个口径、同一个刷新节奏。
+//
+// 注意它**不是** IdleSinceMs：后者是“软件侧空闲”，休息窗口关闭时会被 ResetBaseline
+// 清零（系统空闲自动暂停要的正是那个口径）。空闲门问的是“人离开工位多久了”，只认真实
+// 键鼠输入，软件开关过哪扇窗口与它无关。
+//
+// 空闲状态机没起来（读不到输入 tick）时恒为 0 —— 那种机器上空闲门永远不达标，
+// 表现是“一直等待空闲”。这也是设置页把空闲门默认设为不勾的原因之一。
+//
+// 不加 a.mu 的锁序问题：调用方（调度器）都已放开 s.mu 才来这里，所以这里是
+// App.mu → IdleState.mu 的单向加锁，不会与调度器锁交叉。
+func (a *App) IdleMs() int64 {
+	a.mu.Lock()
+	id := a.idle
+	a.mu.Unlock()
+	if id == nil {
+		return 0
+	}
+	return id.SystemIdleMs()
 }
 
 // idleWatchTick 推进一次空闲判定；入参 / 返回都是“上一次有没有判成离开”。

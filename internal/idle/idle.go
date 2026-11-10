@@ -67,6 +67,14 @@ type IdleState struct {
 	resetAt        int64 // 重置点（0 = 还没重置过）
 	activeStreakMs int64 // 已连续检测到输入的时长，用于 ActiveMs 去抖
 
+	// systemIdleMs 系统口径的空闲时长快照 = now − lastInputAt，**不掺 resetAt**，
+	// 每完成一次采样刷新一次（SampleInterval，出厂 1 秒）。
+	//
+	// 与 IdleSinceMs 的唯一区别就是 resetAt：休息窗口关闭会把软件侧口径清零（那是对的，
+	// 自动暂停要的就是“刚休息完别马上又判离开”），但“键鼠到底多久没动”是客观事实，
+	// 不该因为软件关了一扇窗口就变成 0。提醒的空闲门要的正是这个客观值。
+	systemIdleMs int64
+
 	forced   bool // 冒烟专用：把 L 钉死在 forcedMs
 	forcedMs int64
 
@@ -104,6 +112,7 @@ func (s *IdleState) Start() bool {
 	s.lastInputAt = s.nowFn()
 	s.resetAt = 0
 	s.activeStreakMs = 0
+	s.systemIdleMs = 0
 	s.started = true
 	ch := make(chan struct{})
 	s.stopCh = ch
@@ -150,6 +159,8 @@ func (s *IdleState) Sample() {
 	now := s.nowFn()
 	tick, ok := s.tickFn()
 	if !ok {
+		// 读不到 tick 就不知道这一秒有没有人动过键鼠。**不动快照**（冻结在上一次的值）：
+		// 空闲门宁可一直等着，也不能在“不知道”的时候误判成“人走了”把提醒弹出来。
 		return
 	}
 	if s.hasTick && tick != s.lastTick {
@@ -161,6 +172,9 @@ func (s *IdleState) Sample() {
 	}
 	s.lastTick = tick
 	s.hasTick = true
+	// 系统口径快照：此刻距最后一次真实键鼠输入的时长。放在 tick 比较**之后**算，
+	// 这样“本次采样刚发现输入”时快照当场归零，不会多留一整秒的陈旧值。
+	s.systemIdleMs = max(0, now-s.lastInputAt)
 }
 
 // IdleSinceMs L：连续无输入时长（毫秒）。未启动 / 被强制时按各自口径返回。
@@ -174,6 +188,32 @@ func (s *IdleState) IdleSinceMs() int64 {
 		return 0
 	}
 	return max(0, s.nowFn()-max(s.lastInputAt, s.resetAt))
+}
+
+// SystemIdleMs 系统口径的“键鼠连续无活动”时长（毫秒）：**全局唯一的一份，每秒刷新**。
+//
+// 提醒的空闲门（BreakConfig.IdleGateMs）只认这个读数：到点时拿它和用户设的 x 比大小，
+// 没到就接着等。所有提醒共用同一个值，所以四类提醒的判定口径天然一致。
+//
+// 与 IdleSinceMs 的差别只有一处 —— resetAt。后者是“软件侧空闲”，休息窗口关闭时被
+// ResetBaseline 清零（自动暂停需要的正是这个：刚休息完别立刻又判离开）；而空闲门问的是
+// “这个人离开工位多久了”，软件开关过哪扇窗口与它无关，所以这里只认**真实的键鼠输入**。
+// 少了这条区分，就会出现“用户明明走了二十分钟，休息窗一关，空闲门却要重新等 x 秒”。
+//
+// 取的是**最近一次采样的快照**，不是现算：同一秒内多次读拿到同一个值（判定不会因为
+// 读到 29.999 vs 30.001 而抖动），代价是最多滞后一个采样周期（出厂 1 秒）。
+//
+// 未启动 / 读不到 tick 时恒为 0 —— 空闲门于是永远不达标，表现是“一直等待空闲”。
+func (s *IdleState) SystemIdleMs() int64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.forced {
+		return s.forcedMs
+	}
+	if !s.started {
+		return 0
+	}
+	return s.systemIdleMs
 }
 
 // LastInputAtMs 这段空闲的起点（= 最后一次输入的时刻）
@@ -208,11 +248,17 @@ func (s *IdleState) ResetBaseline() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := s.nowFn()
-	s.lastInputAt = now
+	// 只动软件侧基准（resetAt）。lastInputAt 是“最后一次真实键鼠输入”，属于客观事实；
+	// 跟着改成 now 会让系统口径（SystemIdleMs）凭空归零 —— 用户明明已离开二十分钟，
+	// 空闲门却要从这一刻重新等 x 秒，正是这次要修掉的那个坑。
+	// IdleSinceMs / LastInputAtMs 都取 max(lastInputAt, resetAt)，resetAt = now 已经占
+	// 主导，去掉那行对这两个结果没有任何影响。
 	s.resetAt = now
 	s.activeStreakMs = 0
 	s.forced = false
 	s.forcedMs = 0
+	// 顺手把系统口径快照对齐到此刻（解除强制后不必等下一拍采样才准）。
+	s.systemIdleMs = max(0, now-s.lastInputAt)
 }
 
 // ForceIdle 冒烟 / 单测专用：把 L 钉在 ms（传负数解除）。

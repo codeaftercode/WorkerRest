@@ -80,15 +80,25 @@ func (s *Settings) CastMirrorPause() bool { return s.Flag(true, "castMirrorPause
 // 真正的外卖提醒窗口仍在“原定时刻”弹出，不会因提前通知而提前）
 func (s *Settings) TakeoutLeadSec() int { return clampInt(s.Int(0, "takeout", "leadSec"), 0, 300) }
 
-// TakeoutPostponeMin 外卖“可推迟”分钟数（0=不显示“推迟”按钮）
+// TakeoutPostponeMin 外卖“推迟时长”分钟数（最小 1 分钟：0 分钟等于原地重弹，
+// 语义已删除，见 2026-11-10）
 func (s *Settings) TakeoutPostponeMin() int {
-	return clampInt(s.Int(10, "takeout", "postponeMin"), 0, 120)
+	return clampInt(s.Int(10, "takeout", "postponeMin"), 1, 120)
 }
 
 // TakeoutPauseAction 暂停休息期间外卖到点的处置：
-// remind（照常弹窗）/ postpone（按“可推迟”时长往后推，缺省）/ skip（不弹窗、直接记跳过）。
+// remind（照常弹窗）/ postpone（按“推迟时长”往后推，缺省）/ skip（不弹窗、直接记跳过）。
 func (s *Settings) TakeoutPauseAction() string {
 	return normPauseAction(s.Str(PauseActionPostpone, "takeout", "pauseAction"))
+}
+
+// TakeoutIdleGateMs 外卖的“鼠标键盘无活动”空闲门时长（毫秒，0 = 不设门）。
+// 与休息的 IdleGateWaitMs 同一口径：没勾 / 填 0 分 0 秒都不算开。
+func (s *Settings) TakeoutIdleGateMs() int64 {
+	if !s.Flag(false, "takeout", "idleGate") {
+		return 0
+	}
+	return clampInt64(s.Int(idleGateDefaultMs, "takeout", "idleGateMs"), 0, idleGateMaxMs)
 }
 
 // AppPauseCfg 指定应用运行时自动暂停（enabled 只认真正的 true）

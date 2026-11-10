@@ -44,9 +44,14 @@ type fakeHost struct {
 	postpones  []string
 	skips      []string
 	pp         *model.TakeoutPostponed
+	// gated 外卖“到点了、还在等空闲”的那一笔（状态卡汇总用）
+	gated *model.TakeoutIdleWait
+	// idleMs 系统级“连续无输入”读数的假值（空闲门测试用；0 = 人一直在敲键盘）
+	idleMs int64
 }
 
 func (h *fakeHost) CfgSnapshot() *settings.Settings                   { return h.cfg }
+func (h *fakeHost) IdleMs() int64                                     { return h.idleMs }
 func (h *fakeHost) OnSchedulerState()                                 { h.states++ }
 func (h *fakeHost) OnPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
 func (h *fakeHost) OnPaused()                                         { h.pauses++ }
@@ -55,6 +60,7 @@ func (h *fakeHost) ClosePreBreak()                                    {}
 func (h *fakeHost) CloseBreakWindows()                                { h.closed++ }
 func (h *fakeHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }
 func (h *fakeHost) TakeoutFiredSnapshot() map[string]bool             { return nil }
+func (h *fakeHost) TakeoutIdleWaitSnapshot() *model.TakeoutIdleWait   { return h.gated }
 func (h *fakeHost) OnBreakPostponed(kind string, _ int64)             { h.postpones = append(h.postpones, kind) }
 func (h *fakeHost) OnBreakSkipped(kind string, _ int64)               { h.skips = append(h.skips, kind) }
 func (h *fakeHost) ShowBreakSession(kind string, _ bool, _ string) string {

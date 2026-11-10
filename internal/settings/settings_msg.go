@@ -46,7 +46,11 @@ func defaultCustomBreakConfig() map[string]any {
 		"notifyBeforeMs": float64(10_000),
 		"postponeMs":     float64(2 * 60_000),
 		"pauseAction":    PauseActionPostpone,
-		"slots":          []any{},
+		// 空闲门：默认不勾、默认 30 秒。自定义提醒的旧配置（没有这两个键）在归一化时
+		// 会由这份出厂配置补齐 —— 设置页拿到的每张卡都有同样的键，不必自己兜底
+		"idleGate":   false,
+		"idleGateMs": float64(idleGateDefaultMs),
+		"slots":      []any{},
 	}
 }
 

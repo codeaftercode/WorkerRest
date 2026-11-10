@@ -235,8 +235,9 @@ func TestPausedPostponeFiresAfterResume(t *testing.T) {
 	}
 }
 
-// 推迟提醒但“可推迟”填了 0：没有时长可推，退化成跳过（否则每跳原地打转、永远不弹）
-func TestPausedPostponeZeroFallsBackToSkip(t *testing.T) {
+// 推迟时长下限 1 分钟（2026-11-10）：配置写 0 也被抬到 1 分钟，
+// 不再“没有时长可推”而降级成跳过
+func TestPausedPostponeZeroClimbsToOneMinute(t *testing.T) {
 	now := time.Now()
 	cfg := `{"customBreaks":[{"id":"cb-water","name":"喝水提醒","config":{` +
 		`"enabled":true,"pauseAction":"postpone","postponeMs":0,"mode":"fixed","durationMs":20000,"slots":[` +
@@ -246,15 +247,21 @@ func TestPausedPostponeZeroFallsBackToSkip(t *testing.T) {
 	s.replan()
 	s.Pause("manual")
 	s.onTick()
-	s.onTick()
-	if len(host.skips) != 1 {
-		t.Fatalf("推迟时长为 0 时应退化成 1 次跳过，得到 %v", host.skips)
+	if len(host.skips) != 0 {
+		t.Fatalf("推迟时长下限 1 分钟：不该记跳过，得到 %v", host.skips)
 	}
 	s.mu.Lock()
-	empty := len(s.postponed) == 0
+	n := len(s.postponed)
+	var due int64
+	for _, p := range s.postponed {
+		due = p.dueAt
+	}
 	s.mu.Unlock()
-	if !empty {
-		t.Fatal("退化成跳过时不应留下推迟计划")
+	if n != 1 {
+		t.Fatalf("应留下 1 条推迟计划，得到 %d", n)
+	}
+	if d := due - nowMs(); d <= 0 || d > 61_000 {
+		t.Fatalf("推迟时长应约 1 分钟，得到 %d ms", d)
 	}
 }
 

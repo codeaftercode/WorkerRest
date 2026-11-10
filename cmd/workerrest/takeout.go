@@ -1,12 +1,14 @@
 package main
 
 import (
+	"log"
 	"strconv"
 	"sync"
 	"time"
 	"workerrest/internal/jsonx"
 	"workerrest/internal/model"
 	"workerrest/internal/plan"
+	"workerrest/internal/settings"
 )
 
 // 外卖提醒：按固定时刻弹出（不做倒计时），显示逻辑与休息窗口一致（同一套外观配置、
@@ -138,4 +140,63 @@ func (a *App) buildTakeoutInfo(slot model.TimeSlot, preview bool, postponedCount
 // takeoutID 生成本次外卖会话 id（对应 上一版的 `${Date.now()}-${random36}`；Go 侧用随机唯一串同样唯一）
 func takeoutID() string {
 	return jsonx.NewRandomID()
+}
+
+// ---------- 空闲门（“鼠标键盘无活动 x 时间”才弹） ----------
+
+// a.takeoutGated 存的是 model.TakeoutIdleWait：到点了、但还在等键鼠无活动达标的那一笔。
+// 与 takeoutPostponed 分开存 —— 那一个是用户点的推迟（有人为决定在里面，报表要记一次），
+// 这里只是配置要求“等用户离开工位再弹”。状态快照里两者写法也不同：后者写“等待空闲”。
+// armGatedTakeout 空闲门达标后，把挂起的那一笔外卖落成“armed 推迟线”：
+// DueAt = 现在 + 提前通知秒数，随后完全复用现有的两条触发线 ——
+// ①b 在 DueAt-提前量 弹预通知小窗（提前量 0 就不弹），① 在 DueAt 弹真窗。
+//
+// 换句话说：“等空闲 → 提前提示 → 正式提醒”这三段里，前一段是本函数新加的，
+// 后两段一行都没改。lead=0 时 DueAt=now，下一拍 ① 直接弹真窗。
+//
+// 幂等：每一次 tick 都调一遍，达标之前什么也不做。
+func (a *App) armGatedTakeout(cfg *settings.Settings, now int64) {
+	gateMs := cfg.TakeoutIdleGateMs()
+	a.mu.Lock()
+	g := a.takeoutGated
+	if g == nil {
+		a.mu.Unlock()
+		return
+	}
+	// 空闲门被取消（或总开关关了）：这笔挂起没有意义了，丢掉
+	if gateMs <= 0 {
+		a.takeoutGated = nil
+		a.mu.Unlock()
+		return
+	}
+	// 已经有推迟线在路上（用户刚点了推迟 / 上一次已 armed）：让它自己走完，
+	// 不要在它前面插一条新的 —— 外卖窗口只有一扇，两条线会互相顶掉。
+	if a.takeoutPostponed != nil {
+		a.mu.Unlock()
+		return
+	}
+	a.mu.Unlock()
+	// 空闲读数在锁外取（IdleMs 自己会加 a.mu）
+	if a.IdleMs() < gateMs {
+		return
+	}
+	lead := int64(cfg.TakeoutLeadSec()) * 1000
+	a.mu.Lock()
+	if a.takeoutGated == nil || a.takeoutPostponed != nil {
+		a.mu.Unlock()
+		return
+	}
+	g = a.takeoutGated
+	a.takeoutGated = nil
+	a.takeoutPostponed = &model.TakeoutPostponed{Slot: g.Slot, DueAt: now + lead, Count: 0, Armed: true}
+	a.mu.Unlock()
+	log.Printf("[takeout] %02d:%02d 空闲门达标：%d 秒后弹提前通知（提前通知 0 秒则直接弹提醒窗）",
+		g.Slot.Hour, g.Slot.Minute, lead/1000)
+}
+
+// TakeoutIdleWaitSnapshot 当前有没有“到点了、还在等空闲”的外卖提醒（状态快照用）
+func (a *App) TakeoutIdleWaitSnapshot() *model.TakeoutIdleWait {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.takeoutGated
 }

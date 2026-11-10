@@ -13,8 +13,23 @@ type BreakConfig struct {
 	PostponeMs     int64  `json:"postponeMs"`
 	// PauseAction 暂停休息期间到点时怎么处置：remind / postpone / skip（缺省 skip，
 	// 见 PauseAction* 常量）。只对自定义提醒有意义；短 / 长休息不看这个字段。
-	PauseAction string     `json:"pauseAction"`
-	Slots       []TimeSlot `json:"slots"`
+	PauseAction string `json:"pauseAction"`
+	// IdleGate 到点后不马上提醒，先等“鼠标键盘连续无活动”达到 IdleGateMs（空闲门）。
+	// 语义：用户只想在自己已经离开工位的那一刻被叫去休息，而不是干到一半被打断。
+	IdleGate bool `json:"idleGate"`
+	// IdleGateMs 空闲门时长（毫秒，默认 30 秒）。勾了但填 0 分 0 秒 = 没启用，见 IdleGateWaitMs。
+	IdleGateMs int64      `json:"idleGateMs"`
+	Slots      []TimeSlot `json:"slots"`
+}
+
+// IdleGateWaitMs 生效的空闲门时长：没勾、或时长 <= 0 一律返回 0（= 不设门）。
+// 把“勾了但填成 0 分 0 秒”在这里就折成 0，调用方不需要各写一次判据
+// （2026-11-08 用户口径：“如果分钟数和秒数都是 0 秒则相当于没有启用”）。
+func (c BreakConfig) IdleGateWaitMs() int64 {
+	if !c.IdleGate || c.IdleGateMs <= 0 {
+		return 0
+	}
+	return c.IdleGateMs
 }
 
 // AppearanceConfig 外观配置（磁盘结构；比下发给渲染层的 Appearance 多几个字段）
@@ -81,6 +96,9 @@ type PlannedBreak struct {
 type PlanRef struct {
 	Name string `json:"name"`
 	At   int64  `json:"at"`
+	// IdleWait 这一跳已经到点、正在等“鼠标键盘无活动”达标（空闲门）：状态卡的时间格
+	// 改成写“等待空闲”，不再画一个恒为 0 的数码管。
+	IdleWait bool `json:"idleWait,omitempty"`
 }
 
 // PlanSplit 按设置页状态卡的口径把下一跳分成两组
@@ -102,6 +120,14 @@ type TimelineItem struct {
 	Paused *bool  `json:"paused,omitempty"`
 }
 
+// TakeoutIdleWait 到点了、正在等“鼠标键盘无活动”达标的那一笔外卖提醒
+// （开着空闲门，人还在忙）。与 TakeoutPostponed 分开：那是用户点的推迟。
+type TakeoutIdleWait struct {
+	Slot TimeSlot `json:"slot"`
+	// At 原定时刻（occurrence 身份）：面板与日志要能说清“等的是哪一次”
+	At int64 `json:"at"`
+}
+
 // TakeoutPostponed 外卖的待推迟提醒（窗口上点“推迟”时由外卖模块记账）
 type TakeoutPostponed struct {
 	Slot  TimeSlot `json:"slot"`
@@ -110,6 +136,10 @@ type TakeoutPostponed struct {
 	// PreFired 推迟后的提前通知是否已弹过：leadSec>0 时，推迟线在 DueAt 前 leadMs
 	// 要再弹一次预通知（与原始提前通知线同口径），用这个标记去重，避免每秒 tick 重复弹。
 	PreFired bool `json:"preFired"`
+	// Armed 这条“推迟线”其实是空闲门达标后自动落位的（不是用户点的那次推迟）。
+	// 区别只有一处：到点时不再复判空闲 —— 它是刚刚达标才排上的；
+	// 用户点的推迟到点后要重新看一次空闲（见 checkTakeoutReminders）。
+	Armed bool `json:"armed,omitempty"`
 }
 
 // SchedulerState 调度器状态快照。
@@ -148,6 +178,10 @@ type SchedulerState struct {
 	// 等它们消失（判定见 cmd/workerrest/pause_expiry.go）。
 	PauseDeadline   int64 `json:"pauseDeadline"`
 	ShortsSinceLong int   `json:"shortsSinceLong"`
+	// IdleWait 下一次提醒已到点、正在等“鼠标键盘无活动”达标（空闲门）。状态卡据此把
+	// 时间格写成“等待空闲”；具体是哪一条由 NextType 决定（Rest / Other 上另有一份标记，
+	// 前端据此逐格判断，不必自己比对名字）。
+	IdleWait bool `json:"idleWait"`
 }
 
 // AppPauseItem 指定应用运行时暂停的一条规则

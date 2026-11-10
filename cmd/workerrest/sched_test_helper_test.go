@@ -34,9 +34,12 @@ type testHost struct {
 	postpones  []string
 	skips      []string
 	pp         *model.TakeoutPostponed
+	// idleMs 系统级“连续无输入”读数的假值（空闲门测试用）
+	idleMs int64
 }
 
 func (h *testHost) CfgSnapshot() *settings.Settings                   { return h.cfg }
+func (h *testHost) IdleMs() int64                                     { return h.idleMs }
 func (h *testHost) OnSchedulerState()                                 { h.states++ }
 func (h *testHost) OnPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
 func (h *testHost) OnPaused()                                         { h.pauses++ }
@@ -45,6 +48,7 @@ func (h *testHost) ClosePreBreak()                                    {}
 func (h *testHost) CloseBreakWindows()                                { h.closed++ }
 func (h *testHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }
 func (h *testHost) TakeoutFiredSnapshot() map[string]bool             { return nil }
+func (h *testHost) TakeoutIdleWaitSnapshot() *model.TakeoutIdleWait   { return nil }
 func (h *testHost) OnBreakPostponed(kind string, _ int64)             { h.postpones = append(h.postpones, kind) }
 func (h *testHost) OnBreakSkipped(kind string, _ int64)               { h.skips = append(h.skips, kind) }
 func (h *testHost) ShowBreakSession(kind string, _ bool, _ string) string {

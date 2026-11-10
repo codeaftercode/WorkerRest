@@ -141,8 +141,8 @@ func normalizeSound(raw map[string]any) {
 }
 
 // normalizeTakeout 归一化整份外卖配置（对应 types.ts 的 normalizeTakeout）：
-// **重建**对象，只留这 5 个键；leadSec 夹到 0–300、postponeMin 夹到 0–120
-// （0 = 不显示“推迟”按钮，见 takeout.js 的显隐）。
+// **重建**对象，只留这 7 个键；leadSec 夹到 0–300、postponeMin 夹到 1–120
+// （“推迟时长”最小 1 分钟，0 的语义已删除）；idleGateMs 夹到 0–30 分钟。
 func normalizeTakeout(raw map[string]any) map[string]any {
 	var o map[string]any
 	if m, ok := raw["takeout"].(map[string]any); ok {
@@ -167,13 +167,25 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 	if v, ok := jsonx.ToNumber(o["leadSec"]); ok {
 		leadVal = v
 	}
+	// 空闲门时长：**缺键要补 30 秒**，不能落成 0。pick 把 nil 当成数字 0（与 JS 的
+	// Number(null) 同义），而 0 在这里的语义是“不设门”—— 旧配置升上来会变成“勾了也没用”。
+	// 所以先判存在性：缺键直接取出厂值，有键（哪怕手改坏了）才走夹紧。
+	gateMs := float64(idleGateDefaultMs)
+	if v, has := o["idleGateMs"]; has {
+		gateMs = pick(v, 0, float64(idleGateMaxMs), float64(idleGateDefaultMs))
+	}
 	return map[string]any{
 		"enabled":     o["enabled"] != false,
 		"leadSec":     pick(leadVal, 0, 300, 0),
-		"postponeMin": pick(o["postponeMin"], 0, 120, 10),
+		"postponeMin": pick(o["postponeMin"], 1, 120, 10),
 		// 暂停休息时的处置：三个合法值之外一律落回“推迟提醒”（默认）
 		"pauseAction": normPauseAction(o["pauseAction"]),
-		"slots":       slotsToAny(normalizeTimeSlots(o["slots"])),
+		// 空闲门（鼠标键盘连续无活动多久才真弹）：缺键按“不勾”，时长按 0~30 分钟夹紧。
+		// 必须在这里列出，重建对象只留白名单里的键 —— 漏了就等于每次保存都把用户的
+		// 设置抹掉（与 displayKnown 那次同一个坑）。
+		"idleGate":   o["idleGate"] == true,
+		"idleGateMs": gateMs,
+		"slots":      slotsToAny(normalizeTimeSlots(o["slots"])),
 	}
 }
 

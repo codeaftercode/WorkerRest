@@ -88,6 +88,8 @@ func (s *Scheduler) replan() {
 	prev := s.prevCountdownAnchorsLocked(now)
 	// 整份挂起线留给今日时间线用（state.lines）；planNextBreak 的口径就是它的首条
 	pool := plan.SchedulerLines(cfg, now, st.ShortsSinceLong, s.consumed, prev)
+	// 正在等空闲的那一跳必须补回来：它的时刻在过去，重算时天然被排除（见 idleGate.go）
+	pool = s.mergeIdleWaitLocked(cfg, now, pool)
 	st.Lines = pool
 	s.syncAnchorIvLocked(cfg)
 	// 分组视图只给设置页状态卡用：短/长一组，外卖 + 自定义一组，互不混用。
@@ -190,6 +192,8 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	if at == 0 {
 		at = st.NextAt
 	}
+	// 开始休息了，就没人在等空闲了
+	s.clearIdleWaitLocked()
 	st.NextType = kind
 	st.Phase = "break"
 	st.BreakStartedAt = now
@@ -258,6 +262,18 @@ func (s *Scheduler) StateCopy() model.SchedulerState {
 		cp := *out.NextSource
 		out.NextSource = &cp
 	}
+	// 等待空闲：整份状态一个标记，具体是哪一格由 NextType 决定 —— 内置短/长归 Rest 那一格，
+	// 自定义提醒归 Other 那一格。前端据此逐格判断，不必自己比对名字（名字可被用户改）。
+	out.IdleWait = s.idleWait != nil
+	if out.IdleWait {
+		if isCustomBreakID(out.NextType) {
+			if out.Other != nil {
+				out.Other.IdleWait = true
+			}
+		} else if out.Rest != nil {
+			out.Rest.IdleWait = true
+		}
+	}
 	return out
 }
 
@@ -292,6 +308,11 @@ func (s *Scheduler) StateForRenderer() model.SchedulerState {
 		if st.Other != nil && st.Other.Name == plan.TAKEOUT_NAME {
 			st.Other = &model.PlanRef{Name: plan.TAKEOUT_NAME, At: pp.DueAt}
 		}
+	}
+	// 外卖到点了、还在等空闲：状态卡上那一格写“等待空闲”（比“已到点 0 秒”有用）。
+	// 与推迟线互斥 —— 空闲门达标后立刻落成推迟线（armed），挂起当场清掉。
+	if g := s.host.TakeoutIdleWaitSnapshot(); g != nil {
+		st.Other = &model.PlanRef{Name: plan.TAKEOUT_NAME, At: g.At, IdleWait: true}
 	}
 	st.Timeline = plan.TodayTimeline(cfg, nowMs(), plan.TimelineOptions{
 		Skip:             s.consumedCopy(),

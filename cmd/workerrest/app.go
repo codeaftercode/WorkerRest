@@ -100,8 +100,12 @@ type App struct {
 	// takeoutFired 同时是状态快照的输入（timeline 与 fixedNext.takeout 的口径与上一版 一致）。
 	takeoutFired     map[string]bool
 	takeoutPostponed *model.TakeoutPostponed
-	takeoutCurrent   *model.TakeoutInfo
-	takeoutWins      []*application.WebviewWindow
+	// takeoutGated 到点了、但还在等“鼠标键盘无活动”达标的那一笔外卖提醒（空闲门）。
+	// 与人主动点的推迟分开存：推迟是用户决定的，空闲门是配置决定的，两者在状态快照里
+	// 的写法也不同（后者写“等待空闲”）。
+	takeoutGated   *model.TakeoutIdleWait
+	takeoutCurrent *model.TakeoutInfo
+	takeoutWins    []*application.WebviewWindow
 	// takeoutWinSess 窗口 → 建它时的会话 id（与休息窗口的 breakWinSess 同理）：
 	// 旧窗口的 WindowClosing 可能迟到，不能让它把刚建好的新会话清掉。
 	takeoutWinSess map[*application.WebviewWindow]string

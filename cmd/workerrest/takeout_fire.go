@@ -43,6 +43,9 @@ func (a *App) checkTakeoutReminders() {
 		a.mu.Lock()
 		a.takeoutPostponed = nil
 		a.takeoutPreFired = nil
+		// 总开关关掉：还在等空闲的那一笔也没人弹了，一起清掉（否则状态卡会一直写
+		// “等待空闲”，而外卖提醒已经整个关掉）
+		a.takeoutGated = nil
 		a.mu.Unlock()
 		// 总开关刚被关掉：已经弹出的“外卖预通知”小窗必须一起收掉。它不属于调度器
 		//（owner=takeout 的 PreBreakState 不走向上的自愈判据），不在这里关就会永远挂着，
@@ -51,6 +54,10 @@ func (a *App) checkTakeoutReminders() {
 		return
 	}
 	now := nowMs()
+	// 空闲门：到点后要求键鼠连续无活动达到配置时长才弹（见 takeout.go 的 armGatedTakeout）。
+	// 必须排在下面那份“推迟线快照”之前 —— 达标后落成的 armed 计划要能被这一拍看见。
+	gateMs := cfg.TakeoutIdleGateMs()
+	a.armGatedTakeout(cfg, now)
 	// 推迟计划一律锁内取快照：TakeoutAction（UI 线程）会同时改写 DueAt / PreFired，
 	// 锁外直接读这几个字段是数据竞争（真机上表现为“刚点的推迟被 tick 回退”）。
 	// 判“过期作废”也放在同一把锁里，避免读到写了一半的状态。
@@ -86,23 +93,27 @@ func (a *App) checkTakeoutReminders() {
 	// 按“推迟提醒”攒到恢复后也会一次倒出来。窗口在进入自动暂停的那一刻已经收掉
 	//（见 App.OnAutoPause），这里管的是暂停期间刚到点的那些。
 	if a.sched != nil && a.sched.IsPaused() {
-		if a.sched.AutoPauseActive() {
-			a.skipTakeoutWhilePaused(cfg)
-			return
-		}
-		switch cfg.TakeoutPauseAction() {
-		case settings.PauseActionRemind:
-			// 照常提醒：继续往下走下面的四条触发线
-		case settings.PauseActionPostpone:
-			if a.postponeTakeoutWhilePaused(cfg, hasPP) {
+		// 例外之例外：空闲门等待中的那一笔，碰上“只有空闲这一条原因”的暂停不算拦阻 ——
+		// 人已经离开工位达到设定时长，正是这次提醒要等的那一刻。按暂停处置跳过的话，
+		// 空闲门一旦大于「系统空闲 N 分钟自动暂停」（出厂 5 分钟），这个功能永远触发不了。
+		gateHold := !a.sched.PausedForBusyReason() &&
+			(a.TakeoutIdleWaitSnapshot() != nil || (hasPP && pp.Armed))
+		if !gateHold {
+			if a.sched.AutoPauseActive() {
+				a.skipTakeoutWhilePaused(cfg)
 				return
 			}
-			// “可推迟”填了 0：没有时长可推，退化成跳过（否则每跳原地打转、永远不弹）
-			a.skipTakeoutWhilePaused(cfg)
-			return
-		default:
-			a.skipTakeoutWhilePaused(cfg)
-			return
+			switch cfg.TakeoutPauseAction() {
+			case settings.PauseActionRemind:
+				// 照常提醒：继续往下走下面的四条触发线
+			case settings.PauseActionPostpone:
+				// “推迟时长”最小 1 分钟，永远有时长可推
+				a.postponeTakeoutWhilePaused(cfg, hasPP)
+				return
+			default:
+				a.skipTakeoutWhilePaused(cfg)
+				return
+			}
 		}
 	}
 	leadSec := cfg.TakeoutLeadSec()
@@ -110,6 +121,20 @@ func (a *App) checkTakeoutReminders() {
 	// ① 推迟线：到点直接弹真窗。清空时核对 DueAt —— 期间用户可能又点了一次推迟，
 	// 不能把那份新计划一起清掉。
 	if hasPP && now >= pp.DueAt {
+		// 用户点的那次推迟到点了，但空闲门还开着、人还在敲键盘 → 回到“等待空闲”，
+		// 等键鼠安静下来再走一遍提前通知（2026-11-08 用户口径：推迟倒计时结束后，
+		// 再次按空闲门判断）。armed 那条是刚达标才排上的，不再复判。
+		if gateMs > 0 && !pp.Armed && a.IdleMs() < gateMs {
+			a.mu.Lock()
+			if p := a.takeoutPostponed; p != nil && p.DueAt == pp.DueAt {
+				a.takeoutPostponed = nil
+				a.takeoutGated = &model.TakeoutIdleWait{Slot: p.Slot, At: p.DueAt}
+			}
+			a.mu.Unlock()
+			a.closeTakeoutPreNotifyIfOpen()
+			log.Printf("[takeout] 推迟到点但键鼠仍在活动（空闲门 %d 秒未达）：回到等待空闲", gateMs/1000)
+			return
+		}
 		a.mu.Lock()
 		if p := a.takeoutPostponed; p != nil && p.DueAt == pp.DueAt {
 			a.takeoutPostponed = nil
@@ -156,15 +181,27 @@ func (a *App) checkTakeoutReminders() {
 			if a.takeoutFired[key] {
 				continue
 			}
+			// 空闲门：到点了但人还在忙 —— 先挂起（消费这一跳），等键鼠安静下来由
+			// armGatedTakeout 落成 armed 计划，再走“预通知 → 真窗”。到点当下就已经
+			// 安静够久的，也走同一条路（下一拍就 arm），保证只有一条链路。
+			if gateMs > 0 {
+				a.takeoutFired[key] = true
+				a.takeoutGated = &model.TakeoutIdleWait{Slot: slot, At: at}
+				log.Printf("[takeout] %02d:%02d 到点，等键鼠连续无活动 %d 秒后再提醒",
+					slot.Hour, slot.Minute, gateMs/1000)
+				continue
+			}
 			a.takeoutFired[key] = true
 			toFire = append(toFire, slot)
 			continue
 		}
 		// ③ 提前通知窗：now+提前量 命中原定分钟那一刻弹一次（提前量=0 不进此支）；
 		//    窗口随后保持显示，直到原定时刻真窗弹出或用户动作。
+		//    开了空闲门就不走这条：提前通知必须等空闲达标之后再弹，否则人还在忙就先
+		//    弹一个“马上要提醒了”的小窗，与“等空闲”的初衷相反。
 		//    at 必须按 now+提前量 折算：提前量把“进入提前区间”推到前一天时（23:50 提
 		//    次日 00:10），occurrence 仍归次日 —— 用 now 当天算会与当天同条目的旧键相撞。
-		if leadSec > 0 && plan.IsTimeSlotDue(slot, now, leadMs) {
+		if gateMs <= 0 && leadSec > 0 && plan.IsTimeSlotDue(slot, now, leadMs) {
 			at := plan.SlotOccurrenceAt(slot, leadMs, now)
 			key := plan.OccurrenceKey("takeout", at)
 			if a.takeoutPreFired[key] {
@@ -175,6 +212,8 @@ func (a *App) checkTakeoutReminders() {
 		}
 	}
 	a.mu.Unlock()
+	// 本拍刚挂起的空闲门：到点当下就已经安静够久的，立刻落位（否则要白等一拍）
+	a.armGatedTakeout(cfg, now)
 	for _, slot := range toFire {
 		a.closeTakeoutPreNotifyIfOpen()
 		a.fireTakeout(slot, 0)
@@ -185,17 +224,13 @@ func (a *App) checkTakeoutReminders() {
 }
 
 // postponeTakeoutWhilePaused 暂停休息期间的“推迟提醒”：到点不弹窗，把提醒窗口的弹出
-// 时间往后推“可推迟（分钟）”；推完再到期时若仍在暂停休息状态，就继续往后推（如此往复）。
+// 时间往后推“推迟时长”；推完再到期时若仍在暂停休息状态，就继续往后推（如此往复）。
 // 推迟不是吞掉：恢复后由正常的推迟线在推迟后的时刻弹出。
 //
-// 返回 false 表示这次没法推迟（“可推迟”填了 0，没有时长可推），由调用方退化成跳过。
 // 已有一次推迟在路上时，本分钟到点的其它条目并进那一次（外卖提醒窗口只有一扇，
 // 标题也不区分时刻），记进 takeoutFired 免得恢复后再补弹。
-func (a *App) postponeTakeoutWhilePaused(cfg *settings.Settings, hasPP bool) bool {
+func (a *App) postponeTakeoutWhilePaused(cfg *settings.Settings, hasPP bool) {
 	ms := int64(cfg.TakeoutPostponeMin()) * 60_000
-	if ms <= 0 {
-		return false
-	}
 	now := nowMs()
 	if hasPP {
 		// 锁内重新取（hasPP 只是“进来时有没有”，期间可能被 UI 的 TakeoutAction 换掉）
@@ -216,14 +251,14 @@ func (a *App) postponeTakeoutWhilePaused(cfg *settings.Settings, hasPP bool) boo
 		a.mu.Unlock()
 		if p == nil {
 			// 计划已被清掉（用户点了别的动作）：本跳什么都不做，别退化成跳过记账
-			return true
+			return
 		}
 		if restarted {
 			log.Printf("[takeout] 暂停休息期间推迟后再次到点，继续推迟 %d 分钟", ms/60_000)
 			// 旧的预通知窗指向已经作废的到点时刻，收掉（新的到点前还会再弹一次）
 			a.closeTakeoutPreNotifyIfOpen()
 		}
-		return true
+		return
 	}
 	a.mu.Lock()
 	for _, slot := range cfg.TakeoutSlots() {
@@ -244,16 +279,15 @@ func (a *App) postponeTakeoutWhilePaused(cfg *settings.Settings, hasPP bool) boo
 		a.mu.Unlock()
 		log.Printf("[takeout] 暂停休息期间 %02d:%02d 到点，推迟 %d 分钟再提醒",
 			slot.Hour, slot.Minute, ms/60_000)
-		return true
+		return
 	}
 	a.mu.Unlock()
 	// 这一刻没有到点的条目（推迟计划还在路上）：什么都不用做
-	return true
 }
 
 // skipTakeoutWhilePaused 暂停休息期间外卖到点：**不弹**提前提示小窗、**不弹**提醒窗口，
 // 直接把这一次当“不点了（跳过）”记一笔（外卖报表的“取消次数”），并消费该次 occurrence
-// —— 恢复后同一分钟不再补弹。“推迟提醒”但“可推迟”填了 0 时也落到这里（没有时长可推）。
+// —— 恢复后同一分钟不再补弹。
 //
 // 三条线口径：
 //   - 推迟线：到点（DueAt）即记一次跳过并清掉推迟计划（暂停期间不补弹）；
@@ -314,7 +348,6 @@ func (a *App) showTakeoutPreNotify(slot model.TimeSlot, targetAt int64) {
 		Custom:        true,
 		Title:         plan.TAKEOUT_NAME,
 		CountdownTail: " 秒",
-		PostponeMin:   cfg.TakeoutPostponeMin(),
 		// 背景色与休息预通知同源（通用配置 → 提醒窗口 → 背景颜色）
 		BgColor: cfg.AppearanceCfg().Color,
 	}

@@ -323,16 +323,33 @@ func breakConfigOf(m map[string]any) model.BreakConfig {
 	cfg.DurationMs = mapInt(m, "durationMs", 20_000)
 	cfg.IntervalMs = mapInt(m, "intervalMs", 600_000)
 	cfg.NotifyBeforeMs = mapInt(m, "notifyBeforeMs", 10_000)
-	cfg.PostponeMs = mapInt(m, "postponeMs", 120_000)
+	// “推迟时长”最小 1 分钟（0 分钟等于原地重弹，2026-11-10 起不再支持）、最多 120 分钟
+	cfg.PostponeMs = clampInt64(mapInt(m, "postponeMs", 120_000), 60_000, 120*60_000)
 	cfg.PauseAction = normPauseAction(m["pauseAction"])
+	// 空闲门：默认不勾、默认 30 秒。时长上限 30 分钟 —— 再长就没有“离开工位顺手休息”
+	// 的意思了，那种需求该用「暂停休息」表达。
+	cfg.IdleGate = mapFlag(m, "idleGate", false)
+	cfg.IdleGateMs = clampInt64(mapInt(m, "idleGateMs", idleGateDefaultMs), 0, idleGateMaxMs)
 	cfg.Slots = normalizeTimeSlots(m["slots"])
 	return cfg
 }
 
+// 空闲门时长（毫秒）：出厂 30 秒，上限 30 分钟。
+const (
+	idleGateDefaultMs int64 = 30_000
+	idleGateMaxMs     int64 = 30 * 60_000
+)
+
+// IdleGateDefaultMs 空闲门出厂时长（设置页新增卡片 / 控件默认值共用）
+func IdleGateDefaultMs() int64 { return idleGateDefaultMs }
+
+// IdleGateMaxMs 空闲门时长上限（设置页输入框 max 与之同源）
+func IdleGateMaxMs() int64 { return idleGateMaxMs }
+
 // BreakConfigOf 从一份休息配置对象读出类型化配置（跨包导出，供 main 的时间线计算复用）。
 func BreakConfigOf(m map[string]any) model.BreakConfig { return breakConfigOf(m) }
 
-// normBreakMode 触发方式只认两个合法值，其余一律按倒计时（旧配置 mode 非法时如此）
+// normBreakMode 计时方法只认两个合法值，其余一律按倒计时（旧配置 mode 非法时如此）
 func normBreakMode(v string) string {
 	if v == "fixed" {
 		return "fixed"
@@ -368,6 +385,17 @@ func mapInt(m map[string]any, key string, def int64) int64 {
 		}
 	}
 	return def
+}
+
+// clampInt64 把毫秒级数值钳进区间（int64 版的 clampInt，后者只接 int）
+func clampInt64(v, min, max int64) int64 {
+	if v < min {
+		return min
+	}
+	if v > max {
+		return max
+	}
+	return v
 }
 
 // SupervisorCfg 督休专员显示开关（督休专员本体在 supervisors/<名称>/meta.json，名字就是身份）

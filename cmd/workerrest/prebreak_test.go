@@ -238,7 +238,7 @@ func rectsOverlap(a, b [4]int) bool {
 
 // 地址里带版式：渲染层第一帧就按它铺，否则会先画内置版式再跳一次（窗口高度按版式给）
 func TestPreBreakURL(t *testing.T) {
-	builtin := preBreakURL(PreBreakInfo{Custom: false, CountdownTail: builtinPreBreakTail, PostponeMin: 2})
+	builtin := preBreakURL(PreBreakInfo{Custom: false, CountdownTail: builtinPreBreakTail})
 	parsed, err := url.Parse(builtin)
 	if err != nil {
 		t.Fatalf("地址解析失败: %v", err)
@@ -248,61 +248,39 @@ func TestPreBreakURL(t *testing.T) {
 	}
 	q := parsed.Query()
 	if q.Get("custom") != "0" || q.Get("tail") != builtinPreBreakTail ||
-		q.Get("postpone") != "1" || q.Get("win") != "prebreak" {
+		q.Get("win") != "prebreak" {
 		t.Fatalf("内置版式地址参数不对：%q", builtin)
 	}
+	// 2026-11-10：推迟时长下限 1 分钟，“推迟”按钮常显，地址不再带 postpone
+	if q.Has("postpone") {
+		t.Fatalf("地址不该再带 postpone 参数：%q", builtin)
+	}
 
-	// 不可推迟（PostponeMin=0）时带 postpone=0，渲染层首帧就藏掉“推迟”按钮
-	custom := preBreakURL(PreBreakInfo{Custom: true, CountdownTail: " 秒显示喝水提醒", PostponeMin: 0})
+	custom := preBreakURL(PreBreakInfo{Custom: true, CountdownTail: " 秒显示喝水提醒"})
 	parsed2, err := url.Parse(custom)
 	if err != nil {
 		t.Fatalf("地址解析失败: %v", err)
 	}
 	q2 := parsed2.Query()
 	if q2.Get("custom") != "1" || q2.Get("tail") != " 秒显示喝水提醒" ||
-		q2.Get("postpone") != "0" || q2.Get("win") != "prebreak" {
-		t.Fatalf("自定义版式（不可推迟）地址参数不对：%q", custom)
+		q2.Get("win") != "prebreak" {
+		t.Fatalf("自定义版式地址参数不对：%q", custom)
+	}
+	if q2.Has("postpone") {
+		t.Fatalf("自定义版式地址不该带 postpone 参数：%q", custom)
 	}
 }
 
-// “可推迟”为 0：弹窗内容、地址、轮询状态三处都不给“推迟”按钮活路
-// （提前提示窗 / 外卖窗口 / 设置页 quick-action 三个入口共用这一语义）
-func TestPreBreakPostponeZero(t *testing.T) {
-	zeroCfg := `{"short":{"enabled":true,"mode":"countdown","intervalMs":600000,` +
-		`"durationMs":20000,"notifyBeforeMs":10000,"postponeMs":0,"slots":[]}}`
-	a, _ := newPreBreakApp(t, zeroCfg)
-
-	info := a.preBreakInfoOfType("short")
-	if info.PostponeMin != 0 {
-		t.Fatalf("postponeMs=0 时 PostponeMin 应是 0，得到 %d", info.PostponeMin)
-	}
-	u := preBreakURL(info)
-	parsed, err := url.Parse(u)
-	if err != nil {
-		t.Fatalf("地址解析失败: %v", err)
-	}
-	if parsed.Query().Get("postpone") != "0" {
-		t.Fatalf("不可推迟时地址应带 postpone=0，得到 %q", u)
-	}
-	a.rememberPreBreakInfo("short")
-	if st := a.PreBreakState(); st["canPostpone"] != false {
-		t.Fatalf("不可推迟时 canPostpone 应是 false，得到 %#v", st["canPostpone"])
-	}
-
-	// 对照：>0 时三处都放行（shortCountdown 的 postponeMs=120000 ⇒ 2 分钟）
-	a2, _ := newPreBreakApp(t, shortCountdown)
-	if got := a2.preBreakInfoOfType("short").PostponeMin; got != 2 {
-		t.Fatalf("shortCountdown 的 PostponeMin 应是 2，得到 %d", got)
-	}
-	a2.rememberPreBreakInfo("short")
-	if st := a2.PreBreakState(); st["canPostpone"] != true {
-		t.Fatalf("可推迟时 canPostpone 应是 true，得到 %#v", st["canPostpone"])
-	}
-
-	// 自定义提醒同样按自己的配置走（cb-water 的 postponeMs=120000 ⇒ 2 分钟）
-	a3, _ := newPreBreakApp(t, customWaterCfg)
-	if got := a3.preBreakInfoOfType("cb-water").PostponeMin; got != 2 {
-		t.Fatalf("cb-water 的 PostponeMin 应是 2，得到 %d", got)
+// 推迟时长下限 1 分钟：旧配置里的 0 / 负数一律抬到 1 分钟，不再有“推迟 0 分钟”的语义
+func TestPreBreakPostponeFloor(t *testing.T) {
+	for _, raw := range []string{"0", "-5"} {
+		cfg := `{"short":{"enabled":true,"mode":"countdown","intervalMs":600000,` +
+			`"durationMs":20000,"notifyBeforeMs":10000,"postponeMs":` + raw + `,"slots":[]}}`
+		a, _ := newPreBreakApp(t, cfg)
+		got, ok := a.CfgSnapshot().BreakByID("short")
+		if !ok || got.PostponeMs != 60_000 {
+			t.Fatalf("postponeMs=%s 应被抬到 1 分钟，得到 %d（ok=%v）", raw, got.PostponeMs, ok)
+		}
 	}
 }
 
@@ -311,7 +289,7 @@ func TestPreBreakPostponeZero(t *testing.T) {
 func TestPreBreakStateShape(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	st := a.PreBreakState()
-	for _, k := range []string{"phase", "paused", "remainMs", "title", "custom", "countdownTail", "canPostpone", "bgColor"} {
+	for _, k := range []string{"phase", "paused", "remainMs", "title", "custom", "countdownTail", "bgColor"} {
 		if _, ok := st[k]; !ok {
 			t.Fatalf("PreBreakState 少了字段 %q（渲染层直接读它，缺字段只会静默显示错内容）：%v", k, st)
 		}
@@ -391,7 +369,7 @@ func TestPreBreakBgColorFollowsAppearance(t *testing.T) {
 		t.Fatalf("info 没记颜色时应回退到当前配置，得到 %#v", st["bgColor"])
 	}
 	// 地址里没有颜色时干脆不带这个参数（渲染层用内置默认蓝），别传一个空的 bg=
-	if strings.Contains(preBreakURL(PreBreakInfo{PostponeMin: 1}), "bg=") {
+	if strings.Contains(preBreakURL(PreBreakInfo{}), "bg=") {
 		t.Fatal("BgColor 为空时地址不该带 bg 参数")
 	}
 }

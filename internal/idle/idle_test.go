@@ -198,6 +198,116 @@ func TestDecideIdleStep(t *testing.T) {
 	}
 }
 
+// ---------- 系统口径（空闲门的唯一读数） ----------
+
+// 系统空闲必须**每秒刷新**：同一秒内多次读拿到同一个值，跨过采样点才前进。
+// 这是“全局统一维护一份、每秒刷新”这个口径的直接回归。
+func TestSystemIdleRefreshesEverySample(t *testing.T) {
+	noBackLoop(t)
+	p := &probeClock{nowMs: 1_000_000, tick: 100, hasTick: true}
+	s := p.newIdle()
+	if got := s.SystemIdleMs(); got != 0 {
+		t.Fatalf("未启动时系统空闲应为 0，得到 %d", got)
+	}
+	if !s.Start() {
+		t.Fatal("Start 应成功")
+	}
+	defer s.Stop()
+	if got := s.SystemIdleMs(); got != 0 {
+		t.Fatalf("刚启动时应为 0，得到 %d", got)
+	}
+
+	// 推进 1 秒并采样 → 快照前进 1 秒
+	p.nowMs += 1_000
+	s.Sample()
+	if got := s.SystemIdleMs(); got != 1_000 {
+		t.Fatalf("采样后应为 1000，得到 %d", got)
+	}
+
+	// 再推进 3 秒但**不采样** → 快照必须冻在 1000（每秒刷新，不是随时现算）
+	p.nowMs += 3_000
+	if got := s.SystemIdleMs(); got != 1_000 {
+		t.Fatalf("未到采样点时应保持上一次的值，得到 %d", got)
+	}
+	if got := s.IdleSinceMs(); got != 4_000 {
+		t.Fatalf("软件口径仍是现算的 4000，得到 %d", got)
+	}
+
+	// 采样 → 追上真实值
+	s.Sample()
+	if got := s.SystemIdleMs(); got != 4_000 {
+		t.Fatalf("采样后应追上到 4000，得到 %d", got)
+	}
+
+	// 检测到输入 → 当场归零（不能多留一整秒的陈旧值）
+	p.nowMs += 1_000
+	p.tick = 200
+	s.Sample()
+	if got := s.SystemIdleMs(); got != 0 {
+		t.Fatalf("检测到键鼠输入后应归零，得到 %d", got)
+	}
+}
+
+// 核心回归：休息窗口关闭（ResetBaseline）只清零**软件侧**口径，系统空闲不动。
+//
+// 少了这条区分就会出现：用户明明离开二十分钟，休息窗一关，勾了“无活动 30 秒”的
+// 下一条提醒却要从这一刻重新等 30 秒 —— 人不在，提醒却迟迟不来。
+func TestSystemIdleSurvivesResetBaseline(t *testing.T) {
+	noBackLoop(t)
+	p := &probeClock{nowMs: 1_000_000, tick: 100, hasTick: true}
+	s := p.newIdle()
+	if !s.Start() {
+		t.Fatal("Start 应成功")
+	}
+	defer s.Stop()
+
+	// 键鼠连续 10 分钟没动
+	p.nowMs += 600_000
+	s.Sample()
+	if got := s.SystemIdleMs(); got != 600_000 {
+		t.Fatalf("系统空闲应为 600000，得到 %d", got)
+	}
+
+	s.ResetBaseline() // 休息窗口关闭
+
+	if got := s.IdleSinceMs(); got != 0 {
+		t.Fatalf("软件口径应被清零，得到 %d", got)
+	}
+	if got := s.SystemIdleMs(); got != 600_000 {
+		t.Fatalf("系统口径不该被重置影响，应仍为 600000，得到 %d", got)
+	}
+	if got := s.LastInputAtMs(); got != p.nowMs {
+		t.Fatalf("起点应仍是现在（resetAt 占主导），得到 %d", got)
+	}
+
+	// 重置后的下一拍采样：系统口径继续按真实输入增长
+	p.nowMs += 1_000
+	s.Sample()
+	if got := s.SystemIdleMs(); got != 601_000 {
+		t.Fatalf("重置后系统口径应继续增长到 601000，得到 %d", got)
+	}
+}
+
+// 强制值（冒烟 / 单测专用）同样作用于系统口径，否则空闲门测试没法控场。
+func TestSystemIdleFollowsForce(t *testing.T) {
+	noBackLoop(t)
+	p := &probeClock{nowMs: 1_000_000, tick: 100, hasTick: true}
+	s := p.newIdle()
+	if !s.Start() {
+		t.Fatal("Start 应成功")
+	}
+	defer s.Stop()
+
+	s.ForceIdle(45_000)
+	if got := s.SystemIdleMs(); got != 45_000 {
+		t.Fatalf("强制 45000 时系统口径应为 45000，得到 %d", got)
+	}
+	s.ForceIdle(-1)
+	if got := s.SystemIdleMs(); got != 0 {
+		t.Fatalf("解除强制后应回到真实值 0，得到 %d", got)
+	}
+}
+
 // 真机系统调用：user32!GetLastInputInfo 应可用。
 func TestIdleProbeReal(t *testing.T) {
 	noBackLoop(t)

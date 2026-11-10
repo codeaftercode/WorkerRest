@@ -142,7 +142,7 @@ func seedPresetEntries(raw map[string]any) bool {
 // 每次启动都改写用户配置会把键序和格式一起动掉，而且在“验证脚本误指真实配置”时会留下
 // 副作用；这些夹紧结果会在用户下一次保存时一并落盘。
 func normalizeLoad(raw map[string]any) (presetSeeded, idsRenumbered, displayFilled bool) {
-	// ① 休息触发方式与固定时刻表
+	// ① 休息计时方法与固定时刻表
 	raw["short"] = normalizeBreakConfigOf(mapOf(raw["short"]))
 	raw["long"] = normalizeBreakConfigOf(mapOf(raw["long"]))
 	// ② 声音

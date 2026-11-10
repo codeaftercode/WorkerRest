@@ -7,6 +7,8 @@
     "durationMs": 20000,
     "notifyBeforeMs": 10000,
     "postponeMs": 120000,
+    "idleGate": false,
+    "idleGateMs": 30000,
     "slots": []
   },
   "long": {
@@ -16,6 +18,8 @@
     "durationMs": 300000,
     "notifyBeforeMs": 10000,
     "postponeMs": 300000,
+    "idleGate": false,
+    "idleGateMs": 30000,
     "slots": []
   },
   "customBreaks": [],
@@ -95,6 +99,8 @@
     "leadSec": 10,
     "postponeMin": 2,
     "pauseAction": "postpone",
+    "idleGate": false,
+    "idleGateMs": 30000,
     "slots": [
       {
         "id": "tko-lunch",

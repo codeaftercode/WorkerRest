@@ -88,7 +88,7 @@ type TakeoutInfo struct {
 	Meal    string `json:"meal"` // 餐段文案：早餐 / 午餐 / 下午茶 / 晚餐 / 夜宵
 	// LeadSec 提前通知秒数（生成会话时的配置快照）：只用于诊断，真实窗口始终按原定时刻弹出
 	LeadSec int `json:"leadSec"`
-	// PostponeMin 可推迟的分钟数（“推迟”按钮文案与主进程推迟时长共用）
+	// PostponeMin 推迟时长的分钟数（最小 1；“推迟”按钮文案与主进程推迟时长共用）
 	PostponeMin int `json:"postponeMin"`
 	// PostponedCount 本次是第几次推迟：0=到点正常弹出，>0 显示“已推迟 N 次”
 	PostponedCount int `json:"postponedCount"`

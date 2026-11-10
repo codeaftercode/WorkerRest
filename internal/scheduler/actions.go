@@ -22,8 +22,9 @@ func (s *Scheduler) ResetCycle() {
 	// 显式重置周期：挂起线清空，本次重排全部按当前配置重新起算（不保留旧倒计时进度）
 	s.state.Lines = []model.PlannedBreak{}
 	s.anchorIv = map[string]int64{}
-	// 推迟表也一起清：显式重置就是要按新配置从头来
+	// 推迟表与“等待空闲”的挂起也一起清：显式重置就是要按新配置从头来
 	s.postponed = map[string]*postponedBreak{}
+	s.clearIdleWaitLocked()
 	s.mu.Unlock()
 	s.scheduleNext()
 }
@@ -69,6 +70,9 @@ func (s *Scheduler) Postpone() {
 	}
 	ms := bcfg.PostponeMs
 	oldAt := st.NextAt
+	// 推迟意味着“这一跳到点了但先不提醒”，等待空闲的挂起一并结束：新时刻由推迟算出来，
+	// 到点后如果空闲门还开着，会重新进入等待（见 onTick 的空闲门分支）
+	s.clearIdleWaitLocked()
 	// 基准取“现在”与“原定时刻”的较晚者：推迟只能是往后推。
 	// 早先直接写 now+ms，工作态里点一次“推迟”会把 30 分钟后的提醒拉到 5 分钟后
 	// （既违反“推迟”的语义，也把统计里的“推后时长”记成了负数般的假值）。
@@ -138,6 +142,8 @@ func (s *Scheduler) Skip() {
 	}
 	skippedMs := bcfg.DurationMs
 	s.advanceCounter(nextType)
+	// 跳过消费了这次安排：等待空闲的挂起也该随之结束
+	s.clearIdleWaitLocked()
 	// 固定时刻线：不消费的话 replan 会把同一时刻原样排回来，“跳过”等于没跳
 	s.consumed[plan.OccurrenceKey(nextType, st.NextAt)] = true
 	s.mu.Unlock()
@@ -323,6 +329,13 @@ func (s *Scheduler) resume(reason string, allowPre bool) {
 		return
 	}
 	delta := nowMs() - st.PausedAt
+	// 正在等空闲的那一跳**已经到点**了（剩余恒为 0，见 idleGate.go 的“为什么 NextAt 留在
+	// 过去”）。恢复时不能按暂停时长平移它：平移会把它推回未来，下一拍就落进
+	// “now ∈ [NextAt-提前量, NextAt]”的提前提示区间 —— 人还没离开工位，门都没过，
+	// 右下角却先弹出提示窗。保持原时刻，接着等。
+	if s.idleWait != nil {
+		delta = 0
+	}
 	// 这一段暂停里有没有出现过自动原因：有就按“离开”口径重锚内置倒计时。
 	// 在真正恢复的这一刻取一次并清零 —— 中途只摘掉一条原因（还有别的挂着）时不算恢复，
 	// pauseHadAuto 必须留到真正的恢复那一跳。
@@ -440,6 +453,9 @@ func (s *Scheduler) resume(reason string, allowPre bool) {
 		// 下一跳不会重新判“即将休息”，窗口判据却已不成立 —— 状态与窗口各说各话。
 		if reanchored {
 			st.Phase = "idle"
+			// 这一跳已经被整段推走（离开 = 重新计一个完整周期），原来在等的空闲也就作废了：
+			// 留着它会让 mergeIdleWait 把旧时刻钉回来，把重锚的结果又抹掉。
+			s.clearIdleWaitLocked()
 		}
 		// 与固定线分支一致：恢复后立即重判“即将休息”阶段，不依赖下一个 tick。
 		// 暂停期间若 NextAt 被平移进提前区间内，或暂停前本就在 pre，都应立刻回到提示窗。

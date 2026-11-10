@@ -88,4 +88,34 @@ func TestTrayTexts(t *testing.T) {
 			t.Errorf("动作项 = %q / 暂停项 = %q", action, pause)
 		}
 	})
+
+	t.Run("等待空闲：单独一句，不说“约 0 分钟后”", func(t *testing.T) {
+		// 空闲门勾上后到点不马上弹：这一刻 NextAt 已经过去，按分钟取整会说“约 1 分钟后”，
+		// 用户会以为坏了 —— 明确写“等待空闲”。
+		tip, status, action, pause := trayTexts(model.SchedulerState{
+			Phase: "idle", NextType: "short", NextName: plan.ShortBreakName,
+			NextAt: now - 1_000, IdleWait: true,
+		}, false)
+		if want := "等待空闲后提醒短休息"; tip != want {
+			t.Errorf("tooltip = %q，期望 %q", tip, want)
+		}
+		if want := "下次短休息：等待空闲"; status != want {
+			t.Errorf("状态行 = %q，期望 %q", status, want)
+		}
+		if action != "立即休息" || pause != "暂停休息" {
+			t.Errorf("动作项 = %q / 暂停项 = %q", action, pause)
+		}
+	})
+
+	t.Run("等待空闲但已暂停：暂停优先", func(t *testing.T) {
+		// 手动 / 勿扰等暂停态下“人在忙”这件事本来就成立，托盘要先说暂停
+		_, _, _, pause := trayTexts(model.SchedulerState{
+			Paused: true, Phase: "idle", NextType: "short", NextName: plan.ShortBreakName,
+			NextAt: now - 1_000, IdleWait: true, PauseReasons: []string{"manual"},
+			PausedAt: now - 60_000,
+		}, false)
+		if pause != "恢复休息" {
+			t.Errorf("暂停态下菜单项应为“恢复休息”，得到 %q", pause)
+		}
+	})
 }

@@ -36,7 +36,7 @@ func newTakeoutApp(t *testing.T, cfgJSON string) *App {
 	}
 }
 
-// takeoutCfg 一条启用的外卖配置：午餐 12:30、可推迟 15 分钟、提前 0 分钟
+// takeoutCfg 一条启用的外卖配置：午餐 12:30、推迟时长 15 分钟、提前 0 分钟
 const takeoutCfg = `{
   "takeout": {
     "enabled": true,
@@ -89,32 +89,33 @@ func TestBuildTakeoutInfo(t *testing.T) {
 	}
 }
 
-// “可推迟”为 0：会话快照 PostponeMin=0（渲染层据此隐藏“推迟”按钮）
-func TestBuildTakeoutInfoPostponeZero(t *testing.T) {
+// “推迟时长”下限 1 分钟（2026-11-10）：旧配置里的 0 在读取与保存两条路上都被抬到 1，
+// 渲染层的“推迟”按钮不再有隐藏分支
+func TestTakeoutPostponeFloor(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]}}`
 	a := newTakeoutApp(t, cfg)
 	info := a.buildTakeoutInfo(model.TimeSlot{ID: "s1", Hour: 12, Minute: 30, Enabled: true}, false, 0, 0)
 	if info == nil {
 		t.Fatal("会话不应为空")
 	}
-	if info.PostponeMin != 0 {
-		t.Fatalf("postponeMin=0 时应透传 0，得到 %d", info.PostponeMin)
+	if info.PostponeMin != 1 {
+		t.Fatalf("postponeMin=0 应被抬到 1 分钟，得到 %d", info.PostponeMin)
 	}
-	// 归一化侧同样不许把 0 夹成 1（保存路径）
+	// 归一化侧（保存路径）同样抬到 1
 	norm := settings.NormalizeTakeout(map[string]any{"takeout": map[string]any{"postponeMin": float64(0)}})
-	if norm["postponeMin"] != float64(0) {
-		t.Fatalf("settings.NormalizeTakeout 应保留 postponeMin=0，得到 %v", norm["postponeMin"])
+	if norm["postponeMin"] != float64(1) {
+		t.Fatalf("settings.NormalizeTakeout 应把 postponeMin=0 抬到 1，得到 %v", norm["postponeMin"])
 	}
 }
 
-// TakeoutPostponeMin 的下放开到 0：0 = 不显示“推迟”按钮；负值夹到 0、越界夹到 120
+// TakeoutPostponeMin 的下限是 1 分钟：负值 / 0 都抬到 1、越界夹到 120
 func TestTakeoutPostponeMinClamp(t *testing.T) {
 	cases := []struct {
 		js   string
 		want int
 	}{
-		{`{"takeout":{"postponeMin":0}}`, 0},
-		{`{"takeout":{"postponeMin":-5}}`, 0},
+		{`{"takeout":{"postponeMin":0}}`, 1},
+		{`{"takeout":{"postponeMin":-5}}`, 1},
 		{`{"takeout":{"postponeMin":15}}`, 15},
 		{`{"takeout":{"postponeMin":999}}`, 120},
 		{`{"takeout":{}}`, 10}, // 缺省兜底

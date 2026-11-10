@@ -305,6 +305,13 @@ func trayTextsAt(st model.SchedulerState, pausedCleared bool, hold []string, now
 		statusText = "状态：未安排休息"
 		actionText = "立即休息"
 		pauseText = "暂停休息"
+	case st.IdleWait:
+		// 到点了，但这条提醒配了“鼠标键盘无活动才提醒”：人还在敲键盘，等安静下来再弹。
+		// 说“约 0 分钟后”会让人以为坏了，所以单独一句。
+		tip = "等待空闲后提醒" + st.NextName
+		statusText = "下次" + st.NextName + "：等待空闲"
+		actionText = "立即休息"
+		pauseText = "暂停休息"
 	default:
 		// 约数到分钟（用户不要求秒级精度）：tooltip“约 10 分钟后短休息”、
 		// 菜单状态行“下次短休息：约 10 分钟后”。

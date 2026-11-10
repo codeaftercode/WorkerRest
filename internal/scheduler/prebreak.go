@@ -151,6 +151,8 @@ func (s *Scheduler) ReanchorCountdown() {
 		return
 	}
 	st.NextAt = at
+	// 内置倒计时整个推走了：正在等空闲的挂起跟着作废（否则 mergeIdleWait 会把旧时刻钉回来）
+	s.clearIdleWaitLocked()
 	// 重锚用的就是当前配置间隔：同步锚点间隔表，后续 replan 的沿用判据才成立
 	s.anchorIv[nextType] = iv
 	// 回来时若还停在“休息前提示窗”阶段，拉回等待态：离开一趟回来不该立刻被催
