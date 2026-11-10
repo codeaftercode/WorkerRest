@@ -490,14 +490,21 @@ def main():
         check(stg.get("appName") == (cfg.get("appName") or None), "软件名输入框 == 配置 appName",
               "%r vs %r" % (stg.get("appName"), cfg.get("appName")))
         if isinstance(cfg.get("short"), dict):
-            check(stg.get("shortMode") == cfg["short"].get("mode"), "短休息触发方式 == 配置 short.mode",
+            check(stg.get("shortMode") == cfg["short"].get("mode"), "短休息计时方法 == 配置 short.mode",
                   "%s vs %s" % (stg.get("shortMode"), cfg["short"].get("mode")))
             check(same_num(stg.get("shortDuration"), (cfg["short"].get("durationMs") or 0) / 1000.0),
-                  "短休息时长（秒）== 配置 short.durationMs/1000",
+                  "短休息提醒时长（秒）== 配置 short.durationMs/1000",
                   "%s vs %s" % (stg.get("shortDuration"), (cfg["short"].get("durationMs") or 0) / 1000.0))
             check(same_num(stg.get("shortInterval"), (cfg["short"].get("intervalMs") or 0) / 60000.0),
                   "短休息间隔（分钟）== 配置 short.intervalMs/60000",
                   "%s vs %s" % (stg.get("shortInterval"), (cfg["short"].get("intervalMs") or 0) / 60000.0))
+        if isinstance(cfg.get("long"), dict):
+            check(stg.get("longMode") == cfg["long"].get("mode"), "长休息计时方法 == 配置 long.mode",
+                  "%s vs %s" % (stg.get("longMode"), cfg["long"].get("mode")))
+            # 2026-11-09：长休息的时长输入也改成秒了（原来按分钟），这里跟着换除数
+            check(same_num(stg.get("longDuration"), (cfg["long"].get("durationMs") or 0) / 1000.0),
+                  "长休息提醒时长（秒）== 配置 long.durationMs/1000",
+                  "%s vs %s" % (stg.get("longDuration"), (cfg["long"].get("durationMs") or 0) / 1000.0))
         check(same_num(stg.get("idlePauseMin"), cfg.get("idlePauseMin")),
               "空闲暂停分钟数 == 配置 idlePauseMin",
               "%s vs %s" % (stg.get("idlePauseMin"), cfg.get("idlePauseMin")))
@@ -1198,7 +1205,7 @@ def main():
         check(pb.get("tipsShown") is True, "提前提示窗：内置版式显示两行说明", pb.get("tipsShown"))
         check(pb.get("pauseShown") is True, "提前提示窗：内置版式带“暂停计时”", pb.get("pauseShown"))
         check(pb.get("postponeShown") is True,
-              "提前提示窗：默认配置（可推迟>0）显示“推迟”按钮", pb.get("postponeShown"))
+              "提前提示窗：默认配置显示“推迟”按钮", pb.get("postponeShown"))
         check(pb.get("buttons") == ["立即休息", "推迟休息", "跳过休息", "暂停计时"],
               "提前提示窗：四个按钮文案（内置版式）", pb.get("buttons"))
         check(not (pb.get("consoleErrors") or []), "提前提示窗：页面无控制台错误",
@@ -1214,7 +1221,7 @@ def main():
         check(pbc.get("tipsShown") is False, "自定义提醒版式：不显示两行说明", pbc.get("tipsShown"))
         check(pbc.get("pauseShown") is False, "自定义提醒版式：没有“暂停计时”", pbc.get("pauseShown"))
         check(pbc.get("postponeShown") is True,
-              "自定义提醒版式：默认配置（可推迟>0）显示“推迟”按钮", pbc.get("postponeShown"))
+              "自定义提醒版式：默认配置显示“推迟”按钮", pbc.get("postponeShown"))
         # “暂停计时”是被加 .hidden 藏起来的（元素还在 DOM 里），所以这里仍是 4 项；
         # 它到底露没露由上面的 pauseShown 断言。
         check(pbc.get("buttons") == ["立即提醒", "推迟提醒", "跳过提醒", "暂停计时"],
@@ -1280,7 +1287,7 @@ def main():
         check(str(tk.get("postponeBtn") or "").startswith("推迟"),
               "外卖窗口：“推迟”按钮带时长文案", tk.get("postponeBtn"))
         check(tk.get("postponeShown") is True,
-              "外卖窗口：默认配置（可推迟>0）显示“推迟”按钮", tk.get("postponeShown"))
+              "外卖窗口：默认配置显示“推迟”按钮", tk.get("postponeShown"))
         # 时钟是正向走的（固定时刻无倒计时），格式 HH:MM:SS
         ok_clock = False
         try:
@@ -1460,28 +1467,23 @@ def main():
         check(not (tk.get("consoleErrors") or []), "外卖窗口：页面无控制台错误",
               (tk.get("consoleErrors") or [])[:2])
 
-        # ---- “可推迟”为 0：提前提示窗与外卖窗口都不显示“推迟”按钮 ----
-        # 场景由 renderer_probe.js 的 5b 段造出：short.postponeMs=0、takeout.postponeMin=0，
-        # URL 带 postpone=0（真实链路里主进程生成的地址同样带这个参数）
-        pbz = m.get("preBreakNoPostpone") or {}
-        check(pbz.get("postponeShown") is False,
-              "可推迟为 0：提前提示窗不显示“推迟”按钮", pbz.get("postponeShown"))
-        # 按钮是被 .hidden 藏起来的（元素与文案都还在 DOM 里），不是被删掉。
-        # 文案用词兼容内置 / 自定义两种版式（轮询会把版式切成上一次记住的 custom）
-        check(any("推迟" in b for b in (pbz.get("buttons") or [])),
-              "可推迟为 0：提前提示窗“推迟”按钮只是被隐藏（DOM 与文案仍在）",
-              pbz.get("buttons"))
+        # ---- “推迟时长”下限 1 分钟：旧配置写 0，弹窗侧按 1 分钟照常给“推迟” ----
+        # 场景由 renderer_probe.js 的 5b 段造出：short.postponeMs=0、takeout.postponeMin=0。
+        # 0 的语义已于 2026-11-10 删除（读取侧夹到 1 分钟），两个窗口的“推迟”按钮必须常显。
+        pbz = m.get("preBreakPostponeFloor") or {}
+        check(pbz.get("postponeShown") is True,
+              "推迟时长下限 1 分钟：提前提示窗照常显示“推迟”按钮", pbz.get("postponeShown"))
         check(not (pbz.get("consoleErrors") or []),
-              "可推迟为 0：提前提示窗页面无控制台错误",
+              "推迟时长下限 1 分钟：提前提示窗页面无控制台错误",
               (pbz.get("consoleErrors") or [])[:2])
-        tkz = m.get("takeoutNoPostpone") or {}
-        check(tkz.get("postponeShown") is False,
-              "可推迟为 0：外卖窗口不显示“推迟”按钮", tkz.get("postponeShown"))
-        check(str(tkz.get("postponeBtn") or "").startswith("推迟"),
-              "可推迟为 0：外卖窗口“推迟”按钮只是被隐藏（文案仍在）",
+        tkz = m.get("takeoutPostponeFloor") or {}
+        check(tkz.get("postponeShown") is True,
+              "推迟时长下限 1 分钟：外卖窗口照常显示“推迟”按钮", tkz.get("postponeShown"))
+        check(str(tkz.get("postponeBtn") or "").strip() == "推迟 1 分钟",
+              "推迟时长下限 1 分钟：外卖“推迟”按钮文案是 1 分钟",
               tkz.get("postponeBtn"))
         check(not (tkz.get("consoleErrors") or []),
-              "可推迟为 0：外卖窗口页面无控制台错误",
+              "推迟时长下限 1 分钟：外卖窗口页面无控制台错误",
               (tkz.get("consoleErrors") or [])[:2])
 
         # ---- 全局键鼠活动 → 督休专员二阶段（系统级检测的可观测端）----
@@ -1671,7 +1673,7 @@ def main():
             ("settings_stats.png", 20000), ("settings_shortcuts.png", 20000), ("settings_about.png", 20000),
             ("index.png", 20000), ("break_wide.png", 20000), ("break_tall.png", 20000),
             ("prebreak.png", 4000), ("prebreak_custom.png", 4000), ("takeout.png", 4000),
-            ("prebreak_no_postpone.png", 4000), ("takeout_no_postpone.png", 4000),
+            ("prebreak_postpone_floor.png", 4000), ("takeout_postpone_floor.png", 4000),
             # 不启用督休专员的两张：整页深色渐变，与 takeout 同量级
             ("nosup_break_short.png", 20000), ("nosup_takeout_qr.png", 20000),
         ):

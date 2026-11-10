@@ -87,7 +87,7 @@ const PAGES = [
   },
   {
     name: "prebreak 预备窗",
-    path: "/prebreak.html?win=prebreak&postpone=1",
+    path: "/prebreak.html?win=prebreak&tail=" + encodeURIComponent(" 秒进入休息"),
     w: 400,
     h: 240,
     ids: ["app", "pb-title", "pb-countdown", "pb-seconds", "pb-post", "pb-tips", "pb-now", "pb-postpone", "pb-skip", "pb-pause"],

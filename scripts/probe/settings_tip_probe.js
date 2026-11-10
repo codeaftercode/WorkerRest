@@ -188,14 +188,14 @@ const TIP = `(function () {
   await delay(200);
   await page.click('.nav-item[data-tab="timing"]');
   await delay(500);
-  await page.locator("#tab-timing .cdrop-btn").first().click();
+  await page.locator("#tk-pause .cdrop-btn").click();
   await delay(350);
-  const itemQ = page.locator("#tab-timing .cdrop-item .q-mark").first();
+  const itemQ = page.locator("#tk-pause .cdrop-item .q-mark").first();
   await itemQ.hover();
   await delay(400);
   const dropTip = await page.evaluate(() => {
     const t = document.getElementById("q-tip");
-    const menu = document.querySelector("#tab-timing .cdrop-menu");
+    const menu = document.querySelector("#tk-pause .cdrop-menu");
     return {
       shown: t.classList.contains("show"),
       text: t.textContent,
@@ -219,7 +219,7 @@ const TIP = `(function () {
   check(badDropOff.length === 0, "下拉“?”与文字同高（≤ 1px）",
     badDropOff.map((g) => g.off + "px/" + g.text).join(", ") || "ok");
   const caret = await page.evaluate(() => {
-    const b = document.querySelector("#tab-timing .cdrop-btn");
+    const b = document.querySelector("#tk-pause .cdrop-btn");
     const c = b.querySelector(".cdrop-caret").getBoundingClientRect();
     const r = b.getBoundingClientRect();
     return Math.round(r.right - c.right);
@@ -231,6 +231,17 @@ const TIP = `(function () {
   console.log("[?] 深色主题");
   await page.click('.nav-item[data-tab="general"]');
   await delay(300);
+  // 上一段在“时间规划”页很靠下的位置展开过外卖卡的下拉，页面滚动位置与鼠标都停在那里。
+  // 切页后先把滚动位置与鼠标归位，再 hover —— 否则 hover 头一步是“滚进来”，
+  // 滚动会把刚排好的浮层躲开，看起来像“深色下不弹”。
+  await page.evaluate(() => {
+    for (const el of document.querySelectorAll("*")) {
+      if (el.scrollTop) el.scrollTop = 0;
+    }
+    window.scrollTo(0, 0);
+  });
+  await page.mouse.move(4, 4);
+  await delay(150);
   await page.evaluate(() => document.documentElement.setAttribute("data-theme", "dark"));
   await page.locator("label:has(#dndPause)").hover();
   await delay(450);

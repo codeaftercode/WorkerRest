@@ -335,7 +335,11 @@ async function main() {
     `ui=${shEnabled} cfg=${cfg.short && cfg.short.enabled}`);
 
   await page.locator('.nav-item[data-tab="supervisor"]').click();
-  await delay(200);
+  // 立绘库是异步铺的（先读角色清单、再铺磁贴），固定等 200ms 在机器忙的时候会扑空：
+  // 2026-11-09 与手册构建并发跑过一回，tiles=0 之后下面取 .role-sel 直接 8 秒超时崩掉
+  // 整支探针，看着像“控件坏了”。改成等第一块磁贴出现（最多 5 秒），真的没渲染就
+  // catch 掉、让下面的 check 如实报 FAIL，而不是抛异常中断。
+  await page.waitForSelector("#sup-gallery .role-item", { timeout: 5000 }).catch(() => {});
   const tiles = await page.locator("#sup-gallery .role-tile, #sup-gallery > *").count();
   check(tiles >= (roles.length || 1), "立绘库磁贴数 ≥ ListRoles 返回的专员数",
     `tiles=${tiles} roles=${roles.length}`);
@@ -543,6 +547,54 @@ async function main() {
       `弹窗 ${m.id} 宽度在视口内且不越界`,
       `w=${Math.round(m.w)} left=${Math.round(m.left)} right=${Math.round(m.right)} vw=${m.vw}`);
   }
+
+  // ---------- 侧栏状态卡：“等待空闲” ----------
+  // 空闲门到点但人还在忙时，时间格要直接写“等待空闲”——不是“约 0 分钟后”，也不是
+  // 一串 0 的数码管。做法：把 getState 换成一份造好的状态，等页面自己那一秒一次的
+  // 轮询重画，量完立刻换回去（不动后端、不写配置）。
+  await page.evaluate(async () => {
+    const real = await window.api.getState();
+    window.__wrRealGetState = window.api.getState;
+    const at = Date.now() - 1000;
+    const fake = JSON.parse(JSON.stringify(real));
+    fake.phase = "idle";
+    fake.paused = false;
+    fake.pauseReasons = [];
+    fake.pausedAt = 0;
+    fake.breakEndsAt = 0;
+    fake.nextType = "short";
+    fake.nextName = "短休息";
+    fake.nextAt = at;
+    fake.idleWait = true;
+    fake.rest = { name: "短休息", at: at, idleWait: true };
+    fake.other = { name: "喝水提醒", at: at - 1000, idleWait: true };
+    window.api.getState = async () => fake;
+  });
+  await delay(1400);
+  const idleCells = await page.evaluate(() =>
+    [...document.querySelectorAll("#data-status .status-cell")].map((c) => ({
+      k: (c.querySelector(".k") || {}).textContent || "",
+      v: (c.querySelector(".v") || {}).textContent || "",
+      led: !!c.querySelector(".v-led"),
+    })),
+  );
+  await page.evaluate(() => {
+    window.api.getState = window.__wrRealGetState;
+  });
+  check(idleCells.length >= 2, "状态卡渲染出状态格", JSON.stringify(idleCells));
+  const idleRest = idleCells.find((c) => c.k.indexOf("短休息") >= 0) || {};
+  check(
+    idleRest.v === "等待空闲" && idleRest.led === false,
+    "等待空闲：下次休息那一格写文字、不画数码管",
+    JSON.stringify(idleRest),
+  );
+  const idleOther = idleCells.find((c) => c.k.indexOf("喝水") >= 0) || {};
+  check(
+    idleOther.v === "等待空闲",
+    "等待空闲：自定义提醒那一格同样写文字（不被“今天/明天”判据藏掉）",
+    JSON.stringify(idleOther),
+  );
+  await delay(1100); // 让页面按真实状态再画一次，后面的断言看到的才是真状态
 
   // ---------- 全程无 JS 错误 ----------
   check(consoleErrors.length === 0, "六个 tab 走完没有任何 JS 报错",

@@ -1731,7 +1731,7 @@ async function run() {
 
   // ---- 1b. 提前提示窗：内置版式 ----
   const pbErr = [];
-  const pre = await open(browser, BASE + "/prebreak.html?postpone=1", 400, 240, {
+  const pre = await open(browser, BASE + "/prebreak.html?win=prebreak", 400, 240, {
     transparent: true, frame: false, onConsole: pbErr,
   });
   await delay(700);
@@ -1752,7 +1752,7 @@ async function run() {
   const pbLErr = [];
   const preL = await open(
     browser,
-    BASE + "/prebreak.html?postpone=1&bg=" + encodeURIComponent("#ffd400"),
+    BASE + "/prebreak.html?win=prebreak&bg=" + encodeURIComponent("#ffd400"),
     400, 240,
     { transparent: true, frame: false, onConsole: pbLErr },
   );
@@ -1779,7 +1779,7 @@ async function run() {
   const pbCErr = [];
   const preC = await open(
     browser,
-    BASE + "/prebreak.html?custom=1&tail=" + encodeURIComponent(" 秒显示喝水提醒") + "&postpone=1",
+    BASE + "/prebreak.html?custom=1&tail=" + encodeURIComponent(" 秒显示喝水提醒") + "&win=prebreak",
     400, 172,
     { transparent: true, frame: false, onConsole: pbCErr },
   );
@@ -1906,7 +1906,7 @@ async function run() {
     await p.close().catch(() => {});
   }
 
-  // ---- 5b. “可推迟”为 0：提前提示窗与外卖窗口都不显示“推迟”按钮 ----
+  // ---- 5b. “推迟时长”下限 1 分钟：旧配置写 0，弹窗侧仍按 1 分钟给“推迟”按钮 ----
   await main.evaluate(
     "(function(){ return window.api.saveSettings({" +
       "short:{postponeMs:0}, takeout:{postponeMin:0}}); })()",
@@ -1915,25 +1915,25 @@ async function run() {
   const pbZErr = [];
   const preZ = await open(
     browser,
-    BASE + "/prebreak.html?custom=0&postpone=0&tail=" + encodeURIComponent(" 秒进入休息"),
+    BASE + "/prebreak.html?custom=0&tail=" + encodeURIComponent(" 秒进入休息"),
     400, 240,
     { transparent: true, frame: false, onConsole: pbZErr },
   );
   await delay(700);
-  metrics.preBreakNoPostpone = await preZ.evaluate(PROBE_PREBREAK);
-  metrics.preBreakNoPostpone.consoleErrors = pbZErr;
-  await shot(preZ, "prebreak_no_postpone");
-  console.log("[probe] preBreakNoPostpone:", JSON.stringify(metrics.preBreakNoPostpone));
+  metrics.preBreakPostponeFloor = await preZ.evaluate(PROBE_PREBREAK);
+  metrics.preBreakPostponeFloor.consoleErrors = pbZErr;
+  await shot(preZ, "prebreak_postpone_floor");
+  console.log("[probe] preBreakPostponeFloor:", JSON.stringify(metrics.preBreakPostponeFloor));
 
   await main.evaluate("(function(){ return window.api.previewTakeout(); })()");
   const tkZErr = [];
   const tkZ = await open(browser, BASE + "/takeout.html", 880, 560, {
     transparent: true, frame: false, onConsole: tkZErr,
   });
-  metrics.takeoutNoPostpone = await tkZ.evaluate(PROBE_TAKEOUT);
-  metrics.takeoutNoPostpone.consoleErrors = tkZErr;
-  await shot(tkZ, "takeout_no_postpone");
-  console.log("[probe] takeoutNoPostpone:", JSON.stringify(metrics.takeoutNoPostpone));
+  metrics.takeoutPostponeFloor = await tkZ.evaluate(PROBE_TAKEOUT);
+  metrics.takeoutPostponeFloor.consoleErrors = tkZErr;
+  await shot(tkZ, "takeout_postpone_floor");
+  console.log("[probe] takeoutPostponeFloor:", JSON.stringify(metrics.takeoutPostponeFloor));
   // 还原配置（收尾 / 后续场景回到默认态）
   await main.evaluate(
     "(function(){ return window.api.saveSettings({" +
