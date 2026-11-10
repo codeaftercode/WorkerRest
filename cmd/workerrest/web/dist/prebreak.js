@@ -18,13 +18,10 @@
     builtin: { now: "立即休息", postpone: "推迟休息", skip: "跳过休息" },
     custom: { now: "立即提醒", postpone: "推迟提醒", skip: "跳过提醒" }
   };
-  function applyVariant(custom, tail, canPostpone) {
+  function applyVariant(custom, tail) {
     postEl.textContent = tail;
     tipsEl.classList.toggle("hidden", custom);
     pauseBtn.classList.toggle("hidden", custom);
-    // “可推迟”为 0 分钟时不显示“推迟”按钮（URL query 的 postpone 与
-    // PreBreakState.canPostpone 同源，首帧与轮询两条路都喂）
-    postponeBtn.classList.toggle("hidden", canPostpone === false);
     const label = custom ? BTN_LABELS.custom : BTN_LABELS.builtin;
     nowBtn.textContent = label.now;
     postponeBtn.textContent = label.postpone;
@@ -156,14 +153,12 @@
     document.documentElement.dataset.pbBg = toHex(src);
   }
 
-  // URL 里显式带了 postpone 时以它为准：地址由主进程按“弹窗打开时的配置”生成，
-  // 轮询的 canPostpone 只是同源备份（query 缺失的旧地址才回退到 state）
-  var urlPostpone = null;
+  // 版式（自定义 / 内置）与倒计时后缀由主进程经 URL 下发，首帧就位；
+  // 轮询里的同名字段只是备份（query 缺失的旧地址才回退到 state）
   var urlBg = null;
   {
     const q = new URLSearchParams(location.search);
-    urlPostpone = q.get("postpone");
-    applyVariant(q.get("custom") === "1", q.get("tail") ?? " 秒进入休息", urlPostpone !== "0");
+    applyVariant(q.get("custom") === "1", q.get("tail") ?? " 秒进入休息");
     // 首帧就把底色铺成用户配的颜色（地址里带了 bg），避免先闪一下内置默认蓝
     urlBg = q.get("bg");
     if (urlBg) applyPalette(urlBg);
@@ -172,7 +167,7 @@
     try {
       const st = await api.preBreakState();
       // 底色与暂停态无关：暂停中也要保持用户配的颜色。
-      // 地址里带了的 bg 优先（与 postpone 同口径），轮询值只作旧地址的备份。
+      // 地址里带了的 bg 优先，轮询值只作旧地址的备份。
       if (urlBg === null && st.bgColor) applyPalette(st.bgColor);
       if (st.paused) {
         titleEl.textContent = "已暂停";
@@ -181,8 +176,7 @@
       } else {
         titleEl.textContent = st.title || "您已连续工作较长时间，建议您短休息";
         secondsEl.textContent = String(Math.max(0, Math.ceil(st.remainMs / 1e3)));
-        const canPost = urlPostpone !== null ? urlPostpone !== "0" : st.canPostpone !== false;
-        applyVariant(st.custom, st.countdownTail, canPost);
+        applyVariant(st.custom, st.countdownTail);
       }
     } catch {
     }

@@ -146,9 +146,13 @@
         <div class="card">
           <div class="card-head">
             <h3>声音</h3>
+            <!-- 总开关与“时间规划”三张提醒卡同一处：卡头行尾（拨动开关）。卡里再无别的
+                 卡级开关，正文直接从“音量”开始。 -->
+            <label class="card-switch" title="启用声音">
+              <input type="checkbox" id="snd-enabled" aria-label="启用声音" />
+              <span class="card-switch-track" aria-hidden="true"></span>
+            </label>
           </div>
-          <!-- 总开关放在卡片内容第一行（与“时间规划”三张提醒卡一致）：勾选框在左、“启用”在右 -->
-          <div class="row check"><label class="switch-row"><input type="checkbox" id="snd-enabled" /> 启用</label></div>
           <div class="row field"><label for="snd-volume">音量</label><div class="slider-row"><input type="range" id="snd-volume" min="0" max="1" step="0.05" /><span class="slider-val" id="snd-volume-val"></span></div></div>
           <!-- 提示音：默认折叠（自建折叠面板，不走提醒内容的 .msg-panel 接线）；
                “播放方式”为标题行的图标按钮（全局生效的播放策略），与列表展开/收起无关 -->
@@ -195,32 +199,63 @@
           </div>
         </div>
         <div class="card foldable" id="short-card">
+          <!-- 卡头 = 这张卡的“身份 + 状态 + 动作”一条线：
+               折叠箭头 / 标题 / 总开关（拨动式，一眼看出这张卡开没开）/ 摘要 / 预览。
+               2026-11-09 重排：“启用”原来单独占一行且与“预览”相隔 216px 空白，
+               现在收进卡头 —— 开关是卡级状态，本就该和标题待在一起。 -->
           <div class="card-head">
-            <!-- 折叠箭头在标题左侧；整条标题行都是折叠热区（点标题 / 摘要 / 空白处均可） -->
             <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
             <h3>短休息</h3>
             <span class="adv-summary" id="short-summary">—</span>
+            <button class="btn ghost mini card-head-act" id="short-preview" title="预览短休息">预览</button>
+            <label class="card-switch" title="启用短休息">
+              <input type="checkbox" id="short-enabled" aria-label="启用短休息" />
+              <span class="card-switch-track" aria-hidden="true"></span>
+            </label>
           </div>
-          <!-- 总开关：卡片内容第一行，勾掉 = 不启用这种提醒；“预览”按钮与各行输入框同列 -->
-          <div class="row check has-btn">
-            <label class="switch-row"><input type="checkbox" id="short-enabled" /> 启用</label>
-            <button class="btn ghost" id="short-preview" title="预览短休息">预览</button>
+          <!-- 参数组“触发方式”：计时方法 + 间隔 / 提醒时间 + 系统空闲。
+               组内行沿用同一套 .row.field 网格，分组只加一条组标题，不加水平内边距 ——
+               标签列与控件列因此与其他行仍然严格同列（见 settings.css 的 .pg 一节）。
+               倒计时显示“间隔”、藏起“提醒时间”，固定时间反之（applyBreakModeUI 切）。 -->
+          <div class="pg" data-pg="trigger">
+            <div class="pg-head"><span class="pg-title">触发方式</span></div>
+            <!-- 计时方法：两段式单选（倒计时 / 固定时间），取代原来的自绘下拉。
+                两个选项互斥，而且直接决定组内出现“间隔”还是“提醒时间”——并排摆着、
+                各自带一句解释，比“点开下拉才知道有哪些选项、每个选项什么意思”直观得多。
+                段控内容由 settings.js 的 mountBreakSeg 按 BREAK_MODES 生成
+                （图标 + 主标签 + 一句说明）；role=radiogroup / radio 保留单选语义。 -->
+            <div class="mode-seg" id="short-mode"></div>
+            <div class="row field bk-countdown" data-break="short"><label for="short-interval">间隔</label><div class="field-line"><input type="number" id="short-interval" min="1" max="480" /><span class="unit">分钟</span></div></div>
+            <!-- 提醒时间：固定时间方式的时刻表，默认折叠。它是“触发方式”组里的一个子块，
+                 所以不画外框（组标题的层级 + 行间发丝线就够），头部是一行子标签，
+                 “＋ 添加”紧跟标签右侧。行不可拖动，只有行首的启停勾选框。 -->
+            <div class="slot-fixed" data-break="short">
+              <div class="slot-head">
+                <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
+                <button type="button" class="slot-add" id="short-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+              </div>
+              <div class="slot-body hidden">
+                <div id="short-list" class="tk-list"></div>
+              </div>
+            </div>
+            <!-- 系统空闲：勾上之后，到点先等键鼠连续静默满这么多秒，再走提前通知与正式提醒。
+                 读成一句话“☐ 系统空闲达 [30] 秒再提醒”—— 数字框留在控件列（与其他输入框
+                 同一条竖线），单位与后半句跟在框右侧；不勾时秒数框置灰（勾了才生效，
+                 但值留着，下次勾回来还是原来那个数）。 -->
+            <div class="row field idle-gate" data-break="short">
+              <label class="switch-row"><input type="checkbox" id="short-idleGate" /> 系统空闲达<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
+              <div class="field-line">
+                <input type="number" id="short-idleGate-sec" min="1" max="1800" aria-label="系统空闲秒数" />
+                <span class="unit">秒再提醒</span>
+              </div>
+            </div>
           </div>
-          <div class="row field"><label>触发方式</label><div class="cdrop-host" id="short-mode"></div></div>
-          <div class="row field bk-countdown" data-break="short"><label for="short-interval">间隔（分钟）</label><input type="number" id="short-interval" min="1" max="480" /></div>
-          <div class="row field"><label for="short-duration">时长（秒）</label><input type="number" id="short-duration" min="5" max="600" /></div>
-          <div class="row field"><label for="short-notify">提前通知（秒）</label><input type="number" id="short-notify" min="0" max="300" /></div>
-          <div class="row field"><label for="short-postpone">可推迟（分钟）</label><input type="number" id="short-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示“推迟”按钮" /></div>
-          <!-- 提醒时间列表：固定时间方式的时刻表，默认折叠（与提醒内容面板同一套外观；
-               行不可拖动、无单选框，只有行首的启停勾选框）。“＋”新增放标题行右侧 -->
-          <div class="slot-fixed" data-break="short">
-            <div class="slot-head">
-              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
-              <button type="button" class="slot-add" id="short-add" title="添加提醒时间">＋</button>
-            </div>
-            <div class="slot-body hidden">
-              <div id="short-list" class="tk-list"></div>
-            </div>
+          <!-- 参数组“弹窗设置”：提醒本身怎么弹的三个数（弹多久、提前多久敲门、能推迟多久） -->
+          <div class="pg" data-pg="reminder">
+            <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
+            <div class="row field"><label for="short-duration">提醒时长</label><div class="field-line"><input type="number" id="short-duration" min="5" max="600" /><span class="unit">秒</span></div></div>
+            <div class="row field"><label for="short-notify">提前通知<span class="q-mark" data-tip="到达提醒时间前，在屏幕右下角显示提前通知小窗口">?</span></label><div class="field-line"><input type="number" id="short-notify" min="0" max="300" /><span class="unit">秒</span></div></div>
+            <div class="row field"><label for="short-postpone">推迟时长<span class="q-mark" data-tip="若触发推迟提醒，每次推迟的时长">?</span></label><div class="field-line"><input type="number" id="short-postpone" min="1" max="120" /><span class="unit">分钟</span></div></div>
           </div>
           <div class="msg-panel" data-kind="short">
             <div class="msg-head">
@@ -241,29 +276,44 @@
             <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
             <h3>长休息</h3>
             <span class="adv-summary" id="long-summary">—</span>
+            <button class="btn ghost mini card-head-act" id="long-preview" title="预览长休息">预览</button>
+            <label class="card-switch" title="启用长休息">
+              <input type="checkbox" id="long-enabled" aria-label="启用长休息" />
+              <span class="card-switch-track" aria-hidden="true"></span>
+            </label>
           </div>
-          <!-- 总开关：卡片内容第一行，勾掉 = 不启用这种提醒；“预览”按钮与各行输入框同列 -->
-          <div class="row check has-btn">
-            <label class="switch-row"><input type="checkbox" id="long-enabled" /> 启用</label>
-            <button class="btn ghost" id="long-preview" title="预览长休息">预览</button>
-          </div>
-          <div class="row field"><label>触发方式</label><div class="cdrop-host" id="long-mode"></div></div>
-          <div class="row field bk-countdown" data-break="long"><label for="long-interval">间隔（分钟）</label><input type="number" id="long-interval" min="1" max="480" /></div>
-          <div class="row field"><label for="long-duration">时长（分钟）</label><input type="number" id="long-duration" min="1" max="60" /></div>
-          <div class="row field"><label for="long-notify">提前通知（秒）</label><input type="number" id="long-notify" min="0" max="300" /></div>
-          <div class="row field"><label for="long-postpone">可推迟（分钟）</label><input type="number" id="long-postpone" min="0" max="120" title="推迟一次把休息往后推多少分钟；0 = 不显示“推迟”按钮" /></div>
-          <div class="row field" id="longEveryNRow">
-            <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" data-tip="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
-            <input type="number" id="longEveryNShort" min="1" max="20" />
-          </div>
-          <div class="slot-fixed" data-break="long">
-            <div class="slot-head">
-              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
-              <button type="button" class="slot-add" id="long-add" title="添加提醒时间">＋</button>
+          <div class="pg" data-pg="trigger">
+            <div class="pg-head"><span class="pg-title">触发方式</span></div>
+            <div class="mode-seg" id="long-mode"></div>
+            <div class="row field bk-countdown" data-break="long"><label for="long-interval">间隔</label><div class="field-line"><input type="number" id="long-interval" min="1" max="480" /><span class="unit">分钟</span></div></div>
+            <!-- “每 N 次短休息后 1 次长休息”也是触发条件（只在短、长都走倒计时时才有意义），
+                 所以留在“触发方式”组里、紧挨“间隔” -->
+            <div class="row field bk-countdown" data-break="long" id="longEveryNRow">
+              <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" data-tip="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
+              <div class="field-line"><input type="number" id="longEveryNShort" min="1" max="20" /><span class="unit">次</span></div>
             </div>
-            <div class="slot-body hidden">
-              <div id="long-list" class="tk-list"></div>
+            <div class="slot-fixed" data-break="long">
+              <div class="slot-head">
+                <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
+                <button type="button" class="slot-add" id="long-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+              </div>
+              <div class="slot-body hidden">
+                <div id="long-list" class="tk-list"></div>
+              </div>
             </div>
+            <div class="row field idle-gate" data-break="long">
+              <label class="switch-row"><input type="checkbox" id="long-idleGate" /> 系统空闲达<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
+              <div class="field-line">
+                <input type="number" id="long-idleGate-sec" min="1" max="1800" aria-label="系统空闲秒数" />
+                <span class="unit">秒再提醒</span>
+              </div>
+            </div>
+          </div>
+          <div class="pg" data-pg="reminder">
+            <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
+            <div class="row field"><label for="long-duration">提醒时长</label><div class="field-line"><input type="number" id="long-duration" min="5" max="3600" /><span class="unit">秒</span></div></div>
+            <div class="row field"><label for="long-notify">提前通知<span class="q-mark" data-tip="到达提醒时间前，在屏幕右下角显示提前通知小窗口">?</span></label><div class="field-line"><input type="number" id="long-notify" min="0" max="300" /><span class="unit">秒</span></div></div>
+            <div class="row field"><label for="long-postpone">推迟时长<span class="q-mark" data-tip="若触发推迟提醒，每次推迟的时长">?</span></label><div class="field-line"><input type="number" id="long-postpone" min="1" max="120" /><span class="unit">分钟</span></div></div>
           </div>
           <div class="msg-panel" data-kind="long">
             <div class="msg-head">
@@ -284,29 +334,43 @@
             <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
             <h3>外卖提醒</h3>
             <span class="adv-summary" id="tk-summary">—</span>
+            <button class="btn ghost mini card-head-act" id="tk-preview" title="预览外卖提醒">预览</button>
+            <label class="card-switch" title="启用外卖提醒">
+              <input type="checkbox" id="tk-enabled" aria-label="启用外卖提醒" />
+              <span class="card-switch-track" aria-hidden="true"></span>
+            </label>
           </div>
-          <!-- 总开关：卡片内容第一行，勾掉 = 不启用这种提醒；“预览”按钮与各行输入框同列 -->
-          <div class="row check has-btn">
-            <label class="switch-row"><input type="checkbox" id="tk-enabled" /> 启用</label>
-            <button class="btn ghost" id="tk-preview" title="预览外卖提醒">预览</button>
-          </div>
-          <!-- 暂停休息期间的处置：正常提醒 / 推迟提醒 / 跳过提醒（默认），每一项带“?”说明。
-               下拉本体由 settings.js 的 mountPauseDrop 画（原生 select 装不下每一项的“?”）；
-               标签上的“?”说明“暂停休息”包括哪几种情况，空闲分钟数由 settings.js 补全 -->
-          <div class="row field">
-            <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
-            <div class="cdrop-host" id="tk-pause"></div>
-          </div>
-          <div class="row field"><label for="tk-lead">提前通知（秒）</label><input type="number" id="tk-lead" min="0" max="300" /></div>
-          <div class="row field"><label for="tk-postpone">可推迟（分钟）</label><input type="number" id="tk-postpone" min="0" max="120" title="窗口上点“推迟”后，间隔多久再次提醒；0 = 不显示“推迟”按钮" /></div>
-          <div class="slot-fixed">
-            <div class="slot-head">
-              <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
-              <button type="button" class="slot-add" id="tk-add" title="添加提醒时间">＋</button>
+          <!-- 外卖提醒只有固定时刻这一种触发方式，组里没有“计时方法” -->
+          <div class="pg" data-pg="trigger">
+            <div class="pg-head"><span class="pg-title">触发方式</span></div>
+            <div class="slot-fixed">
+              <div class="slot-head">
+                <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒时间</button>
+                <button type="button" class="slot-add" id="tk-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+              </div>
+              <div class="slot-body hidden">
+                <div id="tk-list" class="tk-list"></div>
+              </div>
             </div>
-            <div class="slot-body hidden">
-              <div id="tk-list" class="tk-list"></div>
+            <div class="row field idle-gate" data-kind="takeout">
+              <label class="switch-row"><input type="checkbox" id="tk-idleGate" /> 系统空闲达<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
+              <div class="field-line">
+                <input type="number" id="tk-idleGate-sec" min="1" max="1800" aria-label="系统空闲秒数" />
+                <span class="unit">秒再提醒</span>
+              </div>
             </div>
+          </div>
+          <div class="pg" data-pg="reminder">
+            <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
+            <!-- 暂停休息期间的处置：正常提醒 / 推迟提醒 / 跳过提醒（默认），每一项带“?”说明。
+                 下拉本体由 settings.js 的 mountPauseDrop 画（原生 select 装不下每一项的“?”）；
+                 标签上的“?”说明“暂停休息”包括哪几种情况，空闲分钟数由 settings.js 补全 -->
+            <div class="row field">
+              <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+              <div class="cdrop-host" id="tk-pause"></div>
+            </div>
+            <div class="row field"><label for="tk-lead">提前通知<span class="q-mark" data-tip="到达提醒时间前，在屏幕右下角显示提前通知小窗口">?</span></label><div class="field-line"><input type="number" id="tk-lead" min="0" max="300" /><span class="unit">秒</span></div></div>
+            <div class="row field"><label for="tk-postpone">推迟时长<span class="q-mark" data-tip="若触发推迟提醒，每次推迟的时长">?</span></label><div class="field-line"><input type="number" id="tk-postpone" min="1" max="120" /><span class="unit">分钟</span></div></div>
           </div>
           <div class="msg-panel" data-kind="takeout">
             <div class="msg-head">

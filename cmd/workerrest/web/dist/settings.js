@@ -114,9 +114,11 @@
     const seg = s.split(/[\\/]/).filter(Boolean).pop() ?? "";
     return seg.trim().slice(0, 120);
   }
+  // 计时方法的两项：段控（不是下拉）按这张表渲染，label 是主标签，sub 是它下面那句
+  // 人话解释 —— 用户不用点开任何东西就知道“倒计时”和“固定时间”分别指什么。
   var BREAK_MODES = [
-    { value: "countdown", label: "倒计时", hint: "每隔一段时间提醒一次" },
-    { value: "fixed", label: "固定时间", hint: "到设定的时刻提醒" }
+    { value: "countdown", label: "倒计时", sub: "每隔一段时间" },
+    { value: "fixed", label: "固定时间", sub: "每天指定时刻" }
   ];
   var CUSTOM_BREAK_PREFIX = "cb-";
   // “暂停休息时”下拉：三种处置，默认“推迟提醒”。每一项都带一个“?”，悬停看该项
@@ -126,7 +128,7 @@
     { value: "remind", label: "正常提醒",
       hint: "暂停休息期间到了提醒时间，仍照常弹出提前提示小窗和提醒窗口，不跳过也不推迟。" },
     { value: "postpone", label: "推迟提醒",
-      hint: "暂停休息期间到了提醒时间不弹窗，按本卡“可推迟（分钟）”填的时长往后推；推迟后到点若仍在暂停休息，就继续往后推，恢复后按推迟后的时刻弹出。" },
+      hint: "暂停休息期间到了提醒时间不弹窗，按本卡“推迟时长”填的时长往后推；推迟后到点若仍在暂停休息，就继续往后推，恢复后按推迟后的时刻弹出。" },
     { value: "skip", label: "跳过提醒",
       hint: "暂停休息期间到了提醒时间，不弹提前提示小窗、也不弹提醒窗口，直接按“跳过”记一次，计入统计报表的跳过。" }
   ];
@@ -310,7 +312,7 @@
     if (title) q.dataset.tip = title;
     return q;
   }
-  // 自绘下拉：“暂停休息时”与“触发方式”共用这一套（外观见 settings.css 的 .cdrop）。
+  // 自绘下拉：“暂停休息时”与“计时方法”共用这一套（外观见 settings.css 的 .cdrop）。
   // 原生 <select> 的选项由浏览器绘制，缩进改不了、也放不下每项的“?”，所以自己画。
   // items = [{value,label,hint}]，def = 取值非法时的兜底项，onPick = 用户选中后的回调。
   // name = 下拉的可访问名（兄弟 <label> 是纯视觉文字、不带 for，读屏念不到），
@@ -1019,19 +1021,93 @@
   function mountPauseDrop(host, value) {
     return mountDrop(host, PAUSE_ACTIONS, pauseActionOf(value), "postpone", () => { void autoSave(); }, "暂停休息时");
   }
-  // “触发方式”：切换后联动显示“间隔”/“提醒时间”，再重算摘要并存盘。
-  function mountBreakModeDrop(id) {
+  // “计时方法”：两段式单选，取代原来的自绘下拉（2026-11-09）。
+  // 两个选项互斥，而且直接决定组里显示“间隔”还是“提醒时间”：并排两段各带一句解释，
+  // 一眼就能看出“有几种触发方式、各自什么意思”，不用点开才知道。
+  // 取值接口与 mountDrop 一致（get / set，同样注册进 PAUSE_DROPS），
+  // fillBreakForm / collectForm 因此一行都不用改。
+  var MODE_ICONS = {
+    // 循环箭头 = 每隔一段时间循环一次；钟面 = 具体时刻
+    countdown: '<path d="M20.6 12a8.6 8.6 0 1 1-2.52-6.08"/><path d="M20.6 4.6v4.6h-4.6"/>',
+    fixed: '<circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.3 1.95"/>'
+  };
+  function mountBreakSeg(id) {
     const host = $(`${id}-mode`);
     if (!host) return null;
     const c = breakCfg(id);
-    return mountDrop(host, BREAK_MODES, c && c.mode, "countdown", (v) => {
+    const norm = (v) => (v === "fixed" ? "fixed" : "countdown");
+    const exists = PAUSE_DROPS.get(host);
+    if (exists) {
+      exists.set(c && c.mode);
+      return exists;
+    }
+    host.classList.add("mode-seg");
+    host.setAttribute("role", "radiogroup");
+    host.setAttribute("aria-label", "计时方法");
+    host.innerHTML = "";
+    const paint = (v) => {
+      // 宿主上留一份取值：探针 / 外部脚本按 dataset.value 读，代替原生 select 的 .value
+      host.dataset.value = v;
+      for (const b of host.querySelectorAll(".mode-opt")) {
+        const on = b.dataset.mode === v;
+        b.classList.toggle("on", on);
+        b.setAttribute("aria-checked", on ? "true" : "false");
+        // radio 组的标准键盘模型：整组只有一个 tab 停靠点，组内移动交给方向键
+        b.tabIndex = on ? 0 : -1;
+      }
+    };
+    const api = { get: () => norm(host.dataset.value), set: (v) => paint(norm(v)) };
+    const pick = (v) => {
+      api.set(v);
       const cfg = breakCfg(id);
       if (!cfg) return;
-      cfg.mode = v === "fixed" ? "fixed" : "countdown";
+      cfg.mode = norm(v);
       applyBreakModeUI();
+      // 切到固定时间时把“提醒时间”面板摊开：此刻组里只剩这一块能填的东西，
+      // 收着的话看起来像“切过去什么也没有”。只动 open / hidden 两个类，不写配置。
+      if (cfg.mode === "fixed") expandSlotFold(id);
       updateBreakSummary(id);
       void autoSave();
-    }, "触发方式");
+    };
+    for (const opt of BREAK_MODES) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "mode-opt";
+      b.dataset.mode = opt.value;
+      b.setAttribute("role", "radio");
+      b.innerHTML =
+        '<svg class="mode-ico" viewBox="0 0 24 24" aria-hidden="true">' +
+        (MODE_ICONS[opt.value] || "") +
+        "</svg>" +
+        '<span class="mode-txt"><b>' + opt.label + "</b><i>" + opt.sub + "</i></span>";
+      b.addEventListener("click", () => pick(opt.value));
+      host.appendChild(b);
+    }
+    // 左右 / 上下方向键在组内换项，Home / End 到首末项（radiogroup 的标准交互；
+    // 少了它，键盘用户只能在两段之间 Tab 一遍 —— 中间那段 tabIndex=-1 根本进不去）
+    host.addEventListener("keydown", (e) => {
+      const all = Array.from(host.querySelectorAll(".mode-opt"));
+      const i = all.indexOf(document.activeElement);
+      if (i < 0) return;
+      let j = -1;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") j = Math.min(all.length - 1, i + 1);
+      else if (e.key === "ArrowLeft" || e.key === "ArrowUp") j = Math.max(0, i - 1);
+      else if (e.key === "Home") j = 0;
+      else if (e.key === "End") j = all.length - 1;
+      if (j < 0) return;
+      e.preventDefault();
+      all[j].focus();
+      pick(all[j].dataset.mode);
+    });
+    PAUSE_DROPS.set(host, api);
+    paint(norm(c && c.mode));
+    return api;
+  }
+  function expandSlotFold(id) {
+    const panel = document.querySelector(`.slot-fixed[data-break="${id}"]`);
+    if (!panel) return;
+    panel.classList.add("open");
+    panel.querySelector(".slot-body")?.classList.remove("hidden");
   }
   function dropValue(host, def) {
     const api = host ? PAUSE_DROPS.get(host) : null;
@@ -1049,8 +1125,11 @@
       durationMs: 2e4,
       notifyBeforeMs: 1e4,
       postponeMs: 2 * 6e4,
-      // 暂停休息期间到点：默认推迟（按“可推迟”时长往后推，仍暂停就继续推）
+      // 暂停休息期间到点：默认推迟（按“推迟时长”往后推，仍暂停就继续推）
       pauseAction: "postpone",
+      // 空闲门：默认不勾、默认 30 秒（与 Go 侧 idleGateDefaultMs 同值）
+      idleGate: false,
+      idleGateMs: 3e4,
       slots: []
     };
   }
@@ -2850,38 +2929,33 @@
     on.type = "checkbox";
     on.checked = slot.enabled;
     on.title = "启用 / 停用这条提醒";
+    on.setAttribute("aria-label", "启用这条提醒");
     on.addEventListener("change", () => {
       slot.enabled = on.checked;
       row.classList.toggle("disabled", !on.checked);
       opts.onChange();
     });
+    // 时刻用一个原生 time 框：`09:00` 比“[9] 时 [0] 分”四个节点短一半，也不会出现
+    // 两个 64px 窄框 + 两个单位字挤在一行的参差感；键盘照样能直接敲 0900。
+    // 数据层仍是 hour / minute 两个整数，不引入新格式；非法旧值先钳进合法区间再回写。
     const time = document.createElement("div");
     time.className = "tk-time";
-    const hh = document.createElement("input");
-    hh.type = "number";
-    hh.min = "0";
-    hh.max = "23";
-    hh.value = String(slot.hour);
-    hh.title = "小时（0~23，24 小时制）";
-    const mm = document.createElement("input");
-    mm.type = "number";
-    mm.min = "0";
-    mm.max = "59";
-    mm.value = String(slot.minute);
-    mm.title = "分钟（0~59）";
-    const hhText = document.createElement("span");
-    hhText.textContent = "时";
-    const mmText = document.createElement("span");
-    mmText.textContent = "分";
-    hh.addEventListener("change", () => {
-      slot.hour = clampNum(hh, 12); // 区间读 hh.min/max（0~23），越界已回写
+    const at = document.createElement("input");
+    at.type = "time";
+    at.step = "60";
+    at.title = "提醒时刻（24 小时制）";
+    at.setAttribute("aria-label", "提醒时刻");
+    slot.hour = Math.min(23, Math.max(0, Number(slot.hour) || 0));
+    slot.minute = Math.min(59, Math.max(0, Number(slot.minute) || 0));
+    at.value = slotTimeText(slot);
+    at.addEventListener("change", () => {
+      const [h, m] = String(at.value || "").split(":");
+      slot.hour = Math.min(23, Math.max(0, Number(h) || 0));
+      slot.minute = Math.min(59, Math.max(0, Number(m) || 0));
+      at.value = slotTimeText(slot);
       opts.onChange();
     });
-    mm.addEventListener("change", () => {
-      slot.minute = clampNum(mm, 0); // 区间读 mm.min/max（0~59），越界已回写
-      opts.onChange();
-    });
-    time.append(hh, hhText, mm, mmText);
+    time.append(at);
     const repeat = document.createElement("select");
     repeat.className = "tk-repeat";
     for (const opt of [{ v: "daily", t: "每天" }, { v: "weekly", t: "每周" }]) {
@@ -2956,7 +3030,7 @@
   }
   function renderTakeoutList() {
     const t = S.takeout;
-    renderSlotList($("tk-list"), t.slots, "还没有外卖提醒时间，点标题行右侧的“＋”新增一条", {
+    renderSlotList($("tk-list"), t.slots, "还没有外卖提醒时间，点上方“＋ 添加”加一条", {
       what: "这条外卖提醒",
       onChange: () => {
         updateTakeoutSummary();
@@ -2990,9 +3064,26 @@
       if (el.id && (el.id === "short" || el.id.startsWith("short-"))) {
         el.id = cb.id + el.id.slice("short".length);
       }
+      // <label for> 也得跟着改：克隆只换 id 的话，新卡里的标签仍指向短休息卡的同名
+      // input —— 点标签跳到别的卡的输入框，读屏也把标签念到别人的控件上。
+      const forAttr = el.getAttribute && el.getAttribute("for");
+      if (forAttr && (forAttr === "short" || forAttr.startsWith("short-"))) {
+        el.setAttribute("for", cb.id + forAttr.slice("short".length));
+      }
       for (const attr of ["data-break", "data-kind"]) {
         if (el.getAttribute(attr) === "short") el.setAttribute(attr, cb.id);
       }
+      // 克隆会把原卡片上的**一次性标记**一并复制过来：data-wr-autosave /
+      // data-wr-idle-sync / data-tip-bound 表达的是“**这个节点**已经绑过事件 / 算过一次”，
+      // 而克隆出来的节点一个监听器都没有。不清掉的话：
+      //   · bindAutoSaveEl 看到标记直接 return —— 新卡上的间隔 / 时长 / 提前通知 /
+      //     推迟时长 / 启用 / 空闲门改了都不落盘（2026-11-08 设置页探针实测：改完读回
+      //     还是默认值，看起来像“控件坏了”）；
+      //   · “?”也不重绑（左侧那段文字点不出提示）。
+      // 清掉后统一由 setupCustomBreakCard 里的显式补绑接手。
+      delete el.dataset.wrAutosave;
+      delete el.dataset.wrIdleSync;
+      delete el.dataset.tipBound;
       for (const child of Array.from(el.children)) rewrite(child);
     };
     rewrite(card);
@@ -3000,14 +3091,26 @@
     card.classList.add("card-custom");
     const head = card.querySelector(":scope > .card-head");
     head.querySelector("h3").textContent = cb.name;
+    // 卡头里的总开关与“预览”是从短休息复制过来的，读屏名与 title 里还写着“短休息”。
+    // 克隆改写只动 id，这两处文案要跟着卡名换 —— 否则自定义卡的开关在无障碍树里
+    // 仍然叫“启用短休息”，和标题对不上。
+    const swInp = head.querySelector(".card-switch > input");
+    const swBox = head.querySelector(".card-switch");
+    if (swInp) swInp.setAttribute("aria-label", "启用" + cb.name);
+    if (swBox) swBox.title = "启用" + cb.name;
+    const pvHead = head.querySelector(".card-head-act");
+    if (pvHead) pvHead.title = "预览" + cb.name;
     const sum = head.querySelector(".adv-summary");
     sum.textContent = "—";
-    const actions = document.createElement("div");
-    actions.className = "card-actions";
-    sum.replaceWith(actions);
-    actions.appendChild(sum);
     // 重命名 / 删除：图标按钮（✎ / ✕，与“提醒内容”行尾的编辑 / 删除同款），
     // 重命名在左、删除在右；改名后即时同步卡片标题与今日时间线。
+    // 2026-11-10：摘要不再和这两个按钮包在一起 —— 卡头的版式是“身份块（▾ 标题 + 摘要）
+    // 在左、控件簇（动作 + 电源）在右”，内置卡与自定义卡共用同一条对齐线：
+    // .card-actions 自带 auto margin 把 ✎ / ✕ 推到行尾，预览与总开关跟在它后面，
+    // 于是自定义卡的预览右缘、开关左缘与内置卡逐像素同线。
+    const actions = document.createElement("div");
+    actions.className = "card-actions";
+    if (pvHead) pvHead.before(actions); else head.appendChild(actions);
     const rename = mkBtn("✎", "重命名", () => void renameCustomBreak(cb.id));
     rename.classList.add("cb-rename");
     actions.appendChild(rename);
@@ -3032,7 +3135,17 @@
     const pauseHost = document.createElement("div");
     pauseHost.id = `${cb.id}-pause`;
     pauseRow.append(pauseLabel, pauseHost);
-    card.querySelector(":scope > .row.check.has-btn")?.after(pauseRow);
+    // 插进“弹窗设置”组的**首位**（组标题下、提醒时长之上）：
+    // 2026-11-09 起卡内参数分成“触发方式 / 弹窗设置”两组，暂停休息时属于后一组 ——
+    // 它描述的是“该弹的时候正在暂停怎么处置”，是这张卡最常用的开关（默认推迟），
+    // 2026-11-10 按用户要求从组末提到组首，省得每次都要越过三个数字才看见。
+    // 注意必须先跳过 .pg-head：组标题是组的第一个孩子，直接 prepend 会把它挤到下面去。
+    // 组是模板里必有的骨架，取不到就说明模板本身坏了，此时不插也不影响其余功能。
+    const remindGroup = card.querySelector(':scope > .pg[data-pg="reminder"]');
+    if (remindGroup) {
+      const pgHead = remindGroup.querySelector(':scope > .pg-head');
+      if (pgHead) pgHead.after(pauseRow); else remindGroup.prepend(pauseRow);
+    }
     // 插进文档之后才能找到“?”左侧的“暂停休息时”并打标
     bindQTip(pauseLabel.querySelector(".q-mark"));
     mountPauseDrop(pauseHost, cb.config?.pauseAction);
@@ -3044,7 +3157,8 @@
     const panel = card.querySelector(".msg-panel");
     panel.classList.remove("open");
     panel.querySelector(".msg-body").classList.add("hidden");
-    const slotFold = card.querySelector(":scope > .slot-fixed");
+    // 提醒时间面板现在藏在“触发方式”组里，不再直属于卡片（:scope > .slot-fixed 会取不到）
+    const slotFold = card.querySelector(".pg .slot-fixed");
     slotFold?.classList.remove("open");
     slotFold?.querySelector(".slot-body")?.classList.add("hidden");
     return card;
@@ -3052,13 +3166,18 @@
   function setupCustomBreakCard(card, cb) {
     const id = cb.id;
     // “新增”出的卡片插在 bindAutoSave 之后，全局绑定扫不到它：卡内全部
-    // input/select 在这里显式补绑。漏绑的后果是触发方式/间隔/时长等改动不落盘、
+    // input/select 在这里显式补绑。漏绑的后果是计时方法/间隔/提醒时长等改动不落盘、
     // 调度器不重算 ——“倒计时切固定时间且无时刻”后下次提醒与今日时间线
     // 仍显示按倒计时算出的旧时刻（bug 实测来源）。
     for (const el of card.querySelectorAll("input, select")) bindAutoSaveEl(el);
-    // 触发方式改成自绘下拉（与“暂停休息时”同款）：整卡是克隆来的，克隆出的
-    // 下拉节点没有事件，这里按新宿主重新挂一遍实例（选中即联动 + 存盘）。
-    mountBreakModeDrop(id);
+    // 计时方法改成两段式段控：整卡是克隆来的，克隆出的段控节点没有事件，
+    // 这里按新宿主重新挂一遍实例（宿主是空的或装着克隆来的死按钮，mountBreakSeg
+    // 会先清空再按 BREAK_MODES 重建，且不重复注册）。
+    mountBreakSeg(id);
+    bindIdleGate(id);
+    // 克隆节点的“已绑过”标记已在 buildCustomBreakCard 里清掉：把卡里每个“?”重绑一遍，
+    // 否则只有“暂停休息时”那一枚（下面是新造的）有提示，克隆来的几枚点不出浮层。
+    for (const q of card.querySelectorAll(".q-mark")) bindQTip(q);
     $(`${id}-add`).addEventListener("click", async () => {
       const c = breakCfg(id);
       if (!c) return;
@@ -3216,7 +3335,7 @@
   function renderBreakList(id) {
     const c = breakCfg(id);
     if (!c) return;
-    renderSlotList($(`${id}-list`), c.slots, "还没有提醒时间，点标题行右侧的“＋”新增一条", {
+    renderSlotList($(`${id}-list`), c.slots, "还没有提醒时间，点上方“＋ 添加”加一条", {
       what: "这条休息时刻",
       onChange: () => {
         updateBreakSummary(id);
@@ -3232,18 +3351,93 @@
     });
     updateBreakSummary(id);
   }
+  // ---------- 空闲门（“系统空闲达 N 秒后提醒”） ----------
+  // 一个勾选框 + 一个秒数框，与上面各字段行同一套网格（标签列 + 控件列），数字框左缘
+  // 与其他输入框严格同列，框右侧补一句“秒后提醒”把整行读成完整的一句话。
+  // 秒数就是秒数：填 90 就显示 90，**不折算成“X 分 Y 秒”**
+  //（2026-11-09 用户定稿，上一版的“分 + 秒”双框与自动进位一并撤掉）。
+  // 不勾 = 不启用，与秒数是多少无关 —— Go 侧 BreakConfig.IdleGateWaitMs 只看 idleGate 开关，
+  // 前端不必再判一次（两边各判一份只会漂移）。
+  var IDLE_GATE_MAX_SEC = 1800; // 30 分钟，与 Go 的 idleGateMaxMs 同值
+  var IDLE_GATE_DEFAULT_SEC = 30; // 与 Go 的 idleGateDefaultMs 同值
+  function idleGateEls(id) {
+    var pre = `${id}-idleGate`;
+    return { box: $(pre), sec: $(`${pre}-sec`) };
+  }
+  // 没勾时秒数框置灰：这条门槛本来就不生效，框还亮着会让人以为在改一个有效值。
+  // 只动 disabled，值留着 —— 勾回来还是原来那个数。
+  function syncIdleGateUI(id) {
+    var el = idleGateEls(id);
+    if (el.box && el.sec) el.sec.disabled = !el.box.checked;
+  }
+  // 回填：毫秒 → 秒。配置里是 0（没设过 / 老配置）时显示默认 30 —— 输入框最小 1，
+  // 回填 0 会让用户看到一个填不回去的空档。
+  function fillIdleGate(id, cfg) {
+    var el = idleGateEls(id);
+    if (!el.box) return;
+    el.box.checked = !!(cfg && cfg.idleGate);
+    if (!el.sec) return;
+    var ms = Number((cfg && cfg.idleGateMs) || 0);
+    if (!(ms > 0)) ms = IDLE_GATE_DEFAULT_SEC * 1e3;
+    if (ms > IDLE_GATE_MAX_SEC * 1e3) ms = IDLE_GATE_MAX_SEC * 1e3;
+    el.sec.value = String(Math.max(1, Math.round(ms / 1e3)));
+    syncIdleGateUI(id);
+  }
+  // 读值：{ enabled, ms }。**没勾也照读时长**：用户勾掉只是想关掉这个门，
+  // 时长该留着，下次勾回来还是原来那个数（勾选态与时长是两个独立的字段）。
+  // clampNum 会顺手把框里的值钳进 [1, 1800] 并写回 —— 空值给默认 30，手输 0 / 超限都被拉回边界。
+  function readIdleGate(id) {
+    var el = idleGateEls(id);
+    if (!el.box) return { enabled: false, ms: 0 };
+    return { enabled: el.box.checked, ms: clampNum(el.sec, IDLE_GATE_DEFAULT_SEC) * 1e3 };
+  }
+  // 失焦即规范化：手输 0 / 9999 / 清空后离开框，立刻显示成钳制后的值，
+  // 不用等下一次 autoSave 才“跳一下”。
+  function bindIdleGate(id) {
+    var el = idleGateEls(id);
+    if (!el.box || !el.sec) return;
+    el.sec.addEventListener("change", () => { readIdleGate(id); });
+    // 勾选框只管“这条门槛生不生效”：立刻反映到秒数框的灰/亮上（存盘另由 bindAutoSaveEl 负责）
+    el.box.addEventListener("change", () => { syncIdleGateUI(id); });
+  }
+  // 卡头总开关的“关闭态”：给卡片挂 .off，CSS 据此把正文降到 0.55（卡头不降）。
+  // 只认**卡头里的**开关 —— 正文里也有 id 以 -enabled 结尾的勾选框（如 appPause-enabled），
+  // 那些是卡内参数，关掉不该让整张卡变灰。自定义卡是克隆出来的，同一条路数就够，
+  // 不用在克隆里另写一份。
+  function syncCardOff(input) {
+    if (!input || !input.closest(".card-head")) return;
+    const card = input.closest(".card");
+    if (card) card.classList.toggle("off", !input.checked);
+  }
+  function syncAllCardOff() {
+    for (const input of document.querySelectorAll(".card-head .card-switch > input")) {
+      syncCardOff(input);
+    }
+  }
+  document.addEventListener("change", (e) => {
+    const t = e.target;
+    if (t && t.matches && t.matches(".card-head .card-switch > input")) syncCardOff(t);
+  });
   function fillBreakForm(id) {
     const c = breakCfg(id);
     if (!c) return;
     $(`${id}-enabled`).checked = c.enabled;
+    syncCardOff($(`${id}-enabled`));
     setDropValue($(`${id}-mode`), c.mode);
     $(`${id}-interval`).value = String(Math.round(c.intervalMs / 6e4));
-    $(`${id}-duration`).value = id === "long" ? String(Math.round(c.durationMs / 6e4)) : String(Math.round(c.durationMs / 1e3));
+    // 提醒时长一律按**秒**回填（长休息也是：输入框标的是“提醒时长（秒）”，
+    // 内部存 durationMs，单位差只在乘除 1000 这一步）
+    $(`${id}-duration`).value = String(Math.round(c.durationMs / 1e3));
     $(`${id}-notify`).value = String(Math.round(c.notifyBeforeMs / 1e3));
     $(`${id}-postpone`).value = String(Math.round(c.postponeMs / 6e4));
+    fillIdleGate(id, c);
     // “暂停休息时”只有自定义提醒卡片有（短 / 长休息的模板本身没有这行）
     setDropValue($(`${id}-pause`), c.pauseAction);
     renderBreakList(id);
+    // 固定时间但一条时刻都没有时，把面板摊开：收着的话“触发方式”组里只剩“系统空闲”，
+    // 看着像“这儿没东西可填”；摊开后第一行就是“还没有提醒时间，点上方＋添加”。
+    // 已有时刻时不强制展开 —— 收起是用户自己的选择，顶部摘要也写了“固定时间 · N 条”。
+    if (c.mode === "fixed" && !(c.slots || []).length) expandSlotFold(id);
   }
   function applyBreakModeUI() {
     for (const id of allBreakIds()) {
@@ -3323,6 +3517,7 @@
     mountPauseDrop($("tk-pause"), S.takeout.pauseAction);
     $("tk-lead").value = String(S.takeout.leadSec);
     $("tk-postpone").value = String(S.takeout.postponeMin);
+    fillIdleGate("tk", S.takeout);
     $("sc-postpone").value = S.shortcuts.postpone;
     $("sc-endEarly").value = S.shortcuts.endEarly;
     $("sc-pause").value = S.shortcuts.pause;
@@ -3331,6 +3526,9 @@
     markShortcuts();
     // “暂停休息时”行标签的“?”说明里带着当前空闲分钟数，首屏就按配置对齐
     refreshPauseHints();
+    // 首屏把所有卡头开关的关闭态刷一遍（提醒卡在 fillBreakForm 里已经刷过，
+    // 这里补外卖 / 声音这两张没过 fillBreakForm 的卡）
+    syncAllCardOff();
   }
   function collectForm() {
     S.theme = document.querySelector("input[name=theme]:checked").value;
@@ -3358,11 +3556,16 @@
       c.enabled = $(`${id}-enabled`).checked;
       c.mode = dropValue($(`${id}-mode`), "countdown") === "fixed" ? "fixed" : "countdown";
       c.intervalMs = clampNum($(`${id}-interval`), 10) * 6e4;
-      const bySec = id !== "long";
-      const dv = clampNum($(`${id}-duration`), 20);
-      c.durationMs = bySec ? dv * 1e3 : dv * 6e4;
+      // 提醒时长统一按秒读写（长休息卡 2026-11-09 从“分钟”改成“秒”，与短休息、自定义
+      // 提醒同一口径）。空值兜底按类型的常规量给：短休息 20 秒、长休息 300 秒（5 分钟）。
+      const dv = clampNum($(`${id}-duration`), id === "long" ? 300 : 20);
+      c.durationMs = dv * 1e3;
       c.notifyBeforeMs = clampNum($(`${id}-notify`), 10) * 1e3;
       c.postponeMs = clampNum($(`${id}-postpone`), 2) * 6e4;
+      // 空闲门：勾选态 + 时长（没勾也存时长，下次勾回来还是原值）
+      const gate = readIdleGate(id);
+      c.idleGate = gate.enabled;
+      c.idleGateMs = gate.ms;
       // 暂停休息时：只有自定义提醒卡片有这一行（短 / 长休息不写这个键）
       const pauseHost = $(`${id}-pause`);
       if (pauseHost) c.pauseAction = dropValue(pauseHost, "postpone");
@@ -3384,6 +3587,9 @@
     S.takeout.pauseAction = dropValue($("tk-pause"), "postpone");
     S.takeout.leadSec = clampNum($("tk-lead"), TAKEOUT_LEAD_DEFAULT);
     S.takeout.postponeMin = clampNum($("tk-postpone"), TAKEOUT_POSTPONE_DEFAULT);
+    const tkGate = readIdleGate("tk");
+    S.takeout.idleGate = tkGate.enabled;
+    S.takeout.idleGateMs = tkGate.ms;
     S.shortcuts.postpone = $("sc-postpone").value.trim();
     S.shortcuts.endEarly = $("sc-endEarly").value.trim();
     S.shortcuts.pause = $("sc-pause").value.trim();
@@ -3934,9 +4140,9 @@
     // “暂停休息/恢复休息”互斥显示：暂停中只显示“恢复休息”，否则只显示“暂停休息”
     const qaPause = $("qa-pause");
     if (qaPause) qaPause.textContent = st.paused ? "恢复休息" : "暂停休息";
-    // “推迟休息”按钮：当前下次提醒的“可推迟”为 0 分钟时不显示 —— 推迟 0 分钟
-    // 等于立即再弹一次，没有意义。提前提示窗 / 外卖窗口的“推迟”按钮同样按此显隐。
-    // 休息进行中也不显示（已经在休息了，没有“再往后推”这回事）。
+    // “推迟休息”按钮：休息进行中不显示（已经在休息了，没有“再往后推”这回事）。
+    // 2026-11-10 起“推迟时长”最小 1 分钟，不再有“推迟 0 分钟”这种配置，
+    // 也就不再需要按 postponeMs 显隐。
     const inBreak = st.phase === "break";
     // 休息中：“立即休息”无从谈起，禁用而不是让点了没反应；
     // “跳过本次”在休息中等价于提前结束（与托盘“提前结束休息”同义，
@@ -3946,10 +4152,7 @@
     const qaSkip = $("qa-skip");
     if (qaSkip) qaSkip.textContent = inBreak ? "提前结束" : "跳过本次";
     const qaPostpone = $("qa-postpone");
-    if (qaPostpone) {
-      const cfg = st.nextType ? breakCfg(st.nextType) : null;
-      qaPostpone.classList.toggle("hidden", inBreak || !(cfg && cfg.postponeMs > 0));
-    }
+    if (qaPostpone) qaPostpone.classList.toggle("hidden", inBreak);
     const phaseText = st.phase === "break" ? "休息中" : st.phase === "pre" ? "即将休息" : "努力工作中";
     // 暂停统一显示“暂停休息”：不论是手动暂停、系统空闲（人离开工位）、系统勿扰
     // 还是指定应用占用运行，状态格只给一个结论；具体原因挂到该格的 title 上悬停可看
@@ -3965,16 +4168,22 @@
       : "";
     const now = st.paused && !(st.phase === "break" && st.breakWhilePaused) ? st.pausedAt : Date.now();
     const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
-    // 一个格子的值有两种形态：{text} 给中文结论（未安排 / 今日已无提醒 / —），
-    // {led} 给剩余毫秒、交给数码管。只有真正的倒计时才走段码 ——「今日已无提醒」
-    // 不是时间，硬画成段码只会得到一串没有意义的笔画。
-    const remainCell = (at) => dayDiffOf(at) > 0
-      ? { text: "今日已无提醒" }
-      : { led: Math.max(0, at - now) };
+    // 一个格子的值有三种形态：{text} 给中文结论（等待空闲 / 未安排 / 今日已无提醒 / —），
+    // {led} 给剩余毫秒、交给数码管。只有真正的倒计时才走段码 ——「等待空闲」不是时间，
+    // 硬画成段码只会得到一串 0。
+    //
+    // idleWait：这一跳已经到点，但这条提醒勾了「系统空闲（秒）」，人还在忙 ——
+    // 用户口径就是让时间格直接写“等待空闲”，等键鼠安静下来它自己会变成倒计时。
+    const remainCell = (at, idleWait) => idleWait
+      ? { text: "等待空闲" }
+      : dayDiffOf(at) > 0
+        ? { text: "今日已无提醒" }
+        : { led: Math.max(0, at - now) };
     // “下次提醒”取外卖/自定义里最近的一次（st.other 已合并两者）；
     // 仅当该最近提醒落在“今天”（at 在当天剩余时间）才显示，否则隐藏整格。
-    const otherCell = st.other && dayDiffOf(st.other.at) === 0
-      ? [otherKey(st.other.name), remainCell(st.other.at)]
+    // 等待空闲的那一条不按“今天/明天”判：它的时刻本来就在刚才（已经到点了）。
+    const otherCell = st.other && (st.other.idleWait || dayDiffOf(st.other.at) === 0)
+      ? [otherKey(st.other.name), remainCell(st.other.at, st.other.idleWait)]
       : null;
     const cells = [["状态", { text: phaseVal }, pauseTitle]];
     if (st.phase === "break") {
@@ -3982,7 +4191,7 @@
       if (otherCell) cells.push(["下次提醒", { text: "—" }]);
     } else {
       cells.push(
-        st.rest ? [`下次${st.rest.name}`, remainCell(st.rest.at)] : ["下次休息提醒", { text: "未安排" }]
+        st.rest ? [`下次${st.rest.name}`, remainCell(st.rest.at, st.rest.idleWait)] : ["下次休息提醒", { text: "未安排" }]
       );
       if (otherCell) cells.push(otherCell);
     }
@@ -4006,6 +4215,12 @@
       const card = head?.closest(".card");
       if (!head || !card || card.id === "tl-card") return;
       if (!card.classList.contains("foldable")) return;
+      // 卡头里的控件自己处理点击，一律不参与折叠：
+      //   · 总开关 .card-switch —— label + 透明 input + 轨道 span 三件套，点哪儿都是切开关；
+      //     只判 HTMLInputElement 不够：点到轨道 span 或 label 边缘时 target 不是 input，
+      //     会漏到下面把卡收起来。所以按容器排除，不管落在哪一层。
+      //   · 预览 / 重命名 / 删除（除 .card-fold 之外的 button）
+      if (t.closest(".card-switch")) return;
       if (t.closest("button") && !t.closest(".card-fold")) return;
       if (t instanceof HTMLInputElement) return;
       if (!card.id) return;
@@ -6986,6 +7201,11 @@
     setupAppPause();
     setupColorPicker();
     bindAutoSave();
+    // 空闲门（“系统空闲（秒）”）的输入规范化：自定义提醒卡的在自己建卡时绑（见
+    // setupCustomBreakCard），内置三条在这里统一绑
+    bindIdleGate("short");
+    bindIdleGate("long");
+    bindIdleGate("tk");
     window.addEventListener("focus", () => {
       if (document.querySelector("#tab-stats.active")) void renderStats();
     });
@@ -7079,7 +7299,7 @@
     });
     $("cb-add").addEventListener("click", () => void addCustomBreak());
     for (const t of ["short", "long"]) {
-      mountBreakModeDrop(t);
+      mountBreakSeg(t);
       $(`${t}-add`).addEventListener("click", async () => {
         const cfg = breakCfg(t);
         if (!cfg) return;

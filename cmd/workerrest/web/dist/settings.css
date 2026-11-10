@@ -192,10 +192,112 @@ body {
   margin-bottom: 16px;
 }
 .card h3 { font-size: 14px; margin-bottom: 14px; color: var(--text-2); font-weight: 600; }
-/* 标题行：折叠箭头在标题左侧、标题紧跟其后，右侧由 .adv-summary / .card-actions 的
-   margin-left:auto 顶到行尾。不用 space-between —— 那会让三个子元素均分，标题被挤到中间。 */
-.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+/* 标题行：折叠箭头在标题左侧、标题紧跟其后，右侧由 .adv-summary 的 margin-left:auto
+   把「摘要 · 预览 · 总开关」整簇推到行尾。不用 space-between —— 那会让子元素均分，标题被挤到中间。
+   2026-11-09：休息卡的总开关从正文第一行收进这里（见 .card-switch）；开关**排在行尾**，
+   不挨着标题 —— 贴着标题时它读起来像标题的后缀（“短休息〔开〕”），而且那是一枚实心品牌色
+   胶囊，会比 14px 灰标题先被看到。放到行尾，它才是“这张卡的总闸”，与左侧的身份区分开。 */
+.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .card-head h3 { margin-bottom: 0; }
+/* 卡头里的摘要（“固定时间 · 2 条 · 今日已无提醒”）是状态提示，不是第二个标题：
+   已定制时保留品牌色，但不再加粗 —— 加粗 + 品牌色会把 14px 的灰色标题压下去，
+   一行里最先被读到的是摘要而不是“这是哪张卡”。 */
+.card-head .adv-summary.customized { font-weight: 500; }
+/* 卡头里的摘要在标题**右边紧跟**（不再由 margin-left:auto 顶到行尾）：它是这张卡的
+   当前节奏（“固定时间 · 2 条 · 今日已无提醒”），属于标题的信息，读起来是“短休息：固定时间…”。
+   若把它推去行尾，左端就只剩一个 42px 宽的灰标题，整行重量全压到右侧那簇控件上，
+   开成什么样都失衡。 */
+/* 摘要本身是 nowrap，默认 min-width:auto 会把它钉在内容的整宽上 —— 自定义卡
+   （名字可长到 24 字、摘要又长）会把预览与总开关顶出行外。允许它在必要时收缩并打点，
+   保证右侧控件簇始终贴在卡片右内边距上。 */
+.card-head .adv-summary {
+  margin-left: 4px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 卡头动作（预览）与总开关构成行尾的控制簇，由预览的 auto margin 推到右边。
+   自定义卡的 ✎ / ✕ 被包进 .card-actions（同样带 auto），此时预览不能再抢 auto ——
+   两个 auto 会平分空白，把预览甩到行中间。 */
+.card-head-act { flex: none; margin-left: auto; }
+/* 2026-11-10：预览从描边胶囊降级成**文本动作**（原来 .btn.ghost.mini 是一枚 20px 高、
+   带描边和底色的小圆角件，和总开关并排只隔 2px —— 眼睛先把行尾读成“两个按钮”，
+   总开关于是降格成第三个按钮，不再是“这张卡的总闸”）。去掉描边与底色后，
+   行尾只剩总开关一枚实体件，预览退回“弱动作”。auto margin 让它的**右缘**固定
+   （= 开关左缘 − 18px），所以各卡预览上下仍在同一条竖线上，摘要长短不影响。 */
+.card-head-act.btn {
+  border-color: transparent;
+  background: transparent;
+  color: var(--text-2);
+  padding: 4px 6px;
+}
+.card-head-act.btn:hover {
+  border-color: transparent;
+  background: rgba(128, 128, 128, 0.12);
+  color: var(--text);
+}
+.card-head-act.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+  border-radius: 6px;
+}
+/* 自定义卡的 ✎ / ✕ 成组在预览左侧，与预览之间留 4px（.card-actions 自带 auto
+   把它整组推到行尾，预览与开关的右缘因此与内置卡逐像素同线） */
+.card-head > .card-actions ~ .card-head-act { margin-left: 4px; }
+.card-head .card-switch { margin-left: auto; }
+/* 开关与左侧控件之间必须留出一道空白：18px margin 加上 .card-head 的 8px gap =
+   26px，它才是“电源位”而不是“第三个按钮”。
+   右缘仍钉在卡片内边距上，所以各卡开关同一条竖线；没有预览的卡（声音）由上面那条
+   auto 自己吃掉剩余空白。 */
+.card-head > .card-head-act ~ .card-switch { margin-left: 18px; }
+
+/* 卡片总开关（拨动式）
+   ————————————————————————————————————————————————————————————————
+   用开关而不是复选框：它管的是“整张卡开不开”，是卡片级状态，和卡里那一排参数
+   （勾选框语义）不是一类东西。开关的两种状态天然可辨，缩在卡头也不丢信息。
+   实现：真 input 透明叠在轨道上（保留原生键盘 / 屏幕阅读器语义），轨道与圆点纯 CSS。 */
+.card-switch { flex: none; position: relative; display: inline-flex; align-items: center; cursor: pointer; }
+/* 原生 input 透明铺满整个 label，承接点击与键盘。
+   两个坑（都实测过）：
+   ① 只写 inset:0 不够 —— 后面那条全局 `input[type='checkbox']{width:16px;height:16px}`
+      特异性与本条相同但位置更靠后，会把宽高钉成 16，inset 的右/下被忽略，input 缩在左上角，
+      点轨道上下边缘时 target 是 span，冒泡到卡头的折叠处理器，卡片跟着折叠。
+      故这里用 `> input[type='checkbox']` 把特异性提到 (0,2,1)，压过全局那条。
+   ② 别改成 `width:auto` —— input 是 replaced element，auto 会退回内在尺寸（13~16px），
+      inset:0 同样拉不开。必须显式 100%。 */
+.card-switch > input[type='checkbox'] {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  margin: 0; opacity: 0; cursor: pointer;
+}
+/* 轨道与圆点是纯装饰（aria-hidden），不接收指针事件 —— 让点击无论落在轨道哪个像素，
+   都穿透到下面那枚透明 input。不加这条时 span 会盖住 input（同为 label 子元素、
+   它是 in-flow 且带 transition），点轨道边缘 target 就是 span，冒泡到卡头的折叠处理器，
+   卡片被收起来。 */
+.card-switch-track {
+  pointer-events: none;
+  width: 34px; height: 20px; border-radius: 999px;
+  /* 未开启的轨道原来填 --bg，而卡片本身就是 --panel 白 —— 两者只差一点点，
+     白卡上几乎看不见这枚开关，等于“关”这个状态没人说。改成描边色与次级文字色
+     的中间值，浅色下是一枚明确的浅灰胶囊，深色下也亮于描边一档。 */
+  background: color-mix(in srgb, var(--text-2) 26%, var(--panel));
+  border: 1px solid var(--border);
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+.card-switch-track::after {
+  content: ""; display: block; width: 14px; height: 14px; margin: 2px;
+  border-radius: 50%; background: var(--text-2);
+  transition: transform 0.18s cubic-bezier(0.33, 1, 0.68, 1), background 0.18s ease;
+}
+.card-switch > input:checked + .card-switch-track {
+  background: var(--accent); border-color: var(--accent);
+}
+.card-switch > input:checked + .card-switch-track::after {
+  transform: translateX(14px); background: #fff;
+}
+.card-switch > input:focus-visible + .card-switch-track {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
 
 /* 关于页：在保持卡片满宽（与其他页面一致）的前提下，徽标 / 说明块 / 软按钮沿用 v2 视觉 */
 /* 顶部横幅（久坐风险图）：宽度 = .tab 内容宽（与下方 .card 逐像素同宽），高度恒定 260px。
@@ -386,6 +488,11 @@ body {
    标签列宽 - 标签本身宽度 + 16px —— 与窗口宽度无关，最大化也不会“隔很远”。 */
 .row.field { display: grid; grid-template-columns: var(--label-w) minmax(0, 1fr); align-items: center; }
 .row.field > label { line-height: 1.4; }
+/* 字段行里直接放的滑条（督休专员的“立绘高度 / 距窗口左侧 / 距窗口底边”）占满控件列。
+   range 的全局宽度是 200px，窗口窄到控件列不足 200 时它会顶出卡片右缘 —— 760 宽实测
+   溢出 2px。这层溢出以前被 details.advanced 的 overflow:hidden 顺带裁掉了，
+   2026-11-09 去掉外框后立刻显形：该让滑条自己收缩，而不是靠裁切遮住。 */
+.row.field > input[type='range'] { width: 100%; min-width: 0; }
 
 /* 动作行：按钮紧挨着排成一串（.row 不再有 space-between，这里显式声明避免回退） */
 .row.inline { justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
@@ -401,13 +508,135 @@ body {
    就等于在页面上多出一种输入框长相，和别处的输入框对不上。 */
 .row.mixed > input[type='number']:disabled { opacity: .45; cursor: not-allowed; }
 
+/* 度量字段行：标签列写参数名，控件列里是“窄数字框 + 紧跟的单位/后半句”。
+   ————————————————————————————————————————————————————————————————
+   2026-11-09 改：单位原本折在标签里写成“提醒时长（秒）”，框却是 180px 整宽、里面只有
+   两位数 —— 每行右侧吊着 130px 空白，而且框比内容宽一倍，“没对齐”的感觉全从这来。
+   现在单位出框、框收到 80px（放得下“3600”四位），一行读成“提醒时长 20 秒”：
+   控件列里是一个紧凑的度量单元，右侧留白回归安静的留白。
+   系统空闲门（“☐ 系统空闲达 [30] 秒再提醒”）走同一套 —— 它的尾巴长一点而已，
+   于是卡里所有数字框同宽、所有单位同位，不存在第二种度量长相。
+   2026-11-09 早先撤掉了“分 + 秒”双窄框与自动进位：现在就是一个秒数框，填 90 显示 90。 */
+.field-line { display: flex; align-items: center; gap: 6px; min-width: 0; }
+/* 框窄到 80px 之后，两位数字左对齐会在右侧留下近一半空白，看着像“框没填满”；
+   居中之后 2~4 位数（2 / 30 / 3600）在框里都是光学平衡的。全站其余输入框是整宽
+   文本字段，仍左对齐 —— 这条只作用于 .field-line 里的窄数值框。 */
+.field-line > input[type='number'] { flex: 0 1 80px; width: 80px; min-width: 64px; text-align: center; }
+.field-line > .unit { flex: none; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+/* 不勾 = 这条门槛不生效：秒数框置灰，但值留着（下次勾回来还是原来那个数）。
+   只降不透明度，不另造一套“禁用样式”—— 与 .row.mixed 的“空闲 N 分钟”同一处理。 */
+.idle-gate input[type='number']:disabled { opacity: .45; cursor: not-allowed; }
+/* 系统空闲行紧跟在时刻表下面且同样是“勾选框 + 数字框”，不给间距就会被读成表格第 N 行。
+   它与时刻表是组内并列的两个触发条件，不是一张表的延续。 */
+.pg .idle-gate { margin-top: 12px; }
+
+/* 参数分组 .pg：把一类参数收进同一个标题下（“触发方式”＝计时方法 / 间隔 / 提醒时间 /
+   系统空闲，“弹窗设置”＝提醒时长 / 提前通知 / 推迟时长 …）。
+   ————————————————————————————————————————————————————————————————
+   2026-11-09 第三次改版：组从“标题 + 发丝线”升级成“一块淡色区域”。
+   上一版只靠 3px 竖条 + 12px 灰标题 + 标题右侧一道 1px 线来划界，三组看起来是三条
+   一样重、一样淡的“分节线”，谁也没比谁更重要 —— 用户的原话是“各区域区分不显”。
+   现在每组落在一块 --bg 底的圆角区域里（无描边、无投影），组与组之间是 10px 的卡片白，
+   “这里是一块”由面而不是由线表达。字号层级不变，组标题只加深到 --text 并去掉右侧线：
+   块已经把范围说明白了，再画线就是两套边界。
+   关键一点：**块的水平内边距用负外边距抵掉**。.row.field 的网格坐标就是全卡片的坐标，
+   组内一旦真的内缩，组里的标签列就会整体右移十几像素，与卡头、与其他组错开 —— 那正是
+   这套版式最忌的（全卡只有一条标签列、一条控件列）。`padding: 11px 12px` 配
+   `margin: 0 -12px`，内容盒位置分毫不动，只有底色往外扩。 */
+.pg {
+  margin: 0 -12px;
+  padding: 11px 12px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+}
+.pg + .pg { margin-top: 10px; }
+/* 组内行比卡片其它地方紧一档（40 → 36）：一组的几行读起来要像一段，
+   而不是几根各自独立的行。卡片外的行（督休专员、统计页）保持 40 的宽松节奏。 */
+.pg .row { min-height: 36px; padding: 3px 0; }
+/* 组标题行：加高的竖条 + 加深的字，让“这是组的名字”先于行标签被读到 */
+.pg-head { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+/* 标题左侧的品牌色小竖条：12px 高、3px 宽，只做“这里开了一个组”的记号。
+   高度取标题字号的 1 倍左右，比 16px 的小圆点更稳、也不像状态点。 */
+.pg-head::before { content: ""; flex: none; width: 3px; height: 12px; border-radius: 1.5px; background: var(--accent); }
+.pg-title { font-size: 12.5px; font-weight: 700; letter-spacing: .02em; color: var(--text); white-space: nowrap; }
+
+/* 计时方法：两段式单选（2026-11-09 取代自绘下拉）
+   ————————————————————————————————————————————————————————————————
+   为什么不是下拉：计时方法只有两个互斥选项，而且它直接决定组里出现“间隔”还是
+   “提醒时间”。折在下拉里，用户要先点开才知道“有几种、每种是什么意思”；摊成
+   并排两段之后，“两种触发方式”本身就成了版式的一部分 —— 这个组件是全卡唯一
+   需要先做决定的地方，给它一块比字段行更宽的地盘是合适的。
+
+   视觉：凹槽（--bg 底 + 描边）里浮起选中的一段（--panel 底 + 极轻投影）。
+   圆角与输入框同族（外 11 / 内 8），高度略高于字段行的输入框 —— 它是组里的主开关，
+   不是又一条“标签 + 输入框”。整宽占满内容区，不与标签列对齐：它不是字段。
+   每段 = 图标 + 主标签 + 一句说明（11px 灰），说明用“每隔一段时间 / 每天指定时刻”
+   这样的日常说法，而不是“按间隔触发 / 固定时刻”这种说明书腔。 */
+.mode-seg {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 4px;
+  margin: 3px 0 5px; padding: 3px;
+  border: 1px solid var(--border); border-radius: 11px;
+  background: var(--bg);
+  /* 极轻的内阴影把凹槽“压”下去：光靠 #f5f6fa / #fff 这 3% 的明度差，
+     在部分屏幕上看不出“这是个槽”，选中的一段就浮不起来。 */
+  box-shadow: inset 0 1px 2px rgba(20, 26, 45, .035);
+}
+[data-theme='dark'] .mode-seg { box-shadow: inset 0 1px 3px rgba(0, 0, 0, .35); }
+
+/* 组内的计时方法（2026-11-09）：不再套第二层凹槽。
+   组底本身就是 --bg，凹槽也是 --bg —— 同色叠同色，未选中的一段直接融进组底，
+   读起来像“左半截是空的”。改成两片与卡片同材质的白片：未选中白底 + 灰描边，
+   选中者品牌色描边 + accent-weak 底。材质的层数回到两层（卡片白 / 分区块灰），
+   段控与组内其他控件同族，整体性才立得住。 */
+.pg .mode-seg {
+  background: transparent; border-color: transparent; box-shadow: none;
+  padding: 0; gap: 8px; margin: 0 0 8px;
+}
+.pg .mode-opt { background: var(--panel); border-color: var(--border); }
+.pg .mode-opt:hover { background: var(--panel); border-color: var(--text-2); }
+.pg .mode-opt.on {
+  background: var(--accent-weak); border-color: var(--accent);
+  box-shadow: 0 1px 2px rgba(20, 26, 45, .05);
+}
+.pg .mode-opt.on:hover { background: var(--accent-weak); }
+[data-theme='dark'] .pg .mode-opt.on { box-shadow: 0 1px 3px rgba(0, 0, 0, .3); }
+.mode-opt {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid transparent; border-radius: 8px;
+  background: transparent; color: var(--text-2);
+  font: inherit; text-align: left; cursor: pointer;
+  transition: background .15s ease, color .15s ease, box-shadow .15s ease, border-color .15s ease;
+}
+.mode-opt:hover { color: var(--text); background: color-mix(in srgb, var(--panel) 55%, transparent); }
+.mode-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 选中段浮起：投影极轻，暗色下换成纯黑（亮色投影在深底上等于没画）。
+   边框比凹槽描边实一档 —— 卡片和选中段都是 --panel，只靠投影分不出边界。 */
+.mode-opt.on {
+  background: var(--panel); border-color: color-mix(in srgb, var(--border) 55%, var(--text-2)); color: var(--text);
+  box-shadow: 0 1px 2px rgba(20, 26, 45, .07), 0 2px 8px rgba(20, 26, 45, .05);
+}
+.mode-opt.on:hover { background: var(--panel); }
+[data-theme='dark'] .mode-opt.on { box-shadow: 0 1px 3px rgba(0, 0, 0, .45); }
+.mode-ico {
+  width: 17px; height: 17px; flex: none;
+  fill: none; stroke: currentColor; stroke-width: 1.7;
+  stroke-linecap: round; stroke-linejoin: round;
+  color: var(--text-2);
+  transition: color .15s ease;
+}
+.mode-opt.on .mode-ico { color: var(--accent); }
+.mode-txt { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.mode-txt b { font-size: 13px; font-weight: 600; line-height: 1.25; }
+.mode-txt i { font-size: 11px; font-style: normal; line-height: 1.25; color: var(--text-2); }
+
 /* 属于上一行的说明：缩进到控件列起点，与它解释的字段对齐；卡片级说明仍用 .hint 全宽 */
 .hint.sub { margin-left: calc(var(--label-w) + var(--row-gap)); }
 
 /* 统计页数据表：窄窗口下横向滚动，不裁切 */
 .table-scroll { overflow-x: auto; }
 
-input[type='number'], input[type='text'], select {
+input[type='number'], input[type='text'], input[type='time'], select {
   background: var(--bg);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -416,6 +645,17 @@ input[type='number'], input[type='text'], select {
   font-size: 13px;
   width: 180px;
 }
+/* 分区块（.pg / .msg-panel …）里的输入面改用卡片白。
+   ————————————————————————————————————————————————————————————————
+   组块自己的底色就是 --bg，而上面这条全局规则也给输入框铺 --bg —— 同色叠同色，
+   框的“输入面”直接消失，只剩一圈描边浮在灰底上（深色主题下尤其明显，框和背景糊成一片）。
+   改成白底之后层次是：卡片白 > 分区块灰 > 控件白 > 选中段 accent-weak，
+   控件像浮在灰区域里的白片，与计时方法的两片白同族 —— 这也是“组内是一整块”的观感来源。
+   必须写在这条全局规则之后：两者特异性相同，靠先后顺序取胜。 */
+.pg input[type='number'],
+.pg input[type='text'],
+.pg input[type='time'],
+.pg select { background: var(--panel); }
 input[type='date'] {
   background: var(--bg);
   border: 1px solid var(--border);
@@ -432,6 +672,7 @@ input[type='date']:hover { border-color: var(--accent); }
 input[type='date']:focus,
 input[type='number']:focus,
 input[type='text']:focus,
+input[type='time']:focus,
 select:focus {
   outline: none;
   border-color: var(--accent);
@@ -449,6 +690,11 @@ input[type='range'] { width: 200px; accent-color: var(--accent); }
   text-align: left; font-size: 13px; color: var(--text);
 }
 input[type='checkbox'], input[type='radio'] { accent-color: var(--accent); width: 16px; height: 16px; }
+/* 原生勾选框跟随主题：`accent-color` 只改“勾上之后的底色”，未勾状态的白底 / 灰边
+   由浏览器按 color-scheme 画。不声明时它永远按浅色渲染 —— 浅色卡片上看不出来，
+   深色卡片上就是一排纯白小方块（时刻表 / 系统空闲门最明显）。 */
+[data-theme='dark'] input[type='checkbox'],
+[data-theme='dark'] input[type='radio'] { color-scheme: dark; }
 /* 勾选项行：勾选框一律在文字左侧、与文字紧贴（gap 8px）。
    注意不要改成"文字在左、勾选框被 space-between 推到行尾"的写法——那会让框与文字
    分居两端，看起来和这一行没关系；也不必为了与相邻输入框右对齐而牺牲这一点。 */
@@ -540,37 +786,48 @@ button .q-tip-host,
 /* 卡片内的次级小标题（如预览卡里紧挨舞台的"尺寸与位置"） */
 .subhead { font-size: 13px; font-weight: 600; color: var(--text-2); margin: 12px 0 2px; }
 
-/* 折叠面板（提醒内容 .msg-panel ↔ 提醒时间 .slot-fixed ↔ 高级选项 details.advanced）
-   共用同一套外观：相同的描边/圆角/底色（不设底色，随卡片 --panel 走）、相同的头部
-   内边距与悬停态、相同的“▸”三角箭头与展开转向；前者是 button 切 .open，后者是原生
-   <details>，这里只统一长相，交互各自保留。 */
+/* 折叠分区（提醒内容 .msg-panel ↔ 提示音 / 候选专员 .fold-panel ↔ 高级选项 details.advanced）
+   ————————————————————————————————————————————————————————————————
+   2026-11-09 第二次改版：**不再画框**。
+   上一版三者共用一套“描边 + 圆角 + 卡片底”的外壳，于是提醒卡里出现了“卡中卡”：
+   卡片（--panel 底 + 描边）里套一个同色描边盒，盒里再缩进 12px 放内容。后果是全卡
+   唯一一条左对齐线在盒子边缘断掉，最底下的“提醒内容”像是另一张卡硬塞进来的。
+   现在它与 .pg（触发方式 / 弹窗设置 两组）说同一种语言：无底色、无描边、无圆角、无内缩，
+   只用“标题行 + 20px 上留白”表达“这里开了个分区”，组与组、组与面板之间距离一致。
+   标题行 = 折叠箭头 + 12px/700 灰字 + 右侧发丝线，与 .pg-head 的层级完全相同 ——
+   差别只在记号：.pg 用品牌色竖条（不可折叠），这里用 ▸（本身就要点开，再叠竖条是两层记号）。
+   提醒时间 .slot-fixed 不在这组：它比分区更内一层（组内子块），见下方同名一节。 */
 .msg-panel,
 .fold-panel,
-.slot-fixed,
 details.advanced {
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  margin-top: 12px;
-  overflow: hidden;
+  /* 与 .pg 同族的分区块：淡底 + 圆角、无描边、无投影，水平内边距用负外边距抵掉 */
+  margin: 10px -12px 0;
+  padding: 11px 12px 12px;
+  border-radius: 12px;
+  background: var(--bg);
 }
+
 .msg-toggle,
 details.advanced > summary {
-  display: flex; align-items: center; gap: 6px; width: 100%;
+  display: flex; align-items: center; gap: 7px; width: 100%;
   background: transparent; border: none; cursor: pointer;
-  color: var(--text); font-size: 13px; font-weight: 600;
+  color: var(--text); font-size: 12.5px; font-weight: 700; letter-spacing: .02em;
   font-family: inherit; /* <button> 默认不继承字体，显式继承才能与 <summary> 字形一致 */
-  padding: 9px 12px; text-align: left;
+  padding: 0 0 6px; text-align: left;
   list-style: none; user-select: none;
 }
+/* 悬停只提亮箭头：块内标题已是最深的一档灰，再换色会跳 */
 .msg-toggle:hover,
-details.advanced > summary:hover { background: var(--accent-weak); }
+details.advanced > summary:hover { color: var(--text); }
+/* 2026-11-09 第三次改版删掉了标题后的发丝线：分区块的边界由“面”承担，
+   再叠一条线就是两套边界。标题右侧的图标按钮由 .msg-toggle{flex:1} 顶到行尾，不靠线撑开。 */
 /* 提示音标题行：折叠开关占满剩余宽度，右侧“＋”导入按钮同高同悬停态 */
 .snd-music-head { display: flex; align-items: stretch; }
 .snd-music-head .msg-toggle { flex: 1; }
 .snd-music-add {
-  border: none; background: transparent; cursor: pointer;
+  border: none; border-radius: 6px; background: transparent; cursor: pointer;
   color: var(--text-2); font-size: 16px; line-height: 1;
-  padding: 0 14px; font-family: inherit;
+  padding: 3px 9px; font-family: inherit;
 }
 .snd-music-add:hover { background: var(--accent-weak); color: var(--text); }
 details.advanced > summary::-webkit-details-marker { display: none; }
@@ -594,36 +851,35 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 /* 偏离默认值时高亮，收起状态也能看出这张图调过 */
 .adv-summary.customized { color: var(--accent); font-weight: 600; }
+/* 内容区不再缩进 12px、不再画上边框：无框分区里它就是标题行的自然延续。
+   行分隔交给内容自身（提醒内容是 .msg-item 的描边行、提示音是 .snd-row 的浅底行），
+   与 .pg 里“组内不画线、组间靠留白”是同一条规则。 */
 .msg-body,
-.slot-body,
-.adv-body { padding: 4px 12px 12px; border-top: 1px solid var(--border); }
-.adv-body .subhead { margin-top: 4px; }
-/* 提醒时间面板：列表贴头部一点（tk-list 自带的下外边距在面板里显松） */
-.slot-body .tk-list { margin: 10px 0 2px; }
-/* 提醒内容 / 提醒时间面板标题行：折叠开关占满剩余宽度，右侧“＋”按钮（与提示音标题行同一套） */
-.msg-head,
-.slot-head { display: flex; align-items: stretch; }
-.msg-head .msg-toggle,
-.slot-head .msg-toggle { flex: 1; }
-.msg-add,
-.slot-add {
-  border: none; background: transparent; cursor: pointer;
+.adv-body { padding: 0; border-top: 0; }
+/* 展开后的第一个小标题（“显示”“尺寸与位置”）只是分节记号，别在标题行下面再空一大段 */
+.adv-body .subhead { margin-top: 12px; }
+.adv-body .subhead:first-child { margin-top: 2px; }
+/* 提醒内容面板标题行：折叠开关占满剩余宽度，右侧“＋”按钮（与提示音标题行同一套） */
+.msg-head { display: flex; align-items: stretch; }
+.msg-head .msg-toggle { flex: 1; }
+.msg-add {
+  border: none; border-radius: 6px; background: transparent; cursor: pointer;
   color: var(--text-2); font-size: 16px; line-height: 1;
-  padding: 0 14px; font-family: inherit;
+  padding: 3px 9px; font-family: inherit;
 }
-.msg-add:hover,
-.slot-add:hover { background: var(--accent-weak); color: var(--text); }
+.msg-add:hover { background: var(--accent-weak); color: var(--text); }
 
 /* 候选专员折叠面板：复用 .fold-panel 折叠外观与 .msg-head/.msg-toggle 头部行。
    展开后列表体固定高度（默认 = 两行磁贴，由脚本按实测行高写入），溢出出纵向滚动条；
    底部拖柄上下拖动调高度（记 localStorage，下次打开保持）。折叠时体与拖柄一并隐藏。 */
 .gallery-tip {
   /* 拖拽排序说明：放在面板头与列表体之间（列表体是固定高度 + 滚动区，
-     说明写在列表体内会被滚走） */
-  padding: 7px 12px 8px; font-size: 11.5px; color: var(--text-2); line-height: 1.5;
+     说明写在列表体内会被滚走）。
+     与 .gallery-body 一样不做水平内缩 —— 无框分区里内容必须与标题同一条左缘。 */
+  padding: 0 0 8px; font-size: 11.5px; color: var(--text-2); line-height: 1.5;
 }
 .gallery-body {
-  padding: 0 12px 12px; border-top: 1px solid var(--border);
+  padding: 0 0 10px;
   overflow-y: auto;
   /* 纵向允许**滚动链**（scroll chaining）：列表滚到顶 / 到底后，继续滚同一个滚轮
      会接着带动外层页面（#content）继续滚，而不是“卡住不动”。
@@ -662,6 +918,24 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 }
 .msg-item.dragging { opacity: 0.45; border-style: dashed; }
 .msg-item.drop-target { border-color: var(--accent); }
+/* 列表行的删除键与时刻表用同一套：常态灰、悬停才转红描边。
+   同一张卡里并存两种“删除”（时刻表是灰叉、提醒内容与提示音是一排红框）是最扎眼的
+   不一致；何况一行一个红框，红色成了列表里唯一的饱和色，注意力先落在“怎么删”。 */
+.msg-body .btn.danger {
+  border-color: transparent; background: transparent; color: var(--text-2);
+}
+.msg-body .btn.danger:hover {
+  border-color: var(--danger); background: transparent; color: var(--danger);
+}
+/* 编辑键与删除键在行尾成对出现，同属“这条内容的次级操作” —— 两者都该是幽灵态。
+   只给删除键去框、留着编辑键的描边，会让这一对看起来不是一组。
+   （提示音行的“试听”不在此列：它是每行的主操作，保留描边。） */
+.msg-body .msg-item > .btn:not(.danger) {
+  border-color: transparent; background: transparent; color: var(--text-2);
+}
+.msg-body .msg-item > .btn:not(.danger):hover {
+  border-color: var(--border); background: var(--bg); color: var(--text);
+}
 .msg-item input[type='text'] { flex: 1; width: auto; }
 .msg-item.disabled { opacity: 0.5; }
 /* 整行可点击勾选（非编辑态）；编辑态恢复默认光标，文本框用文本光标 */
@@ -1356,9 +1630,122 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 
 /* 触发方式：倒计时 / 固定时间两套设置项互斥显示；不适用的行变暗并禁用 */
 .row.off { opacity: 0.5; }
-/* （.slot-fixed 的折叠面板容器样式已并入上方的面板组：描边 / 圆角 / 上边距 / overflow） */
 
 /* ---------------- 固定时刻表（外卖提醒 / 短休息 / 长休息共用） ---------------- */
+
+/* 提醒时间：组内嵌的时刻表（2026-11-09 重做）
+   ————————————————————————————————————————————————————————————————
+   改前是“卡片里的一个描边小卡片，里面每条时刻再套一层描边”，加上组的标题与发丝线
+   一共四层盒子；面板外框与卡片内缘齐平、内容却缩进 12px，全卡唯一的左对齐线在这
+   里断掉；头部 `▸提醒时间` 13px/600 深色，比组标题 12px/700 灰字还抢眼，层级倒挂；
+   行尾孤悬一枚 `＋`，离标签七百像素。四条叠起来，它就成了整张卡里最不协调的一块。
+
+   现在：不画框、不缩进、不铺底色，只留“子标签行 + 行间发丝线”，
+   层级 = 卡片标题 > 组标题 > 子标签 > 行标签，左缘与组内各行同一条。 */
+.slot-fixed { margin-top: 12px; }
+
+/* 头部 = 一行子标签：可点折叠，但悬停只换文字与箭头颜色。
+   整行铺 --accent-weak 是描边卡片时代的做法，在无框的组里会像一条高亮条。 */
+.slot-head { display: flex; align-items: center; gap: 2px; }
+.slot-fixed .msg-toggle {
+  flex: 0 1 auto; width: auto;
+  padding: 2px 0; gap: 5px;
+  /* 12px/700 + 同样的灰，与 .pg-head 的组标题同一个字号字重：层级只靠“没有竖条、
+     箭头代替竖条、位置在组内”表达。上一版给的是 12.5px/600，`字号更大 + 颜色更深`
+     反而比「触发方式」还抢眼 —— 那是全卡最明显的一处层级倒挂，现已抹平。 */
+  font-size: 12px; font-weight: 700; letter-spacing: .04em; color: var(--text-2);
+}
+.slot-fixed .msg-toggle:hover { color: var(--text); }
+.slot-fixed .msg-arrow { font-size: 10px; }
+.slot-fixed.open .msg-arrow { color: var(--accent); }
+
+/* “＋ 添加”紧跟标签右侧，做成低调文字按钮：hover 才描边显色 */
+.slot-add {
+  display: inline-flex; align-items: baseline; gap: 3px;
+  margin-left: 6px;
+  border: 1px solid transparent; border-radius: 6px;
+  background: transparent; cursor: pointer;
+  padding: 1px 6px 2px;
+  font: inherit; font-size: 12px; line-height: 1.4; color: var(--text-2);
+}
+.slot-add-t { font-size: 12px; }
+.slot-add:hover { border-color: var(--border); background: var(--panel); color: var(--accent); }
+
+/* 内容区不设内边距、不画上边框：行分隔由每条时刻自己的上发丝线承担，
+   于是“子标签”与第一条时刻之间只有 2px，读起来是标签紧接着清单。 */
+.slot-body { padding: 0; border-top: 0; }
+
+/* 时刻行用网格而不是 flex-wrap —— 勾选框 / 时刻 / 重复 / 星期 / 删除各自成列，
+   两三条时纵向严格对齐；flex-wrap 换行后行尾会参差。 */
+.slot-body .tk-list { display: block; margin: 2px 0 0; }
+.slot-body .tk-item {
+  display: grid;
+  grid-template-columns: 16px 108px 104px minmax(0, 1fr) 26px;
+  align-items: center; column-gap: 12px;
+  /* 行间线在分区块的 --bg 底上要比在卡片白底上淡一档：同一条 --border 铺在灰底上
+     对比更强，三条线会把“触发方式”切成四条横带，组又散了。 */
+  border: 0; border-top: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+  border-radius: 0;
+  padding: 6px 0;
+}
+/* 逐列显式定位：星期那一格在“每天”时是 display:none（.hidden 带 !important），
+   自动排布会让删除键顶到第 4 列、离右缘还差一大截。钉死列号后，无论星期在不在，
+   时刻 / 重复 / 星期 / 删除都在各自那一列上。 */
+.slot-body .tk-item > input[type='checkbox'] { grid-column: 1; }
+.slot-body .tk-item > .tk-time { grid-column: 2; }
+.slot-body .tk-item > .tk-repeat { grid-column: 3; }
+.slot-body .tk-item > .tk-days { grid-column: 4; }
+.slot-body .tk-item > .btn.danger { grid-column: 5; }
+/* 窄窗口（窗口 800 宽时整行只剩 ~450px）：七个星期方块在 152px 里放不下，
+   会拆成两行还把行高撑高、删除键悬在行中。窄时把星期整块挪到第二行，从时刻列
+   一直铺到删除列之前 —— 勾选框 / 时刻 / 重复 / 删除仍在第一行各就各位。
+   用容器查询而不是媒体查询：行宽取决于卡片（窗口 − 侧栏），不取决于视口断点。
+   不支持容器查询的引擎退回“方块自行换行”，功能不受影响。 */
+.slot-body { container-type: inline-size; }
+@container (max-width: 520px) {
+  .slot-body .tk-item { row-gap: 6px; }
+  .slot-body .tk-item > input[type='checkbox'],
+  .slot-body .tk-item > .tk-time,
+  .slot-body .tk-item > .tk-repeat,
+  .slot-body .tk-item > .btn.danger { grid-row: 1; }
+  .slot-body .tk-item > .tk-days { grid-column: 2 / 5; grid-row: 2; }
+}
+.slot-body .tk-item .tk-time { gap: 0; }
+/* 原生 time 框：与同行下拉同高（6px 内边距），等宽数字让上下两行的数位对齐。
+   右侧小表盘是原生取值入口，常驻但压到半透明 —— 满色时三行排下来像三枚按钮。 */
+.slot-body .tk-time input[type='time'] {
+  width: 108px; padding: 6px 8px; text-align: center;
+  font-variant-numeric: tabular-nums;
+  color-scheme: light;
+}
+.slot-body .tk-time input[type='time']::-webkit-calendar-picker-indicator { opacity: .45; cursor: pointer; }
+.slot-body .tk-time input[type='time']:hover::-webkit-calendar-picker-indicator { opacity: 1; }
+[data-theme='dark'] .slot-body .tk-time input[type='time'] { color-scheme: dark; }
+.slot-body .tk-repeat { width: 104px; }
+.slot-body .tk-days { flex-wrap: wrap; }
+/* 停用的那条：只把“数据”压淡（时刻 / 重复 / 星期）。
+   整行 opacity .5 会把这行唯一能点的勾选框一起变灰，看着像坏了。 */
+.slot-body .tk-item.disabled { opacity: 1; }
+.slot-body .tk-item.disabled .tk-time,
+.slot-body .tk-item.disabled .tk-repeat,
+.slot-body .tk-item.disabled .tk-days { opacity: .45; }
+/* 删除键：扁平行里不需要一枚常驻描边的红字按钮，悬停才显边框。
+   常态连颜色也收到 --text-2：三条时刻就挂三枚红叉时，红色是卡里唯一的饱和色，
+   视线会先落在“怎么删”而不是“几点提醒”——危险色留给真正悬停的那一刻。 */
+.slot-body .tk-item > .btn.danger {
+  justify-self: end;
+  border-color: transparent; background: transparent;
+  color: var(--text-2);
+  padding: 3px 6px; line-height: 1.2;
+}
+.slot-body .tk-item > .btn.danger:hover {
+  border-color: var(--danger); color: var(--danger); background: transparent;
+}
+/* 空状态：一行提示，不再是第四层虚线框 */
+.slot-body .tk-empty {
+  border: 0; border-top: 1px solid var(--border); border-radius: 0;
+  padding: 9px 0 3px; text-align: left; font-size: 12.5px;
+}
 
 .tk-list { display: flex; flex-direction: column; gap: 8px; margin: 6px 0 12px; }
 .tk-item {
@@ -1374,20 +1761,18 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 整行可点击勾选/取消，光标提示可点 */
 #snd-music-list .snd-row { cursor: pointer; }
 /* 播放方式：单一图标按钮（点击循环切换 单曲 / 随机 / 顺序），与“＋”并排紧贴于
-   “提示音”标题行右侧，且紧贴标题、与左侧不再留空隙。两者都不带外框、直角、
-   透明底，hover 浅底，与标题栏的“▸提示音”“＋”按钮同一套观感。图标按钮与
-   “＋”等宽（同 padding:0 14px），左右各一条 1px 竖线与“＋”明显区分。图标区分
-   三种模式：单曲循环=带“1”的循环箭头、随机播放=交叉箭头、顺序循环=循环箭头；
-   常驻只显示图标，悬浮由浏览器原生 title 显示文字名称。 */
+   分区标题行右端。两者都是 6px 圆角的小幽灵按钮（3px 9px 内边距，hover 浅底），
+   靠 2px 间距而不是竖线分界 —— 2026-11-09 撤掉了原来的左右 1px 竖线：那是描边
+   卡片时代的“分栏”记号，分区改成无框之后，两条独立竖线悬在标题行右侧没有依据，
+   还和发丝线抢注意力。图标区分三种模式：单曲循环=带“1”的循环箭头、随机播放=交叉
+   箭头、顺序循环=循环箭头；常驻只显示图标，悬浮由浏览器原生 title 显示文字名称。 */
 .snd-music-actions {
-  display: inline-flex; align-items: stretch; flex: none;
+  display: inline-flex; align-items: center; gap: 2px; flex: none;
 }
 .snd-mode-btn {
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; background: transparent; cursor: pointer;
-  font: inherit; color: var(--text-2); padding: 0 14px;
-  border-left: 1px solid var(--border);
-  border-right: 1px solid var(--border);
+  border: none; border-radius: 6px; background: transparent; cursor: pointer;
+  font: inherit; color: var(--text-2); padding: 3px 9px;
 }
 .snd-mode-btn:hover { background: var(--accent-weak); color: var(--text); }
 .snd-mode-btn svg {
@@ -1679,10 +2064,17 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .card-add:hover .card-add-btn { color: var(--accent); }
 .card-add-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; color: var(--accent); }
 
-/* 自定义提醒卡的标题行：标题（含启用开关）在左，右侧是摘要 + 删除按钮成组（.card-head 仍两端对齐）。
-   .card-actions 自己必须带 margin-left:auto —— .adv-summary 的 auto margin 被包进组内后只对组内生效，
-   组本身没有 auto margin 会被 space-between 挤到行中间（该右对齐的没右对齐） */
-.card-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; margin-left: auto; }
+/* 自定义提醒卡的标题行：身份块（▾ 标题 + 摘要）在左，控件簇（✎ / ✕ + 预览 + 总开关）在右。
+   .card-actions 自己必须带 margin-left:auto —— 卡头不是 space-between，没有 auto margin 的
+   组会被挤在行中间（该右对齐的没右对齐）。2026-11-10 摘要移出这个组，回到标题右侧，
+   与内置卡同一条对齐线；组里只剩重命名 / 删除两个图标按钮。 */
+.card-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; margin-left: auto; }
+/* 卡头右侧的重命名 / 删除：常态是幽灵按钮，悬停才显形 —— 与列表行的删除键同一套。
+   预览现在也是无描边的文本动作（见 .card-head-act），所以行尾只剩总开关一枚实体件；
+   删除整张卡本来就有确认弹窗，红色留给悬停那一刻足够。 */
+.card-actions .btn { border-color: transparent; background: transparent; color: var(--text-2); }
+.card-actions .btn:hover { border-color: var(--border); background: var(--bg); color: var(--text); }
+.card-actions .btn.danger:hover { border-color: var(--danger); background: transparent; color: var(--danger); }
 
 /* 今日提醒时间线（时间规划页顶部，默认折叠） */
 .tl-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; padding: 0; font: inherit; font-weight: 600; font-size: 14px; color: var(--text-2); cursor: pointer; text-align: left; }
@@ -1713,6 +2105,12 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    整张卡只剩两条对齐线（0 / 24），不用去动任何一行的缩进。
    反方向做（把内容整体右移 22px 或 30px）会连带面板边框、说明、hint 一起缩进，
    卡片左边距涨到 42/50px 而右边距仍是 20px，反而失衡。 */
+/* 卡头总开关的“关闭态”：整张卡的正文降透明度，卡头不降（开关本身要一直清楚）。
+   2026-11-10 加这一条的起因：关掉后只有那枚 34×20 的小胶囊在说“已关闭”，
+   卡内控件照旧全亮全可编辑，用户扫一眼根本看不出这张卡是停着的。
+   只降透明度、不禁用控件 —— 关掉是为了“暂时不弹”，参数仍然要能改。 */
+.card > :not(.card-head) { transition: opacity 0.2s ease; }
+.card.off > :not(.card-head) { opacity: 0.55; }
 .foldable.closed > :not(.card-head) { display: none; }
 .foldable.closed .card-head { margin-bottom: 0; }
 .foldable > .card-head { cursor: pointer; }

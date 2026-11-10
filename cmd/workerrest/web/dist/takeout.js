@@ -2851,12 +2851,8 @@
       postEl.textContent = `已推迟 ${info.postponedCount} 次`;
       postEl.classList.remove("hidden");
     }
-    // “可推迟”为 0 分钟时不显示“推迟”按钮（buildTakeoutInfo 透传配置快照）
-    if (info.postponeMin > 0) {
-      el("tk-postpone").textContent = `推迟 ${info.postponeMin} 分钟`;
-    } else {
-      el("tk-postpone").classList.add("hidden");
-    }
+    // “推迟时长”最小 1 分钟（2026-11-10），按钮常显，文案带分钟数
+    el("tk-postpone").textContent = `推迟 ${info.postponeMin} 分钟`;
     const msgEl = el("tk-msg");
     if (info.message) {
       msgEl.textContent = info.message;
