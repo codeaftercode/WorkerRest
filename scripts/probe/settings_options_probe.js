@@ -320,9 +320,12 @@ async function verifyIdleGateControls(page) {
 
   // ② 用户要求：时间控件放右侧、与下方输入框同列。这里直接量几何位置 ——
   //    改版式时最容易破坏的就是“看起来差不多”，量一把才知道真的同一竖线。
+  //    2026-11-10「间隔」搬进左侧面板后不再是全宽字段行（面板内是单列布局，
+  //    输入框跟着面板走），所以对照物换成仍在组外的「提醒时长」—— 它代表全卡
+  //    那条控件列（509），空闲门这一行也还在面板之外，两者必须严格同列。
   const align = await page.evaluate(() => {
     const g = document.getElementById("short-idleGate-sec");
-    const i = document.getElementById("short-interval");
+    const i = document.getElementById("short-duration");
     if (!g || !i) return null;
     const a = g.getBoundingClientRect();
     const b = i.getBoundingClientRect();
@@ -335,12 +338,12 @@ async function verifyIdleGateControls(page) {
   });
   check(
     !!align && Math.abs(align.gate - align.input) <= 1,
-    "空闲门 · 输入框与下方“间隔（分钟）”左缘同列",
+    "空闲门 · 输入框与「提醒时长」左缘同列（全卡那条控件列）",
     JSON.stringify(align),
   );
   check(
     !!align && Math.abs(align.wGate - align.wInput) <= 1,
-    "空闲门 · 输入框与下方输入框同宽",
+    "空闲门 · 输入框与「提醒时长」同宽",
     JSON.stringify(align),
   );
 
@@ -414,12 +417,12 @@ async function verifyIdleGateControls(page) {
       const pg = [...card.querySelectorAll(":scope > .pg")];
       const trig = pg.find((p) => p.dataset.pg === "trigger");
       const rem = pg.find((p) => p.dataset.pg === "reminder");
-      // 候选单元：字段行 + 计时方法段控（段控不是 .row，但同样算组里的成员；
+      // 候选单元：字段行 + 计时方法面板（面板不是 .row，但同样算组里的成员；
       // “暂停休息时”是 .row.field，已经算在 .row 里，不必单列）
-      const idx = (g, re) => (g ? [...g.querySelectorAll(".row, .mode-seg")].findIndex((r) => re.test(r.textContent)) : -2);
+      const idx = (g, re) => (g ? [...g.querySelectorAll(".row, .mode-panes")].findIndex((r) => re.test(r.textContent)) : -2);
       return {
         titles: pg.map((p) => (p.querySelector(".pg-title") || {}).textContent || ""),
-        // 2026-11-09 起计时方法是段控（不是 .row），按它的文案找位置
+        // 2026-11-10 起计时方法是并列面板（不是 .row），按它的文案找位置
         mode: idx(trig, /倒计时/),
         gate: idx(trig, /系统空闲/),
         dur: idx(rem, /提醒时长/),
@@ -905,15 +908,20 @@ async function verifyParamGroups(page) {
   check(!/倒计时/.test(struct.tk?.trig || ""), "分组 · 外卖提醒没有计时方法（只有固定时刻）");
   check(/提醒时长秒/.test(struct.short?.rem || ""), "分组 · 短休息“提醒”含提醒时长");
 
-  // ② 倒计时 ↔ 固定时间：组内“间隔 / 提醒时间”互换
+  // ② 倒计时 ↔ 固定时间：**两侧面板的选中态互换**
+  // 2026-11-10 起两个面板并列、内容同时可见可编辑（不再“藏一边显示一边”），
+  // 所以这里钉的是 .on 落在哪半张，而不是谁被 display:none。
   const snap = async (id) =>
     await page.evaluate((k) => {
       const card = document.getElementById(k + "-card");
-      const q = (sel) => card.querySelector(sel);
+      const host = document.getElementById(k + "-mode");
+      const panes = [...host.querySelectorAll(":scope > .mode-pane")];
+      const vis = (el) => !!el && el.getBoundingClientRect().height > 0;
       return {
-        intervalHidden: q(".bk-countdown") ? q(".bk-countdown").classList.contains("hidden") : null,
-        slotHidden: q(".slot-fixed") ? q(".slot-fixed").classList.contains("hidden") : null,
-        slotBodyHidden: q(".slot-body") ? q(".slot-body").classList.contains("hidden") : null,
+        on: panes.map((p) => p.dataset.mode + ":" + p.classList.contains("on")),
+        intervalVisible: vis(document.getElementById(k + "-interval")),
+        slotVisible: vis(card.querySelector(".slot-fixed")),
+        slotBodyHidden: card.querySelector(".slot-body").classList.contains("hidden"),
         summary: (document.getElementById(k + "-summary") || {}).textContent || "",
       };
     }, id);
@@ -921,7 +929,7 @@ async function verifyParamGroups(page) {
   const pickMode = async (id, text) => {
     const hit = await page.evaluate(
       ({ k, t }) => {
-        const opts = [...document.querySelectorAll(`#${k}-mode .mode-opt`)];
+        const opts = [...document.querySelectorAll(`#${k}-mode .pane-head`)];
         const el = opts.find((e) => ((e.querySelector("b") || {}).textContent || "").trim() === t);
         if (!el) return false;
         el.click();
@@ -935,10 +943,18 @@ async function verifyParamGroups(page) {
   };
 
   let v = await snap("short");
-  check(v.intervalHidden === false && v.slotHidden === true, "切换 · 倒计时显示“间隔”、藏起“提醒时间”", JSON.stringify(v));
-  check(await pickMode("short", "固定时间"), "切换 · 在段控里点“固定时间”");
+  check(
+    v.on.join(",") === "countdown:true,fixed:false" && v.intervalVisible && v.slotVisible,
+    "切换 · 倒计时生效：左侧选中，两侧内容都可见",
+    JSON.stringify(v),
+  );
+  check(await pickMode("short", "固定时间"), "切换 · 在面板头里点“固定时间”");
   v = await snap("short");
-  check(v.intervalHidden === true && v.slotHidden === false, "切换 · 固定时间藏起“间隔”、显示“提醒时间”", JSON.stringify(v));
+  check(
+    v.on.join(",") === "countdown:false,fixed:true",
+    "切换 · 固定时间生效：选中态移到右面板",
+    JSON.stringify(v),
+  );
   // 2026-11-10 起「提醒时间」这一层不再折叠（用户：不准折叠，必须展开），
   // 所以切到固定时间时看到的就是清单本身，不再有“自动摊开”这回事。
   check(v.slotBodyHidden === false, "切换 · “提醒时间”清单常驻展开（内容体没有 hidden）", JSON.stringify(v));
@@ -946,7 +962,7 @@ async function verifyParamGroups(page) {
 
   await pickMode("short", "倒计时");
   v = await snap("short");
-  check(v.intervalHidden === false && v.slotHidden === true, "切换 · 切回倒计时已还原", JSON.stringify(v));
+  check(v.on.join(",") === "countdown:true,fixed:false", "切换 · 切回倒计时已还原", JSON.stringify(v));
 
   // ③ 对齐：组只是“加了标题”，不能把列推开
   const geo = await page.evaluate(() => {
@@ -974,7 +990,8 @@ async function verifyParamGroups(page) {
       pgBodyLeft: textLeft(trig.querySelector(":scope > .pg-body")),
       msgToggleLeft: textLeft(msgPanel.querySelector(".msg-head > .msg-toggle")),
       msgHead: r("#short-card > .msg-panel > .msg-head"),
-      trigLabel: r('.pg[data-pg="trigger"] .row > label'),
+      // 面板内的行是单列布局、不再代表全卡坐标，所以取组外那行（系统空闲门的标签）作对照
+      trigLabel: r('.pg[data-pg="trigger"] .idle-gate > label'),
       remLabel: r('.pg[data-pg="reminder"] .row > label'),
       headSwitch: r("#short-card > .card-head > .card-switch"),
       headAct: r("#short-preview"),
@@ -983,13 +1000,14 @@ async function verifyParamGroups(page) {
       actBorder: getComputedStyle(document.getElementById("short-preview")).borderTopColor,
       actBg: getComputedStyle(document.getElementById("short-preview")).backgroundColor,
       trigInput: r("#short-interval"),
+      paneBody: r('#short-mode .mode-pane .pane-body'),
       remInput: r("#short-duration"),
       gateInput: r("#short-idleGate-sec"),
       remUnit: r('.pg[data-pg="reminder"] .row .field-line > .unit'),
       // 组标题的字号：应当比行标签（14px）小一档，收起时也能一眼分出层级
       titleSize: parseFloat(getComputedStyle(trig.querySelector(".pg-title")).fontSize),
       labelSize: parseFloat(
-        getComputedStyle(trig.querySelector(".row > label")).fontSize,
+        getComputedStyle(card.querySelector('.pg[data-pg="reminder"] .row > label')).fontSize,
       ),
       // 盒子本身不吃内边距（外层 -13px 外边距留给描边与内容体的 12px 内边距），
       // 内容体的 12px + 1px 描边正好抵回原位 —— 与 2026-11-10 之前“灰面靠内边距撑开”的
@@ -1005,7 +1023,7 @@ async function verifyParamGroups(page) {
       pgBorder: getComputedStyle(trig).borderTopWidth + " " + getComputedStyle(trig).borderTopColor,
       // 组标题要比行标签更深，才能先被读到
       titleColor: getComputedStyle(trig.querySelector(".pg-title")).color,
-      labelColor: getComputedStyle(trig.querySelector(".row > label")).color,
+      labelColor: getComputedStyle(card.querySelector('.pg[data-pg="reminder"] .row > label')).color,
       // 「提醒内容」这个折叠分区与 .pg 必须是同一套外壳 —— 卡内只有一种分区语言
       msgBg: getComputedStyle(msgPanel).backgroundColor,
       msgBorder: getComputedStyle(msgPanel).borderTopWidth,
@@ -1074,18 +1092,25 @@ async function verifyParamGroups(page) {
   );
   // 数值框 + 框外单位是同一套度量单元：所有数值框同左缘、同宽（含系统空闲门的秒数框），
   // 单位紧跟在框右侧（不再折进标签写成“提醒时长（秒）”）
+  // 2026-11-10「间隔」搬进左侧面板后不再参与全卡的控件列：面板内是单列布局，
+  // 输入框跟着面板宽度走。所以这里分两条钉：
+  //   ① 面板**外**的两个数值框（提醒时长 / 空闲门秒数）仍严格同左缘同宽、单位紧跟；
+  //   ② 面板内的间隔框不许越出面板内容区（跟着面板收缩，不把面板顶宽）。
   check(
-    !!geo && geo.remInput && geo.gateInput && geo.trigInput && geo.remUnit &&
-      Math.abs(geo.remInput.l - geo.trigInput.l) <= 1 &&
+    !!geo && geo.remInput && geo.gateInput && geo.remUnit &&
       Math.abs(geo.gateInput.l - geo.remInput.l) <= 1 &&
-      Math.abs(geo.trigInput.w - geo.remInput.w) <= 1 &&
       Math.abs(geo.remInput.w - geo.gateInput.w) <= 1 &&
       geo.remUnit.l > geo.remInput.l + geo.remInput.w &&
       geo.remUnit.l - (geo.remInput.l + geo.remInput.w) <= 12,
-    "分组 · 数值框同左缘同宽，单位紧跟在框右侧",
-    JSON.stringify(geo && {
-      trig: geo.trigInput, rem: geo.remInput, gate: geo.gateInput, unit: geo.remUnit,
-    }),
+    "分组 · 面板外的数值框同左缘同宽，单位紧跟在框右侧",
+    JSON.stringify(geo && { rem: geo.remInput, gate: geo.gateInput, unit: geo.remUnit }),
+  );
+  check(
+    !!geo && geo.trigInput && geo.paneBody &&
+      geo.trigInput.l >= geo.paneBody.l &&
+      geo.trigInput.l + geo.trigInput.w <= geo.paneBody.l + geo.paneBody.w + 1,
+    "分组 · 面板内的间隔框落在面板内容区里（不把面板顶宽）",
+    JSON.stringify(geo && { input: geo.trigInput, body: geo.paneBody }),
   );
   // 卡头顺序（2026-11-09 二次调整）：标题 → 摘要 → 预览 → 总开关。
   // 开关**收在行尾**而不是紧跟标题：贴着标题时它读起来像标题的后缀（“短休息〔开〕”），
@@ -1368,43 +1393,53 @@ async function verifyParamGroups(page) {
   );
 }
 
-// 计时方法：两段式单选（.mode-seg）
+// 计时方法：两个并列面板（.mode-panes）
 //
-// 2026-11-09 由自绘下拉改成段控。理由：这是全卡唯一“要先做个决定”的地方，
-// 两个选项互斥，而且直接决定组里出现“间隔”还是“提醒时间”。折进下拉里，用户得
-// 先点开才知道“有几种、每种什么意思”；摊成并排两段（各带一句人话解释）之后，
-// “两种触发方式”本身就成了版式的一部分。
-// 这一组钉住最容易回退的五处：
+// 2026-11-10 由两段式段控改成并列面板（用户要求）：**左边倒计时面板里只有“间隔”，
+// 右边固定时间面板里就是提醒时间列表** —— 选哪种方式，那一侧的东西就在那一侧，
+// 不用先看上面一排选择、再低头去下面一组行里找对应的输入框。
+// 这一组钉住最容易回退的六处：
 //   · 语义：radiogroup / radio / aria-checked 互斥、整组只有一个 tab 停靠点
-//   · 文案：两段各自的副标题（用户正是靠它区分两种方式）
-//   · 交互：点击 → 选中态互换 + 配置落盘 + 摘要与组内显隐跟着变
-//   · 键盘：方向键在组内换项（漏了这段，键盘用户进不去第二段）
-//   · 几何：整宽（与组标题竖条同左缘、与组内字段行同右缘）、比字段行高
-async function verifyModeSeg(page) {
-  console.log("\n[timing] 计时方法（两段式段控）");
+//   · 归属：左面板只有“间隔”、右面板只有“提醒时间”（谁把内容搬回组里，这条就红）
+//   · 文案：两侧的副标题（用户正是靠它区分两种方式）
+//   · 交互：点头部 → 选中态互换 + 配置落盘 + 摘要跟着变；两侧内容都可见可编辑
+//   · 就地切换：在未选中那侧动控件（pointerdown）→ 自动切过去
+//   · 键盘：方向键在两侧之间换位、Home / End 到首末
+//   · 几何：两半等宽、左右并列、与组内字段行同宽
+async function verifyModePanes(page) {
+  console.log("\n[timing] 计时方法（两个并列面板）");
   await page.evaluate(() => {
     [...document.querySelectorAll(".nav-item")].find((b) => b.dataset.tab === "timing").click();
   });
   await sleep(350);
 
-  // ① 结构 / 语义 / 文案
+  // ① 结构 / 语义 / 文案 / 内容归属
   const st = await page.evaluate(() => {
     const one = (k) => {
       const host = document.getElementById(k + "-mode");
       if (!host) return null;
-      const opts = [...host.querySelectorAll(".mode-opt")];
+      const panes = [...host.querySelectorAll(":scope > .mode-pane")];
+      const info = (p) => {
+        const head = p.querySelector(":scope > .pane-head");
+        const body = p.querySelector(":scope > .pane-body");
+        return {
+          mode: p.dataset.mode,
+          on: p.classList.contains("on"),
+          role: head && head.getAttribute("role"),
+          checked: head && head.getAttribute("aria-checked"),
+          tab: head ? head.tabIndex : null,
+          b: head ? ((head.querySelector("b") || {}).textContent || "") : "",
+          i: head ? ((head.querySelector("i") || {}).textContent || "") : "",
+          ico: !!(head && head.querySelector("svg.pane-ico")),
+          hasInterval: !!(body && body.querySelector(".row #" + k + "-interval")),
+          hasSlot: !!(body && body.querySelector(".slot-fixed")),
+        };
+      };
       return {
         cls: host.className,
         role: host.getAttribute("role"),
         label: host.getAttribute("aria-label"),
-        count: opts.length,
-        texts: opts.map(
-          (o) => ((o.querySelector("b") || {}).textContent || "") + "/" + ((o.querySelector("i") || {}).textContent || ""),
-        ),
-        roles: opts.map((o) => o.getAttribute("role")),
-        checked: opts.map((o) => o.getAttribute("aria-checked")),
-        tabs: opts.map((o) => o.tabIndex),
-        icons: opts.map((o) => !!o.querySelector("svg.mode-ico")),
+        panes: panes.map(info),
       };
     };
     return { short: one("short"), long: one("long"), tk: one("tk") };
@@ -1412,38 +1447,54 @@ async function verifyModeSeg(page) {
 
   for (const id of ["short", "long"]) {
     const s = st[id];
-    if (!check(!!s, "段控 · " + id + " 有计时方法控件")) continue;
-    check(/mode-seg/.test(s.cls), "段控 · " + id + " 是 .mode-seg（不再是下拉宿主）", s.cls);
+    if (!check(!!s, "面板 · " + id + " 有计时方法控件")) continue;
+    check(/mode-panes/.test(s.cls), "面板 · " + id + " 是 .mode-panes（不再是段控宿主）", s.cls);
     check(
       s.role === "radiogroup" && s.label === "计时方法",
-      "段控 · " + id + " role=radiogroup 且可访问名为“计时方法”",
+      "面板 · " + id + " role=radiogroup 且可访问名为“计时方法”",
       s.role + " / " + s.label,
     );
-    check(s.count === 2 && s.roles.every((r) => r === "radio"), "段控 · " + id + " 两段，都是 role=radio", s.count);
     check(
-      s.checked.filter((c) => c === "true").length === 1,
-      "段控 · " + id + " aria-checked 恰好一段为 true",
-      s.checked.join(","),
+      s.panes.length === 2 && s.panes[0].mode === "countdown" && s.panes[1].mode === "fixed",
+      "面板 · " + id + " 左倒计时、右固定时间（顺序不许反）",
+      s.panes.map((p) => p.mode).join("/"),
     );
     check(
-      s.tabs.filter((t) => t === 0).length === 1,
-      "段控 · " + id + " 整组只有一个 tab 停靠点（另一个 -1）",
-      s.tabs.join(","),
+      s.panes.every((p) => p.role === "radio"),
+      "面板 · " + id + " 两半的面板头都是 role=radio",
+      s.panes.map((p) => p.role).join(","),
     );
     check(
-      s.texts.join("|") === "倒计时/每隔一段时间|固定时间/每天指定时刻",
-      "段控 · " + id + " 两段的标签与解释文案",
-      s.texts.join("|"),
+      s.panes.filter((p) => p.checked === "true").length === 1,
+      "面板 · " + id + " aria-checked 恰好一侧为 true",
+      s.panes.map((p) => p.checked).join(","),
     );
-    check(s.icons.every(Boolean), "段控 · " + id + " 每段都有图标");
+    check(
+      s.panes.filter((p) => p.tab === 0).length === 1,
+      "面板 · " + id + " 整组只有一个 tab 停靠点（另一侧 -1）",
+      s.panes.map((p) => p.tab).join(","),
+    );
+    check(
+      s.panes.map((p) => p.b + "/" + p.i).join("|") === "倒计时/每隔一段时间|固定时间/每天指定时刻",
+      "面板 · " + id + " 两侧的标签与解释文案",
+      s.panes.map((p) => p.b + "/" + p.i).join("|"),
+    );
+    check(s.panes.every((p) => p.ico), "面板 · " + id + " 两侧都有图标");
+    // 内容归属：这条是整个改版的核心 —— 间隔在左、时刻表在右
+    check(
+      s.panes[0].hasInterval && !s.panes[0].hasSlot &&
+        !s.panes[1].hasInterval && s.panes[1].hasSlot,
+      "面板 · " + id + " 左面板只有“间隔”、右面板只有“提醒时间”",
+      s.panes.map((p) => (p.hasInterval ? "间隔" : "") + (p.hasSlot ? "时刻表" : "")).join("/"),
+    );
   }
-  check(!st.tk, "段控 · 外卖提醒没有计时方法（只有固定时刻）", st.tk && st.tk.count);
+  check(!st.tk, "面板 · 外卖提醒没有计时方法（只有固定时刻）", st.tk && st.tk.panes.length);
 
-  // ② 点击 → 选中态 / 显隐 / 摘要 / 配置
-  const clickOpt = async (id, mode) => {
+  // ② 点击 → 选中态 / 摘要 / 配置（两侧内容都可见，不再有显隐）
+  const clickPane = async (id, mode) => {
     const hit = await page.evaluate(
       ({ k, m }) => {
-        const el = document.querySelector(`#${k}-mode .mode-opt[data-mode="${m}"]`);
+        const el = document.querySelector(`#${k}-mode .mode-pane[data-mode="${m}"] > .pane-head`);
         if (!el) return false;
         el.click();
         return true;
@@ -1451,103 +1502,151 @@ async function verifyModeSeg(page) {
       { k: id, m: mode },
     );
     if (hit) await waitSettled(page);
-    await sleep(200);
+    await sleep(220);
     return hit;
   };
   const viewLong = async () =>
     await page.evaluate(() => {
       const host = document.getElementById("long-mode");
-      const card = document.getElementById("long-card");
+      const panes = [...host.querySelectorAll(":scope > .mode-pane")];
+      const vis = (el) => !!el && el.getBoundingClientRect().height > 0;
       return {
         value: host.dataset.value,
-        checked: [...host.querySelectorAll(".mode-opt")].map((o) => o.getAttribute("aria-checked")),
-        intervalHidden: card.querySelector(".bk-countdown").classList.contains("hidden"),
-        slotHidden: card.querySelector(".slot-fixed").classList.contains("hidden"),
-        summary: (document.getElementById("long-summary") || {}).textContent.trim(),
+        on: panes.map((p) => p.dataset.mode + ":" + p.classList.contains("on")),
+        checked: panes.map((p) => (p.querySelector(".pane-head") || {}).getAttribute?.("aria-checked")),
+        intervalVisible: vis(document.getElementById("long-interval")),
+        slotVisible: vis(document.querySelector("#long-card .slot-fixed")),
+        summary: ((document.getElementById("long-summary") || {}).textContent || "").trim(),
       };
     });
 
-  check(await clickOpt("long", "fixed"), "段控 · 点“固定时间”");
+  check(await clickPane("long", "fixed"), "面板 · 点“固定时间”那半张");
   let cfg = await readCfg(page);
   let ui = await viewLong();
-  check(cfg.long.mode === "fixed", "段控 · 写入 long.mode=fixed", cfg.long.mode);
-  check(ui.value === "fixed" && ui.checked.join(",") === "false,true", "段控 · 选中态互换", ui.checked.join(","));
+  check(cfg.long.mode === "fixed", "面板 · 写入 long.mode=fixed", cfg.long.mode);
+  check(ui.value === "fixed" && ui.checked.join(",") === "false,true", "面板 · 选中态互换", ui.checked.join(","));
   check(
-    ui.intervalHidden === true && ui.slotHidden === false,
-    "段控 · 固定时间藏“间隔”、显示“提醒时间”",
-    JSON.stringify(ui),
+    ui.on.join(",") === "countdown:false,fixed:true",
+    "面板 · .on 只落在固定时间那半张（另一半压淡）",
+    ui.on.join(","),
   );
-  check(/^固定时间/.test(ui.summary), "段控 · 卡片摘要跟着变", ui.summary);
+  check(
+    ui.intervalVisible === true && ui.slotVisible === true,
+    "面板 · 两侧内容同时可见（并列而不是二选一隐藏）",
+    JSON.stringify({ i: ui.intervalVisible, s: ui.slotVisible }),
+  );
+  check(/^固定时间/.test(ui.summary), "面板 · 卡片摘要跟着变", ui.summary);
 
-  check(await clickOpt("long", "countdown"), "段控 · 点回“倒计时”");
+  check(await clickPane("long", "countdown"), "面板 · 点回“倒计时”");
   cfg = await readCfg(page);
   ui = await viewLong();
-  check(cfg.long.mode === "countdown", "段控 · 写回 long.mode=countdown", cfg.long.mode);
+  check(cfg.long.mode === "countdown", "面板 · 写回 long.mode=countdown", cfg.long.mode);
+  check(ui.on.join(",") === "countdown:true,fixed:false", "面板 · 选中态回到左侧", ui.on.join(","));
+
+  // ③ 就地切换：在未选中的那半张里动控件，应立即切到这一侧
+  await clickPane("long", "fixed");
+  const auto = await page.evaluate(() => {
+    const el = document.getElementById("long-interval");
+    el.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true }));
+    const host = document.getElementById("long-mode");
+    return {
+      value: host.dataset.value,
+      on: [...host.querySelectorAll(":scope > .mode-pane")].map((p) => p.dataset.mode + ":" + p.classList.contains("on")),
+    };
+  });
+  await waitSettled(page);
+  await sleep(180);
+  const autoCfg = await readCfg(page);
   check(
-    ui.intervalHidden === false && ui.slotHidden === true,
-    "段控 · 倒计时还原“间隔”、藏起“提醒时间”",
-    JSON.stringify(ui),
+    auto.value === "countdown" && autoCfg.long.mode === "countdown",
+    "面板 · 在“间隔”框上按下即切到倒计时（不必先点面板头）",
+    JSON.stringify({ ui: auto.on, cfg: autoCfg.long.mode }),
   );
 
-  // ③ 键盘：焦点落在选中段上，方向键换项（radio 组的本分）
+  // ④ 键盘：焦点落在选中那半张的头部，方向键换位
+  await clickPane("long", "countdown");
   await page.evaluate(() => {
-    document.querySelector("#long-mode .mode-opt.on").focus();
+    document.querySelector("#long-mode .mode-pane.on > .pane-head").focus();
   });
-  const from = await page.evaluate(() => document.activeElement.dataset.mode);
+  const from = await page.evaluate(() => document.activeElement.closest(".mode-pane").dataset.mode);
   await page.keyboard.press("ArrowRight");
   await sleep(220);
   const kbd = await page.evaluate(() => {
     const host = document.getElementById("long-mode");
+    const panes = [...host.querySelectorAll(":scope > .mode-pane")];
     return {
-      focus: document.activeElement ? document.activeElement.dataset.mode : null,
-      checked: [...host.querySelectorAll(".mode-opt")].map((o) => o.getAttribute("aria-checked")),
+      focus: document.activeElement.closest(".mode-pane")
+        ? document.activeElement.closest(".mode-pane").dataset.mode
+        : null,
+      on: panes.map((p) => p.classList.contains("on")),
     };
   });
-  check(kbd.focus !== from, "段控 · ArrowRight 把焦点移到另一段", from + " → " + kbd.focus);
+  check(kbd.focus !== from, "面板 · ArrowRight 把焦点移到另一半", from + " → " + kbd.focus);
   check(
-    kbd.checked.join(",") === (from === "countdown" ? "false,true" : "true,false"),
-    "段控 · 键盘换项同时改选中态",
-    kbd.checked.join(","),
+    kbd.on.join(",") === (from === "countdown" ? "false,true" : "true,false"),
+    "面板 · 键盘换位同时改选中态",
+    kbd.on.join(","),
   );
   // 回到起始值：这组断言不许给后面的用例留状态
-  await clickOpt("long", from);
+  await clickPane("long", from);
   await page.keyboard.press("Tab");
 
-  // ④ 几何：整宽、与组标题文字同左缘、与组内字段行同右缘、比字段行高
+  // ⑤ 几何：两半等宽、左右并列、整块与组内字段行同宽、左缘与组标题文字同列
   const geo = await page.evaluate(() => {
     const r = (el) => {
       if (!el) return null;
       const b = el.getBoundingClientRect();
-      return { l: Math.round(b.left), r: Math.round(b.right), h: Math.round(b.height) };
+      return { l: Math.round(b.left), r: Math.round(b.right), w: Math.round(b.width), h: Math.round(b.height) };
     };
     const card = document.getElementById("short-card");
     const btn = card.querySelector('.pg[data-pg="trigger"] .pg-head > .msg-toggle');
+    const host = document.getElementById("short-mode");
+    const panes = [...host.querySelectorAll(":scope > .mode-pane")];
     return {
-      seg: r(document.getElementById("short-mode")),
+      host: r(host),
+      left: r(panes[0]),
+      right: r(panes[1]),
+      leftOp: panes[0] ? parseFloat(getComputedStyle(panes[0]).opacity) : -1,
+      rightOp: panes[1] ? parseFloat(getComputedStyle(panes[1]).opacity) : -1,
       // 量头部按钮把文字放到哪一列（按钮整宽铺满，左缘比文字左 12px）
       head: btn
-        ? {
-            l: Math.round(btn.getBoundingClientRect().left + (parseFloat(getComputedStyle(btn).paddingLeft) || 0)),
-          }
+        ? { l: Math.round(btn.getBoundingClientRect().left + (parseFloat(getComputedStyle(btn).paddingLeft) || 0)) }
         : null,
       row: r(card.querySelector('.pg[data-pg="reminder"] .row')),
-      field: r(card.querySelector('#short-duration')),
+      field: r(card.querySelector("#short-duration")),
     };
   });
   check(
-    !!geo.seg && !!geo.head && Math.abs(geo.seg.l - geo.head.l) <= 1,
-    "段控 · 左缘与组标题文字同一条线",
-    JSON.stringify({ seg: geo.seg, head: geo.head }),
+    !!geo.left && !!geo.right && Math.abs(geo.left.w - geo.right.w) <= 1,
+    "面板 · 两半等宽",
+    JSON.stringify({ l: geo.left && geo.left.w, r: geo.right && geo.right.w }),
   );
   check(
-    !!geo.seg && !!geo.row && Math.abs(geo.seg.r - geo.row.r) <= 2,
-    "段控 · 右缘与组内字段行齐平",
-    JSON.stringify({ seg: geo.seg, row: geo.row }),
+    !!geo.left && !!geo.right && geo.left.r <= geo.right.l && geo.right.l - geo.left.r >= 6,
+    "面板 · 左右并列（中间留出间隙，不是叠在一起）",
+    JSON.stringify({ leftR: geo.left && geo.left.r, rightL: geo.right && geo.right.l }),
   );
   check(
-    !!geo.seg && !!geo.field && geo.seg.h >= geo.field.h + 8,
-    "段控 · 比字段行的输入框高一截（组里的主开关）",
-    geo.seg.h + " vs " + (geo.field && geo.field.h),
+    !!geo.host && !!geo.head && Math.abs(geo.host.l - geo.head.l) <= 1,
+    "面板 · 左缘与组标题文字同一条线",
+    JSON.stringify({ host: geo.host && geo.host.l, head: geo.head && geo.head.l }),
+  );
+  check(
+    !!geo.host && !!geo.row && Math.abs(geo.host.r - geo.row.r) <= 2,
+    "面板 · 右缘与组内字段行齐平",
+    JSON.stringify({ host: geo.host && geo.host.r, row: geo.row && geo.row.r }),
+  );
+  check(
+    !!geo.host && !!geo.field && geo.field.h > 0 && geo.host.h >= geo.field.h + 20,
+    "面板 · 比字段行的输入框高一截（组里的主开关）",
+    (geo.host && geo.host.h) + " vs " + (geo.field && geo.field.h),
+  );
+  // 选中那半张是实心的（opacity 1），另一半压淡 —— 这是“哪一侧生效”唯一的视觉线索
+  const focusState = geo.leftOp === 1 ? "left" : geo.rightOp === 1 ? "right" : "?";
+  check(
+    (geo.leftOp === 1 && geo.rightOp < 1) || (geo.rightOp === 1 && geo.leftOp < 1),
+    "面板 · 选中那半张不透明、另一半压淡",
+    JSON.stringify({ left: geo.leftOp, right: geo.rightOp, on: focusState }),
   );
 }
 
@@ -1573,7 +1672,7 @@ async function verifySlotPanel(page) {
   const pickMode = async (id, text) => {
     const hit = await page.evaluate(
       ({ k, t }) => {
-        const opts = [...document.querySelectorAll(`#${k}-mode .mode-opt`)];
+        const opts = [...document.querySelectorAll(`#${k}-mode .pane-head`)];
         const el = opts.find((e) => ((e.querySelector("b") || {}).textContent || "").trim() === t);
         if (!el) return false;
         el.click();
@@ -1601,11 +1700,14 @@ async function verifySlotPanel(page) {
     const body = panel.querySelector(".slot-body");
     const cap = panel.querySelector(".slot-head .slot-title");
     const add = panel.querySelector(".slot-add");
-    // 组里第一个“看得见的”行标签：fixed 模式下“间隔”行是 display:none，
-    // 直接取 .row > label 会拿到那条 0×0 的，量出来的左缘是 0。
-    const trigLabel = [...card.querySelectorAll('.pg[data-pg="trigger"] .row')]
-      .map((r) => r.querySelector(":scope > label"))
-      .find((l) => l && l.getBoundingClientRect().width > 0) || null;
+    // 时刻表现在住在**右侧面板**里（2026-11-10）：它对齐的是面板内容区，
+    // 不再是全卡那条标签列。所以这里量面板 pane-body 的内容盒左右缘作对照。
+    const paneBody = panel.closest(".pane-body");
+    const pb = paneBody ? paneBody.getBoundingClientRect() : null;
+    const pbPadL = paneBody ? parseFloat(getComputedStyle(paneBody).paddingLeft) || 0 : 0;
+    const pbPadR = paneBody ? parseFloat(getComputedStyle(paneBody).paddingRight) || 0 : 0;
+    const paneL = pb ? Math.round(pb.left + pbPadL) : -1;
+    const paneR = pb ? Math.round(pb.right - pbPadR) : -1;
     // 卡头（▾ 标题 + 拨动开关 + 摘要 + 预览）是卡里最靠上的容器，它的左缘就是全卡的左对齐线。
     // 原来这里比的是正文第一行的“启用”行 —— 那一行已经并进卡头，改钉卡头容器本身
     // （用容器而不是 h3：h3 前面还有折叠箭头，它的左缘天然比容器右 24px）。
@@ -1626,6 +1728,11 @@ async function verifySlotPanel(page) {
         repL: L(rep),
         delR: R(del),
         rowR: R(r),
+        // 垂直中心线是“不换行”的直接证据：三个控件高度不同（时刻 29 / 下拉 29 /
+        // 删除键更矮），居中对齐时它们的 top 本来就差几像素，只有中心线必须重合。
+        timeT: t ? Math.round((t.getBoundingClientRect().top + t.getBoundingClientRect().bottom) / 2) : -1,
+        repT: rep ? Math.round((rep.getBoundingClientRect().top + rep.getBoundingClientRect().bottom) / 2) : -1,
+        delT: del ? Math.round((del.getBoundingClientRect().top + del.getBoundingClientRect().bottom) / 2) : -1,
       };
     });
     return {
@@ -1636,8 +1743,8 @@ async function verifySlotPanel(page) {
       capL: L(cap),
       capR: R(cap),
       addL: L(add),
-      trigL: L(trigLabel),
-      enableL: L(enableLabel),
+      paneL,
+      paneR,
       capSize: parseFloat(getComputedStyle(cap).fontSize),
       // 2026-11-10 起这一层不准折叠：头部不许再有折叠开关，内容体不许挂 hidden
       headToggle: panel.querySelectorAll(".msg-toggle").length,
@@ -1659,9 +1766,9 @@ async function verifySlotPanel(page) {
       geo.panelPadL + " / " + geo.bodyPadL,
     );
     check(
-      Math.abs(geo.capL - geo.trigL) <= 1 && Math.abs(geo.capL - geo.enableL) <= 1,
-      "时刻表 · 子标签与组内标签、卡头同一条竖线",
-      JSON.stringify({ cap: geo.capL, trig: geo.trigL, enable: geo.enableL }),
+      Math.abs(geo.capL - geo.paneL) <= 1,
+      "时刻表 · 子标签与所在面板的内容左缘同一条线",
+      JSON.stringify({ cap: geo.capL, pane: geo.paneL }),
     );
     check(
       geo.addL > geo.capR && geo.addL - geo.capR <= 60,
@@ -1698,6 +1805,18 @@ async function verifySlotPanel(page) {
       rows.length === 2 && rows.every((r) => r.rowR - r.delR <= 8 && r.rowR - r.delR >= 0),
       "时刻表 · 删除键收在行尾",
       JSON.stringify(rows.map((r) => r.rowR - r.delR)),
+    );
+    // 用户要求：收窄时间框 / 周期框并去掉时钟图标之后，这一行必须**不换行且完整显示**
+    check(
+      rows.length === 2 &&
+        rows.every((r) => Math.abs(r.timeT - r.repT) <= 1 && Math.abs(r.repT - r.delT) <= 1),
+      "时刻表 · 时刻 / 重复 / 删除在同一行（面板内不换行）",
+      JSON.stringify(rows.map((r) => [r.timeT, r.repT, r.delT])),
+    );
+    check(
+      rows.length === 2 && rows.every((r) => r.rowR <= geo.paneR + 1),
+      "时刻表 · 每行右缘不越出面板内容区（完整显示、没被裁）",
+      JSON.stringify({ paneR: geo.paneR, rows: rows.map((r) => r.rowR) }),
     );
     check(
       rows.length === 2 && rows.every((r) => r.type === "time" && /^\d{2}:\d{2}$/.test(r.value)),
@@ -1873,7 +1992,7 @@ async function main() {  const browser = await chromium.launch({ channel: "msedg
     // 参数分组：计时方法 / 间隔 / 提醒时间 / 系统空闲 收进“触发方式”组
     await verifyParamGroups(page);
     // 计时方法的两段式段控：语义 / 文案 / 点击 / 键盘 / 几何
-    await verifyModeSeg(page);
+    await verifyModePanes(page);
     // 提醒时间（固定时刻表）的版式：无框清单 + 五列网格，见函数头注释
     await verifySlotPanel(page);
 
