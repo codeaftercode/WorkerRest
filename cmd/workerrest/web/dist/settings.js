@@ -160,9 +160,11 @@
   // 现在文案存在 data-tip 上，指针落在“?”或它左侧那段文字上都会弹出同一块浮层。
   // 左侧文字需要先打上 .q-tip-host 才能精确命中：整行算触发会把相邻勾选框也卷进来。
   let qTipEl = null;
-  let qTipCur = null;        // 当前显示（或即将显示）的那个“?”
+  let qTipCur = null;        // 当前显示（或正在淡出）的那个“?”
+  let qTipWant = null;       // 指针停在上面、等 140ms 后要弹出的那个“?”
   let qTipShowTimer = 0;
   let qTipHideTimer = 0;
+  let qTipClearTimer = 0;
 
   // 找到“?”左侧那段可读文字并打标。已经是元素的（如下拉的当前值）直接加 class；
   // 纯文本节点则包一层 span —— 只包文字本身，flex 的 gap / 行高都不受影响。
@@ -217,6 +219,23 @@
     return n.dataset.tip ? n : null;
   }
 
+  // 一个“?”的触发区 = 圆圈本身 + 它左侧那段文字（bindQTip 时已打上 .q-tip-host）。
+  // 显示与隐藏都必须按**同一块区域**判断：只按圆圈判断会在“文字 ↔ 圆点”之间那 3px
+  // 缝隙上误判成离开（气泡闪一下），只按 relatedTarget 是否等于圆圈判断则完全判不出
+  // “还在文字上”，这正是浮层收不掉的根源之一。
+  function qTipArea(q) {
+    const host = q.previousElementSibling;
+    return host && host.classList.contains("q-tip-host") ? [q, host] : [q];
+  }
+  function qTipInArea(q, node) {
+    if (!q || !node || !node.closest) return false;
+    const area = qTipArea(q);
+    for (const el of area) {
+      if (el === node || el.contains(node)) return true;
+    }
+    return false;
+  }
+
   function qTipPlace(q) {
     const el = qTipEl;
     if (!el || !q) return;
@@ -235,10 +254,20 @@
     el.style.top = Math.round(top) + "px";
   }
 
+  // 撤销“待收”与“待清场”。任何一次“又要显示了”都必须把这两个计时器归零 ——
+  // 只 clearTimeout 不清变量的话，qTipHide 里的 `if (qTipHideTimer) return` 会一直
+  // 以为已经排上队，气泡从此再也收不掉。
+  function qTipCancelHide() {
+    if (qTipHideTimer) { clearTimeout(qTipHideTimer); qTipHideTimer = 0; }
+    if (qTipClearTimer) { clearTimeout(qTipClearTimer); qTipClearTimer = 0; }
+  }
+
   function qTipShow(q) {
     clearTimeout(qTipShowTimer);
-    clearTimeout(qTipHideTimer);
+    qTipShowTimer = 0;
+    qTipCancelHide();
     qTipCur = q;
+    qTipWant = q;
     if (!qTipEl) return;
     const text = q.dataset.tip || "";
     if (!text) return;
@@ -254,28 +283,57 @@
     });
   }
 
+  // 隐藏分两拍：先 120ms 缓冲、再 120ms 淡出，淡出跑完才 display:none。
+  // 缓冲期的意义是“离开”可以被撤销 —— 指针从文字掠过圆点旁那几像素、或者只是抖了
+  // 一下，只要 120ms 内回到同一块触发区，定时器就被 qTipSchedule 取消，气泡不闪。
+  // 两条硬规则：
+  //   ① 一进来就把 qTipWant 清掉。指针 100ms 前路过“?”留下的那个“140ms 后弹出”的
+  //      定时器，会在鼠标早已离开后才把气泡弹出来 —— 那之后再也没有 pointerout 可等，
+  //      气泡就一直挂着了（用户报的“离开后不消失”正是这条路）。
+  //   ② 已经在排队收就不再重排：pointermove 兜底每帧都会来一次，每次重排 120ms
+  //      等于永远走不到点。
   function qTipHide(now) {
     clearTimeout(qTipShowTimer);
-    clearTimeout(qTipHideTimer);
-    qTipCur = null;
-    if (!qTipEl) return;
-    qTipEl.classList.remove("show");
-    // 留 180ms 再真正 display:none：从文字移到“?”的那一瞬间会先 out 再 over，
-    // 淡出期间不清场才不会让气泡闪一下
+    qTipShowTimer = 0;
+    qTipWant = null;
+    if (!qTipEl) { qTipCur = null; qTipCancelHide(); return; }
+    if (now) {
+      qTipCancelHide();
+      qTipCur = null;
+      qTipEl.classList.remove("show");
+      qTipEl.classList.add("hidden");
+      return;
+    }
+    if (qTipHideTimer) return;
+    if (!qTipCur && !qTipEl.classList.contains("show")) return;
     qTipHideTimer = setTimeout(() => {
-      if (!qTipEl.classList.contains("show")) qTipEl.classList.add("hidden");
-    }, now ? 0 : 180);
+      qTipHideTimer = 0;
+      qTipCur = null;
+      qTipEl.classList.remove("show");
+      qTipClearTimer = setTimeout(() => {
+        qTipClearTimer = 0;
+        if (!qTipEl.classList.contains("show")) qTipEl.classList.add("hidden");
+      }, 180);
+    }, 120);
   }
 
   // 悬停 140ms 才弹：鼠标扫过一行时不该闪出一串气泡。已经在显示时直接换内容，
   // 不再等延迟 —— 否则从相邻的另一个“?”移过来会先空一段。
+  // 回到“正在淡出”的同一块时立刻补显，不等 140ms，否则视觉上是一次多余的闪。
   function qTipSchedule(q) {
-    if (qTipCur === q) { clearTimeout(qTipHideTimer); return; }
+    if (qTipCur === q) {
+      qTipCancelHide();
+      if (qTipEl && !qTipEl.classList.contains("show")) qTipShow(q);
+      return;
+    }
     clearTimeout(qTipShowTimer);
-    clearTimeout(qTipHideTimer);
+    qTipShowTimer = 0;
+    qTipCancelHide();
+    if (qTipWant === q) return;   // 已经在等那 140ms，别把计时器重排一遍
+    qTipWant = q;
     const showing = qTipEl && qTipEl.classList.contains("show");
     if (qTipCur || showing) { qTipShow(q); return; }
-    qTipShowTimer = setTimeout(() => qTipShow(q), 140);
+    qTipShowTimer = setTimeout(() => { if (qTipWant === q) qTipShow(q); }, 140);
   }
 
   function initQTips() {
@@ -285,24 +343,42 @@
     document.addEventListener("pointerover", (e) => {
       const q = qTipAnchor(e.target);
       if (!q) return;
-      if (e.relatedTarget && q.contains(e.relatedTarget)) return;
+      // 在同一块触发区里从文字挪到圆点（或反过来）不算“重新进入”，别重排计时器
+      if (qTipInArea(q, e.relatedTarget)) return;
       qTipSchedule(q);
     });
     document.addEventListener("pointerout", (e) => {
       const q = qTipAnchor(e.target);
       if (!q) return;
-      if (qTipCur !== q) return;
-      // 在“?”与它左侧那段文字之间来回移动不算离开：两者共用同一块浮层，
-      // 真让它收起再弹出，中间那一下会看见气泡闪一下
-      const host = q.previousElementSibling;
-      if (e.relatedTarget && (q.contains(e.relatedTarget) || (host && host.contains(e.relatedTarget)))) return;
+      // 还在同一块触发区（文字 ↔ 圆点）里：不收起，否则中间那一下会看见气泡闪
+      if (qTipInArea(q, e.relatedTarget)) return;
+      // 挪到相邻的另一个“?”上：交给 pointerover 直接换内容，这里先不清场
+      const next = qTipAnchor(e.relatedTarget);
+      if (next && next !== q) return;
       qTipHide(false);
     });
+    // 兜底：指针在动、浮层却还挂着（锚点被重绘替换掉、指针移出窗口后系统不再派发
+    // pointerout 等），每动一下核对“还在不在触发区里”。rAF 节流，浮层没显示时直接
+    // 跳过，代价可以忽略。
+    let qTipMoveTick = 0;
+    document.addEventListener("pointermove", (e) => {
+      if (!qTipCur || qTipMoveTick) return;
+      const t = e.target;
+      qTipMoveTick = requestAnimationFrame(() => {
+        qTipMoveTick = 0;
+        if (!qTipCur) return;
+        if (qTipInArea(qTipCur, t)) return;
+        qTipHide(false);
+      });
+    }, { passive: true });
     // 位置一旦变了，气泡就必须收掉：它用的是 fixed 定位，不会跟着祖先滚动
     document.addEventListener("pointerdown", () => qTipHide(true), true);
     document.addEventListener("keydown", (e) => { if (e.key === "Escape") qTipHide(true); });
     window.addEventListener("scroll", () => qTipHide(true), true);
     window.addEventListener("resize", () => qTipHide(true));
+    // 窗口失焦（Alt+Tab、切到别的程序）：指针位置不再有意义，直接收
+    window.addEventListener("blur", () => qTipHide(true));
+    document.addEventListener("visibilitychange", () => { if (document.hidden) qTipHide(true); });
   }
 
   function mkQMark(cls, title) {
