@@ -114,11 +114,14 @@
     const seg = s.split(/[\\/]/).filter(Boolean).pop() ?? "";
     return seg.trim().slice(0, 120);
   }
-  // 计时方法的两项：段控（不是下拉）按这张表渲染，label 是主标签，sub 是它下面那句
-  // 人话解释 —— 用户不用点开任何东西就知道“倒计时”和“固定时间”分别指什么。
+  // 计时方法的两项（2026-11-10 晚起面板头只有面板名）：副标题「每隔一段时间」/
+  // 「每天指定时刻」已按用户要求删掉 —— 它们想说的那件事，参数并进标题行之后
+  // 由“每隔 [30] 分钟提醒一次”“固定时间 ＋添加”直接说完了。
+  // 这张表只留 value / label：label 是面板名的兜底文案（正常由 settings.html 的
+  // 静态标记给出，克隆卡自带），value 对应 breakCfg.mode。
   var BREAK_MODES = [
-    { value: "countdown", label: "倒计时", sub: "每隔一段时间" },
-    { value: "fixed", label: "固定时间", sub: "每天指定时刻" }
+    { value: "countdown", label: "倒计时" },
+    { value: "fixed", label: "固定时间" }
   ];
   var CUSTOM_BREAK_PREFIX = "cb-";
   // “暂停休息时”下拉：三种处置，默认“推迟提醒”。每一项都带一个“?”，悬停看该项
@@ -1041,18 +1044,18 @@
     return mountDrop(host, items, pauseActionOf(value), "postpone",
       () => { void autoSave(); }, "暂停休息时");
   }
-  // “计时方法”：两个并列面板（2026-11-10 重做，取代两段式段控）。
-  // 左面板 = 倒计时（里面只有“间隔”），右面板 = 固定时间（里面是提醒时间列表）。
+  // “计时方法”：上下两块面板（2026-11-10 重做，取代两段式段控）。
+  // 上面那块 = 倒计时（面板头一行就是“◯ 倒计时 每隔 [30] 分钟提醒一次”），
+  // 下面那块 = 固定时间（“◯ 固定时间 ＋添加”，时刻表跟在这行下面）。
   // 面板骨架与里面的表单写在 HTML 里（JS 不该搬运用户正在编辑的输入框），这里只
-  // ① 给每个面板补一枚面板头（图标 + 主标签 + 一句说明）；
-  // ② 挂选择逻辑：点面板头、键盘方向键、在未选中的面板里动控件，都切到那一侧。
+  // ① 给每个面板挂上单选语义（role=radio 落在 .pane-radio 这枚按钮上）；
+  // ② 挂选择逻辑：点圆点 / 面板名、键盘方向键、在未选中的面板里动控件，都切到那一侧。
   // 取值接口与 mountDrop / mountPauseDrop 一致（get / set，同样进 PAUSE_DROPS），
   // fillBreakForm / collectForm 因此一行都不用改。
-  var MODE_ICONS = {
-    // 循环箭头 = 每隔一段时间循环一次；钟面 = 具体时刻
-    countdown: '<path d="M20.6 12a8.6 8.6 0 1 1-2.52-6.08"/><path d="M20.6 4.6v4.6h-4.6"/>',
-    fixed: '<circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.3 1.95"/>'
-  };
+  // 圆点由 CSS 的 .pane-radio::before 画。2026-11-10 晚起**可点的只有圆点 + 面板名**：
+  // 面板头那一行还装着间隔框与“＋添加”，把整行做成点选区会与这些控件抢点击 ——
+  // 而 role=radio 本来就该只有圆点与标签是一体的。焦点 / tabIndex / aria-checked
+  // 因此都挂在 .pane-radio 上，不再挂在 .pane-head（它已经退化成一行 flex 容器）。
   function mountBreakPanes(id) {
     const host = $(`${id}-mode`);
     if (!host) return null;
@@ -1066,18 +1069,18 @@
     }
     host.setAttribute("role", "radiogroup");
     host.setAttribute("aria-label", "计时方法");
-    const headOf = (pane) => pane.querySelector(":scope > .pane-head");
+    const radioOf = (pane) => pane.querySelector(":scope > .pane-head > .pane-radio");
     const paint = (v) => {
       // 宿主上留一份取值：探针 / 外部脚本按 dataset.value 读，代替原生 select 的 .value
       host.dataset.value = v;
       for (const pane of panes) {
         const on = norm(pane.dataset.mode) === v;
         pane.classList.toggle("on", on);
-        const head = headOf(pane);
-        if (!head) continue;
-        head.setAttribute("aria-checked", on ? "true" : "false");
+        const radio = radioOf(pane);
+        if (!radio) continue;
+        radio.setAttribute("aria-checked", on ? "true" : "false");
         // radio 组的标准键盘模型：整组只有一个 tab 停靠点，组内移动交给方向键
-        head.tabIndex = on ? 0 : -1;
+        radio.tabIndex = on ? 0 : -1;
       }
     };
     const api = { get: () => norm(host.dataset.value), set: (v) => paint(norm(v)) };
@@ -1094,46 +1097,42 @@
       const pane = panes.find((p) => p.dataset.mode === opt.value);
       if (!pane) continue;
       // 克隆出来的卡片带着面板头节点，但 addEventListener 不会被克隆 —— 所以这里
-      // 不是“有头就跳过”，而是“有头就只补事件、没头才造一个”。
-      let b = headOf(pane);
-      if (!b) {
-        b = document.createElement("button");
-        b.type = "button";
-        b.className = "pane-head";
-        b.setAttribute("role", "radio");
-        b.innerHTML =
-          '<svg class="pane-ico" viewBox="0 0 24 24" aria-hidden="true">' +
-          (MODE_ICONS[opt.value] || "") +
-          "</svg>" +
-          '<span class="pane-txt"><b>' + opt.label + "</b><i>" + opt.sub + "</i></span>";
-        pane.prepend(b);
+      // 不是“有头就跳过”，而是“有头就只补事件、没头才造一个”（兜底分支只为防御
+      // 模板被改坏：正常自有标记起，头与单选按钮都在）。
+      let radio = radioOf(pane);
+      if (!radio) {
+        const head = pane.querySelector(":scope > .pane-head") || document.createElement("div");
+        head.className = head.className || "pane-head";
+        radio = document.createElement("button");
+        radio.type = "button";
+        radio.className = "pane-radio";
+        radio.setAttribute("role", "radio");
+        radio.setAttribute("aria-checked", "false");
+        radio.innerHTML = '<span class="pane-label">' + opt.label + "</span>";
+        head.appendChild(radio);
+        if (!head.parentElement) pane.prepend(head);
       }
-      b.addEventListener("click", () => pick(opt.value));
+      radio.addEventListener("click", () => pick(opt.value));
     }
-    // 在未选中的那半张里动任何控件 = 想用这种方式：先把它切成生效的一侧。
-    // 没有这条，用户改了“间隔”却发现卡的摘要还是“固定时间 · 2 条”，改动也真的不生效。
-    host.addEventListener("pointerdown", (e) => {
-      if (e.target.closest(".pane-head")) return; // 头部走 click，别在这里重复 pick
-      const pane = e.target.closest(".mode-pane");
-      if (!pane) return;
-      const v = norm(pane.dataset.mode);
-      if (v !== api.get()) pick(v);
-    });
-    // 左右 / 上下方向键在两侧之间换项，Home / End 到首末项（radiogroup 的标准交互；
+    // 只有**点圆点或面板名**才算选择（2026-11-11 用户要求）。此前这里挂着一个
+    // pointerdown 委托：在未选中那块的间隔框 / “＋添加”上按下就自动切过去。用户不要这个
+    // “顺手切边”—— 那样等于把“改一个数字”和“换一种计时方式”绑成同一个动作，
+    // 点错一下整张卡的口径就变了。现在改控件就只是改控件，换方式必须明确点单选按钮。
+    // 方向键在两块之间换项，Home / End 到首末项（radiogroup 的标准交互；
     // 少了它，键盘用户只能在两半之间 Tab 一遍 —— 未选中那侧 tabIndex=-1 根本进不去）
     host.addEventListener("keydown", (e) => {
-      const heads = panes.map(headOf).filter(Boolean);
-      const i = heads.indexOf(document.activeElement);
+      const radios = panes.map(radioOf).filter(Boolean);
+      const i = radios.indexOf(document.activeElement);
       if (i < 0) return;
       let j = -1;
-      if (e.key === "ArrowRight" || e.key === "ArrowDown") j = Math.min(heads.length - 1, i + 1);
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") j = Math.min(radios.length - 1, i + 1);
       else if (e.key === "ArrowLeft" || e.key === "ArrowUp") j = Math.max(0, i - 1);
       else if (e.key === "Home") j = 0;
-      else if (e.key === "End") j = heads.length - 1;
+      else if (e.key === "End") j = radios.length - 1;
       if (j < 0) return;
       e.preventDefault();
       pick(norm(panes[j].dataset.mode));
-      heads[j].focus();
+      radios[j].focus();
     });
     PAUSE_DROPS.set(host, api);
     paint(norm(breakCfg(id) && breakCfg(id).mode));
@@ -2952,6 +2951,185 @@
     el.textContent = parts.join(" \xB7 ");
     el.classList.add("customized");
   }
+  // ---------- 时刻选择面板（自绘，2026-11-11） ----------
+  // 为什么自绘：input[type=time] 点图标弹出来的是 WebView2 的原生 popup，DOM 与样式都不在
+  // 页面里 —— 白底、方角、两列老式滚轮，是全站风格裂得最开的一处（用户：“点击时钟时出现的
+  // 时间选择控件太丑了”）。这里保留 input[type=time] 本身（数据层、键入 0830、HH:MM 的值格式
+  // 全挂在它身上），只把“点图标”这条路换成自绘面板：改值后仍然
+  // `input.value = …` + dispatch('change')，落盘链路一行没动。
+  // 结构：两块 .tp-col（各是一列滚动清单，中间那条高亮带固定不动，滚的只有数字），
+  // 滚动停下 110ms 才回写 —— 拖动过程中每帧都 commit 会连打 autoSave。
+  var TP_ITEM = 30; // 与 CSS 的 .tp-item height 一致
+  var tpState = null;
+  function closeTimePanel(backFocus) {
+    const st = tpState;
+    if (!st) return;
+    tpState = null;
+    if (st.raf) cancelAnimationFrame(st.raf);
+    st.wrap.remove();
+    document.removeEventListener("pointerdown", st.outside, true);
+    window.removeEventListener("scroll", st.track, true);
+    window.removeEventListener("resize", st.track);
+    if (backFocus && st.clock && st.clock.isConnected) {
+      st.clock.focus({ preventScroll: true });
+    }
+  }
+  // 一列：count 项 00..count-1，cur 是初始值，onStop 在滚动停下后被调用
+  function mountTimeCol(unit, name, count, cur, onStop) {
+    const col = document.createElement("div");
+    col.className = "tp-col";
+    // 哪一列（h / m）：CSS 靠它决定悬停底色的圆角朝哪一侧 —— 两列中间只隔 1px 分隔线，
+    // 内侧再画圆角就会在分隔线两边各留一个豁口。取显式键而不是文案，改字不会连带改样式。
+    col.dataset.unit = unit;
+    col.setAttribute("role", "listbox");
+    col.setAttribute("aria-label", name);
+    for (let i = 0; i < count; i++) {
+      const it = document.createElement("button");
+      it.type = "button";
+      it.className = "tp-item";
+      it.setAttribute("role", "option");
+      it.setAttribute("aria-selected", i === cur ? "true" : "false");
+      it.dataset.v = String(i);
+      it.textContent = pad2(i);
+      // 点某项 = 滚到它；真正的回写统一走“滚动停下”那条路，点击与拖动因此只有一套逻辑
+      it.addEventListener("click", () => {
+        col.scrollTo({ top: i * TP_ITEM, behavior: "smooth" });
+        it.focus({ preventScroll: true });
+      });
+      col.appendChild(it);
+    }
+    let timer = 0;
+    col.addEventListener(
+      "scroll",
+      () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          const i = clamp(Math.round(col.scrollTop / TP_ITEM), 0, count - 1);
+          for (const it of col.children) {
+            it.setAttribute("aria-selected", Number(it.dataset.v) === i ? "true" : "false");
+          }
+          onStop(i);
+        }, 110);
+      },
+      { passive: true },
+    );
+    col._timer = () => clearTimeout(timer);
+    // 面板收起（点外面 / Esc）时**不清**这个定时器：用户可能刚滚到某一行就点了外面，
+    // 那一行就是他选的，110ms 后照样回写（apply 只检查 input 还在不在文档里）。
+    return col;
+  }
+  function openTimePanel(input, slot, clock) {
+    // 同一个图标再点一次 = 收起（toggle）
+    if (tpState && tpState.input === input) {
+      closeTimePanel(true);
+      return;
+    }
+    closeTimePanel();
+    let hh = slot.hour;
+    let mm = slot.minute;
+    const wrap = document.createElement("div");
+    wrap.className = "tp";
+    wrap.setAttribute("role", "dialog");
+    wrap.setAttribute("aria-label", "选择提醒时刻");
+    const band = document.createElement("div");
+    band.className = "tp-band";
+    band.setAttribute("aria-hidden", "true");
+    const sep = document.createElement("div");
+    sep.className = "tp-sep";
+    sep.setAttribute("aria-hidden", "true");
+    const apply = () => {
+      if (!input.isConnected) {
+        closeTimePanel();
+        return;
+      }
+      const text = `${pad2(hh)}:${pad2(mm)}`;
+      if (input.value === text) return;
+      input.value = text;
+      input.dispatchEvent(new Event("change"));
+    };
+    const hCol = mountTimeCol("h", "小时", 24, hh, (v) => {
+      hh = v;
+      apply();
+    });
+    const mCol = mountTimeCol("m", "分钟", 60, mm, (v) => {
+      mm = v;
+      apply();
+    });
+    wrap.append(band, hCol, sep, mCol);
+    document.body.appendChild(wrap);
+    // 初始位置：贴着输入框右侧对齐、优先向下展开；下面放不下就翻到上面
+    const place = () => {
+      const r = input.getBoundingClientRect();
+      const w = wrap.offsetWidth;
+      const h = wrap.offsetHeight;
+      const left = clamp(r.right - w, 8, Math.max(8, window.innerWidth - w - 8));
+      let top = r.bottom + 6;
+      if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - 6);
+      wrap.style.left = Math.round(left) + "px";
+      wrap.style.top = Math.round(top) + "px";
+    };
+    place();
+    // 先定 scrollTop 再聚焦：scrollTop = i×30 时第 i 项正好落进中间那条高亮带
+    hCol.scrollTop = hh * TP_ITEM;
+    mCol.scrollTop = mm * TP_ITEM;
+    place();
+    const focusCur = (col) => {
+      const it = col.children[Number(col.scrollTop / TP_ITEM) | 0];
+      if (it) it.focus({ preventScroll: true });
+    };
+    focusCur(hCol);
+    const st = {
+      wrap,
+      input,
+      clock,
+      raf: 0,
+      outside: null,
+      track: null,
+    };
+    tpState = st;
+    st.outside = (e) => {
+      if (wrap.contains(e.target) || (clock && clock.contains(e.target))) return;
+      closeTimePanel();
+    };
+    document.addEventListener("pointerdown", st.outside, true);
+    // 页面滚动 / 窗口缩放时跟着走（fixed 定位不会自己跟随），rAF 节流
+    st.track = () => {
+      if (st.raf) return;
+      st.raf = requestAnimationFrame(() => {
+        st.raf = 0;
+        if (tpState === st) place();
+      });
+    };
+    window.addEventListener("scroll", st.track, true);
+    window.addEventListener("resize", st.track);
+    wrap.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        closeTimePanel(true);
+        return;
+      }
+      if (e.key === "Tab") {
+        closeTimePanel();
+        return;
+      }
+      const col = e.target.closest && e.target.closest(".tp-col");
+      if (!col) return;
+      if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+        e.preventDefault();
+        const other = col === hCol ? mCol : hCol;
+        const it = other.children[Number(other.querySelector(".tp-item[aria-selected='true']").dataset.v)];
+        if (it) it.focus({ preventScroll: true });
+        return;
+      }
+      if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+      e.preventDefault();
+      const i = Number(e.target.dataset.v) + (e.key === "ArrowDown" ? 1 : -1);
+      const next = col.children[clamp(i, 0, col.children.length - 1)];
+      if (!next) return;
+      col.scrollTo({ top: Number(next.dataset.v) * TP_ITEM, behavior: "smooth" });
+      next.focus({ preventScroll: true });
+    });
+  }
   function renderSlotRow(slot, opts) {
     const row = document.createElement("div");
     row.className = "tk-item" + (slot.enabled ? "" : " disabled");
@@ -2985,7 +3163,21 @@
       at.value = slotTimeText(slot);
       opts.onChange();
     });
-    time.append(at);
+    // 自绘时钟按钮：盖在 input 右端（原生 indicator 已 display:none，否则两枚图标叠一起）。
+    // 它只是 input 的“另一种改法”，不改变取值语义 —— 面板里改完照样落回 input.value + change。
+    const clock = document.createElement("button");
+    clock.type = "button";
+    clock.className = "tk-clock";
+    clock.title = "选择时刻";
+    clock.setAttribute("aria-label", "选择提醒时刻");
+    clock.setAttribute("aria-haspopup", "dialog");
+    clock.innerHTML =
+      '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.4"/><path d="M12 7.4V12l3.1 1.9"/></svg>';
+    clock.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openTimePanel(at, slot, clock);
+    });
+    time.append(at, clock);
     const repeat = document.createElement("select");
     repeat.className = "tk-repeat";
     for (const opt of [{ v: "daily", t: "每天" }, { v: "weekly", t: "每周" }]) {
@@ -3167,7 +3359,7 @@
     pauseHost.id = `${cb.id}-pause`;
     pauseBlock.append(pauseLabel, pauseHost);
     // 插进“弹窗设置”组的**首位**（组标题下、提醒时长之上）：
-    // 2026-11-09 起卡内参数分成“触发方式 / 弹窗设置”两组，暂停休息时属于后一组 ——
+    // 2026-11-09 起卡内参数分成“触发条件 / 弹窗设置”两组，暂停休息时属于后一组 ——
     // 它描述的是“该弹的时候正在暂停怎么处置”，是这张卡最常用的开关（默认推迟），
     // 2026-11-10 按用户要求从组末提到组首，省得每次都要越过三个数字才看见。
     // 2026-11-10 起组是可折叠的描边盒（.pg-head + .pg-body），插的是**内容体首位**，
@@ -3199,7 +3391,7 @@
     // 调度器不重算 ——“倒计时切固定时间且无时刻”后下次提醒与今日时间线
     // 仍显示按倒计时算出的旧时刻（bug 实测来源）。
     for (const el of card.querySelectorAll("input, select")) bindAutoSaveEl(el);
-    // 计时方法改成并列面板：整卡是克隆来的，克隆出的面板头没有事件，
+    // 计时方法改成上下两块面板：整卡是克隆来的，克隆出的面板头没有事件，
     // 这里按新宿主重新挂一遍实例（PAUSE_DROPS 按宿主元素做键，新宿主必然未注册，
     // 所以会补面板头并重新绑定，且不会重复注册）。
     mountBreakPanes(id);
@@ -3223,7 +3415,7 @@
     setupMsgPanel(card.querySelector(".msg-panel"));
     // 克隆来的两个参数组带着模板里的 .open 与 aria-expanded，但一个监听器都没有
     // （克隆不复制事件）：这里按新宿主重挂开合，否则自定义卡的两组点不动。
-    setupPgFolds(card);
+
   }
   function renderCustomCard(cb) {
     const addCard = $("cb-add-card");
@@ -3383,9 +3575,11 @@
     });
     updateBreakSummary(id);
   }
-  // ---------- 空闲门（“系统空闲达 N 秒后提醒”） ----------
+  // ---------- 空闲门（“☐ 只在空闲时提醒，空闲时长 [30] 秒”） ----------
   // 一个勾选框 + 一个秒数框，与上面各字段行同一套网格（标签列 + 控件列），数字框左缘
-  // 与其他输入框严格同列，框右侧补一句“秒后提醒”把整行读成完整的一句话。
+  // 与其他输入框严格同列。标签前半句说明这条门槛干什么（只在空闲时提醒），后半句就是
+  // 那个数字的名字（空闲时长），单位“秒”留在框右侧出框 —— 2026-11-11 用户改名前的写法
+  // 是“系统空闲达 […] 秒再提醒”，句尾那半句在标签已经说了“提醒”之后就是重话。
   // 秒数就是秒数：填 90 就显示 90，**不折算成“X 分 Y 秒”**
   //（2026-11-09 用户定稿，上一版的“分 + 秒”双框与自动进位一并撤掉）。
   // 不勾 = 不启用，与秒数是多少无关 —— Go 侧 BreakConfig.IdleGateWaitMs 只看 idleGate 开关，
@@ -3468,7 +3662,7 @@
     renderBreakList(id);
   }
   function applyBreakModeUI() {
-    // 2026-11-10 起「间隔」与「提醒时间」是并列的两个面板，两边同时可见、都能编辑，
+    // 2026-11-10 起两块面板（倒计时 / 固定时间）同时可见、都能编辑，
     // 只有“哪一侧生效”靠 .mode-pane.on 表达 —— 所以这里不再隐藏任何一块内容。
     // 唯一还要按条件显隐的是长休息的“每 N 次短休息后 1 次长休息”：
     // 它只在短、长都走倒计时时才有意义。
@@ -3929,29 +4123,14 @@
     renderAllMsgLists();
     for (const panel of document.querySelectorAll(".msg-panel")) setupMsgPanel(panel);
   }
-  // 参数组（触发方式 / 弹窗设置）的开合（2026-11-10）
+  // 参数组（触发条件 / 弹窗设置）**不再可折叠**（2026-11-10 晚，用户给参考图要求）。
   // ————————————————————————————————————————————————————————————————
-  // 这两组原来只是“有标题的区块”，不可折叠；现在与「提醒内容」同构：头部是一枚
-  // .msg-toggle，内容体是 .pg-body。开合状态只在这个页面会话里有效，不落盘 ——
-  // 它是“临时看一眼/收起”的阅读状态，和卡片级的折叠（localStorage）不是一回事。
-  // 模板里默认带 .open 与 aria-expanded="true"（见 settings.html）；克隆出的自定义卡
-  // 继承同一份标记，所以这里只补事件，不改初始态。
-  var pgFoldBound = /* @__PURE__ */ new WeakSet();
-  function setupPgFold(pg) {
-    if (pgFoldBound.has(pg)) return;
-    const btn = pg.querySelector(":scope > .pg-head > .msg-toggle");
-    const body = pg.querySelector(":scope > .pg-body");
-    if (!btn || !body) return;
-    pgFoldBound.add(pg);
-    btn.addEventListener("click", () => {
-      const open = pg.classList.toggle("open");
-      body.classList.toggle("hidden", !open);
-      btn.setAttribute("aria-expanded", open ? "true" : "false");
-    });
-  }
-  function setupPgFolds(root) {
-    for (const pg of (root ?? document).querySelectorAll(".pg")) setupPgFold(pg);
-  }
+  // 这两个组改成“纯文字标题 + 内容”之后，头部只是一枚 <span class="pg-title">，
+  // 没有按钮、没有 .open 类、内容体也从不加 hidden —— 于是原来那套 setupPgFold /
+  // setupPgFolds（WeakSet 去重 + 点头部切 .open + 切 body.hidden）整段删除。
+  // 卡里剩下的折叠只有两类，语义不同、状态来源也不同：
+  //   · .msg-panel / .fold-panel / details.advanced —— 长内容的开合，见 setupMsgPanel
+  //   · .card.foldable —— 整张卡的折叠，状态存 localStorage
   function mkBtn(label, title, onClick) {
     const b = document.createElement("button");
     b.className = "btn mini";
@@ -4275,7 +4454,8 @@
     $("tab-stats").addEventListener("click", onFoldClick);
   }
   // 2026-11-10 起「提醒时间」不再可折叠（用户：不准折叠，必须展开），
-  // 这里原来那条 `.slot-head > .msg-toggle` 的委托已删除；组级折叠见 setupPgFold。
+  // 这里原来那条 `.slot-head > .msg-toggle` 的委托已删除；组（触发条件 / 弹窗设置）
+  // 也在同一天取消了折叠，所以整张提醒卡里已经没有可收起的参数区。
   var TL_COLOR_FIXED = { short: "#2f9e63", long: "#4c6ef5", takeout: "#e8890c" };
   var TL_COLOR_PALETTE = ["#c2255c", "#9c36b5", "#0c8599", "#e8590c", "#5f3dc4", "#2b8a3e", "#1971c2", "#d9480f"];
   function tlColorOf(it) {
@@ -7235,7 +7415,7 @@
     setupShortcutCapture();
     BUILTIN_MSGS = await window.api.builtinMsgDefaults();
     setupMsgPanels();
-    setupPgFolds();
+
     renderTakeoutList();
     setupAppPause();
     setupColorPicker();

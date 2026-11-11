@@ -213,40 +213,47 @@
               <span class="card-switch-track" aria-hidden="true"></span>
             </label>
           </div>
-          <!-- 参数组“触发方式”：计时方法 + 间隔 / 提醒时间 + 系统空闲。
-               2026-11-10 起与「内容」面板同构 —— 一个可折叠的描边盒（头部 = ▸ + 组名，
-               内容体 = .pg-body），默认展开；点头部收起时只留一行标题。
-               组内行沿用同一套 .row.field 网格，盒子靠 -13px 外边距 + 12px 内边距把内容
-               放回原位，标签列与控件列因此与其他行仍然严格同列（见 settings.css 的 .pg 一节）。
-               倒计时显示“间隔”、藏起“提醒时间”，固定时间反之（applyBreakModeUI 切）。 -->
-          <div class="pg open" data-pg="trigger">
-            <div class="pg-head">
-              <button type="button" class="msg-toggle" aria-expanded="true"><span class="msg-arrow">▸</span><span class="pg-title">触发方式</span></button>
-            </div>
+          <!-- 参数组“触发条件”：计时方法 + 系统空闲。
+               2026-11-10 晚起组只是**一行纯文字标题 + 下面直接铺开的内容**：没有边框、
+               没有底色、不可折叠（与「提醒内容」那种真能收起的长内容块分属两种长相，
+               见 settings.css 的 .pg 一节）。组内容与卡头、与系统空闲行同一条竖线。
+               计时方法两块面板同时可见、都能改，哪一侧生效由单选圆点表达。 -->
+          <div class="pg" data-pg="trigger">
+            <div class="pg-head"><span class="pg-title">触发条件</span></div>
             <div class="pg-body">
-              <!-- 计时方法：两个并列面板（2026-11-10 重做，取代两段式段控）。
-               左面板 = 倒计时（里面只有“间隔”），右面板 = 固定时间（里面是提醒时间列表）。
-               面板既是说明也是开关：点面板头即选中该方式，选中面板高亮、未选中的整体压淡
-               但仍可编辑（在里面输入数字会自动切过去）。
-               面板骨架写在这里（里面是静态表单，JS 搬不动也不该搬），头部由 settings.js 的
-               mountBreakPanes 按 BREAK_MODES 生成（图标 + 主标签 + 一句说明），
-               role=radiogroup / radio 保留单选语义。
+              <!-- 计时方法：上下两块面板（2026-11-10 重做，取代两段式段控）。
+               上面那块 = 倒计时：整行读成一句话 —— ◯ 倒计时 每隔 [30] 分钟提醒一次；
+               下面那块 = 固定时间：◯ 固定时间 ＋添加，时刻表紧跟在这行下面。
+               2026-11-10 晚第二次收口：面板头不再是“标题 + 副标题”两段字，而是把那个方式
+               唯一的参数**并进标题行** —— 原来独立的「间隔」字段行、「提醒时间」子标签行
+               一起删掉。它们本来就是同一句话的两截（“每隔 30 分钟提醒一次”），拆成标题
+               加参数行反而要读两遍。缩进仍留给从属关系：时刻表与“每 N 次”在 pane-body 里，
+               比面板名退后一级；并进标题行的那两样不再缩进（它们就是标题的一部分）。
+               面板仍是说明兼开关，但**只有点圆点或面板名才算选中**（2026-11-11 用户要求：
+               点其他控件不要连带勾选）—— 换计时方式是一个明确的动作，不该被“顺手改个数字”
+               触发。面板骨架写在这里（里面是静态表单，JS 不该搬动用户正在编辑的
+               输入框），圆点与 role=radio 的语义由 settings.js 的 mountBreakPanes 挂上。
                「系统空闲」不属于任何一种方式，留在两个面板之外、组的最下面。 -->
               <div class="mode-panes" id="short-mode">
                 <div class="mode-pane" data-mode="countdown">
-                  <div class="pane-body">
-                    <div class="row field"><label for="short-interval">间隔</label><div class="field-line"><input type="number" id="short-interval" min="1" max="480" /><span class="unit">分钟</span></div></div>
+                  <div class="pane-head">
+                    <button type="button" class="pane-radio" role="radio" aria-checked="false"><span class="pane-label">倒计时</span></button>
+                    <span class="pane-inline">
+                      <span class="pane-pre">每隔</span>
+                      <input type="number" id="short-interval" min="1" max="480" aria-label="间隔分钟数" />
+                      <span class="unit">分钟提醒一次</span>
+                    </span>
                   </div>
                 </div>
                 <div class="mode-pane" data-mode="fixed">
+                  <div class="pane-head">
+                    <button type="button" class="pane-radio" role="radio" aria-checked="false"><span class="pane-label">固定时间</span></button>
+                    <button type="button" class="slot-add" id="short-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+                  </div>
                   <div class="pane-body">
-                    <!-- 提醒时间：固定时间方式的时刻表，常驻展开（2026-11-10 起不再折叠）。
-                      “＋ 添加”紧跟子标签右侧，行首勾选框控制单条启停。 -->
+                    <!-- 时刻表：子标签行已并进上面那行（“固定时间 ＋添加”），这一层只剩清单。
+                      “＋ 添加”在面板头里，行首勾选框控制单条启停。 -->
                     <div class="slot-fixed" data-break="short">
-                      <div class="slot-head">
-                        <span class="slot-title">提醒时间</span>
-                        <button type="button" class="slot-add" id="short-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
-                      </div>
                       <div class="slot-body">
                         <div id="short-list" class="tk-list"></div>
                       </div>
@@ -255,23 +262,22 @@
                 </div>
               </div>
               <!-- 系统空闲：勾上之后，到点先等键鼠连续静默满这么多秒，再走提前通知与正式提醒。
-               读成一句话“☐ 系统空闲达 [30] 秒再提醒”—— 数字框留在控件列（与其他输入框
-               同一条竖线），单位与后半句跟在框右侧；不勾时秒数框置灰（勾了才生效，
-               但值留着，下次勾回来还是原来那个数）。 -->
+               读成一句话“☐ 只在空闲时提醒，空闲时长 [30] 秒”—— 标签说清这条门槛干什么，
+               后面的「空闲时长」正好是那个数字的名字（2026-11-11 用户改的名，原来写作
+               “系统空闲达”）。数字框留在控件列（与其他输入框同一条竖线），单位“秒”跟在
+               框右侧；不勾时秒数框置灰（勾了才生效，但值留着，下次勾回来还是原来那个数）。 -->
               <div class="row field idle-gate" data-break="short">
-                <label class="switch-row"><input type="checkbox" id="short-idleGate" /> 系统空闲达<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
+                <label class="switch-row"><input type="checkbox" id="short-idleGate" /> 只在空闲时提醒，空闲时长<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
                 <div class="field-line">
                   <input type="number" id="short-idleGate-sec" min="1" max="1800" aria-label="系统空闲秒数" />
-                  <span class="unit">秒再提醒</span>
+                  <span class="unit">秒</span>
                 </div>
               </div>
             </div>
           </div>
           <!-- 参数组“弹窗设置”：提醒本身怎么弹的三个数（弹多久、提前多久敲门、能推迟多久） -->
-          <div class="pg open" data-pg="reminder">
-            <div class="pg-head">
-              <button type="button" class="msg-toggle" aria-expanded="true"><span class="msg-arrow">▸</span><span class="pg-title">弹窗设置</span></button>
-            </div>
+          <div class="pg" data-pg="reminder">
+            <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
             <div class="pg-body">
               <div class="row field"><label for="short-duration">提醒时长</label><div class="field-line"><input type="number" id="short-duration" min="5" max="600" /><span class="unit">秒</span></div></div>
               <div class="row field"><label for="short-notify">提前通知<span class="q-mark" data-tip="到达提醒时间前，在屏幕右下角显示提前通知小窗口">?</span></label><div class="field-line"><input type="number" id="short-notify" min="0" max="300" /><span class="unit">秒</span></div></div>
@@ -303,20 +309,26 @@
               <span class="card-switch-track" aria-hidden="true"></span>
             </label>
           </div>
-          <div class="pg open" data-pg="trigger">
-            <div class="pg-head">
-              <button type="button" class="msg-toggle" aria-expanded="true"><span class="msg-arrow">▸</span><span class="pg-title">触发方式</span></button>
-            </div>
+          <div class="pg" data-pg="trigger">
+            <div class="pg-head"><span class="pg-title">触发条件</span></div>
             <div class="pg-body">
-              <!-- 计时方法：两个并列面板（与短休息同一套，见上方注释）。
-               左面板 = 倒计时：间隔 + “每 N 次短休息后 1 次长休息”；
-               右面板 = 固定时间：提醒时间列表。 -->
+              <!-- 计时方法：上下两块面板（与短休息同一套，见上方注释）。
+               上面那块 = 倒计时：◯ 倒计时 每隔 [30] 分钟提醒一次，下面紧跟
+               “每 N 次短休息后 1 次长休息”（它只是倒计时路径的额外条件，所以缩进一级）；
+               下面那块 = 固定时间：◯ 固定时间 ＋添加，时刻表跟在下面。 -->
               <div class="mode-panes" id="long-mode">
                 <div class="mode-pane" data-mode="countdown">
+                  <div class="pane-head">
+                    <button type="button" class="pane-radio" role="radio" aria-checked="false"><span class="pane-label">倒计时</span></button>
+                    <span class="pane-inline">
+                      <span class="pane-pre">每隔</span>
+                      <input type="number" id="long-interval" min="1" max="480" aria-label="间隔分钟数" />
+                      <span class="unit">分钟提醒一次</span>
+                    </span>
+                  </div>
                   <div class="pane-body">
-                    <div class="row field"><label for="long-interval">间隔</label><div class="field-line"><input type="number" id="long-interval" min="1" max="480" /><span class="unit">分钟</span></div></div>
                     <!-- “每 N 次短休息后 1 次长休息”也是倒计时路径的条件（只在短、长都走
-                     倒计时时才有意义），所以留在左面板里、紧挨“间隔” -->
+                     倒计时时才有意义），所以留在上面那块里、紧挨“间隔” -->
                     <div class="row field" id="longEveryNRow">
                       <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" data-tip="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
                       <div class="field-line"><input type="number" id="longEveryNShort" min="1" max="20" /><span class="unit">次</span></div>
@@ -324,12 +336,12 @@
                   </div>
                 </div>
                 <div class="mode-pane" data-mode="fixed">
+                  <div class="pane-head">
+                    <button type="button" class="pane-radio" role="radio" aria-checked="false"><span class="pane-label">固定时间</span></button>
+                    <button type="button" class="slot-add" id="long-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
+                  </div>
                   <div class="pane-body">
                     <div class="slot-fixed" data-break="long">
-                      <div class="slot-head">
-                        <span class="slot-title">提醒时间</span>
-                        <button type="button" class="slot-add" id="long-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
-                      </div>
                       <div class="slot-body">
                         <div id="long-list" class="tk-list"></div>
                       </div>
@@ -338,18 +350,16 @@
                 </div>
               </div>
               <div class="row field idle-gate" data-break="long">
-                <label class="switch-row"><input type="checkbox" id="long-idleGate" /> 系统空闲达<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
+                <label class="switch-row"><input type="checkbox" id="long-idleGate" /> 只在空闲时提醒，空闲时长<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
                 <div class="field-line">
                   <input type="number" id="long-idleGate-sec" min="1" max="1800" aria-label="系统空闲秒数" />
-                  <span class="unit">秒再提醒</span>
+                  <span class="unit">秒</span>
                 </div>
               </div>
             </div>
           </div>
-          <div class="pg open" data-pg="reminder">
-            <div class="pg-head">
-              <button type="button" class="msg-toggle" aria-expanded="true"><span class="msg-arrow">▸</span><span class="pg-title">弹窗设置</span></button>
-            </div>
+          <div class="pg" data-pg="reminder">
+            <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
             <div class="pg-body">
               <div class="row field"><label for="long-duration">提醒时长</label><div class="field-line"><input type="number" id="long-duration" min="5" max="3600" /><span class="unit">秒</span></div></div>
               <div class="row field"><label for="long-notify">提前通知<span class="q-mark" data-tip="到达提醒时间前，在屏幕右下角显示提前通知小窗口">?</span></label><div class="field-line"><input type="number" id="long-notify" min="0" max="300" /><span class="unit">秒</span></div></div>
@@ -381,11 +391,9 @@
               <span class="card-switch-track" aria-hidden="true"></span>
             </label>
           </div>
-          <!-- 外卖提醒只有固定时刻这一种触发方式，组里没有“计时方法” -->
-          <div class="pg open" data-pg="trigger">
-            <div class="pg-head">
-              <button type="button" class="msg-toggle" aria-expanded="true"><span class="msg-arrow">▸</span><span class="pg-title">触发方式</span></button>
-            </div>
+          <!-- 外卖提醒只有固定时刻这一种触发条件，组里没有“计时方法” -->
+          <div class="pg" data-pg="trigger">
+            <div class="pg-head"><span class="pg-title">触发条件</span></div>
             <div class="pg-body">
               <div class="slot-fixed">
                 <div class="slot-head">
@@ -397,18 +405,16 @@
                 </div>
               </div>
               <div class="row field idle-gate" data-kind="takeout">
-                <label class="switch-row"><input type="checkbox" id="tk-idleGate" /> 系统空闲达<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
+                <label class="switch-row"><input type="checkbox" id="tk-idleGate" /> 只在空闲时提醒，空闲时长<span class="q-mark" data-tip="到点后先不弹窗：等键鼠连续静默达到这个秒数，再走提前通知与正式提醒。不勾 = 到点直接提醒。">?</span></label>
                 <div class="field-line">
                   <input type="number" id="tk-idleGate-sec" min="1" max="1800" aria-label="系统空闲秒数" />
-                  <span class="unit">秒再提醒</span>
+                  <span class="unit">秒</span>
                 </div>
               </div>
             </div>
           </div>
-          <div class="pg open" data-pg="reminder">
-            <div class="pg-head">
-              <button type="button" class="msg-toggle" aria-expanded="true"><span class="msg-arrow">▸</span><span class="pg-title">弹窗设置</span></button>
-            </div>
+          <div class="pg" data-pg="reminder">
+            <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
             <div class="pg-body">
               <!-- 暂停休息期间的处置：正常提醒 / 推迟提醒 / 跳过提醒（默认）。
                2026-11-10 试过并排三档段控，被否掉（三格把控件列挤窄、字号还得缩），
