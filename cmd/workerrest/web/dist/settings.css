@@ -215,7 +215,16 @@ body {
    只作用于时间规划页：其它页的卡片没有折叠按钮，缩进在那里找不到基准。 */
 #tab-timing { --body-indent: 24px; }
 #tab-timing .card { padding-left: calc(20px + var(--body-indent)); }
+/* 卡头两种写法（.card-head 与时间线卡的 .tl-head）都要抵消，否则时间线那张卡的
+   箭头 / 标题会比其它三张卡整段右移 24px —— 实测 tl-head 317 / 其余卡 293
+   （箭头 308 / 284）。.tl-head 是 <button>，width:auto 对它等于 shrink-to-fit
+   （实测只剩 197，右侧“待触发 N 条”被拉到标题旁边），所以宽度必须显式补回来：
+   百分比按内容宽 504 算，+24 = 528，抵消后正好 293→821，与其它卡完全重合。 */
 #tab-timing .card > .card-head { margin-left: calc(0px - var(--body-indent)); }
+#tab-timing .card > .tl-head {
+  margin-left: calc(0px - var(--body-indent));
+  width: calc(100% + var(--body-indent));
+}
 /* 卡头里的摘要（“固定时间 · 2 条 · 今日已无提醒”）是状态提示，不是第二个标题：
    已定制时保留品牌色，但不再加粗 —— 加粗 + 品牌色会把 14px 的灰色标题压下去，
    一行里最先被读到的是摘要而不是“这是哪张卡”。 */
