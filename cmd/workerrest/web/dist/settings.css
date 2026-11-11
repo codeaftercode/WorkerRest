@@ -197,8 +197,18 @@ body {
    2026-11-09：休息卡的总开关从正文第一行收进这里（见 .card-switch）；开关**排在行尾**，
    不挨着标题 —— 贴着标题时它读起来像标题的后缀（“短休息〔开〕”），而且那是一枚实心品牌色
    胶囊，会比 14px 灰标题先被看到。放到行尾，它才是“这张卡的总闸”，与左侧的身份区分开。 */
-.card-head { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
+.card-head { display: flex; align-items: center; gap: 8px; height: 26px; margin-bottom: 16px; }
 .card-head h3 { margin-bottom: 0; }
+/* 卡头行高**钉死 26px，不能用 min-height**（2026-11-11 第二次修正，两次都栽在同一处）。
+   min-height 只是下限，而卡头里最高的那件是「预览」按钮，它的高度来自**字体行盒**
+   （12px 字 + 上下 4px 内边距 + 1px 边框）——同一份 CSS 在不同渲染器上算出的值不一样：
+   无头 Chromium 量到 26，真实 WebView2（本机 200% 缩放）量到 27.5。于是带「预览 / 总开关」
+   的卡折叠后 66，只有箭头 + 标题的卡 64，差 1.5px，来回切两页一眼就不齐
+   （用户两次报“折叠后高度不一样”，第一次我按 min-height 统一到 26，真机上依然是错的，
+   因为真机那 26 本身就被撑破了）。
+   现在高度只由这个常量决定：卡里有没有按钮、开关，字体度量怎么变，都不影响。
+   控件本身也给固定高度（见 .card-head-act.btn 的 22px），不让它溢出这 26px。
+   时间线卡的卡头是另一种写法（.tl-head），同一行同样钉死，规则见 .tl-head。 */
 /* 2026-11-11 卡片正文整体缩进（用户：「各提醒卡片内容都应该增加缩进，至少要比卡片标题
    左侧的折叠按钮缩进更大」）。
    ————————————————————————————————————————————————————————————————
@@ -255,7 +265,12 @@ body {
   border-color: transparent;
   background: transparent;
   color: var(--text-2);
-  padding: 4px 6px;
+  /* 高度写死（border-box 22 = 行盒 20 + 上下边框 2）：不再让字体行盒决定它有多高。
+     原来 padding: 4px 6px + 12px 字，行盒在 WebView2 里算出 17.5，整枚按钮 27.5，
+     把卡头的 26px 撑破 —— 折叠后那一张卡就比同页其它卡高 1.5px。 */
+  height: 22px;
+  line-height: 20px;
+  padding: 0 6px;
 }
 .card-head-act.btn:hover {
   border-color: transparent;
@@ -2321,7 +2336,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .card-actions .btn.danger:hover { border-color: var(--danger); background: transparent; color: var(--danger); }
 
 /* 今日提醒时间线（时间规划页顶部，默认折叠） */
-.tl-head { display: flex; align-items: center; gap: 8px; width: 100%; background: none; border: none; padding: 0; font: inherit; font-weight: 600; font-size: 14px; color: var(--text-2); cursor: pointer; text-align: left; }
+/* width 保持 100%：<button> 用 auto 是收缩宽度。负左边距的抵消与宽度补回都写在
+   上方 #tab-timing 那两条规则里（时间线卡是这一页唯一用 .tl-head 的卡）。 */
+.tl-head { display: flex; align-items: center; gap: 8px; width: 100%; height: 26px; background: none; border: none; padding: 0; font: inherit; font-weight: 600; font-size: 14px; color: var(--text-2); cursor: pointer; text-align: left; }
 .tl-count { margin-left: auto; font-weight: 400; font-size: 12px; color: var(--text-2); }
 .tl-row { display: flex; align-items: center; gap: 10px; padding: 7px 0 7px 10px; border-bottom: 1px solid var(--border); border-left: 3px solid var(--tl-c, transparent); font-size: 13px; }
 .tl-row:last-child { border-bottom: none; }
