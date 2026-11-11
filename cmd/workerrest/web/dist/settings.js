@@ -3740,10 +3740,14 @@
   function applyBreakModeUI() {
     // 2026-11-10 起两块面板（倒计时 / 固定时间）同时可见、都能编辑，
     // 只有“哪一侧生效”靠 .mode-pane.on 表达 —— 所以这里不再隐藏任何一块内容。
-    // 唯一还要按条件显隐的是长休息的“每 N 次短休息后 1 次长休息”：
-    // 它只在短、长都走倒计时时才有意义。
+    // 唯一还要按条件显隐的是长休息标题行里的“每 N 次短休息后，”这半句：
+    // 它只在短、长都走倒计时时才有意义（否则长休息就是纯粹的“间隔 X 分钟提醒一次”）。
+    // 隐藏的只是这一截，后面的“间隔 [X] 分钟提醒一次”照常显示。
     const bothCountdown = S.short.mode === "countdown" && S.long.mode === "countdown";
-    $("longEveryNRow")?.classList.toggle("hidden", !bothCountdown);
+    $("longEveryNSeg")?.classList.toggle("hidden", !bothCountdown);
+    // 那半句藏起来时，后面的词要读成“每隔”，否则剩下的一句是“间隔 20 分钟提醒一次”
+    const longPre = $("longIntervalPre");
+    if (longPre) longPre.textContent = bothCountdown ? "间隔" : "每隔";
   }
   // 分钟框跟着“系统空闲”勾选框走：没勾时它不该还能编辑（关掉的是整条空闲检测，
   // 改分钟数没有意义）。只改 disabled，不另造禁用样式。

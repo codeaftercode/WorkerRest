@@ -715,21 +715,31 @@ body {
    而不是“每隔 30 分钟”）。64 = 4 位数字（约 29px）+ 左右内边距 12 + 原生步进箭头 13，
    框内还留得下 4 位数；窄窗口也不再有被压到 96px 下限的问题，因此不再需要 min-width。
    单位（分钟提醒一次）仍在框外，与全站「数字框 + 框外单位」的写法一致。 */
-.pane-inline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pane-inline { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; row-gap: 4px; min-width: 0; }
 .pane-pre { flex: none; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
-.pane-inline > input[type='number'] {
+.pane-inline input[type='number'] {
   flex: none; width: 64px; min-width: 0;
   padding-left: 6px; padding-right: 6px; text-align: center;
 }
-.pane-inline > .unit { flex: none; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+.pane-inline .unit { flex: none; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+/* 长休息那句“每 [2] 次短休息后，间隔 [20] 分钟提醒一次”劈成两段（2026-11-11 并进标题行）：
+   段内不许折行 —— 否则“间隔”与它的数字会被拆到两行；折行只允许发生在两段之间。
+   最小窗口（760）下整句未必放得下，所以 .pane-inline 允许 wrap + 4px 行距；
+   短休息只有一段，永远不会触发折行。 */
+.pane-seg { display: flex; align-items: center; gap: 8px; flex: none; }
+/* 句末的“?”：flex 行里 vertical-align 无效，靠 align-self 居中；margin-left 取 -5px
+   抵掉行内 8px 的 gap，实际视觉间距仍是 3px（与 .switch-row 里那颗同口径）。 */
+.pane-inline > .q-mark { align-self: center; margin-left: -5px; }
 /* “＋ 添加”并进固定时间面板头：与面板名同一行的行内动作，间距交给 .pane-head 的 gap */
 .pane-head > .slot-add { margin-left: 0; }
 /* 内容相对标题再退一级 —— 这是这块面板唯一的“层次”手段（底色去掉之后更是唯一）：
    左内边距 = 圆点 + 间距 + 一级台阶（16 + 8 + 24 = 48），正好落在标题文字右移一格
-   的位置。于是时刻表、「每 N 次短休息后 1 次长休息」都比「倒计时 / 固定时间」更靠里，
+   的位置。于是时刻表比「倒计时 / 固定时间」更靠里，
    读起来是“方式 → 它的从属条件”，不是“两行并列的东西”。
    2026-11-10 晚起并进标题行的那两样（间隔框、＋添加）**不再缩进** ——
-   它们本身就是那句话的一部分（“每隔 30 分钟提醒一次”），缩进反而把句子折断。右内边距 0：时刻行的删除键本来就该与卡片内容右缘对齐。
+   它们本身就是那句话的一部分（“每隔 30 分钟提醒一次”），缩进反而把句子折断；
+   2026-11-11 长休息的“每 N 次短休息后，”也并进了同一句（见 settings.html），
+   面板里于是只剩时刻表这一档。右内边距 0：时刻行的删除键本来就该与卡片内容右缘对齐。
    只有 4px 底留白：两块之间的呼吸由 .mode-panes 的 gap 8 与下一块头的 10 共同给出
    （合起来 22，略小于「固定时间 → 系统空闲」的 24），两块因此读成一组、与下面
    “系统空闲”那行淡淡分开；原来给 12 时块间是 30，比组间留白还大，反而把两块拆散了。 */
@@ -739,10 +749,6 @@ body {
 }
 /* 时刻表嵌在面板里：面板 body 已经有 gap，那 12px 上留白就多余了 */
 .mode-pane .slot-fixed { margin-top: 0; }
-/* 面板里的字段行（长休息的“每 N 次短休息后 1 次长休息”）：不能占全卡那条 200px
-   标签列 —— 760 宽窗口下控件列会只剩 154，180 的数字框被压到 96 的 min-width 下限
-   （实测，读起来像被掐了一段）。面板内改用 76px 标签列，控件列回到 278。
-.pane-body .row.field { grid-template-columns: 76px minmax(0, 1fr); }
 /* 面板内控件回到全局样式（--bg 灰面）。上一版面板自己有淡底，控件才被改成白底；
    底色去掉之后卡片白底直接透出来，--bg 的输入面重新与它拉得开 ——
    “面板里换一套控件底色”这件事整体删除，与用户“内部各控件细节仍按原来的实现”一致。 */

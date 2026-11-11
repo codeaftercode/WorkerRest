@@ -227,8 +227,8 @@
                2026-11-10 晚第二次收口：面板头不再是“标题 + 副标题”两段字，而是把那个方式
                唯一的参数**并进标题行** —— 原来独立的「间隔」字段行、「提醒时间」子标签行
                一起删掉。它们本来就是同一句话的两截（“每隔 30 分钟提醒一次”），拆成标题
-               加参数行反而要读两遍。缩进仍留给从属关系：时刻表与“每 N 次”在 pane-body 里，
-               比面板名退后一级；并进标题行的那两样不再缩进（它们就是标题的一部分）。
+               加参数行反而要读两遍。缩进仍留给从属关系：只有时刻表在 pane-body 里，
+               比面板名退后一级；并进标题行的那些参数不再缩进（它们就是标题的一部分）。
                面板仍是说明兼开关，但**只有点圆点或面板名才算选中**（2026-11-11 用户要求：
                点其他控件不要连带勾选）—— 换计时方式是一个明确的动作，不该被“顺手改个数字”
                触发。面板骨架写在这里（里面是静态表单，JS 不该搬动用户正在编辑的
@@ -313,26 +313,29 @@
             <div class="pg-head"><span class="pg-title">触发条件</span></div>
             <div class="pg-body">
               <!-- 计时方法：上下两块面板（与短休息同一套，见上方注释）。
-               上面那块 = 倒计时：◯ 倒计时 每隔 [30] 分钟提醒一次，下面紧跟
-               “每 N 次短休息后 1 次长休息”（它只是倒计时路径的额外条件，所以缩进一级）；
+               上面那块 = 倒计时，整句并进标题行：“每 [2] 次短休息后，间隔 [20] 分钟提醒一次”。
+               “每 N 次短休息后 1 次长休息”原先单独占一行、缩在面板里（2026-11-11 用户要求
+               并进标题行）：它本来就是倒计时路径的前置条件，与“间隔”连成一句才读得通，
+               也省掉一行只有单个数字的字段行。两段各包一层 .pane-seg，窄窗口折行只折在
+               两段之间，不会把“间隔 20 分钟提醒一次”劈开。
                下面那块 = 固定时间：◯ 固定时间 ＋添加，时刻表跟在下面。 -->
               <div class="mode-panes" id="long-mode">
                 <div class="mode-pane" data-mode="countdown">
                   <div class="pane-head">
                     <button type="button" class="pane-radio" role="radio" aria-checked="false"><span class="pane-label">倒计时</span></button>
                     <span class="pane-inline">
-                      <span class="pane-pre">每隔</span>
-                      <input type="number" id="long-interval" min="1" max="480" aria-label="间隔分钟数" />
-                      <span class="unit">分钟提醒一次</span>
+                      <span class="pane-seg" id="longEveryNSeg">
+                        <span class="pane-pre">每</span>
+                        <input type="number" id="longEveryNShort" min="1" max="20" aria-label="每几次短休息" />
+                        <span class="unit">次短休息后，</span>
+                      </span>
+                      <span class="pane-seg">
+                        <span class="pane-pre" id="longIntervalPre">间隔</span>
+                        <input type="number" id="long-interval" min="1" max="480" aria-label="间隔分钟数" />
+                        <span class="unit">分钟提醒一次</span>
+                      </span>
+                      <span class="q-mark" data-tip="“每 N 次”只在短、长休息都用倒计时时生效；间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span>
                     </span>
-                  </div>
-                  <div class="pane-body">
-                    <!-- “每 N 次短休息后 1 次长休息”也是倒计时路径的条件（只在短、长都走
-                     倒计时时才有意义），所以留在上面那块里、紧挨“间隔” -->
-                    <div class="row field" id="longEveryNRow">
-                      <label for="longEveryNShort">每 N 次短休息后 1 次长休息<span class="q-mark" data-tip="间隔从第 N 次短休息结束后开始计算。例如 N=2、间隔 30 分钟：第 2 次短休息结束 30 分钟后进入长休息。被跳过或提前结束的短休息同样计入次数。">?</span></label>
-                      <div class="field-line"><input type="number" id="longEveryNShort" min="1" max="20" /><span class="unit">次</span></div>
-                    </div>
                   </div>
                 </div>
                 <div class="mode-pane" data-mode="fixed">
