@@ -58,7 +58,7 @@ async function metrics(page) {
     }
     const c = document.getElementById("content");
     const t = document.querySelector(".tab.active");
-    let hSum = 0, n = 0, maxClip = 0, clipSel = "";
+    let hSum = 0, n = 0, maxClip = 0, clipSel = "", clipCW = 0, clipSW = 0;
     for (const el of t.querySelectorAll("*")) {
       const r = el.getBoundingClientRect();
       if (r.width === 0 && r.height === 0) continue;
@@ -67,6 +67,8 @@ async function metrics(page) {
       const over = el.scrollWidth - el.clientWidth;
       if (over > maxClip && !scrollable(el)) {
         maxClip = over;
+        clipCW = el.clientWidth;
+        clipSW = el.scrollWidth;
         const cls = (el.className || "").toString().split(" ").filter(Boolean).slice(0, 2).join(".");
         clipSel = el.tagName.toLowerCase() + (cls ? "." + cls : "") + (el.id ? "#" + el.id : "");
       }
@@ -83,6 +85,8 @@ async function metrics(page) {
       hSum,
       maxClip,
       clipSel,
+      clipCW,
+      clipSW,
     };
   });
 }
@@ -217,7 +221,7 @@ const SCALES = [1, 1.25, 1.5, 2, 3];
     for (const tab of TABS) {
       await clickTab(page, tab);
       const m = await metrics(page);
-      per[tab] = { maxClip: m.maxClip, clipSel: m.clipSel, need: m.need };
+      per[tab] = { maxClip: m.maxClip, clipSel: m.clipSel, clipCW: m.clipCW, clipSW: m.clipSW, need: m.need };
     }
     widthRows.push({ w, per });
   }
