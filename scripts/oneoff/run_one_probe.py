@@ -79,7 +79,8 @@ def main():
             return 1
         penv = dict(os.environ)
         penv["WR_BASE"] = base
-        penv["WR_OUT"] = iso
+        # 调用方显式指定输出目录时尊重它（截图类脚本要用），否则给隔离目录
+        penv["WR_OUT"] = os.environ.get("WR_OUT") or iso
         node = shutil.which("node")
         r = subprocess.run([node, js], cwd=ROOT, env=penv, text=True,
                            encoding="utf-8", errors="replace", capture_output=True, timeout=300)
