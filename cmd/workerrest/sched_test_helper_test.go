@@ -34,16 +34,23 @@ type testHost struct {
 	postpones  []string
 	skips      []string
 	pp         *model.TakeoutPostponed
+	// autoKeep 最近一次 OnAutoPause 收到的在场窗口归属（断言“正常提醒时别收窗”用）
+	autoKeep scheduler.AutoPauseKeep
+	// pauseKeepPre 最近一次 OnPaused 收到的提示窗归属（手动暂停时提前提示窗留不留的兜底身份）
+	pauseKeepPre string
 	// idleMs 系统级“连续无输入”读数的假值（空闲门测试用）
 	idleMs int64
 }
 
-func (h *testHost) CfgSnapshot() *settings.Settings                   { return h.cfg }
-func (h *testHost) IdleMs() int64                                     { return h.idleMs }
-func (h *testHost) OnSchedulerState()                                 { h.states++ }
-func (h *testHost) OnPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
-func (h *testHost) OnPaused()                                         { h.pauses++ }
-func (h *testHost) OnAutoPause()                                      { h.autoPauses++ }
+func (h *testHost) CfgSnapshot() *settings.Settings  { return h.cfg }
+func (h *testHost) IdleMs() int64                    { return h.idleMs }
+func (h *testHost) OnSchedulerState()                { h.states++ }
+func (h *testHost) OnPreNotify(kind string, _ int64) { h.pre = append(h.pre, kind) }
+func (h *testHost) OnPaused(preKind string)          { h.pauses++; h.pauseKeepPre = preKind }
+func (h *testHost) OnAutoPause(keep scheduler.AutoPauseKeep) {
+	h.autoPauses++
+	h.autoKeep = keep
+}
 func (h *testHost) ClosePreBreak()                                    {}
 func (h *testHost) CloseBreakWindows()                                { h.closed++ }
 func (h *testHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }

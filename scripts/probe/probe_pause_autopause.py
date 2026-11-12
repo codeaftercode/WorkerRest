@@ -4,21 +4,28 @@
 
 为什么不能用无头服务验：`-tags server` 构建**故意不启动**会改调度器状态的几条监视器
 （冒烟机始终空闲，会把调度器随机挂起、毁掉确定性断言）。所以“系统判定 → 暂停 → 收窗 →
-条件消失 → 恢复 + 重锚”这条链路只有跑真 GUI 才验得到。
+条件消失 → 恢复”这条链路只有跑真 GUI 才验得到。
 
 判据用**真实进程**触发，不靠开关配置假装：配置里把 `ping.exe` 列成“指定应用运行时暂停”，
 探针自己起一个 `ping -t 127.0.0.1`（无窗口、无交互），杀掉了条件就消失。
 
 验的事：
   1. 目标进程起来后，日志出现“命中 ping.exe，暂停提醒”与“暂停（应用占用）”；
-  2. 暂停那一刻**所有提醒窗口被收掉**（[autoPause] 自动暂停：收掉全部提醒窗口）；
-  3. 暂停期间到点也不弹休息窗（这一段时间里没有新的“开始休息”日志）；
-  4. 进程退出后自动恢复（不需要点按钮），并且**内置倒计时重新计时**（不是接着冻结的旧账走）。
+  2. 暂停那一刻**在场**的提醒窗口按各自“暂停休息时”决定收不收
+     （[autoPause] 自动暂停：在场提醒窗口处理，含“保留休息 / 保留外卖 / 保留提前提示”三位）；
+     正在进行的休息记一笔跳过；
+  3. 暂停期间到点也不弹休息窗（出厂默认“推迟提醒”，这一段时间里没有新的“开始休息”日志）；
+  4. 进程退出后自动恢复（不需要点按钮），并且**不再按“离开”口径重锚** —— 2026-11-12
+     起自动暂停与手动暂停同构（时钟冻结平移），恢复后第一拍就把暂停期间到点的那一跳按
+     处置补上，所以随后一定能看到一次“开始休息”；
   5. 全程没有 panic。
+
+`--remind` 换一条口径重跑：短休息的“暂停休息时”配成正常提醒 —— 那次休息**不该被收窗**，
+继续按真实时钟走完（断言“休息窗保留、按真实时钟走完”，且本轮不出现“自动暂停打断休息”）。
 
 隔离：WR_SETTINGS_PATH 指向临时副本；结尾断言真实 config/settings.json 一个字节没变。
 
-用法：python scripts/probe/probe_pause_autopause.py [--keep-exe]
+用法：python scripts/probe/probe_pause_autopause.py [--keep-exe] [--remind]
 退出码 0 = 全部通过。
 """
 
@@ -89,6 +96,8 @@ def wait_for(text_of, needle, timeout):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--keep-exe", action="store_true", help="跑完保留探针产物")
+    ap.add_argument("--remind", action="store_true",
+                    help="把短休息的“暂停休息时”配成正常提醒：验“正在走的休息不被收窗”")
     args = ap.parse_args()
 
     factory = os.path.join(ROOT, "internal", "settings", "default_settings.json")
@@ -106,9 +115,12 @@ def main():
     with open(factory, encoding="utf-8") as f:
         cfg = json.load(f)
 
-    # 短休息 8 秒一条、3 秒、不提前提示：观察窗里一定会碰到“休息中被打断”这一支。
+    # 短休息 8 秒一条、30 秒一次、不提前提示：观察窗里一定会碰到“休息中被打断”这一支。
+    # 时长取 30 秒是为了让暂停命中（启动进程后约 3-4 秒）时休息窗口**一定还在场**，
+    # 否则“收窗 / 保留”两件事都没有对象，断言会随机器快慢漂。
     cfg["short"] = dict(cfg.get("short") or {}, enabled=True, mode="countdown",
-                        intervalMs=8000, durationMs=3000, notifyBeforeMs=0, postponeMs=60000,
+                        intervalMs=8000, durationMs=30000, notifyBeforeMs=0, postponeMs=60000,
+                        pauseAction=("remind" if args.remind else "postpone"),
                         slots=[])
     cfg["long"] = dict(cfg.get("long") or {}, enabled=False)
     cfg["takeout"] = dict(cfg.get("takeout") or {}, enabled=False)
@@ -149,7 +161,8 @@ def main():
             if not check(wait_for(text, "[sys] 空闲=", 20), "GUI 产物起来了（系统能力摘要落日志）"):
                 return 1
 
-            # 先等一次休息窗口：这样“暂停时收掉全部提醒窗口”才有对象可收
+            # 先等一次休息窗口：这样“暂停时收不收在场提醒窗口”才有对象可判
+            # （这张卡是“推迟提醒”，不是“正常提醒”，所以休息窗该被收掉）
             got_break = wait_for(text, "[scheduler] 开始休息 short", 25)
             check(got_break, "观察窗内先弹出过一次真实休息窗口")
 
@@ -164,8 +177,18 @@ def main():
             hit = wait_for(text, "[appPause] 命中", 20)
             check(hit, "目标进程起来后命中“指定应用占用”")
             check("[scheduler] 暂停（应用占用）" in text(), "调度器真的进入了暂停（原因=应用占用）")
-            check("[autoPause] 自动暂停：收掉全部提醒窗口" in text(),
-                  "暂停那一刻收掉了屏幕上的提醒窗口（含正在进行的休息窗）")
+            # 两种口径各钉一套：
+            #   - 推迟提醒（默认）：正在走的休息窗被收掉，记一笔跳过；
+            #   - 正常提醒（--remind）：“照常提醒”就是现场，不收窗、不记账、继续走完。
+            if args.remind:
+                check("[scheduler] 自动暂停：short 配的是“正常提醒”，休息窗保留、按真实时钟走完" in text(),
+                      "“正常提醒”的休息不被收窗，继续走")
+                check("保留休息=true" in text(), "宿主收到“保留休息窗”的指令")
+                check("[scheduler] 自动暂停打断休息" not in text(), "不收窗也不记跳过")
+            else:
+                check("[autoPause] 自动暂停：在场提醒窗口处理（休息=true" in text(),
+                      "暂停那一刻收掉了正在进行的休息窗")
+                check("[scheduler] 自动暂停打断休息 short" in text(), "被打断的休息记一笔跳过")
 
             # 暂停期间不该再有新的休息窗口冒出来
             mark = text()
@@ -180,12 +203,12 @@ def main():
             resumed = wait_for(text, "[appPause] 目标应用已退出", 20)
             check(resumed, "进程退出后自动恢复（没让用户去点“恢复休息”）")
             check("[scheduler] 恢复（应用占用）" in text(), "调度器真的退出了暂停")
-            check("[scheduler] 自动暂停恢复：内置倒计时重新计时" in text(),
-                  "恢复时内置倒计时重新计时（不是接着冻结的旧账走）")
+            check("[scheduler] 自动暂停恢复：内置倒计时重新计时" not in text(),
+                  "恢复时不再按“离开”口径重锚（自动暂停与手动暂停同构，时钟冻结平移）")
 
-            # 恢复后提醒照常回来
+            # 恢复后提醒照常回来（休息 30 秒：--remind 那次可能还在走，走完再等一个 8 秒间隔）
             mark = text()
-            back = wait_for(lambda: text()[len(mark):], "开始休息 short", 25)
+            back = wait_for(lambda: text()[len(mark):], "开始休息 short", 40)
             check(back, "恢复之后休息窗口照常弹出来（没有停摆）")
 
             body = text()

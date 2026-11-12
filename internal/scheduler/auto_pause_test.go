@@ -1,18 +1,25 @@
 package scheduler
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
 
-// 自动暂停（勿扰 / 全屏 / 投屏 / 应用占用 / 空闲）与手动暂停的语义分叉：
+// 自动暂停（勿扰 / 全屏 / 投屏 / 应用占用 / 空闲）的两件事：
 //
-//   A. 进入自动暂停时立刻收掉**所有**提醒窗口（休息窗、提前提示窗），被打断的休息
-//      记“跳过”；暂停期间到点的自定义提醒一律跳过，不看它自己的“暂停休息时”配置。
-//   B. 恢复时按“离开”口径重锚内置倒计时（从头计时），而不是按剩余时间平移。
+//   A. 进入自动暂停时收掉**此刻在屏幕上**的提醒窗口（休息窗、提前提示窗、外卖窗），被打断的
+//      休息记“跳过”。只管进入那一刻在场的窗口。
+//      留窗规则（2026-11-12 用户口径，四类提醒一律适用）：那扇窗所属提醒自己的“暂停休息时”
+//      是“正常提醒”就不收 —— 见 TestAutoPauseKeepsRemindBreakRunning / KeepsRemindPreWindow /
+//      TestAutoPauseKeepTakeoutFollowsTakeoutConfig。暂停原因不参与判断。
+//   B. 恢复时与手动暂停**同构**：时钟冻结、按剩余平移。曾经这里有“按离开口径重锚内置
+//      倒计时”的分支，2026-11-12 用户口径“暂停就是暂停，不分原因”后删除 —— 重锚只留给
+//      定时暂停（PauseUntil，如睡前暂停到明早）。
 //
-// 手动暂停一条都不适用：那是用户自己按的暂停，休息窗继续挂着、进度平移、自定义提醒
-// 按配置处置。所以下面每个 A/B 用例都配一条手动暂停的对照，防止把两种暂停写成一种。
+// 暂停期间到点的提醒不按原因区别对待：一律看各卡自己的“暂停休息时”（见 pause_skip_test.go
+// 的 TestAutoPauseHonorsSkipOnBuiltinBreak / TestAutoPausePostponeBuiltinFiresAfterResume）。
+// 曾经那条例外“自动暂停一律跳过、不看配置”已删除。
 
 // ---------- A：进入自动暂停时清场 ----------
 
@@ -73,33 +80,102 @@ func TestAutoPauseClearsPreWindow(t *testing.T) {
 	if s.PreBreakWanted() {
 		t.Fatal("自动暂停期间提前提示窗不该在场")
 	}
+	// 留不留由宿主按 short 自己的配置判：调度器这边只交代“提示窗属于 short”，
+	// 并保证状态不再认可这扇窗在场（PreBreakWanted 已在上面断言）
+	if host.autoKeep.PreKind != "short" {
+		t.Fatalf("应把提示窗的归属（short）交给宿主，得到 %+v", host.autoKeep)
+	}
 }
 
-// 自动暂停期间到点的自定义提醒一律按跳过，哪怕它配的是“正常提醒”。
-func TestAutoPauseForcesSkipOnCustomReminder(t *testing.T) {
+// 提前提示窗在场时被自动原因打断：那条提醒配的是“正常提醒”→ 窗口与阶段都留着。
+// 窗口会以“已暂停 / --”显示，恢复后继续照常倒数（见 prebreak.js 的 st.paused 分支）。
+func TestAutoPauseKeepsRemindPreWindow(t *testing.T) {
+	const tight = `{"short":{"enabled":true,"mode":"countdown","intervalMs":10000,"durationMs":2000,` +
+		`"notifyBeforeMs":5000,"postponeMs":60000,"pauseAction":"remind","slots":[]}}`
+	s, host := newTestSched(t, tight)
+	s.replan()
+	s.mu.Lock()
+	s.state.NextAt = nowMs() + 3000
+	s.mu.Unlock()
+	s.onTick()
+	if s.CurrentPhase() != "pre" {
+		t.Fatalf("前置：应已在提前提示区间内，得到 %q", s.CurrentPhase())
+	}
+
+	s.Pause("勿扰")
+
+	if p := s.CurrentPhase(); p != "pre" {
+		t.Fatalf("“正常提醒”的提前提示窗不该被收，阶段应留在 pre，得到 %q", p)
+	}
+	if host.autoKeep.PreKind != "short" {
+		t.Fatalf("应把提示窗的归属（short）告诉宿主，得到 %+v", host.autoKeep)
+	}
+	// 窗口每 500ms 自愈一次（PreBreakState → PreBreakWanted），判据也得认它在场，
+	// 否则窗口会在半秒后自己退场 —— 等于没留
+	if !s.PreBreakWanted() {
+		t.Fatal("暂停中“正常提醒”的提前提示窗应判为在场")
+	}
+}
+
+// 外卖的“暂停休息时”同样参与留窗判断（外卖不走调度器，判据仍在这里算好交给宿主）。
+func TestAutoPauseKeepTakeoutFollowsTakeoutConfig(t *testing.T) {
+	cases := []struct {
+		action string
+		want   bool
+	}{
+		{"remind", true},
+		{"postpone", false},
+		{"skip", false},
+	}
+	for _, c := range cases {
+		cfg := `{"takeout":{"enabled":true,"pauseAction":"` + c.action + `"}}`
+		s, host := newTestSched(t, cfg)
+		s.Pause("勿扰")
+		if got := host.autoKeep.Takeout; got != c.want {
+			t.Fatalf("外卖配 %q 时应 keep.Takeout=%v，得到 %v", c.action, c.want, got)
+		}
+	}
+}
+
+// 手动暂停同理：提前提示窗的归属交给宿主，留不留由它按那条提醒的配置判
+// （托盘 / 弹窗内“暂停计时”都走这条）。调度器不替任何一条提醒下结论。
+func TestManualPauseHandsPreKindToHost(t *testing.T) {
+	const tight = `{"short":{"enabled":true,"mode":"countdown","intervalMs":10000,"durationMs":2000,` +
+		`"notifyBeforeMs":5000,"postponeMs":60000,"pauseAction":"%s","slots":[]}}`
+	for _, action := range []string{"remind", "postpone", "skip"} {
+		s, host := newTestSched(t, strings.Replace(tight, "%s", action, 1))
+		s.replan()
+		s.mu.Lock()
+		s.state.NextAt = nowMs() + 3000
+		s.mu.Unlock()
+		s.onTick()
+		if s.CurrentPhase() != "pre" {
+			t.Fatalf("前置（%s）：应已在提前提示区间内，得到 %q", action, s.CurrentPhase())
+		}
+		s.Pause(PauseReasonManual)
+		if got := host.pauseKeepPre; got != "short" {
+			t.Fatalf("%s 配 %q 时手动暂停应把归属 \"short\" 交给宿主，得到 %q", "short", action, got)
+		}
+	}
+}
+
+// 自动暂停期间到点的自定义提醒按它自己的“暂停休息时”走：配了“正常提醒”就照常弹。
+// 2026-11-12 起不再有“自动暂停一律跳过”的例外。
+func TestAutoPauseHonorsRemindOnCustomReminder(t *testing.T) {
 	s, host := newTestSched(t, customFixedNow(`,"pauseAction":"remind"`))
 	s.replan()
 	s.Pause("勿扰")
 
 	s.onTick()
-	if len(host.breaks) != 0 {
-		t.Fatalf("自动暂停期间不应弹出提醒窗口，得到 %v", host.breaks)
+	if len(host.breaks) != 1 || host.breaks[0] != "cb-water" {
+		t.Fatalf("自动暂停下“正常提醒”应照常弹出，得到 %v", host.breaks)
 	}
-	if len(host.pre) != 0 {
-		t.Fatalf("自动暂停期间不应弹出提前提示，得到 %v", host.pre)
-	}
-	if len(host.skips) != 1 || host.skips[0] != "cb-water" {
-		t.Fatalf("自动暂停期间到点应记一次跳过，得到 %v", host.skips)
-	}
-	// 同一 occurrence 的下一跳不得重复记账
-	s.onTick()
-	if len(host.skips) != 1 {
-		t.Fatalf("同一 occurrence 不应重复记账，得到 %v", host.skips)
+	if len(host.skips) != 0 {
+		t.Fatalf("照常提醒不该记跳过，得到 %v", host.skips)
 	}
 }
 
-// 对照：同一条“正常提醒”配置在手动暂停下照常弹 —— 证明配置本身有效，
-// 上面的 0 次是“自动”这个前提带来的，不是配置没生效。
+// 同一条配置在手动暂停下也是照常弹 —— 两种暂停原因不该有区别。
 func TestManualPauseStillHonorsRemindOnCustomReminder(t *testing.T) {
 	s, host := newTestSched(t, customFixedNow(`,"pauseAction":"remind"`))
 	s.replan()
@@ -114,56 +190,149 @@ func TestManualPauseStillHonorsRemindOnCustomReminder(t *testing.T) {
 	}
 }
 
-// ---------- B：恢复时重锚内置倒计时 ----------
-
-// 自动暂停恢复后，内置倒计时从头计时（与离开回来的口径一致）。
-func TestAutoPauseResumeReanchorsCountdown(t *testing.T) {
-	s, _ := newTestSched(t, shortCountdown)
+// 正在进行的休息配的是“正常提醒”：自动暂停闯进来时**不收窗**，让它照常走完
+// （2026-11-12 用户口径：“正常休息时别收窗”）。不记跳过、不推进计数，时钟也不冻结。
+func TestAutoPauseKeepsRemindBreakRunning(t *testing.T) {
+	s, host := newTestSched(t, `{"short":{"enabled":true,"mode":"countdown",`+
+		`"intervalMs":600000,"durationMs":20000,"pauseAction":"remind","slots":[]}}`)
 	s.replan()
-	// 模拟“这一轮已经走了 8 分钟，还剩 2 分钟”：连挂起线与分组视图一起拨，
-	// 保持状态自洽（只改 NextAt 的话 Rest.At 对不上，恢复时不会跟着走）
-	s.mu.Lock()
-	at := nowMs() + 120_000
-	s.state.NextAt = at
-	for i := range s.state.Lines {
-		if s.state.Lines[i].Source == "countdown" {
-			s.state.Lines[i].At = at
-		}
+	if id := s.startBreak(); id == "" {
+		t.Fatal("前置：应能弹出休息窗口")
 	}
-	if s.state.Rest != nil {
-		s.state.Rest.At = at
-	}
-	s.mu.Unlock()
 
 	s.Pause("勿扰")
-	time.Sleep(50 * time.Millisecond)
-	s.Resume("勿扰")
 
-	remain := s.RemainingMs()
-	if remain < 599_000 || remain > 600_100 {
-		t.Fatalf("自动暂停恢复应重锚到满间隔 600000 ms，得到 %d（按剩余 120000 平移就是旧口径）", remain)
+	if p := s.CurrentPhase(); p != "break" {
+		t.Fatalf("“正常提醒”的休息不该被自动暂停收掉，得到 phase=%q", p)
 	}
-	// 状态卡的分组倒计时也要跟着到满间隔，不能停在“旧的剩余 + 暂停时长”
-	if st := s.StateCopy(); st.Rest != nil && st.Rest.At != st.NextAt {
-		t.Fatalf("分组倒计时应同步到重锚后的时刻：Rest.At=%d NextAt=%d", st.Rest.At, st.NextAt)
+	if host.autoPauses != 1 || host.autoKeep.BreakKind != "short" {
+		t.Fatalf("应通知宿主清场并交代休息窗归属（short），得到 %d 次 keep=%+v",
+			host.autoPauses, host.autoKeep)
+	}
+	if len(host.skips) != 0 {
+		t.Fatalf("“正常提醒”不该记跳过，得到 %v", host.skips)
+	}
+	if n := s.StateCopy().ShortsSinceLong; n != 0 {
+		t.Fatalf("这次休息名额不该被消费，得到 %d", n)
+	}
+	s.mu.Lock()
+	keep := s.state.BreakWhilePaused
+	frozen := s.pauseFreezesClockLocked()
+	s.mu.Unlock()
+	if !keep || frozen {
+		t.Fatalf("应按真实时钟走完（BreakWhilePaused=%v 冻结=%v），否则窗口会挂到恢复为止", keep, frozen)
 	}
 }
 
-// 对照：手动暂停恢复仍按剩余平移 —— 用户主动按的暂停不吞他的倒计时进度。
-func TestManualPauseResumeKeepsCountdownProgress(t *testing.T) {
-	s, _ := newTestSched(t, shortCountdown)
+// 上面那次休息到点后照常收窗（暂停还在，但这次休息是“照常提醒”，该正常结束）。
+func TestAutoPauseRemindBreakClosesWhenDue(t *testing.T) {
+	s, host := newTestSched(t, `{"short":{"enabled":true,"mode":"countdown",`+
+		`"intervalMs":600000,"durationMs":20000,"pauseAction":"remind","slots":[]}}`)
 	s.replan()
+	s.startBreak()
+	s.Pause("勿扰")
+
+	// 把结束时刻拨到过去：模拟暂停里这 20 秒走完了
 	s.mu.Lock()
-	s.state.NextAt = nowMs() + 120_000
+	s.state.BreakEndsAt = nowMs() - breakCloseDwellMs - 1000
 	s.mu.Unlock()
+	s.onTick()
 
-	s.Pause("manual")
-	time.Sleep(50 * time.Millisecond)
-	s.Resume("manual")
+	if p := s.CurrentPhase(); p != "idle" {
+		t.Fatalf("休息到点应正常收窗，得到 phase=%q", p)
+	}
+	if host.closed == 0 {
+		t.Fatal("应关掉休息窗口")
+	}
+	if len(host.skips) != 0 {
+		t.Fatalf("走完的休息不该记跳过，得到 %v", host.skips)
+	}
+}
 
-	remain := s.RemainingMs()
-	if remain < 119_000 || remain > 121_000 {
-		t.Fatalf("手动暂停恢复应保留剩余约 120000 ms，得到 %d", remain)
+// 暂停里走完的那次休息排出的下一跳**已经是按真实时间算的**，恢复时不能再 +暂停时长。
+func TestResumeAfterKeptBreakDoesNotShiftNext(t *testing.T) {
+	s, _ := newTestSched(t, `{"short":{"enabled":true,"mode":"countdown",`+
+		`"intervalMs":600000,"durationMs":20000,"pauseAction":"remind","slots":[]}}`)
+	s.replan()
+	s.startBreak()
+	s.Pause("勿扰")
+
+	s.mu.Lock()
+	s.state.BreakEndsAt = nowMs() - breakCloseDwellMs - 1000
+	s.mu.Unlock()
+	// 同一毫秒内 replan 两次会算出同一个“现在 + 间隔”，被 consumed 当成同一跳过滤掉
+	//（真实场景不会一秒内开两次休息），这里错开 2 ms 让断言稳定
+	time.Sleep(2 * time.Millisecond)
+	s.onTick()
+	planned := s.StateCopy().NextAt
+	if planned == 0 {
+		t.Fatal("前置：休息结束后应排出下一跳")
+	}
+
+	time.Sleep(30 * time.Millisecond)
+	s.Resume("勿扰")
+
+	if got := s.StateCopy().NextAt; got != planned {
+		t.Fatalf("暂停期间重排过的下一跳不该再平移：want=%d got=%d（差 %d ms）",
+			planned, got, got-planned)
+	}
+}
+
+// 对照：配“跳过提醒”的休息遇到自动暂停照旧收窗、记一笔跳过 —— 只有“正常提醒”才放行。
+func TestAutoPauseSkipBreakStillCleared(t *testing.T) {
+	s, host := newTestSched(t, `{"short":{"enabled":true,"mode":"countdown",`+
+		`"intervalMs":600000,"durationMs":20000,"pauseAction":"skip","slots":[]}}`)
+	s.replan()
+	s.startBreak()
+
+	s.Pause("勿扰")
+
+	if p := s.CurrentPhase(); p != "idle" {
+		t.Fatalf("“跳过提醒”的休息应被收掉（phase=idle），得到 %q", p)
+	}
+	// 被收掉的那次休息仍要把归属交代出去（宿主按它查配置：skip → 收窗），
+	// 调度器这边已经落了账、也退回等待态
+	if host.autoKeep.BreakKind != "short" {
+		t.Fatalf("应把休息窗的归属（short）交给宿主，得到 %+v", host.autoKeep)
+	}
+	if len(host.skips) != 1 || host.skips[0] != "short" {
+		t.Fatalf("应记一次跳过，得到 %v", host.skips)
+	}
+	if n := s.StateCopy().ShortsSinceLong; n != 1 {
+		t.Fatalf("这次休息名额应被消费，得到 %d", n)
+	}
+}
+
+// ---------- B：恢复时按剩余平移（与暂停原因无关） ----------
+
+// 无论暂停原因是手动还是自动，恢复后内置倒计时都是从剩余时间接着走，不会白跑也不会重来。
+// 曾经自动原因会重锚到满间隔（“离开回来从头计时”），2026-11-12 起删掉：那一刻起
+// 到点过的那一跳由恢复后的第一拍按“暂停休息时”补上，重锚会把它一起抹掉。
+func TestPauseResumeKeepsCountdownProgress(t *testing.T) {
+	for _, reason := range []string{PauseReasonManual, "勿扰", PauseReasonIdle} {
+		s, _ := newTestSched(t, shortCountdown)
+		s.replan()
+		// 模拟“这一轮已经走了 8 分钟，还剩 2 分钟”
+		s.mu.Lock()
+		s.state.NextAt = nowMs() + 120_000
+		for i := range s.state.Lines {
+			if s.state.Lines[i].Source == "countdown" {
+				s.state.Lines[i].At = s.state.NextAt
+			}
+		}
+		if s.state.Rest != nil {
+			s.state.Rest.At = s.state.NextAt
+		}
+		s.mu.Unlock()
+
+		s.Pause(reason)
+		time.Sleep(20 * time.Millisecond)
+		s.Resume(reason)
+
+		remain := s.RemainingMs()
+		if remain < 119_000 || remain > 121_000 {
+			t.Fatalf("%s 恢复应保留剩余约 120000 ms（与手动暂停同构），得到 %d", reason, remain)
+		}
 	}
 }
 

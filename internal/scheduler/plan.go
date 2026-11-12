@@ -224,6 +224,11 @@ func (s *Scheduler) finishBreak() {
 	kind := s.state.NextType
 	s.state.BreakWhilePaused = false
 	s.advanceCounter(kind)
+	// 暂停中收的尾：下面 scheduleNext 排出的下一跳是按真实时间算的（锚点已经走到现在），
+	// 恢复时不能再跟着暂停时长平移，见 resume 的 countdown 分支。
+	if s.state.Paused {
+		s.pauseReplanned = true
+	}
 	s.mu.Unlock()
 
 	// break-end 的副作用：关休息窗口、空闲基准清零（空闲计时属下一步的“系统能力”）

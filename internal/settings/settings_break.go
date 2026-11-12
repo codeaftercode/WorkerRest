@@ -200,6 +200,23 @@ func (s *Settings) BreakByID(id string) (model.BreakConfig, bool) {
 	return model.BreakConfig{}, false
 }
 
+// BreakPauseRemind 某条休息自己的“暂停休息时”是不是选了“正常提醒”。
+//
+// 暂停时一扇提醒窗口留不留，判据只有这一条，而且必须按**那扇窗自己的提醒**去查：
+// 休息窗查它所属的那次休息，提前提示窗查它正在提示的那条提醒，自定义提醒查它自己那张卡。
+// 不认的身份（这条提醒已被删掉 / 身份为空）返回 false —— 说不清归属就按缺省的“推迟”办，
+// 不能靠猜把窗留着。
+func (s *Settings) BreakPauseRemind(id string) bool {
+	if id == "" {
+		return false
+	}
+	c, ok := s.BreakByID(id)
+	if !ok {
+		return false
+	}
+	return normPauseAction(c.PauseAction) == PauseActionRemind
+}
+
 // BreakNameByID 按身份取展示名；不认识的身份回落成“休息”
 func (s *Settings) BreakNameByID(id string) string {
 	for _, e := range s.BreakEntries() {

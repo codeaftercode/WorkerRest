@@ -38,6 +38,11 @@ type PreBreakInfo struct {
 	// 外卖预通知（倒计时指向“原定时刻”，动作走外卖记账，不经过调度器）。
 	// 渲染层不区分 owner（takeout 复用 custom 版式），仅主进程动作分发据此分流。
 	Owner string `json:"owner"`
+	// Kind 这扇窗提示的那条提醒的身份（"short" / "long" / "cb-…"；外卖预通知留空）。
+	// 暂停清场时按它判“这条提醒的『暂停休息时』是不是正常提醒”—— 判据必须落在窗自己的
+	// 归属上：暂停中照常弹出来的自定义提醒，其提示窗与调度器当下在等的那条不是同一个身份。
+	// 只在本进程内用，不下发给渲染层。
+	Kind string `json:"-"`
 	// Custom 自定义提醒：另一套版式（倒计时带名称、不显示两行说明、按钮改“…提醒”
 	// 且没有“暂停计时”）
 	Custom bool `json:"custom"`
@@ -109,6 +114,8 @@ func (a *App) currentPreBreakInfo() PreBreakInfo {
 // 所以中途计划漂移不会让标题 / 倒计时后缀跟着变（与 上一版的模块级 info 同口径）。
 func (a *App) rememberPreBreakInfo(kind string) PreBreakInfo {
 	info := a.preBreakInfoOfType(kind)
+	// 记下这扇窗自己的归属：暂停清场时按它查配置（见 App.OnAutoPause）
+	info.Kind = kind
 	a.mu.Lock()
 	a.preInfo = info
 	a.mu.Unlock()

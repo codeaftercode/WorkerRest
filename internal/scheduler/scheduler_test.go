@@ -44,18 +44,25 @@ type fakeHost struct {
 	postpones  []string
 	skips      []string
 	pp         *model.TakeoutPostponed
+	// autoKeep 最近一次 OnAutoPause 收到的在场窗口归属（“正常提醒”的窗该不该收）
+	autoKeep AutoPauseKeep
+	// pauseKeepPre 最近一次 OnPaused 收到的提示窗归属（手动暂停时提前提示窗留不留的兜底身份）
+	pauseKeepPre string
 	// gated 外卖“到点了、还在等空闲”的那一笔（状态卡汇总用）
 	gated *model.TakeoutIdleWait
 	// idleMs 系统级“连续无输入”读数的假值（空闲门测试用；0 = 人一直在敲键盘）
 	idleMs int64
 }
 
-func (h *fakeHost) CfgSnapshot() *settings.Settings                   { return h.cfg }
-func (h *fakeHost) IdleMs() int64                                     { return h.idleMs }
-func (h *fakeHost) OnSchedulerState()                                 { h.states++ }
-func (h *fakeHost) OnPreNotify(kind string, _ int64)                  { h.pre = append(h.pre, kind) }
-func (h *fakeHost) OnPaused()                                         { h.pauses++ }
-func (h *fakeHost) OnAutoPause()                                      { h.autoPauses++ }
+func (h *fakeHost) CfgSnapshot() *settings.Settings  { return h.cfg }
+func (h *fakeHost) IdleMs() int64                    { return h.idleMs }
+func (h *fakeHost) OnSchedulerState()                { h.states++ }
+func (h *fakeHost) OnPreNotify(kind string, _ int64) { h.pre = append(h.pre, kind) }
+func (h *fakeHost) OnPaused(preKind string)          { h.pauses++; h.pauseKeepPre = preKind }
+func (h *fakeHost) OnAutoPause(keep AutoPauseKeep) {
+	h.autoPauses++
+	h.autoKeep = keep
+}
 func (h *fakeHost) ClosePreBreak()                                    {}
 func (h *fakeHost) CloseBreakWindows()                                { h.closed++ }
 func (h *fakeHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }

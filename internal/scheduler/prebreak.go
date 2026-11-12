@@ -12,7 +12,8 @@ import (
 // preBreakWanted 右下角“提前提示窗”此刻是否该在场 —— 唯一判据。
 //
 // 窗口是**状态的影子**，不是一次性的弹窗：计划一旦离开提前区间（被重锚、推迟、
-// 跳过、暂停、到点开始休息、目标提醒被关闭），窗口就必须消失。此前关窗散落在
+// 跳过、到点开始休息、目标提醒被关闭），窗口就必须消失。唯一不消失的原因是它那条提醒
+// 自己的“暂停休息时”是“正常提醒” —— 照常提醒的窗不该被一次暂停收掉（见 AutoPauseKeep）。此前关窗散落在
 // onPaused / scheduleNext / PreBreakAction 各处，谁漏一处，窗口就带着**新一轮的整段
 // 倒计时**留在屏幕上 —— 用户看到的就是“还有 1200 秒（= 整个间隔）就弹出提前通知”。
 //
@@ -22,12 +23,19 @@ func (s *Scheduler) PreBreakWanted() bool {
 	s.mu.Lock()
 	phase, paused, nextAt, nextType := s.state.Phase, s.state.Paused, s.state.NextAt, s.state.NextType
 	s.mu.Unlock()
-	if paused || phase != "pre" || nextAt == 0 {
+	if phase != "pre" || nextAt == 0 {
 		return false
 	}
 	// cfgSnapshot 要加 App.mu：必须在放开 Scheduler.mu 之后再取（锁序铁律）
 	c, ok := s.host.CfgSnapshot().BreakByID(nextType)
 	if !ok || !c.Enabled || c.NotifyBeforeMs <= 0 {
+		return false
+	}
+	// 暂停期间：只有“暂停休息时 = 正常提醒”的那条才留在屏幕上 —— 进入暂停那一刻按这条
+	// 规则决定收不收（clearForAutoPause / Pause），此后窗口每 500ms 的自愈轮询
+	//（PreBreakState → PreBreakWanted）也得照同一条规则判，否则它 500ms 后自己把窗收掉。
+	// 暂停中窗口显示“已暂停 / --”（见 prebreak.js），恢复后继续照常倒数。
+	if paused && pauseDisposition(c) != settings.PauseActionRemind {
 		return false
 	}
 	remain := nextAt - nowMs()
@@ -49,6 +57,8 @@ func (s *Scheduler) syncPreBreakWindow() {
 //   - 暂停期间照常弹出的自定义提醒（pausedFire）—— 它本来就在正常计时；
 //   - 暂停开始之后用户主动“立即休息”发起的内置休息 —— 若也冻结，onTick 的暂停分支
 //     永远不会判到点，休息窗口挂到用户恢复暂停为止（短休息也会变成永久窗口）。
+//   - 自动暂停闯进来时正在进行的、且自己配了“正常提醒”的休息 —— 它该照常走完
+//     （clearForAutoPause 立起 BreakWhilePaused，与上一条同路）。
 func (s *Scheduler) pauseFreezesClockLocked() bool {
 	st := &s.state
 	if !st.Paused {

@@ -3,6 +3,7 @@ package main
 import (
 	"log"
 	"workerrest/internal/model"
+	"workerrest/internal/scheduler"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
@@ -101,57 +102,119 @@ func (a *App) OnPreNotify(kind string, notifyBeforeMs int64) {
 // 只收调度器自己那扇窗（closePreBreak）：外卖预通知共用同一窗口但归外卖模块管 ——
 // “暂停休息”不等于“暂停外卖”，外卖按自己的 pauseAction 决定照常/推迟/跳过，
 // 无条件关窗会让“照常提醒”那条配置在暂停时静默失效。
-func (a *App) OnPaused() {
-	a.ClosePreBreak()
-}
-
-// OnAutoPause 自动原因（空闲 / 勿扰 / 全屏 / 投屏 / 应用占用）进入暂停：把所有提醒窗口
-// 立刻收掉 —— 休息窗、提前提示窗、外卖提醒窗、外卖预通知，一个不留。
 //
-// 与 OnPaused 刻意不同：手动暂停是用户自己按的，外卖按自己的 pauseAction 决定照常 / 推迟 /
-// 跳过，休息窗也继续挂着走完；自动暂停是软件判定“他现在不该被打断”，那就不该有任何一扇窗
-// 留在屏幕上，也不该攒着等恢复再弹。所以这里不看外卖的配置，直接连外卖窗一起收。
+// keepPre 为真时连自己那扇也不收：那条提醒的“暂停休息时”是“正常提醒”，照常提醒的窗
+// 不该被一次暂停收掉（用户口径，见 scheduler.AutoPauseKeep）。窗口会以“已暂停”显示，
+// 恢复后继续倒数。
 //
-// 记账分工：被打断的那次休息由调度器记“跳过”（它知道休息身份与时长）；这里只负责关窗，
-// 且**不记** break-end、不播结束提示音 —— 休息不是走完的，也不是用户点的结束。
-func (a *App) OnAutoPause() {
-	// 提前提示窗：外卖预通知与调度器的提示窗是同一个窗口，自动暂停时不再区分 owner。
-	// 关窗后连 owner 一起清掉 —— 留着一个 "takeout" 会让后续 ClosePreBreak 误判成
-	// “这扇窗归外卖管”而跳过关闭，残留状态还会让 PreBreakState 读到已失效的倒计时。
+// preKind 只是兜底：判据看的是**这扇窗自己**提示的那条提醒（a.preInfo.Kind）——
+// 暂停中照常弹出的自定义提醒，其提示窗与“调度器此刻在等的那条”未必是同一个身份。
+func (a *App) OnPaused(preKind string) {
+	a.mu.Lock()
+	kind, takeoutOwned := a.preInfo.Kind, a.preInfo.Owner == "takeout"
+	a.mu.Unlock()
+	// 外卖预通知共用同一扇窗但归外卖模块管，这条路径不收（“暂停休息”不等于“暂停外卖”）
+	if takeoutOwned {
+		return
+	}
+	if kind == "" {
+		kind = preKind
+	}
+	if a.pauseKeepsWindow(kind) {
+		return
+	}
 	a.closePreBreakWindow()
+	// 窗收了，记住的内容也一并作废：留着一份“上次提示的是谁”只会让后续读取
+	// （PreBreakState / 动作分发）拿到一扇已经不在场的窗的状态。
 	a.mu.Lock()
 	a.preInfo = PreBreakInfo{}
 	a.preTargetAt = 0
 	a.mu.Unlock()
+}
+
+// pauseKeepsWindow 这条提醒自己的“暂停休息时”是不是“正常提醒”（它此刻的窗口留不留）。
+// 判据只有这一条，且必须按**那扇窗自己的归属**去查 —— 不按“调度器此刻在等哪条”一刀切。
+func (a *App) pauseKeepsWindow(kind string) bool {
+	return a.CfgSnapshot().BreakPauseRemind(kind)
+}
+
+// OnAutoPause 自动原因（空闲 / 勿扰 / 全屏 / 投屏 / 应用占用）进入暂停：把**此刻正显示在
+// 屏幕上**的提醒窗口收掉 —— 提前提示窗、外卖提醒窗、外卖预通知，以及休息窗。
+//
+// 留不留只看那扇窗所属提醒自己的“暂停休息时”：选了“正常提醒”就不收 —— 照常提醒的窗
+// 不该被一次暂停收掉，收掉等于把配置偷偷降级。**每扇窗按它自己的归属查**（见
+// pauseKeepsWindow）：提示窗用它自己提示的那条（a.preInfo.Kind，外卖预通知归外卖卡），
+// 休息窗用它所属会话的那次休息（a.sess.Type）；keep 里的身份只在这扇窗没带身份时兜底。
+// 与 OnPaused 的区别只在“进入的那一刻”：手动暂停只收提前提示窗，休息窗继续冻结挂着；
+// 自动暂停默认把在场窗口全收掉（暂停原因不参与判断）。
+// **只作用于进入瞬间已经在场的窗口**：暂停期间到点的新提醒一律按各自“暂停休息时”的处置走
+// （照常提醒就会照常弹出来，与暂停原因无关，见 scheduler 的 onTick paused 分支）。
+//
+// 记账分工：被打断的那次休息由调度器记“跳过”（它知道休息身份与时长）；这里只负责关窗，
+// 且**不记** break-end、不播结束提示音 —— 休息不是走完的，也不是用户点的结束。
+func (a *App) OnAutoPause(keep scheduler.AutoPauseKeep) {
+	// 提前提示窗：外卖预通知与调度器的提示窗是同一个窗口，所以留不留要按它自己的归属判 ——
+	// 外卖预通知看外卖那份配置，休息 / 自定义提醒看那扇窗自己提示的那条（preInfo.Kind；
+	// 老会话 / 单测构造没带身份时才退回 keep.PreKind）。
+	// 收窗后连 owner 一起清掉 —— 留着一个 "takeout" 会让后续 ClosePreBreak 误判成
+	// “这扇窗归外卖管”而跳过关闭，残留状态还会让 PreBreakState 读到已失效的倒计时。
+	a.mu.Lock()
+	preOwner, preKind := a.preInfo.Owner, a.preInfo.Kind
+	a.mu.Unlock()
+	if preKind == "" {
+		preKind = keep.PreKind
+	}
+	keepPre := keep.Takeout
+	if preOwner != "takeout" {
+		keepPre = a.pauseKeepsWindow(preKind)
+	}
+	if !keepPre {
+		a.closePreBreakWindow()
+		a.mu.Lock()
+		a.preInfo = PreBreakInfo{}
+		a.preTargetAt = 0
+		a.mu.Unlock()
+	}
 
 	// 外卖：窗口在场就关掉并记一次“取消”；推迟线一并作废（恢复后不补弹）。
-	// 到点那一刻的跳过由 checkTakeoutReminders 的自动暂停分支负责，两处不重叠。
+	// 这是“进入暂停那一刻的在场窗口”，与暂停期间到点的那批互不重叠 —— 后者由
+	// checkTakeoutReminders 按外卖自己的“暂停休息时”处置。
 	// 预览窗不记账：用户只是点了一眼预览，不该算进外卖报表的取消次数。
+	// “正常提醒”时窗与推迟线都留着（keep.Takeout）—— 照常提醒就是照常。
 	a.mu.Lock()
 	hadTakeoutWin := len(a.takeoutWins) > 0
 	takeoutPreview := a.takeoutCurrent != nil && a.takeoutCurrent.Preview
 	hadTakeoutPostponed := a.takeoutPostponed != nil
-	a.takeoutPostponed = nil
+	if !keep.Takeout {
+		a.takeoutPostponed = nil
+	}
 	a.mu.Unlock()
-	if hadTakeoutWin {
+	if hadTakeoutWin && !keep.Takeout {
 		a.closeTakeoutWindowsOpt(true)
 		if !takeoutPreview {
 			a.statsStore().RecordTakeoutAction("skip")
 		}
 	}
-	if hadTakeoutPostponed {
+	if hadTakeoutPostponed && !keep.Takeout {
 		a.statsStore().RecordTakeoutAction("skip")
 	}
 
-	// 休息窗：静默关、不记 break-end（统计由调度器按“跳过”记）
+	// 休息窗：静默关、不记 break-end（统计由调度器按“跳过”记）。
+	// 留不留看**这次休息自己**的配置（a.sess.Type 就是窗所属会话的休息身份）——
+	// 配了“正常提醒”就留着，按真实时钟走完。
 	a.mu.Lock()
 	hadBreak := len(a.breakWins) > 0 || a.sess != nil
+	breakKind := keep.BreakKind
+	if a.sess != nil && a.sess.Type != "" {
+		breakKind = a.sess.Type
+	}
 	a.mu.Unlock()
-	if hadBreak {
+	keepBreak := a.pauseKeepsWindow(breakKind)
+	if hadBreak && !keepBreak {
 		a.closeBreakWindowsOpt(true, false)
 	}
-	log.Printf("[autoPause] 自动暂停：收掉全部提醒窗口（休息=%v 外卖=%v 外卖推迟=%v）",
-		hadBreak, hadTakeoutWin, hadTakeoutPostponed)
+	log.Printf("[autoPause] 自动暂停：在场提醒窗口处理（休息=%v 休息归属=%q 保留休息=%v 外卖=%v 外卖推迟=%v 保留外卖=%v 提前提示归属=%q 保留提前提示=%v）",
+		hadBreak, breakKind, keepBreak, hadTakeoutWin, hadTakeoutPostponed, keep.Takeout, preKind, keepPre)
 }
 
 // ClosePreBreak 调度器重排时关掉残留的提前提示窗（对应 scheduler.Host.ClosePreBreak）。
