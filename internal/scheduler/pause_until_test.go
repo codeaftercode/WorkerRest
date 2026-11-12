@@ -8,7 +8,8 @@ import (
 // 定时手动暂停（PauseUntil）的三条不变量：
 //   一、到期时刻随状态走，前端 / 托盘 / 诊断页都能读到；
 //   二、改时长不重置 PausedAt —— 把 1 小时改成 2 小时，已经过去的那段不该从头算；
-//   三、恢复时清掉到期时刻，且按“离开”口径重锚（与无限手动暂停的平移刻意不同）。
+//   三、恢复时清掉到期时刻，倒计时也不重锚（2026-11-12 用户口径：暂停不影响倒计时，
+//      恢复时自然也不需要补偿）。
 
 func TestPauseUntilSetsDeadline(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
@@ -62,11 +63,10 @@ func TestResumeClearsPauseDeadline(t *testing.T) {
 	}
 }
 
-// 定时暂停恢复时重锚内置倒计时。
-//
-// 跨夜场景是这条判据的由来：晚上设“到明天”、零点前几分钟合盖睡觉，空闲检测还
-// 没挂上就到了期；不重锚的话第二天开机会接着昨夜冻结的剩余时间走，几分钟后就弹。
-func TestTimedPauseResumeReanchorsCountdown(t *testing.T) {
+// 定时暂停到期恢复**不再重锚**（2026-11-12 用户口径：暂停不影响倒计时，恢复时也不需要
+// 补偿）。以前这里按“离开”口径重锚成满间隔 —— 那条口径的前提是“暂停期间时钟冻结”，
+// 现在暂停期间照常计时，重锚反而会把已经走过的时间白送回去。
+func TestTimedPauseResumeNoReanchor(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
 	// 模拟“这一轮只剩 2 分钟”
@@ -87,8 +87,8 @@ func TestTimedPauseResumeReanchorsCountdown(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 	s.Resume(PauseReasonManual)
 
-	if remain := s.RemainingMs(); remain < 599_000 || remain > 600_100 {
-		t.Fatalf("定时暂停恢复应重锚到满间隔 600000 ms，得到 %d（按剩余 120000 平移是无限手动暂停的口径）", remain)
+	if remain := s.RemainingMs(); remain < 118_500 || remain > 120_500 {
+		t.Fatalf("定时暂停恢复应保留剩余约 120000 ms（不再重锚），得到 %d", remain)
 	}
 }
 

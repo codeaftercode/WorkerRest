@@ -886,12 +886,12 @@ func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
 // “离开恰好从提前提示区间里开始”时，回来不该先弹一个提示窗再被重锚收掉。
 //
 // 时序：倒计时剩 2.9 秒时弹出提前提示窗 → 用户此刻离开 → 5 分钟后回来。
-// 恢复会把 NextAt 按暂停时长整体平移（仍在原来的提前区间内），于是旧实现会调一次
-// OnPreNotify 弹出提示窗，紧接着 ReanchorCountdown 把 NextAt 推到“现在 + 整个间隔”
-// 又把窗收掉 —— 用户看到右下角闪一下。空闲链路改用 ResumeQuiet 后不再弹。
+// 恢复那一刻若仍落在提前区间内就会弹提示窗，而空闲链路紧接着 ReanchorCountdown 把 NextAt
+// 推到“现在 + 整个间隔”，窗又被收掉 —— 用户看到右下角闪一下。空闲链路改用 ResumeQuiet
+// 后不再弹。
 //
-// 对照组故意直接调公开的 Resume（= 旧实现那一条），证明差别来自这一次调用，
-// 而不是“这个场景本身弹不出来”。
+// 对照组故意直接调公开的 Resume（不静默，恢复后仍落在提前区间 → 弹一次），证明差别来自
+// 这一次调用，而不是“这个场景本身弹不出来”。
 func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
 	// 4 秒一次短休息、提前 3 秒提示：提前区间 = [t0+1s, t0+4s]
 	const tight = `{"short":{"enabled":true,"mode":"countdown","intervalMs":4000,"durationMs":2000,` +

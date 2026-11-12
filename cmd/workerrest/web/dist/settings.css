@@ -2378,8 +2378,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .card-fold { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border: none; border-radius: 50%; background: none; font-size: 12px; font-family: inherit; line-height: 1; color: var(--text-2); cursor: pointer; transition: transform 0.15s, background 0.12s, color 0.12s; margin: 0 3px 0 -9px; }
 .card-head:hover .card-fold, .tl-head:hover .card-fold { background: rgba(128, 128, 128, 0.18); color: var(--text); }
 .foldable.closed .card-fold, .tl-card:not(.open) .card-fold { transform: rotate(-90deg); }
-.tl-badge { font-size: 11px; border-radius: 999px; padding: 1px 8px; }
-.tl-badge.pause { color: #b45309; border: 1px solid currentColor; }
+
+/* 曾经的 .tl-badge 只服务时间线上的“已暂停”徽章；2026-11-12 暂停不再冻钟、
+   倒计时照真实墙钟走，时间线里已没有“暂停中”这个概念，徽章与样式一并删除。 */
 
 /* ---------------- 滚动条：设置窗口内所有横 / 竖向滚动容器统一细圆角样式 ----------------
    覆盖：#content（页面竖向）、.table-scroll（统计表横向）、.msg-list（提醒内容列表）、

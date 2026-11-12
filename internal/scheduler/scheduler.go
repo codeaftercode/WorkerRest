@@ -3,7 +3,7 @@
 //
 // 它持有状态（倒计时锚点、跳过集合、暂停时刻）并加锁，但**不直接操作窗口**：所有
 // 需要界面动作的时刻都以回调/返回值交给 cmd 层执行，这样状态机可以在无 GUI 的测试里
-// 把跨天、暂停冻结、提前线这些场景跑完。
+// 把跨天、暂停处置、提前线这些场景跑完。
 package scheduler
 
 import (
@@ -23,9 +23,10 @@ type Host interface {
 	CfgSnapshot() *settings.Settings
 	OnSchedulerState()
 	OnPreNotify(kind string, notifyBeforeMs int64)
-	// OnPaused 手动暂停（用户自己按的）进入暂停：收掉提前提示窗（休息窗不动，继续冻结
-	// 挂着走完）。preKind 是调度器这边在提示的那条提醒的身份，只在该窗自己没带身份时
-	// 兜底 —— 留不留由宿主按窗自己的归属判，见 AutoPauseKeep 的说明。
+	// OnPaused 手动暂停（用户自己按的）进入暂停：收掉提前提示窗；正在进行的休息按它自己
+	// 卡里的“暂停休息时”处置（推迟 → 剩余时间冻结挂着；正常提醒 → 照常走完；跳过 → 就此
+	// 结束，见 pauseRunningBreak）。preKind 是调度器这边在提示的那条提醒的身份，只在该窗
+	// 自己没带身份时兜底 —— 留不留由宿主按窗自己的归属判，见 AutoPauseKeep 的说明。
 	OnPaused(preKind string)
 	// IdleMs 系统级“鼠标键盘连续无活动”时长（毫秒）：空闲门（等用户离开工位才提醒）
 	// 的唯一读数。读不到系统输入 tick 的机器上恒为 0 —— 那种机器上空闲门永远不达标，
@@ -106,17 +107,9 @@ type Scheduler struct {
 	// 到点怎么办只看各卡的“暂停休息时”（2026-11-12 口径）。
 	pauseHadAuto bool
 	// pauseTimed 这一段暂停是**定时**手动暂停（PauseUntil 设过到期时刻）。
-	// 恢复时也按“离开”口径重锚：定时暂停表达的是“接下来一段时间我不工作”，
-	// 回来重新计一个完整周期才合理。更要紧的是跨夜场景 —— 晚上设“到明天”、
-	// 零点前几分钟合盖睡觉，空闲检测还没来得及挂上就到了期；不重锚的话，第二天
-	// 开机会接着昨夜冻结的剩余时间走，几分钟后就弹“该休息了”。
+	// 恢复时它不再触发任何重锚（2026-11-12 用户口径：暂停不影响倒计时，恢复时也不需要
+	// 补偿）；保留这个字段只为在恢复那一刻把自己清零，别让上一段的痕迹带到下一段。
 	pauseTimed bool
-	// pauseReplanned 这一段暂停里有一条计划被**按真实时间**重排过（finishBreak 排的下一跳）。
-	// 恢复时它不该再跟着暂停时长平移：那条时刻本来就是按恢复后仍然成立的“现在”算出来的，
-	// 再 +delta 等于把下一次休息白推一个暂停时长。
-	// 典型来源：配“正常提醒”的休息在暂停里照常走完（2026-11-12 口径），以及暂停期间
-	// 照常弹出的自定义提醒走完。恢复那一刻取用并清零。
-	pauseReplanned bool
 	// idleWait 正在等空闲的那一跳（见 idleGate.go）。nil = 没有在等。
 	idleWait *idleWait
 
@@ -245,7 +238,7 @@ const tickJumpThresholdMs = 60_000
 func (s *Scheduler) onTick() {
 	// 时间大跳：这一跳不判任何“到点”——睡眠期间过期的倒计时不该在醒来第一刻补弹，
 	// 统一重排（内置 / 自定义倒计时从头计时，固定线顺延到下一个时刻）。
-	// 暂停中也重排：冻结锚点由 prevCountdownAnchorsLocked 保住，不会被清掉。
+	// 暂停中也重排：暂停不冻钟，重排按真实墙钟重新起算，正好是“醒来不再欠着几次休息”。
 	tickNow := nowMs()
 	s.mu.Lock()
 	last := s.lastTickAt
@@ -278,7 +271,8 @@ func (s *Scheduler) onTick() {
 			// 少这一条，内置休息窗口会一直挂到用户恢复暂停为止。
 			// 配“正常提醒”的休息碰上进来的自动暂停也一样：clearForAutoPause 把
 			// BreakWhilePaused 立起来，它继续按真实时钟走，到点在这里收窗。
-			// 其余“暂停前就在进行的短 / 长休息”保持冻结（恢复时整体平移）。
+			// 其余“暂停前就在进行的短 / 长休息”按它自己的“暂停休息时”＝推迟办了：
+			// 剩余时间冻结（pauseFreezesClockLocked），恢复后接着走完 —— 所以这里不收窗。
 			if breakDue && !clockFrozen {
 				s.finishBreak()
 			}
@@ -397,8 +391,8 @@ func (s *Scheduler) onTick() {
 //
 // 两条触发线的“到点”判定：
 //   - 固定时刻线：按分钟匹配（isTimeSlotDue），暂停期间每个到点的时刻各记一次；
-//   - 倒计时线：挂起线代表那一跳，At 已过就是到点了。暂停期间计划被冻结（不再往后排），
-//     所以同一段暂停最多记这一跳。
+//   - 倒计时线：挂起线代表那一跳，At 已过就是到点了。暂停不冻钟，所以重排会把过期的
+//     那一跳换成 now+interval（而不是原来那一跳）—— 这一跳因此只能被处置一次。
 //
 // 去重键是 occurrenceKey：暂停态每半秒一跳都会重算一次，没有去重会重复记账。
 func (s *Scheduler) pausedSkip() {
@@ -410,10 +404,10 @@ func (s *Scheduler) pausedSkip() {
 		skipMs int64
 	}
 	var hits []hit
-	// 内置：一种身份在这一段暂停里只记一笔（固定时刻表里同一分钟有两个条目时
+	// 一种身份在这一段暂停里只记一笔（固定时刻表里同一分钟有两个条目时
 	// 不能让短休息计数跳两格），并且要重排一次计划
 	handled := map[string]bool{}
-	builtinSkipped := false
+	skipped := false
 	s.mu.Lock()
 	for _, e := range cfg.BreakEntries() {
 		if !e.Config.Enabled {
@@ -426,26 +420,26 @@ func (s *Scheduler) pausedSkip() {
 		if pauseDisposition(e.Config) != settings.PauseActionSkip {
 			continue
 		}
-		// 记账（内置还要消费这一跳、推进计数）；调用方已持锁
+		// 记账（消费这一跳、推进计数）；调用方已持锁
 		note := func(key string) {
 			s.pauseSkipped[key] = true
-			if builtin {
-				s.consumed[key] = true
-				// 顺手把挂起线里这一条摘掉：replan 一进来就会按“已过去”修剪 consumed，
-				// 而那之后收集冻结锚点时又认不出“这一跳已经跳过” —— 锚点会被原样沿用来，
-				// 恢复后照样弹（跳过等于没跳）。摘掉它就是真的过去了。
-				keep := make([]model.PlannedBreak, 0, len(s.state.Lines))
-				for _, l := range s.state.Lines {
-					if l.Type == e.ID && l.At <= now {
-						continue
-					}
-					keep = append(keep, l)
+			// 这一跳真的用掉了：内置与自定义同口径，都要消费 + 摘掉挂起线。
+			// 只记 pauseSkipped 不消费的话，replan 会沿着旧锚点把这一跳排回来
+			//（跳过等于没跳），侧栏也会一直停在 0:00。
+			s.consumed[key] = true
+			keep := make([]model.PlannedBreak, 0, len(s.state.Lines))
+			for _, l := range s.state.Lines {
+				if l.Type == e.ID && l.At <= now {
+					continue
 				}
-				s.state.Lines = keep
-				s.advanceCounter(e.ID)
-				handled[e.ID] = true
-				builtinSkipped = true
+				keep = append(keep, l)
 			}
+			s.state.Lines = keep
+			if builtin {
+				s.advanceCounter(e.ID)
+			}
+			handled[e.ID] = true
+			skipped = true
 			hits = append(hits, hit{id: e.ID, name: e.Name, skipMs: e.Config.DurationMs})
 		}
 		if e.Config.Mode == "fixed" {
@@ -483,8 +477,8 @@ func (s *Scheduler) pausedSkip() {
 		log.Printf("[scheduler] 暂停休息期间 %s 到点，按跳过处理（%d ms）", h.name, h.skipMs)
 		s.host.OnBreakSkipped(h.id, h.skipMs)
 	}
-	if builtinSkipped {
-		// 内置这一跳已经用掉：重排。倒计时线的锚点见了 consumed 会按新间隔重新起算，
+	if skipped {
+		// 这一跳已经用掉：重排。倒计时线的锚点见了 consumed 会按新间隔重新起算，
 		// 固定时刻线则顺到下一个还没到的时刻（都在 scheduleNext → replan 里完成）。
 		s.scheduleNext()
 	}
@@ -537,9 +531,10 @@ func (s *Scheduler) pausedFire() {
 					}
 					continue
 				}
-				// 提前提示线只给自定义提醒：内置短 / 长休息的剩余时间在暂停里是冻结的，
-				// 提前提示小窗上的倒计时会停在原地（看起来像卡死），也没法用“还剩几秒”
-				// 表达“恢复后才开始”。直接等真窗落下来更诚实。
+				// 提前提示线只给自定义提醒。内置短 / 长休息在暂停里到点会按卡处置弹真窗
+				// （见下面的倒计时分支），再补一个“还剩 N 秒”的小窗等于同一件事说两遍；
+				// 而且小窗上的“现在 / 推迟 / 跳过”与暂停处置是两套口径，摆在一起容易点错。
+				// 直接等真窗落下来更干净。
 				if builtin {
 					continue
 				}
@@ -555,8 +550,8 @@ func (s *Scheduler) pausedFire() {
 			}
 			continue
 		}
-		// 倒计时线：挂起线里这条身份最早的一跳已过点即触发（暂停期间计划被冻结、
-		// 恢复时才整体平移，所以这里认的就是“本来该提醒的那一刻”）。
+		// 倒计时线：挂起线里这条身份最早的一跳已过点即触发（暂停不冻钟，At 就是它
+		// 本该提醒的那一刻）。
 		for _, l := range s.state.Lines {
 			if l.Type != e.ID || l.Source != "countdown" || l.At > now {
 				continue
@@ -600,32 +595,45 @@ func pauseDisposition(c model.BreakConfig) string {
 	return settings.PauseActionPostpone
 }
 
-// pausedPostpone 暂停期间的“推迟提醒”：到点不弹窗，按该提醒的“推迟时长”
-// 把弹出时间往后推；推完再到期时若仍在暂停休息状态，就继续往后推，如此往复。
-// 推迟不是吞掉：恢复后由 flushPostponed 在推迟后的时刻弹出。
+// pausedPostpone 暂停期间的“推迟提醒”：到点不弹窗，把弹出时间往后推一个“推迟时长”；
+// 推完再到期时若仍在暂停休息状态，就继续往后推，如此往复。推迟不是吞掉：推后的时刻
+// 到了照样按处置走（仍暂停 → 再推；恢复后 → 弹窗）。
 //
-// 内置短 / 长休息分两种：
-//   - 倒计时线**不排**推迟计划：它的“推迟”本来就有现成实现 —— 暂停期间时钟冻结，
-//     恢复时整体平移（手动暂停）或按“离开”口径重锚（自动暂停），这一跳自然落到恢复
-//     之后。再往 postponed 表里塞一份，会和那条冻结线各弹一次（恢复后接连弹两个休息窗）。
-//   - 固定时刻线要排：时刻是绝对的，暂停期间过了就是过了，恢复时 replan 只会顺到下一个
-//     还没到的时刻 —— 不排就等于“跳过”，与用户选的“推迟提醒”不符。
+// 暂停不再冻结时钟（2026-11-12 用户口径：倒计时不要停），所以“推迟”必须真的改计划，
+// 否则侧栏会停在 0:00：
+//   - 倒计时线（内置与自定义同口径）：把挂起线的 At 挪到 now + 推迟时长，再重排一次，
+//     NextAt 与状态卡跟着走。曾经内置倒计时线**不排**推迟计划 —— 那时时钟冻结、恢复时
+//     整体平移就等于推迟；现在时钟不停，不挪就是“到点作废”。
+//   - 固定时刻线：时刻是绝对的（12:00 就是 12:00），挪不了配置。记一笔 postponed（dueAt），
+//     状态卡的倒计时格由 applyPostponedRefsLocked 显示 dueAt；到点仍暂停就再往后延。
 func (s *Scheduler) pausedPostpone() {
 	cfg := s.host.CfgSnapshot()
 	now := nowMs()
 	type note struct {
-		name  string
-		due   int64
-		again bool
+		name    string
+		due     int64
+		again   bool
+		skipped bool
 	}
 	var notes []note
+	type skippedBreak struct {
+		id string
+		ms int64
+	}
+	var skipped []skippedBreak
+	moved := false
+	nameOf := func(id string) string {
+		for _, e := range cfg.BreakEntries() {
+			if e.ID == id {
+				return e.Name
+			}
+		}
+		return id
+	}
 	s.mu.Lock()
 	for _, e := range cfg.BreakEntries() {
 		cc := e.Config
 		if !cc.Enabled || pauseDisposition(cc) != settings.PauseActionPostpone {
-			continue
-		}
-		if isBuiltinBreakID(e.ID) && cc.Mode != "fixed" {
 			continue
 		}
 		push := func(at int64) {
@@ -647,27 +655,92 @@ func (s *Scheduler) pausedPostpone() {
 				if !plan.IsTimeSlotDue(slot, now, 0) {
 					continue
 				}
-				push(plan.SlotAlertAt(slot, 0, now))
+				at := plan.SlotAlertAt(slot, 0, now)
+				key := plan.OccurrenceKey(e.ID, at)
+				// 推迟后的时刻碰上 / 越过列表里的下一次：这一班不再单独弹，跳过它、
+				// 让下一班按自己的时刻来（与“推迟”按钮同一口径，见 Postpone）。
+				// 消费掉这一班，时刻表才会顺延到下一班，否则它下个 tick 又“到期”。
+				if next, ok := plan.NextSlotAt(cc.Slots, at); ok && at+cc.PostponeMs >= next.At {
+					if !s.consumed[key] {
+						s.consumed[key] = true
+						s.advanceCounter(e.ID)
+						skipped = append(skipped, skippedBreak{id: e.ID, ms: cc.DurationMs})
+						notes = append(notes, note{name: e.Name, due: next.At, skipped: true})
+					}
+					delete(s.postponed, key)
+					continue
+				}
+				push(at)
 			}
 			continue
 		}
-		// 倒计时线：挂起线里这一跳已过点即算到点（暂停期间计划冻结，就是那一跳）
-		for _, l := range s.state.Lines {
+		// 倒计时线：挂起线里这一跳已过点即算到点，把它的 At 挪到推迟之后
+		for i := range s.state.Lines {
+			l := &s.state.Lines[i]
 			if l.Type != e.ID || l.Source != "countdown" || l.At > now {
 				continue
 			}
-			push(l.At)
+			l.At = now + cc.PostponeMs
+			moved = true
+			notes = append(notes, note{name: e.Name, due: l.At})
 		}
 	}
+	// 已经挂着的待办到点了、仍在暂停：按卡片继续往后推（“推完还暂停就继续推”）。
+	// 没有这一段，待办只在恢复后才被 flushPostponed 弹出 —— 暂停期间到点的那次推迟
+	// 等于“到点不办、等恢复”，与“到点按处置办”不一致。
+	for key, p := range s.postponed {
+		if p.dueAt > now {
+			continue
+		}
+		cc, ok := cfg.BreakByID(p.kind)
+		if !ok || !cc.Enabled {
+			delete(s.postponed, key)
+			continue
+		}
+		if pauseDisposition(cc) != settings.PauseActionPostpone {
+			// 卡片在推迟期间改成了别的处置：留给 flushPostponed 按新设置办
+			continue
+		}
+		if cc.PostponeMs <= 0 {
+			delete(s.postponed, key)
+			continue
+		}
+		due := p.dueAt + cc.PostponeMs
+		if next, ok := plan.NextSlotAt(cc.Slots, p.at); ok && due >= next.At {
+			// 再推就越过下一班：跳过本次（与“推迟”按钮同一口径）
+			delete(s.postponed, key)
+			s.consumed[plan.OccurrenceKey(p.kind, p.at)] = true
+			s.advanceCounter(p.kind)
+			skipped = append(skipped, skippedBreak{id: p.kind, ms: cc.DurationMs})
+			notes = append(notes, note{name: nameOf(p.kind), due: next.At, skipped: true})
+			continue
+		}
+		p.dueAt = due
+		notes = append(notes, note{name: nameOf(p.kind), due: due, again: true})
+	}
 	s.mu.Unlock()
+	if len(notes) == 0 && !moved {
+		return
+	}
 	for _, n := range notes {
 		at := time.UnixMilli(n.due).Format("15:04:05")
+		if n.skipped {
+			log.Printf("[scheduler] 暂停休息期间 %s 到点，推迟后不早于下一次固定时刻：跳过本次，按 %s 计", n.name, at)
+			continue
+		}
 		if n.again {
 			log.Printf("[scheduler] 暂停休息期间 %s 推迟后再次到点，继续推迟到 %s", n.name, at)
 			continue
 		}
 		log.Printf("[scheduler] 暂停休息期间 %s 到点，推迟到 %s 再提醒", n.name, at)
 	}
+	// 降级成“跳过”的那几班照跳过的口径记账（只认短 / 长，App 侧过滤）
+	for _, sk := range skipped {
+		s.host.OnBreakSkipped(sk.id, sk.ms)
+	}
+	// 计划变了（线挪了 / 多了一条待办）：重排让 NextAt 与状态卡跟上，并推给设置页
+	s.replan()
+	s.emitState()
 }
 
 // flushPostponed 弹出“暂停期间被推迟、现在到点”的提醒，返回是否弹了一次。
@@ -695,6 +768,14 @@ func (s *Scheduler) flushPostponed() bool {
 	// 这条提醒可能已经被删 / 关闭：没有窗口可弹，丢掉这一次
 	if c, ok := s.host.CfgSnapshot().BreakByID(pick.kind); !ok || !c.Enabled {
 		log.Printf("[scheduler] 推迟的 %s 已被关闭或删除，丢弃", pick.kind)
+		return false
+	} else if pauseDisposition(c) == settings.PauseActionSkip {
+		// 推迟期间卡片被改成“跳过提醒”：按新设置办，不补弹（用户已经选了不提醒）
+		s.mu.Lock()
+		s.consumed[plan.OccurrenceKey(pick.kind, pick.at)] = true
+		s.mu.Unlock()
+		log.Printf("[scheduler] 推迟的 %s 到点，但卡片已改成“跳过提醒”：丢弃", pick.kind)
+		s.host.OnBreakSkipped(pick.kind, c.DurationMs)
 		return false
 	}
 	log.Printf("[scheduler] 推迟的 %s 到点，弹出提醒（原定 %s）", pick.kind,

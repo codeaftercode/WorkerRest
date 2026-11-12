@@ -12,8 +12,8 @@ import (
 // 调度器与计划层的纯函数回归。
 //
 // 分工（与外部对拍互补，别搞混）：
-//   - 这里拦“规则写错”：消费记账、暂停冻结平移、休息总时长封顶、跨天截断……
-//     毫秒级跑完，改完代码先跑它。
+//   - 这里拦“规则写错”：消费记账、暂停处置（到 0 该弹该推该跳）、休息剩余冻结与
+//     恢复接续、跨天截断…… 毫秒级跑完，改完代码先跑它。
 //   - scripts/verify_plan_parity.py 拦“与上一版 不一致”：拿 上一版自己的
 //     breakPlan.ts 当黄金参考逐字段对拍 27 个场景。
 // 两者都过才算这一层真的对。
@@ -116,7 +116,7 @@ func TestSchedulerReplanKeepsCountdownProgress(t *testing.T) {
 	s.replan()
 	first := s.StateCopy().NextAt
 
-	// 模拟时间流逝：用户已等了 4 分钟（像暂停恢复那样整体平移）
+	// 模拟时间流逝：用户已等了 4 分钟（直接把状态里的时刻往前拨）
 	s.mu.Lock()
 	s.state.NextAt -= 4 * 60_000
 	for i := range s.state.Lines {
@@ -462,7 +462,9 @@ func TestSchedulerPauseReasonsGate(t *testing.T) {
 	}
 }
 
-func TestSchedulerResumeShiftsCountdown(t *testing.T) {
+// 短暂暂停不该改动倒计时：暂停期间时钟照常走，恢复时什么都不补（2026-11-12 口径：
+// 暂停不影响倒计时，自然也不需要“把暂停时长补回来”）。
+func TestSchedulerResumeKeepsCountdownRunning(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
 	origAt := s.StateCopy().NextAt
@@ -475,18 +477,17 @@ func TestSchedulerResumeShiftsCountdown(t *testing.T) {
 	s.Resume("manual")
 
 	got := s.StateCopy().NextAt
-	want := origAt + 50_000
-	if diff := got - want; diff < -1500 || diff > 1500 {
-		t.Fatalf("倒计时线应整体平移 50s，want=%d got=%d（差 %d）", want, got, diff)
+	if diff := got - origAt; diff < -1500 || diff > 1500 {
+		t.Fatalf("恢复不该再平移倒计时，want=%d got=%d（差 %d）", origAt, got, diff)
 	}
 	if !plan.SameLocalDay(got, origAt) {
 		t.Fatal("短暂暂停不该把倒计时推到别的日子")
 	}
 }
 
-func TestSchedulerResumeBreakCappedToDuration(t *testing.T) {
-	// 休息期间被长时间暂停（如开着勿扰一下午）：恢复时总时长封顶为配置时长，
-	// 超过就直接收尾，不能拖成遥遥无期的“休息中”
+// 休息期间被暂停、且这次休息自己选的是“推迟”（缺省值）：剩余时间冻结，恢复时整体后移，
+// **不再封顶成配置时长** —— 封顶会把一次长暂停直接判成到点（等于强制结束），与“推迟”相反。
+func TestSchedulerResumeFrozenBreakKeepsRemaining(t *testing.T) {
 	s, host := newTestSched(t, shortCountdown)
 	now := nowMs()
 	s.mu.Lock()
@@ -499,16 +500,21 @@ func TestSchedulerResumeBreakCappedToDuration(t *testing.T) {
 	s.state.PauseReasons = []string{"manual"}
 	s.mu.Unlock()
 
+	// 暂停那一刻的剩余 = BreakEndsAt - PausedAt
+	remainAtPause := int64(70_000)
 	s.Resume("manual")
 	st := s.StateCopy()
-	if st.Phase != "idle" {
-		t.Fatalf("超出总时长上限应直接收尾，得到 phase=%q", st.Phase)
+	if st.Phase != "break" {
+		t.Fatalf("选“推迟”的休息应接着走，得到 phase=%q", st.Phase)
 	}
-	if host.closed != 1 {
-		t.Fatalf("收尾应关一次窗口，得到 %d", host.closed)
+	if host.closed != 0 {
+		t.Fatalf("不该收窗，得到 %d 次", host.closed)
 	}
-	if st.ShortsSinceLong != 1 {
-		t.Fatalf("收尾也要计数，得到 %d", st.ShortsSinceLong)
+	if got := st.BreakEndsAt - nowMs(); got < remainAtPause-2000 || got > remainAtPause+2000 {
+		t.Fatalf("剩余时间应原样保留（≈%d ms），实际 %d ms", remainAtPause, got)
+	}
+	if st.ShortsSinceLong != 0 {
+		t.Fatalf("还没走完，不该推进计数，得到 %d", st.ShortsSinceLong)
 	}
 }
 
@@ -645,8 +651,8 @@ func TestSchedulerStateForRendererIncludesTimeline(t *testing.T) {
 		t.Fatal("快照里的 map / 切片都不能是 nil（渲染层直接读长度）")
 	}
 	for _, it := range st.Timeline {
-		if it.Source == "countdown" && it.Paused == nil {
-			t.Fatal("倒计时线的项必须带 paused 键（渲染层据它显示“已暂停”标记）")
+		if it.Source == "countdown" && it.At <= 0 {
+			t.Fatalf("倒计时线的项必须带上真实时刻，得到 %+v", it)
 		}
 	}
 }

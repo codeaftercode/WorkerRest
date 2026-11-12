@@ -13,9 +13,9 @@ import (
 //      留窗规则（2026-11-12 用户口径，四类提醒一律适用）：那扇窗所属提醒自己的“暂停休息时”
 //      是“正常提醒”就不收 —— 见 TestAutoPauseKeepsRemindBreakRunning / KeepsRemindPreWindow /
 //      TestAutoPauseKeepTakeoutFollowsTakeoutConfig。暂停原因不参与判断。
-//   B. 恢复时与手动暂停**同构**：时钟冻结、按剩余平移。曾经这里有“按离开口径重锚内置
-//      倒计时”的分支，2026-11-12 用户口径“暂停就是暂停，不分原因”后删除 —— 重锚只留给
-//      定时暂停（PauseUntil，如睡前暂停到明早）。
+//   B. 恢复时与手动暂停**同构**：不做任何补偿（既不平移也不重锚）—— 暂停期间时钟照常
+//      走，到点的那一跳已经在暂停里按各卡处置过。曾经这里有“按离开口径重锚内置倒计时”
+//      的分支，2026-11-12 用户口径“暂停就是暂停，不分原因”后删除。
 //
 // 暂停期间到点的提醒不按原因区别对待：一律看各卡自己的“暂停休息时”（见 pause_skip_test.go
 // 的 TestAutoPauseHonorsSkipOnBuiltinBreak / TestAutoPausePostponeBuiltinFiresAfterResume）。
@@ -303,11 +303,11 @@ func TestAutoPauseSkipBreakStillCleared(t *testing.T) {
 	}
 }
 
-// ---------- B：恢复时按剩余平移（与暂停原因无关） ----------
+// ---------- B：恢复不做补偿（与暂停原因无关） ----------
 
-// 无论暂停原因是手动还是自动，恢复后内置倒计时都是从剩余时间接着走，不会白跑也不会重来。
-// 曾经自动原因会重锚到满间隔（“离开回来从头计时”），2026-11-12 起删掉：那一刻起
-// 到点过的那一跳由恢复后的第一拍按“暂停休息时”补上，重锚会把它一起抹掉。
+// 无论暂停原因是手动还是自动，恢复后内置倒计时都接着原来的目标走：平移与重锚都没有。
+// 曾经自动原因会重锚到满间隔（“离开回来从头计时”），2026-11-12 起删掉；手动暂停那侧的
+// “冻结 + 恢复整体平移”也在同一天取消（暂停不再冻钟，到点由处置接手）。
 func TestPauseResumeKeepsCountdownProgress(t *testing.T) {
 	for _, reason := range []string{PauseReasonManual, "勿扰", PauseReasonIdle} {
 		s, _ := newTestSched(t, shortCountdown)

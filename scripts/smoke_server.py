@@ -598,10 +598,9 @@ def main():
             tl = st0.get("timeline") or []
             cd_items = [it for it in tl if it.get("source") == "countdown"]
             fx_items = [it for it in tl if it.get("source") == "fixed"]
-            check(all("paused" in it for it in cd_items),
-                  "时间线上的倒计时项都带 paused 键", len(cd_items))
-            check(all("paused" not in it for it in fx_items),
-                  "时间线上的固定项都不带 paused 键", len(fx_items))
+            check(all("paused" not in it for it in cd_items + fx_items),
+                  "时间线项不再带 paused 键（2026-11-12 暂停不冻钟，时间线里没有“暂停中”这一说）",
+                  len(cd_items) + len(fx_items))
             for it in (st0.get("lines") or []):
                 check(all(k in it for k in ("type", "name", "at", "source")),
                       "挂起线字段齐全（type/name/at/source）", it)

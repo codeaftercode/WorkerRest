@@ -11,29 +11,33 @@ import (
 //
 // 这里只钉“时间状态机在各种组合下必须成立的不变量”，不重复 scheduler_test.go
 // 已覆盖的单条规则。每条用例都对应一条曾经的（或极易写错的）交叉路径：
-//   - 暂停 × replan：暂停期间的时间是冻结的，任何重排都不得改写剩余；
+//   - 暂停 × replan：暂停期间倒计时**照常走**（2026-11-12 口径），任何重排都按真实墙钟
+//     判断，既不能把剩余时间推远、也不能把过期的那一跳钉在暂停那一刻；
 //   - 提前量 × 跨午夜：occurrence 归属“提醒真正发生的那一天”，不是“现在这一天”。
-// 这两条都不是“算错一个数”，而是两套时间基准（真实墙钟 / 冻结时钟、now / now+提前量）
+// 这两条都不是“算错一个数”，而是两套时间基准（真实墙钟 / 暂停那一刻、now / now+提前量）
 // 在同一处混用 —— 只靠读代码很难发现，所以用测试钉住。
 
 // ---------- 暂停 × replan ----------
 
-// TestPausedReplanKeepsFrozenRemain 暂停期间的一次 replan 不得把冻结的剩余时间推远。
+// TestPausedReplanKeepsLiveCountdown 暂停期间的一次 replan 不得改动剩余时间：
+// 时钟照常走，未到期的锚点原样保留。
 //
 // 触发路径（真实）：用户手动暂停 → 在设置页改任意选项（每次改动都会 SaveSettings →
-// refreshPlan → scheduleNext → replan）→ 若 replan 用真实墙钟判断“倒计时锚点是否过期”，
-// 冻结中的旧锚点会被判过期并按 now+interval 重新起算；恢复时 resume 又整体平移 delta，
-// 等于把暂停时长算了两遍，用户看到“还剩 50 分钟”（配置是 20 分钟）。
-func TestPausedReplanKeepsFrozenRemain(t *testing.T) {
+// refreshPlan → scheduleNext → replan）。旧口径把判定基准钳到 PausedAt，于是暂停 30 分钟
+// 后改一次设置，剩余时间会“回到暂停那一刻的值” —— 看上去停表。现在要求它照常走。
+func TestPausedReplanKeepsLiveCountdown(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown) // 每 10 分钟一次、每次 20 秒
 	s.replan()
 
-	const pausedFor = 30 * 60_000
-	const remainAtPause = 5 * 60_000
+	const (
+		pausedFor     = int64(4 * 60_000)
+		remainAtPause = int64(5 * 60_000)
+	)
+	want := remainAtPause - pausedFor // 暂停 4 分钟后应剩 1 分钟
 	s.mu.Lock()
 	s.state.Paused = true
-	s.state.PauseReasons = []string{"manual"}
-	// 暂停发生在 30 分钟前；暂停那一刻距离下次休息还有 5 分钟
+	s.state.PauseReasons = []string{PauseReasonManual}
+	// 暂停发生在 4 分钟前；暂停那一刻距离下次休息还有 5 分钟
 	s.state.PausedAt = nowMs() - pausedFor
 	s.state.NextAt = s.state.PausedAt + remainAtPause
 	for i := range s.state.Lines {
@@ -41,36 +45,35 @@ func TestPausedReplanKeepsFrozenRemain(t *testing.T) {
 	}
 	s.mu.Unlock()
 
-	if got := s.RemainingMs(); got != remainAtPause {
-		t.Fatalf("暂停中剩余应冻结在 %d ms，实际 %d ms", remainAtPause, got)
+	if got := s.RemainingMs(); got < want-2000 || got > want+2000 {
+		t.Fatalf("暂停中剩余应继续走（≈%d ms），实际 %d ms", want, got)
 	}
 
 	// 暂停期间改设置 → replan（不再经过 scheduleNext 也能覆盖同一条路径）
 	s.replan()
-	if got := s.RemainingMs(); got != remainAtPause {
-		t.Fatalf("暂停期间 replan 不得改写冻结的剩余：want %d ms，got %d ms", remainAtPause, got)
+	if got := s.RemainingMs(); got < want-2000 || got > want+2000 {
+		t.Fatalf("暂停期间 replan 不得重置剩余：want≈%d ms，got %d ms", want, got)
 	}
 
-	// 恢复：只平移一次，剩余仍是 5 分钟
-	s.Resume("manual")
-	got := s.RemainingMs()
-	if got < remainAtPause-2000 || got > remainAtPause+2000 {
-		t.Fatalf("恢复后剩余应≈%d ms（只平移一次），实际 %d ms", remainAtPause, got)
+	// 恢复：不再补偿暂停时长，剩余仍是那 1 分钟
+	s.Resume(PauseReasonManual)
+	if got := s.RemainingMs(); got < want-2000 || got > want+2000 {
+		t.Fatalf("恢复后剩余应≈%d ms（不再补偿暂停时长），实际 %d ms", want, got)
 	}
 }
 
-// TestPausedScheduleNextKeepsFrozenRemain 走完整链路（scheduleNext，设置保存用的就是它）
-// 也必须保住冻结的剩余；同时 phase 要回到 idle（暂停时不该停在 pre）。
-func TestPausedScheduleNextKeepsFrozenRemain(t *testing.T) {
+// TestPausedScheduleNextRealignsExpiredCountdown 走完整链路（scheduleNext，设置保存用的
+// 就是它）：暂停期间已经过期的倒计时线必须按 now+间隔重新起算（不能把过去那一刻钉住等
+// 恢复），同时 phase 回到 idle。
+func TestPausedScheduleNextRealignsExpiredCountdown(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
 
-	const pausedFor = 40 * 60_000
 	s.mu.Lock()
 	s.state.Paused = true
 	s.state.PauseReasons = []string{PauseReasonIdle} // 用真实键，确保 resume 走得到
-	s.state.PausedAt = nowMs() - pausedFor
-	s.state.NextAt = s.state.PausedAt + 3*60_000
+	s.state.PausedAt = nowMs() - 40*60_000
+	s.state.NextAt = s.state.PausedAt + 3*60_000 // 37 分钟前就过期了
 	s.state.Phase = "pre"
 	for i := range s.state.Lines {
 		s.state.Lines[i].At = s.state.NextAt
@@ -82,14 +85,14 @@ func TestPausedScheduleNextKeepsFrozenRemain(t *testing.T) {
 	if st := s.StateCopy(); st.Phase != "idle" {
 		t.Fatalf("重排后应回到等待态，实际 phase=%q", st.Phase)
 	}
-	if got := s.RemainingMs(); got != 3*60_000 {
-		t.Fatalf("重排后冻结剩余应保持 3 分钟，实际 %d ms", got)
+	const interval = 600_000
+	if got := s.RemainingMs(); got < interval-2000 || got > interval+2000 {
+		t.Fatalf("过期线应按 now+间隔重新起算（≈%d ms），实际 %d ms", int64(interval), got)
 	}
 
 	s.Resume(PauseReasonIdle)
-	got := s.RemainingMs()
-	if got < 3*60_000-2000 || got > 3*60_000+2000 {
-		t.Fatalf("恢复后剩余应≈3 分钟，实际 %d ms", got)
+	if got := s.RemainingMs(); got < interval-2000 || got > interval+2000 {
+		t.Fatalf("恢复后剩余应≈%d ms，实际 %d ms", int64(interval), got)
 	}
 }
 

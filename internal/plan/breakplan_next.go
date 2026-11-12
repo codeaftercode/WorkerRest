@@ -98,16 +98,31 @@ func builtinCountdownLine(s *settings.Settings, now int64, shortsSinceLong int) 
 	}, true
 }
 
-// fixedLines 固定时刻线：每种启用且为固定时间模式的休息各查一次时刻表
-func fixedLines(s *settings.Settings, now int64) []model.PlannedBreak {
+// fixedLines 固定时刻线：每种启用且为固定时间模式的休息各查一次时刻表。
+//
+// skip 里的 occurrence 表示“这一班已经处理过了”（跳过 / 已弹出 / 推迟后又被判定跳过）：
+// 顺着时刻表继续找**再下一次**，而不是把这条身份整个丢掉。曾经这里只取最近一班，
+// 于是“在提前提示窗里跳过 12:00”会让 12:00 之后那班也不排了 —— 这条提醒在当天剩下的
+// 时间里彻底消失，直到下一次 replan 才回来。口径与 fixedNextMap 一致。
+func fixedLines(s *settings.Settings, now int64, skip map[string]bool) []model.PlannedBreak {
 	out := []model.PlannedBreak{}
 	for _, e := range s.BreakEntries() {
 		if !e.Config.Enabled || e.Config.Mode != "fixed" {
 			continue
 		}
-		if hit, ok := nextSlotAt(e.Config.Slots, now); ok {
+		from := now
+		for i := 0; i < 8; i++ {
+			hit, ok := nextSlotAt(e.Config.Slots, from)
+			if !ok {
+				break
+			}
+			if skip[occurrenceKey(e.ID, hit.At)] {
+				from = hit.At + 1 // 这一班已处理：看再下一次
+				continue
+			}
 			slot := hit.Slot
 			out = append(out, model.PlannedBreak{Type: e.ID, Name: e.Name, At: hit.At, Source: "fixed", Slot: &slot})
+			break
 		}
 	}
 	return out
@@ -143,12 +158,13 @@ func filterConsumed(pool []model.PlannedBreak, skip map[string]bool) []model.Pla
 }
 
 // cdAnchor 上一轮挂起的倒计时锚点：At = 触发时刻，Iv = 产生该锚点的间隔（ms）。
-// Frozen 表示这个锚点是在**暂停期间**收集的：暂停中时间不流逝，即使 At 已经早于真实
-// 墙钟，它也没有“过期”，replan 必须原样沿用（见 Scheduler.prevCountdownAnchorsLocked）。
+//
+// 沿用条件只有“未到期 / 未消费 / 间隔未变”——暂停不再冻结时钟（2026-11-12 用户口径：
+// 暂停期间倒计时不要停），所以暂停期间的锚点照样会过期；过期就按 now+interval 重算，
+// 否则侧栏会一直停在 0:00（曾经的 Frozen 标记随旧口径一起删除）。
 type cdAnchor struct {
-	At     int64
-	Iv     int64
-	Frozen bool
+	At int64
+	Iv int64
 }
 
 // schedulerLines 调度器的全部挂起线（不含外卖——外卖窗口独立于休息调度）：
@@ -160,7 +176,7 @@ type cdAnchor struct {
 // 设置页任意保存都会触发 replan，不能把用户已流逝的倒计时进度清零；
 // 间隔改了的立刻按新间隔重新起算。
 func schedulerLines(s *settings.Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) []model.PlannedBreak {
-	lines := fixedLines(s, now)
+	lines := fixedLines(s, now, skip)
 	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
 		cur, _ := s.BreakByID(cd.Type)
 		cd.At = countdownAnchor(prev, cd.Type, now, skip, cd.At, cur.IntervalMs)
@@ -186,10 +202,10 @@ func schedulerLines(s *settings.Settings, now int64, shortsSinceLong int, skip m
 // 与当前配置一致时原样沿用（倒计时进度跨 replan 保留）；间隔已改的立刻按新间隔
 // 重新起算。到期、被跳过/立即休息（已消费）或该身份被删除后，同样回落到 fresh。
 //
-// Frozen 锚点（暂停期间收集）跳过“到期”判定：暂停中时间冻结，At 早于真实墙钟不代表
-// 这一跳已经过去 —— 用真实墙钟判会把冻结进度整段丢掉。
+// 判“到期”一律用真实墙钟：暂停不冻钟（2026-11-12 用户口径），At 早于 now 就是这一跳
+// 已经过去 —— 重算成 fresh，让调度器按 now+interval 重新起算。
 func countdownAnchor(prev map[string]cdAnchor, typ string, now int64, skip map[string]bool, fresh, curIv int64) int64 {
-	if a, ok := prev[typ]; ok && (a.Frozen || a.At > now) &&
+	if a, ok := prev[typ]; ok && a.At > now &&
 		!skip[occurrenceKey(typ, a.At)] && a.Iv == curIv {
 		return a.At
 	}
@@ -253,7 +269,7 @@ func takeoutLine(s *settings.Settings, now int64) (model.PlannedBreak, bool) {
 // 全局 next（planNextBreak）不含外卖 —— 外卖窗口独立于休息调度；分组视图把它算进
 // other 只是为了让状态卡能显示“下次外卖提醒还有多久”。
 func planNextBreakSplit(s *settings.Settings, now int64, shortsSinceLong int, skip map[string]bool, prev map[string]cdAnchor) model.PlanSplit {
-	lines := fixedLines(s, now)
+	lines := fixedLines(s, now, skip)
 	if cd, ok := builtinCountdownLine(s, now, shortsSinceLong); ok {
 		cur, _ := s.BreakByID(cd.Type)
 		cd.At = countdownAnchor(prev, cd.Type, now, skip, cd.At, cur.IntervalMs)

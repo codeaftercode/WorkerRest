@@ -21,8 +21,8 @@ func TestExportedWrappersForwardToImplementation(t *testing.T) {
 		t.Fatalf("PlanNextBreak 与 planNextBreak 不一致：%+v/%v vs %+v/%v", got, gotOK, want, wantOK)
 	}
 
-	// CountdownAnchor == countdownAnchor（含 Frozen 分支）
-	prev := map[string]CdAnchor{"short": {At: now - 1, Iv: 600_000, Frozen: true}}
+	// CountdownAnchor == countdownAnchor（含“已到期就重算”分支）
+	prev := map[string]CdAnchor{"short": {At: now - 1, Iv: 600_000}}
 	if a, b := CountdownAnchor(prev, "short", now, nil, now+600_000, 600_000), countdownAnchor(prev, "short", now, nil, now+600_000, 600_000); a != b {
 		t.Fatalf("CountdownAnchor 与实现不一致：%d vs %d", a, b)
 	}

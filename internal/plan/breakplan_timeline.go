@@ -104,7 +104,6 @@ type TimelineOptions struct {
 	Skip             map[string]bool
 	Shifts           map[string]int64
 	CountdownLines   []model.PlannedBreak
-	Paused           bool
 	TakeoutFired     map[string]bool
 	TakeoutPostponed *model.TakeoutPostponed
 	ShortsSinceLong  int
@@ -187,14 +186,14 @@ func todayTimeline(s *settings.Settings, now int64, opts TimelineOptions) []mode
 			})
 		}
 	}
-	// ③ 倒计时线展开成链：链首 = 挂起那一跳（保留调度器平移/冻结结果），
-	// 后续按调度器真实节奏（开始+时长 → 下一跳间隔）推算今天剩余的每一次；暂停时全链冻结。
-	paused := opts.Paused
+	// ③ 倒计时线展开成链：链首 = 挂起那一跳（保留调度器推迟 / 重排之后的时刻），
+	// 后续按调度器真实节奏（开始+时长 → 下一跳间隔）推算今天剩余的每一次。
+	// 暂停不冻钟（2026-11-12 用户口径）：时刻就是真实墙钟上的时刻，暂停与非暂停没有区别，
+	// 所以这里也不再给时间线项挂“已暂停”标记。
 	pushCd := func(p model.PlannedBreak) {
-		flag := paused
 		out = append(out, model.TimelineItem{
 			Key:  "cd#" + p.Type + "#" + strconv.FormatInt(p.At, 10),
-			Type: p.Type, Name: p.Name, At: p.At, Source: "countdown", Paused: &flag,
+			Type: p.Type, Name: p.Name, At: p.At, Source: "countdown",
 		})
 	}
 	var cds []model.PlannedBreak

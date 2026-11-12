@@ -354,6 +354,17 @@ func (a *App) GetState() map[string]any {
 	if a.sched != nil {
 		st = a.sched.StateForRenderer()
 	}
+	// 外卖的“推迟”只有这一层知道（它不在调度器的挂起线里）。暂停期间按“推迟”处置后，
+	// 计划表里仍是那个已经过去的固定时刻 —— 不覆盖的话，侧栏“下次外卖提醒”会一直停在
+	// 0:00（或直接跳到明天），看不出它其实被推到了几点。
+	a.mu.Lock()
+	pp := a.takeoutPostponed
+	a.mu.Unlock()
+	if pp != nil {
+		if pp.DueAt > nowMs() && (st.Other == nil || st.Other.At > pp.DueAt) {
+			st.Other = &model.PlanRef{Name: plan.TAKEOUT_NAME, At: pp.DueAt}
+		}
+	}
 	out := structToMap(st)
 	// Go 侧扩展字段（上一版没有；诊断与控制台用）
 	out["engine"] = "go+wails3"

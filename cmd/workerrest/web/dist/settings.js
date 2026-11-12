@@ -4487,7 +4487,15 @@
     const pauseTitle = st.paused && st.pauseReasons.length
       ? "暂停原因：" + st.pauseReasons.map(pauseReasonText).join("、") + pauseUntilText
       : "";
-    const now = st.paused && !(st.phase === "break" && st.breakWhilePaused) ? st.pausedAt : Date.now();
+    // 暂停不再冻结“下一次提醒”的倒计时（2026-11-12 用户口径）：无论手动还是自动暂停，
+    // 长/短休息、外卖提醒、自定义提醒的倒计时都照常往下掉，到 0 由调度器按各卡
+    // “暂停休息时”处置（跳过 / 正常提醒 / 推迟）。
+    // 唯一保留冻结的是“正在进行、且它自己选的是推迟”的那次休息的剩余时间 ——
+    // 那正是“推迟”的含义，恢复后接着走。
+    const now = Date.now();
+    const nowBreak = st.paused && st.phase === "break" && !st.breakWhilePaused
+      ? st.pausedAt
+      : now;
     const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
     // 一个格子的值有三种形态：{text} 给中文结论（等待空闲 / 未安排 / 今日已无提醒 / —），
     // {led} 给剩余毫秒、交给数码管。只有真正的倒计时才走段码 ——「等待空闲」不是时间，
@@ -4508,7 +4516,7 @@
       : null;
     const cells = [["状态", { text: phaseVal }, pauseTitle]];
     if (st.phase === "break") {
-      cells.push(["正在休息", { led: Math.max(0, st.breakEndsAt - now) }]);
+      cells.push(["正在休息", { led: Math.max(0, st.breakEndsAt - nowBreak) }]);
       if (otherCell) cells.push(["下次提醒", { text: "—" }]);
     } else {
       cells.push(
@@ -4593,12 +4601,6 @@
       src.className = "tl-src";
       src.textContent = it.source === "countdown" ? "倒计时" : "固定时刻";
       row.append(time, dot, name, src);
-      if (it.paused) {
-        const badge = document.createElement("span");
-        badge.className = "tl-badge pause";
-        badge.textContent = "已暂停";
-        row.append(badge);
-      }
       list.append(row);
     }
   }

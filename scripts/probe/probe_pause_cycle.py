@@ -5,7 +5,9 @@
 与既有脚本的分工：
   · 单元测试（internal/scheduler + cmd/workerrest）验判据与状态机；
   · 本脚本验“真页面点下去 → 真绑定 → 真调度器”这条链路：
-    按钮文案翻转、nextAt 冻结与平移、暂停期间到点不弹窗、恢复后照常弹；
+    按钮文案翻转、暂停不冻钟（目标时刻不动、剩余照真实墙钟掉）、
+    暂停中到 0 按各卡“暂停休息时”处置（正常提醒照样弹 / 推迟挪走且侧栏不卡 0:00）、
+    恢复不做补偿平移；
   · 自动暂停（勿扰 / 投屏 / 全屏 / 应用占用 / 空闲）走 probe_pause_autopause.py：
     那几条判据来自系统状态，而无头模式**故意不启动**对应监视器。
 
@@ -84,10 +86,11 @@ def main():
     iso_settings = os.path.join(iso, "settings.json")
     with open(FACTORY, encoding="utf-8") as f:
         cfg = json.load(f)
-    # 短休息 6 秒一条、3 秒、不提前提示：探针十几秒内就能看到“到点 / 被暂停挡住 / 恢复后照常弹”
+    # 短休息 6 秒一条、3 秒、不提前提示：探针十来秒内就能看到“到点 → 暂停里照常弹”
+    # 与“到点 → 按推迟挪走”；后面几段由探针自己用 saveSettings 改间隔 / 处置再跑。
     cfg["short"] = dict(cfg.get("short") or {}, enabled=True, mode="countdown",
                         intervalMs=6000, durationMs=3000, notifyBeforeMs=0, postponeMs=60000,
-                        slots=[])
+                        pauseAction="postpone", slots=[])
     cfg["long"] = dict(cfg.get("long") or {}, enabled=False)
     cfg["takeout"] = dict(cfg.get("takeout") or {}, enabled=False)
     cfg["customBreaks"] = []

@@ -52,26 +52,22 @@ func (s *Scheduler) syncPreBreakWindow() {
 
 // pauseFreezesClockLocked 暂停此刻是否冻结“休息剩余时间”。
 //
-// 冻结（true）只适用于“暂停之前就已经开始的休息”：短暂暂停不吞用户的休息时间，
-// 恢复时整体平移。另外两种情形必须照常走时钟，否则会互相踩：
-//   - 暂停期间照常弹出的自定义提醒（pausedFire）—— 它本来就在正常计时；
-//   - 暂停开始之后用户主动“立即休息”发起的内置休息 —— 若也冻结，onTick 的暂停分支
-//     永远不会判到点，休息窗口挂到用户恢复暂停为止（短休息也会变成永久窗口）。
-//   - 自动暂停闯进来时正在进行的、且自己配了“正常提醒”的休息 —— 它该照常走完
-//     （clearForAutoPause 立起 BreakWhilePaused，与上一条同路）。
+// **只有一种情况冻结**：暂停那一刻正在进行、且它自己选的是“推迟”的休息（缺省值）。
+// 其余一律照真实时钟走：
+//   - “下一次提醒”的倒计时（短 / 长休息的倒计时线、固定时刻线、自定义提醒、外卖）——
+//     暂停不再停表，侧栏照常往下掉，到 0 由 onTick 的暂停分支按各卡“暂停休息时”处置
+//     （2026-11-12 用户口径：无论手动还是自动暂停，倒计时都不要停）；
+//   - 配“正常提醒”的休息：照常走完自己的时长（进入暂停时置 BreakWhilePaused）；
+//   - 暂停期间由 pausedFire 弹出的、或用户主动“立即休息”发起的休息：
+//     startBreakAt 里 BreakWhilePaused = 暂停中，天然不冻结。
 func (s *Scheduler) pauseFreezesClockLocked() bool {
 	st := &s.state
-	if !st.Paused {
-		return false
-	}
-	if st.Phase == "break" && (isCustomBreakID(st.NextType) || st.BreakWhilePaused) {
-		return false
-	}
-	return true
+	return st.Paused && st.Phase == "break" && !st.BreakWhilePaused
 }
 
 // remainingMs 距下一次事件（休息开始 / 结束）的剩余毫秒；没有安排休息时为 0。
-// 暂停期间剩余时间冻结（锚定到 pausedAt），不再随时间往下掉。
+// 只有“进行中且选推迟的休息”冻结在暂停那一刻（见 pauseFreezesClockLocked），
+// 倒计时线一律按真实时钟走。
 func (s *Scheduler) RemainingMs() int64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -137,8 +133,9 @@ func (s *Scheduler) CountdownReanchorable() bool {
 
 // ReanchorCountdown 离开结束后：内置短/长**倒计时**线重新从头计时（锚到 now + intervalMs）。
 //
-// 为什么需要：离开期间倒计时只被冻结平移，回来时看到的“还剩 X 分钟”是离开前的旧账。
-// 按需求，离开结束后内置倒计时应当从本轮开头重新计时。
+// 为什么需要：离开期间倒计时照真实墙钟往下掉，回来时看到的“还剩 X 分钟”是离开前的
+// 旧账（甚至已经到点过一次，那次按处置被跳过 / 推迟了）。按需求，离开结束后内置倒计时
+// 应当从本轮开头重新计时。
 //
 // 三处刻意不动（见 reanchorTargetLocked）：
 //   - 自定义提醒（id 为 cb-…）：它们是用户按自己的节奏配的绝对安排，不该被一次离开推走；

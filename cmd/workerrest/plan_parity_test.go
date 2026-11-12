@@ -26,6 +26,8 @@ type planScenarioIn struct {
 	Skip     []string       `json:"skip"`
 	Settings map[string]any `json:"settings"`
 	Opts     struct {
+		// Paused 只为兼容旧参考文件保留：2026-11-12 起暂停不再冻钟，时间线项里
+		// 已经没有 paused 字段（参考矩阵里那一列现在没人消费）。
 		Paused           bool                    `json:"paused"`
 		TakeoutFired     []string                `json:"takeoutFired"`
 		TakeoutPostponed *model.TakeoutPostponed `json:"takeoutPostponed"`
@@ -112,7 +114,6 @@ func TestDumpPlanForParity(t *testing.T) {
 			Skip:             skip,
 			Shifts:           shifts,
 			CountdownLines:   cdLines,
-			Paused:           sc.Opts.Paused,
 			TakeoutFired:     setOfStrings(sc.Opts.TakeoutFired),
 			TakeoutPostponed: sc.Opts.TakeoutPostponed,
 			ShortsSinceLong:  sc.SS,

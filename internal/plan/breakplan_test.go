@@ -307,7 +307,7 @@ func TestFixedLines(t *testing.T) {
 	s := cfgOf(t, `{
 		"short":{"mode":"fixed","slots":[{"id":"s1","hour":12,"minute":0,"repeat":"daily","days":[],"enabled":true}]}
 	}`)
-	lines := fixedLines(s, base())
+	lines := fixedLines(s, base(), nil)
 	if len(lines) != 1 {
 		t.Fatalf("应只有短休息一条固定线，得到 %+v", lines)
 	}
@@ -317,9 +317,15 @@ func TestFixedLines(t *testing.T) {
 	if lines[0].At != at(2026, 3, 12, 12, 0) {
 		t.Fatalf("时刻不符：%s", time.UnixMilli(lines[0].At))
 	}
+	// 这一班已处理（跳过 / 已弹出）：顺延到时刻表里的下一次，而不是整条身份消失
+	skip := map[string]bool{occurrenceKey("short", lines[0].At): true}
+	next := fixedLines(s, base(), skip)
+	if len(next) != 1 || next[0].At != at(2026, 3, 13, 12, 0) {
+		t.Fatalf("已处理的那一班应顺延到明天 12:00，得到 %+v", next)
+	}
 	// 固定模式但没有条目 → 没有线
 	empty := cfgOf(t, `{"short":{"mode":"fixed","slots":[]}}`)
-	if got := fixedLines(empty, base()); len(got) != 0 {
+	if got := fixedLines(empty, base(), nil); len(got) != 0 {
 		t.Fatalf("没有时刻条目时不该有线，得到 %+v", got)
 	}
 }
@@ -373,10 +379,11 @@ func TestCountdownAnchor(t *testing.T) {
 	if got := countdownAnchor(expired, "short", now, skip, now+600_000, 600_000); got != now+600_000 {
 		t.Fatalf("已到期应重算，得到 %s", time.UnixMilli(got))
 	}
-	// 冻结锚点即使早于墙钟也照样沿用（暂停期间时间不流逝）
-	frozen := map[string]cdAnchor{"short": {At: now - 1, Iv: 600_000, Frozen: true}}
-	if got := countdownAnchor(frozen, "short", now, skip, now+600_000, 600_000); got != now-1 {
-		t.Fatalf("冻结锚点应原样沿用，得到 %s", time.UnixMilli(got))
+	// 暂停中收集的锚点也不例外：暂停不冻钟，At 早于墙钟就是过期（旧口径里那种
+	// “冻结锚点原样沿用”的 Frozen 分支已随 2026-11-12 的冻钟取消一起删除）
+	pausedPrev := map[string]cdAnchor{"short": {At: now - 1, Iv: 600_000}}
+	if got := countdownAnchor(pausedPrev, "short", now, skip, now+600_000, 600_000); got != now+600_000 {
+		t.Fatalf("过期的锚点一律重算，得到 %s", time.UnixMilli(got))
 	}
 	// 已被消费 → 重算
 	consumed := map[string]cdAnchor{"short": {At: now + 300_000, Iv: 600_000}}
@@ -658,7 +665,7 @@ func TestTodayTimelineTakeoutAndPostponed(t *testing.T) {
 	}
 }
 
-func TestTodayTimelineCountdownChainAndPausedFlag(t *testing.T) {
+func TestTodayTimelineCountdownChain(t *testing.T) {
 	s := cfgOf(t, `{
 		"short":{"enabled":true,"mode":"countdown","intervalMs":600000,"durationMs":60000},
 		"long":{"enabled":false},
@@ -671,23 +678,13 @@ func TestTodayTimelineCountdownChainAndPausedFlag(t *testing.T) {
 		t.Fatalf("倒计时应展开成链，得到 %+v", items)
 	}
 	for _, it := range items {
-		if it.Source != "countdown" || it.Paused == nil {
-			t.Fatalf("倒计时项应带 source 与 paused 标记，得到 %+v", it)
-		}
-		if *it.Paused {
-			t.Fatal("没暂停时 paused 应为 false")
+		if it.Source != "countdown" {
+			t.Fatalf("倒计时项应带 source，得到 %+v", it)
 		}
 	}
-	// 暂停中：全链标记冻结
-	pausedItems := todayTimeline(s, now, TimelineOptions{CountdownLines: []model.PlannedBreak{line}, Paused: true})
-	for _, it := range pausedItems {
-		if it.Paused == nil || !*it.Paused {
-			t.Fatalf("暂停中应标记冻结，得到 %+v", it)
-		}
-	}
-	// 链首保留调度器平移后的时刻（不是重新按 now + interval 算）
-	if pausedItems[0].At != line.At {
-		t.Fatalf("链首应保留挂起那一跳的时刻，得到 %s", time.UnixMilli(pausedItems[0].At))
+	// 链首保留调度器挂起那一跳的时刻（不是重新按 now + interval 算）
+	if items[0].At != line.At {
+		t.Fatalf("链首应保留挂起那一跳的时刻，得到 %s", time.UnixMilli(items[0].At))
 	}
 	// 整体按时刻升序
 	for i := 1; i < len(items); i++ {

@@ -43,28 +43,23 @@ func newRecSched(t *testing.T) (*Scheduler, *recHost) {
 	return s, r
 }
 
-// 空闲暂停 → 回来：resume 在提前区间内会弹窗（此时剩余是对的），紧接着
-// reanchorCountdown 把计划推回“现在 + 整轮间隔”—— 窗口必须跟着收掉。
+// 重锚（离开回来 → 内置倒计时重新计时）把计划推到一整轮之后：已在场的提前提示窗必须收掉，
+// 否则窗口会挂着一整段倒计时（用户报的“还有 1200 秒就弹”就是这种：窗口是对的，倒数被重锚
+// 改成了满格）。暂停本身不再引起重锚，重锚只来自“离开回来”那条链路。
 func TestPreWindowClosedWhenCountdownReanchored(t *testing.T) {
 	s, r := newRecSched(t)
-	// “暂停在最后 5 秒”：冻结的剩余 = NextAt - PausedAt = 5s
+	// 前置：处在提前区间（剩余 5 秒）且提示窗已弹出
 	s.mu.Lock()
-	s.state.Paused = true
-	s.state.PausedAt = nowMs() - 60_000
-	s.state.NextAt = s.state.PausedAt + 5_000
+	s.state.NextAt = nowMs() + 5_000
 	for i := range s.state.Lines {
 		s.state.Lines[i].At = s.state.NextAt
 	}
-	s.state.PauseReasons = []string{PauseReasonIdle}
+	s.state.Phase = "pre"
 	s.mu.Unlock()
+	if !s.PreBreakWanted() {
+		t.Fatal("前置：剩余 5 秒，提前提示窗应在场")
+	}
 
-	s.Resume(PauseReasonIdle)
-	if len(r.remainAt) == 0 {
-		t.Fatal("前置：剩余 5 秒在提前区间内，resume 应弹提前提示窗")
-	}
-	if ms := r.remainAt[len(r.remainAt)-1]; ms > 10_000 {
-		t.Fatalf("前置：resume 弹窗时剩余 %d ms，应 ≤ 提前量 10000 ms", ms)
-	}
 	closesBefore := r.closes
 	s.ReanchorCountdown()
 

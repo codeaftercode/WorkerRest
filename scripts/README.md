@@ -46,7 +46,7 @@
 | `probe_crossday.py` + `crossday_probe.js` | 跨零点：统计报表跟着翻页 |
 | `probe_capture_guard.py` | 共享屏幕时的捕获保护（窗底染品红 + 像素占比判据） |
 | `probe_gui_boot.py` | 带控制台的 GUI 产物启动 12 秒，读日志确认启动链路 |
-| `probe_pause_cycle.py` + `pause_cycle_probe.js` | 暂停 / 恢复端到端：真页面点按钮 → 真绑定 → 真调度器（状态翻转 / nextAt 冻结与平移 / 暂停中到点不弹 / 恢复后照常弹 / 反复切换不留脏状态） |
+| `probe_pause_cycle.py` + `pause_cycle_probe.js` | 暂停 / 恢复端到端：真页面点按钮 → 真绑定 → 真调度器（状态翻转 / **暂停不冻钟**：目标时刻不动、剩余照真实墙钟掉 / 暂停中到 0 按各卡“暂停休息时”处置：正常提醒照样弹、推迟挪到 now+推迟时长且侧栏不卡 0:00 / 恢复不做补偿平移 / 反复切换不留脏状态） |
 | `probe_pause_autopause.py` | 自动暂停（应用占用）端到端：真 GUI 产物 + 真实进程占用（`ping.exe`）触发 → 收全部提醒窗 → 暂停期不弹 → 进程退出自动恢复并重锚 |
 | `probe_dnd_wnf.py` | 系统请勿打扰 / 全屏或演示判据的只读诊断：并排打印 WNF 勿扰档位与 QUNS；`--watch N` 连续采样，用于手动开关 Win11“请勿打扰”时核对档位 0↔1/2 |
 | `probe_static_audit.py` | 静态资产审计（52 项，不用浏览器，秒级）：7 个页面的资源在不在、脚本集合与 HTML 逐字一致、无内联脚本（CSP `default-src 'self'` 会静默拦）、id 不重复、`node --check` 全部脚本、CSS `url()` 与 JS 引用的 id 都存在 |

@@ -272,10 +272,9 @@ func TestPausedPostponeZeroClimbsToOneMinute(t *testing.T) {
 // 2026-11-12 起短 / 长休息也有“暂停休息时”（用户要求与外卖提醒、自定义提醒一致）：
 //   - 跳过：不弹窗，推进短休息计数、消费这一跳、记一笔跳过，然后重排下一次；
 //   - 正常提醒：照常弹休息窗（与暂停中“立即休息”发起的那次同路），不记账；
-//   - 推迟（默认）：什么都不做 —— 倒计时在暂停期间本来就冻结，恢复时整体平移 / 重锚，
-//     这一跳不会丢；固定时刻线例外，它要排进推迟表（时刻是绝对的，恢复时 replan 只会
-//     顺到下一个还没到的时刻）。
-// 自动暂停是例外：内置短 / 长在那条支路里一律不打扰、也不记账。
+//   - 推迟（默认）：把这一跳挪到“现在 + 推迟时长”，到点仍在暂停就再挪（倒计时线）；
+//     固定时刻线的时刻是绝对的，改排进推迟表，由状态卡显示推迟后的时刻。
+// 暂停原因不参与处置（手动 / 勿扰 / 空闲同口径）：暂停期间时钟照常走，到点就按卡办。
 
 // 把内置倒计时那一跳挪到过去（模拟“暂停期间时间走完了这一跳”）
 func forceBuiltinDueNow(s *Scheduler) {
@@ -381,38 +380,50 @@ func TestPausedRemindBuiltinCountdown(t *testing.T) {
 	}
 }
 
-// 倒计时 + 推迟（默认）：什么都不做，冻结的那一跳原样留着，恢复后整体平移
-func TestPausedPostponeBuiltinCountdownKeepsFrozen(t *testing.T) {
-	s, host := newTestSched(t, shortCountdown)
+// 倒计时 + 推迟（默认）：把这一跳挪到“现在 + 推迟时长”，侧栏从新时刻继续往下走。
+// 暂停期间时钟不停，不挪就是“到点作废”（旧口径靠冻结 + 恢复平移实现推迟）。
+func TestPausedPostponeBuiltinCountdownMovesLine(t *testing.T) {
+	s, host := newTestSched(t, shortCountdown) // 推迟时长 2 分钟
 	s.replan()
 	forceBuiltinDueNow(s)
 	s.Pause("manual")
-	s.mu.Lock()
-	before := s.state.NextAt
-	s.mu.Unlock()
 
 	s.onTick()
 	if len(host.skips) != 0 || len(host.breaks) != 0 || len(host.pre) != 0 {
-		t.Fatalf("推迟不该弹窗也不该记账，得到 skips=%v breaks=%v pre=%v", host.skips, host.breaks, host.pre)
+		t.Fatalf("推迟不该弹窗也不该记账，得到 skips=%v breaks=%v pre=%v",
+			host.skips, host.breaks, host.pre)
+	}
+	const postpone = 120_000
+	st := s.StateCopy()
+	if got := st.NextAt - nowMs(); got < postpone-3000 || got > postpone+3000 {
+		t.Fatalf("推迟后这一跳应在 ≈%d ms 后，实际 %d ms", int64(postpone), got)
+	}
+	if st.Rest == nil || st.Rest.At != st.NextAt {
+		t.Fatalf("状态卡“下次休息”要跟着挪，得到 %+v（NextAt=%d）", st.Rest, st.NextAt)
 	}
 	s.mu.Lock()
-	after := s.state.NextAt
 	pending := len(s.postponed)
 	s.mu.Unlock()
-	if after != before {
-		t.Fatalf("推迟不清动冻结的那一跳（%d → %d）", before, after)
-	}
 	if pending != 0 {
-		t.Fatalf("内置倒计时线不排推迟计划（会与冻结线撞车弹两次），得到 %d 条", pending)
+		t.Fatalf("倒计时线的推迟是直接挪 At，不走推迟表（会弹两次），得到 %d 条", pending)
 	}
-	// 恢复后这一跳仍在（推迟 = 冻结平移，下一次落在冻结时刻 + 暂停时长；
-	// 测试里暂停只有几毫秒，所以平移量约为 0 —— 关键是不能把它丢掉）
-	s.Resume("manual")
+	// 没到新时刻之前，下一拍不该再挪
+	s.onTick()
+	if got := s.StateCopy().NextAt; got != st.NextAt {
+		t.Fatalf("未到点时不该再挪（%d → %d）", st.NextAt, got)
+	}
+	// 推迟后的时刻到了、仍在暂停：再往后推一段
 	s.mu.Lock()
-	resumed := s.state.NextAt
+	s.state.NextAt = nowMs() - 1000
+	for i := range s.state.Lines {
+		if s.state.Lines[i].Type == "short" {
+			s.state.Lines[i].At = s.state.NextAt
+		}
+	}
 	s.mu.Unlock()
-	if resumed < before {
-		t.Fatalf("恢复不该把这一跳往前挪（%d → %d）", before, resumed)
+	s.onTick()
+	if got := s.StateCopy().NextAt - nowMs(); got < postpone-3000 || got > postpone+3000 {
+		t.Fatalf("再次到点应继续往后推 ≈%d ms，实际 %d ms", int64(postpone), got)
 	}
 }
 
@@ -488,9 +499,9 @@ func TestManualPauseHonorsSkipOnBuiltinBreak(t *testing.T) {
 	}
 }
 
-// “推迟提醒”（默认）+ 自动暂停：不弹、不记账；恢复后第一拍就把这一跳补上
-// （时钟冻结平移，不再按“离开”口径重锚 —— 重锚会把它悄悄抹掉，那等于又有了例外）。
-func TestAutoPausePostponeBuiltinFiresAfterResume(t *testing.T) {
+// “推迟提醒”（默认）+ 自动暂停：不弹、不记账，把这一跳挪到“现在 + 推迟时长”；
+// 恢复时若还没到点就不补弹（时钟没停，推迟就是推迟 —— 旧的“恢复即弹”建立在时钟冻结上）。
+func TestAutoPausePostponeBuiltinDefersByPostponeMs(t *testing.T) {
 	s, host := newTestSched(t, `{"short":{"enabled":true,"mode":"countdown",`+
 		`"intervalMs":600000,"durationMs":20000,"pauseAction":"postpone",`+
 		`"postponeMs":120000,"slots":[]}}`)
@@ -501,13 +512,29 @@ func TestAutoPausePostponeBuiltinFiresAfterResume(t *testing.T) {
 	if len(host.breaks) != 0 || len(host.skips) != 0 {
 		t.Fatalf("推迟提醒在暂停期间不该弹也不该记账，得到 breaks=%v skips=%v", host.breaks, host.skips)
 	}
+	if got := s.StateCopy().NextAt - nowMs(); got < 117_000 || got > 123_000 {
+		t.Fatalf("应把这一跳挪到 ≈120000 ms 后，实际 %d ms", got)
+	}
 	if len(s.postponed) != 0 {
-		t.Fatal("内置倒计时线不该另排推迟计划（冻结平移已实现推迟，再排会弹两次）")
+		t.Fatal("内置倒计时线的推迟是直接挪 At，不走推迟表（会弹两次）")
 	}
 	s.Resume("勿扰")
 	s.onTick()
+	if len(host.breaks) != 0 {
+		t.Fatalf("恢复时这一跳还没到点，不该补弹，得到 %v", host.breaks)
+	}
+	// 推迟后的时刻到了：正常弹一次
+	s.mu.Lock()
+	s.state.NextAt = nowMs() - 1000
+	for i := range s.state.Lines {
+		if s.state.Lines[i].Type == "short" {
+			s.state.Lines[i].At = s.state.NextAt
+		}
+	}
+	s.mu.Unlock()
+	s.onTick()
 	if len(host.breaks) != 1 || host.breaks[0] != "short" {
-		t.Fatalf("恢复后第一拍应按“推迟提醒”补上这一跳，得到 %v", host.breaks)
+		t.Fatalf("推迟后的时刻到点应弹出一次短休息，得到 %v", host.breaks)
 	}
 }
 

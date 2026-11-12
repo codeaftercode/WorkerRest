@@ -294,7 +294,8 @@ func trayTextsAt(st model.SchedulerState, pausedCleared bool, hold []string, now
 		actionText = "立即休息"
 		pauseText = "恢复休息"
 	case st.Phase == "break":
-		// 暂停期间剩余时间冻结在 pausedAt，但暂停已被上一个分支拦下，这里按当前时间算
+		// 休息剩余时间只在“暂停 + 该休息选推迟”时按 pausedAt 折算，而那种情况已被
+		// 上一个分支拦下，走到这里就是真实时钟在走，按当前时间算。
 		tip = "休息中，剩余 " + fmtTrayRemain(max0(st.BreakEndsAt-nowMs()))
 		statusText = "状态：休息中"
 		actionText = "提前结束休息"

@@ -30,24 +30,17 @@ func (s *Scheduler) advanceCounter(id string) {
 // 进度跨 replan 保留），间隔已改的立刻按新间隔重新起算（见 breakplan.go 的
 // countdownAnchor）。调用方必须已持有 s.mu。
 //
-// 暂停期间“时间冻结”：判锚点过期必须用 PausedAt 而不是真实墙钟。否则暂停中任何一次
-// replan（保存设置 / 暂停期间结束一次自定义提醒）都会把冻结锚点当成过期、按
-// now+interval 重新起算；恢复时 resume 又整体平移 delta，等于把整段暂停算了两遍
-// （用户看到“还剩 50 分钟”，而配置是 20 分钟）。
+// 暂停期间**不再冻结**（2026-11-12 用户口径：倒计时不要停）：判定一律按真实墙钟，
+// 到点的锚点就当过期，replan 按 now+interval 重新起算 —— 与恢复后不平移同源。
+// （曾经这里把基准钳到 PausedAt，配合 resume 的 +delta 平移实现“暂停停表”。）
 func (s *Scheduler) prevCountdownAnchorsLocked(now int64) map[string]plan.CdAnchor {
-	ref := now
-	frozen := false
-	if s.state.Paused && s.state.PausedAt > 0 && s.state.PausedAt < ref {
-		ref = s.state.PausedAt
-		frozen = true
-	}
 	prev := map[string]plan.CdAnchor{}
 	for _, l := range s.state.Lines {
-		if l.Source != "countdown" || l.At <= ref {
+		if l.Source != "countdown" || l.At <= now {
 			continue
 		}
 		if old, ok := prev[l.Type]; !ok || l.At < old.At {
-			prev[l.Type] = plan.CdAnchor{At: l.At, Iv: s.anchorIv[l.Type], Frozen: frozen}
+			prev[l.Type] = plan.CdAnchor{At: l.At, Iv: s.anchorIv[l.Type]}
 		}
 	}
 	return prev
@@ -78,9 +71,13 @@ func (s *Scheduler) replan() {
 	defer s.mu.Unlock()
 	st := &s.state
 	// 过期键清掉：nextSlotAt 只返回严格晚于 now 的时刻，已过时刻的 occurrence
-	// 不可能再被选中，留着只会把集合撑大
+	// 不可能再被选中，留着只会把集合撑大。
+	//
+	// 留一分钟的余量：暂停期间到点的固定时刻线会消费“当前这一分钟”的 occurrence
+	// （跳过 / 推迟越界，见 pausedPostpone），按 <= now 立刻清掉的话，同一分钟内
+	// 每一拍都会重新“到期”再记一次跳过 —— 半秒一条，统计页直接爆。
 	for k := range s.consumed {
-		if plan.OccurrenceKeyAt(k) <= now {
+		if plan.OccurrenceKeyAt(k) <= now-60_000 {
 			delete(s.consumed, k)
 		}
 	}
@@ -113,6 +110,42 @@ func (s *Scheduler) replan() {
 	st.NextAt = p.At
 	src := p.Source
 	st.NextSource = &src
+	// 固定时刻线上挂着“推迟待办”时，dueAt 才是这条提醒真正的弹出时刻（它比时刻表里的
+	// 下一班更早）。不顶上来的话，托盘 / 提前提示窗 / 下次触发都还对着原定时刻算，
+	// 与侧栏显示的 dueAt 各说一套。
+	if q, ok := s.nextPostponedLocked(now); ok && q.dueAt < st.NextAt {
+		for _, e := range cfg.BreakEntries() {
+			if e.ID != q.kind || !e.Config.Enabled {
+				continue
+			}
+			st.NextType, st.NextName, st.NextAt = q.kind, e.Name, q.dueAt
+			src := "fixed"
+			st.NextSource = &src
+			ref := &model.PlanRef{Name: e.Name, At: q.dueAt}
+			if isBuiltinBreakID(q.kind) {
+				st.Rest = ref
+			} else {
+				st.Other = ref
+			}
+			break
+		}
+	}
+}
+
+// nextPostponedLocked 最近一条还没到点的推迟待办（固定时刻线的推迟）。
+// 到点的那条不算：它由 flushPostponed 负责弹出，留在这里会让计划永远指着过去。
+// 调用方必须已持有 s.mu。
+func (s *Scheduler) nextPostponedLocked(now int64) (*postponedBreak, bool) {
+	var pick *postponedBreak
+	for _, p := range s.postponed {
+		if p.dueAt <= now {
+			continue
+		}
+		if pick == nil || p.dueAt < pick.dueAt {
+			pick = p
+		}
+	}
+	return pick, pick != nil
 }
 
 // refreshDerivedLocked 刷新状态卡用的派生视图（分组最近一条 + 各固定线“下次”时刻表）。
@@ -124,6 +157,39 @@ func (s *Scheduler) refreshDerivedLocked(cfg *settings.Settings, now int64) {
 	s.state.Rest = planRefOf(split.Builtin)
 	s.state.Other = planRefOf(split.Other)
 	s.state.FixedNext = plan.FixedNextMap(cfg, now, s.consumed)
+	s.applyPostponedRefsLocked(cfg, now)
+}
+
+// applyPostponedRefsLocked 让“暂停期间被推迟的固定时刻线”出现在状态卡的倒计时格上。
+//
+// 固定时刻是绝对的，推迟不改配置里的 hour/minute（那一格 12:00 就是 12:00），它只多出
+// 一条“改到 dueAt 再弹”的待办。不覆盖的话，侧栏那格会一直显示已经过去的时刻（0:00），
+// 用户看不出“它被推到了几点”。倒计时线不走这张表 —— 那条是把挂起线的 At 直接挪走。
+// 调用方必须已持有 s.mu。
+func (s *Scheduler) applyPostponedRefsLocked(cfg *settings.Settings, now int64) {
+	if len(s.postponed) == 0 {
+		return
+	}
+	names := map[string]string{}
+	for _, e := range cfg.BreakEntries() {
+		names[e.ID] = e.Name
+	}
+	for _, p := range s.postponed {
+		if p.dueAt <= now {
+			continue
+		}
+		name := names[p.kind]
+		if name == "" {
+			continue
+		}
+		ref := &s.state.Other
+		if isBuiltinBreakID(p.kind) {
+			ref = &s.state.Rest
+		}
+		if *ref == nil || (*ref).At > p.dueAt {
+			*ref = &model.PlanRef{Name: name, At: p.dueAt}
+		}
+	}
 }
 
 func planRefOf(p *model.PlannedBreak) *model.PlanRef {
@@ -224,11 +290,6 @@ func (s *Scheduler) finishBreak() {
 	kind := s.state.NextType
 	s.state.BreakWhilePaused = false
 	s.advanceCounter(kind)
-	// 暂停中收的尾：下面 scheduleNext 排出的下一跳是按真实时间算的（锚点已经走到现在），
-	// 恢复时不能再跟着暂停时长平移，见 resume 的 countdown 分支。
-	if s.state.Paused {
-		s.pauseReplanned = true
-	}
 	s.mu.Unlock()
 
 	// break-end 的副作用：关休息窗口、空闲基准清零（空闲计时属下一步的“系统能力”）
@@ -302,6 +363,19 @@ func (s *Scheduler) consumedCopy() map[string]bool {
 func (s *Scheduler) StateForRenderer() model.SchedulerState {
 	cfg := s.host.CfgSnapshot()
 	st := s.StateCopy()
+	// 固定时刻线被推迟：摘要表那一格要说“改到几点弹”，与 NextAt / 侧栏同一口径。
+	// 时间线据 shifts 跳过原时刻并补上这一条，卡片右上角“下次 …”也跟着走；
+	// 不改的话摘要里只剩时刻表的下一班，这次推迟在界面上完全看不见。
+	s.mu.Lock()
+	for _, p := range s.postponed {
+		if p.dueAt <= nowMs() {
+			continue
+		}
+		if cur, ok := st.FixedNext[p.kind]; !ok || p.dueAt < cur {
+			st.FixedNext[p.kind] = p.dueAt
+		}
+	}
+	s.mu.Unlock()
 	pp := s.host.TakeoutPostponedSnapshot()
 	if pp != nil {
 		if st.FixedNext == nil {
@@ -323,7 +397,6 @@ func (s *Scheduler) StateForRenderer() model.SchedulerState {
 		Skip:             s.consumedCopy(),
 		Shifts:           st.FixedNext,
 		CountdownLines:   st.Lines,
-		Paused:           st.Paused,
 		TakeoutFired:     s.host.TakeoutFiredSnapshot(),
 		TakeoutPostponed: pp,
 		ShortsSinceLong:  st.ShortsSinceLong,

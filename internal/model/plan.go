@@ -111,15 +111,15 @@ type PlanSplit struct {
 
 // TimelineItem 今日提醒时间线的一项
 //
-// Paused 是**指针**：上一版 只给倒计时线的项写 paused 键（固定线没有这个键），
-// 用 *bool + omitempty 才能连“键在不在”都对上。
+// 曾经带一个 *bool 的 paused 标记（上一版只给倒计时线写 paused 键），
+// 2026-11-12 起暂停不再冻钟、倒计时照真实墙钟走，时间线里已经没有“暂停中”这个概念，
+// 字段随之删除。
 type TimelineItem struct {
 	Key    string `json:"key"`
 	Type   string `json:"type"`
 	Name   string `json:"name"`
 	At     int64  `json:"at"`
 	Source string `json:"source"`
-	Paused *bool  `json:"paused,omitempty"`
 }
 
 // TakeoutIdleWait 到点了、正在等“鼠标键盘无活动”达标的那一笔外卖提醒
@@ -160,7 +160,7 @@ type SchedulerState struct {
 	Rest *PlanRef `json:"rest"`
 	// Other 外卖提醒与所有自定义提醒里最近的一条（状态卡“下次XX提醒”格）；null = 都没启用
 	Other *PlanRef `json:"other"`
-	// Lines 调度器当前挂起的全部触发线（replan 时算好；推迟/恢复时跟着平移）
+	// Lines 调度器当前挂起的全部触发线（replan 时算好；推迟时跟着挪到 dueAt）
 	Lines []PlannedBreak `json:"lines"`
 	// Timeline 今日提醒时间线（主进程在状态快照时按当前设置与调度状态现算）
 	Timeline []TimelineItem `json:"timeline"`
@@ -173,7 +173,9 @@ type SchedulerState struct {
 	BreakWhilePaused bool     `json:"breakWhilePaused"`
 	Paused           bool     `json:"paused"`
 	PauseReasons     []string `json:"pauseReasons"`
-	// PausedAt 进入暂停的时刻（冻结倒计时用：暂停期间剩余时间按此锚定，不再往下掉）
+	// PausedAt 进入暂停的时刻。唯一读者是“进行中、且自己选的是推迟”的那次休息：
+	// 它的剩余时间按此锚定（推迟 = 冻结剩余，恢复后接着走）。
+	// 下一跳的倒计时**不**按此锚定 —— 暂停不冻钟，照真实墙钟往下掉（2026-11-12 口径）。
 	PausedAt int64 `json:"pausedAt"`
 	// PauseDeadline 定时暂停的到期时刻（0 = 无限，直到手动恢复）。
 	// 到点不一定立刻恢复：还有“投屏 / 全屏 / 勿扰 / 空闲 / 应用占用”在生效时保持暂停，
