@@ -572,6 +572,68 @@ func TestSchedulerStartBreakSkipsDeletedCustom(t *testing.T) {
 	}
 }
 
+// “立即休息”只认内置短 / 长休息：排在更前面的自定义提醒不参与。
+//
+// 反例的代价不只是“弹错窗”：startBreakAt 按 (身份, 时刻) 记已消费，拿自定义提醒
+// 那条线顶上就等于把本该准点响的那次提醒吃掉。
+//
+// 外卖不在这张表里（它由 App 层的 checkTakeoutReminders 独立循环驱动），
+// 所以“不弹外卖窗”是结构上保证的，这里只钉自定提醒这一段。
+func TestBreakNowOnlyPicksBuiltin(t *testing.T) {
+	cfg := `{"short":{"enabled":true,"mode":"countdown","intervalMs":600000,"durationMs":20000},` +
+		`"long":{"enabled":false},` +
+		`"customBreaks":[{"id":"cb-x","name":"喝水","config":{"enabled":true,"mode":"countdown",` +
+		`"intervalMs":30000,"durationMs":15000}}]}`
+	s, host := newTestSched(t, cfg)
+	s.replan()
+	lines := s.StateCopy().Lines
+	if len(lines) < 2 || lines[0].Type != "cb-x" {
+		t.Fatalf("用例前提：自定义提醒应排在短休息之前，得到 %+v", lines)
+	}
+	customAt := lines[0].At
+
+	s.BreakNow()
+	if len(host.breaks) != 1 || host.breaks[0] != "short" {
+		t.Fatalf("应立即弹短休息（不是自定义提醒），得到 %v", host.breaks)
+	}
+	if got := s.StateCopy().NextType; got != "short" {
+		t.Fatalf("立即休息应挑短休息，得到 %q", got)
+	}
+	// 休息进行中再点一次：不该再弹（沿用“正在休息就空操作”）
+	s.BreakNow()
+	if len(host.breaks) != 1 {
+		t.Fatalf("休息中不该再弹一次，得到 %v", host.breaks)
+	}
+	s.mu.Lock()
+	ate := s.consumed[plan.OccurrenceKey("cb-x", customAt)]
+	s.mu.Unlock()
+	if ate {
+		t.Fatal("自定义提醒那条不该被记成已消费（否则准点那次就再也不弹了）")
+	}
+}
+
+// 两条内置都没开（只有自定义提醒）：立即休息什么都不做，不能拿自定义提醒顶上。
+func TestBreakNowDoesNothingWithoutBuiltin(t *testing.T) {
+	cfg := `{"short":{"enabled":false},"long":{"enabled":false},` +
+		`"customBreaks":[{"id":"cb-x","name":"喝水","config":{"enabled":true,"mode":"countdown",` +
+		`"intervalMs":60000,"durationMs":15000}}]}`
+	s, host := newTestSched(t, cfg)
+	s.replan()
+	before := s.StateCopy()
+	if before.NextType != "cb-x" {
+		t.Fatalf("用例前提：下一次应是自定义提醒，得到 %q", before.NextType)
+	}
+
+	s.BreakNow()
+	if len(host.breaks) != 0 {
+		t.Fatalf("没有内置短 / 长休息时不该弹任何窗，得到 %v", host.breaks)
+	}
+	after := s.StateCopy()
+	if after.Phase != "idle" || after.NextType != before.NextType || after.NextAt != before.NextAt {
+		t.Fatalf("应原地不动：before=%q/%d after=%q/%d", before.NextType, before.NextAt, after.NextType, after.NextAt)
+	}
+}
+
 func TestSchedulerStateForRendererIncludesTimeline(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()

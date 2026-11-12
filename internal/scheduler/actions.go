@@ -30,9 +30,48 @@ func (s *Scheduler) ResetCycle() {
 	s.scheduleNext()
 }
 
-// breakNow 立即开始一次休息（跳过等待）
+// BreakNow 立即开始一次休息（跳过等待）。托盘 / 侧栏 / 快捷键的“立即休息”都走这里。
+//
+// **只认内置短休息、长休息**：外卖提醒与自定义提醒不参与。它们是“到点提醒”，
+// 提前手动触发没有意义 —— 更重要的是会顺手把那一刻的 occurrence 标成已消费，
+// 把本该准点响的那次提醒吃掉。
+//
+// 具体起哪一条：当前挂起线里最早的一条短 / 长休息（正在休息 → 空操作）。
+// 挂起线为空或两条内置都没开 → 什么也不做，不能退回去拿“下一条任意提醒”顶上。
+//
+// 与 BreakNowOf 的分工：BreakNowOf(kind) 仍是“按身份起一次休息”（诊断、
+// 托盘“来一次长休息”、冒烟脚本的 StartBreak("cb-xxx") 都靠它），语义不动。
 func (s *Scheduler) BreakNow() {
-	s.BreakNowOf("")
+	id, breaking := s.builtinBreakNowOf()
+	if id != "" || breaking {
+		// 已经弹出来了，或者本来就在休息中（沿用“正在休息就空操作”）
+		return
+	}
+	log.Printf("[scheduler] 立即休息：当前没有可用的短 / 长休息（外卖与自定义提醒不参与）")
+}
+
+// builtinBreakNowOf 挑一条内置短 / 长休息立即开始。
+// 返回会话 id（没有可用的内置休息时为空串）与“是否本来就在休息中”。
+func (s *Scheduler) builtinBreakNowOf() (string, bool) {
+	s.mu.Lock()
+	if s.state.Phase == "break" {
+		s.mu.Unlock()
+		return "", true
+	}
+	kind, at := "", int64(0)
+	for _, l := range s.state.Lines {
+		if l.Type != "short" && l.Type != "long" {
+			continue
+		}
+		if kind == "" || l.At < at {
+			kind, at = l.Type, l.At
+		}
+	}
+	s.mu.Unlock()
+	if kind == "" {
+		return "", false
+	}
+	return s.startBreakAt(kind, at), false
 }
 
 // breakNowOf 立即开始一次休息，kind 留空 = 用当前计划的那一条。

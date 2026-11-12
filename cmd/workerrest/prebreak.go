@@ -363,6 +363,7 @@ func (a *App) PreBreakAction(action string) error {
 func (a *App) preBreakAct(action string) error {
 	a.mu.Lock()
 	owner := a.preInfo.Owner
+	kind := a.preInfo.Kind
 	slot := a.preTakeoutSlot
 	at := a.preTargetAt
 	a.mu.Unlock()
@@ -408,7 +409,14 @@ func (a *App) preBreakAct(action string) error {
 	}
 	switch action {
 	case "breakNow":
-		a.schedBreakNow()
+		// 提前提示窗的“现在”：起点是**这扇窗正在提示的那条提醒**（可能是自定义提醒），
+		// 不是托盘 / 快捷键那个“只认短休息、长休息”的立即休息。
+		// 身份缺失才退回通用入口（它只会挑内置短 / 长）。
+		if kind != "" && a.sched != nil {
+			a.sched.BreakNowOf(kind)
+		} else {
+			a.schedBreakNow()
+		}
 	case "postpone":
 		a.schedPostpone()
 	case "skip":

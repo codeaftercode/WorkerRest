@@ -4460,7 +4460,16 @@
     // “跳过本次”在休息中等价于提前结束（与托盘“提前结束休息”同义，
     // 判定落在 scheduler.skip：休息相位直接结束本次休息）。
     const qaBreak = $("qa-break");
-    if (qaBreak) qaBreak.disabled = inBreak;
+    if (qaBreak) {
+      // 「立即休息」只对短休息、长休息有效（外卖提醒、自定义提醒不参与）。
+      // 两条内置都没排上时点下去什么也不会发生，索性禁用并说明原因，
+      // 免得看起来像按钮坏了。
+      const noBuiltin = !inBreak && !st.rest;
+      qaBreak.disabled = inBreak || noBuiltin;
+      qaBreak.title = inBreak
+        ? ""
+        : noBuiltin ? "短休息、长休息都没有安排时，「立即休息」不适用" : "";
+    }
     const qaSkip = $("qa-skip");
     if (qaSkip) qaSkip.textContent = inBreak ? "提前结束" : "跳过本次";
     const qaPostpone = $("qa-postpone");
