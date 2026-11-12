@@ -11,8 +11,10 @@ type BreakConfig struct {
 	IntervalMs     int64  `json:"intervalMs"`
 	NotifyBeforeMs int64  `json:"notifyBeforeMs"`
 	PostponeMs     int64  `json:"postponeMs"`
-	// PauseAction 暂停休息期间到点时怎么处置：remind / postpone / skip（缺省 skip，
-	// 见 PauseAction* 常量）。只对自定义提醒有意义；短 / 长休息不看这个字段。
+	// PauseAction 暂停休息期间到点时怎么处置：remind / postpone / skip（缺省 postpone，
+	// 见 PauseAction* 常量）。2026-11-12 起短休息 / 长休息也有这一项（用户要求与外卖提醒、
+	// 自定义提醒一致）：remind 照常弹、postpone 顺延到恢复后、skip 跳过并记一笔统计；
+	// 自动暂停（空闲 / 勿扰 / 全屏 / 投屏 / 应用占用）不看它，一律不打扰。
 	PauseAction string `json:"pauseAction"`
 	// IdleGate 到点后不马上提醒，先等“鼠标键盘连续无活动”达到 IdleGateMs（空闲门）。
 	// 语义：用户只想在自己已经离开工位的那一刻被叫去休息，而不是干到一半被打断。

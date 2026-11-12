@@ -3422,33 +3422,34 @@
         await previewBreak(cb.id);
       });
     }
-    // “启用”下一行：暂停休息期间怎么处置（短 / 长休息没有这一行，保持原状）。
-    // 必须跟在克隆之后插：短休息卡片本身没有这个控件，模板只作骨架。
-    // 版式与外卖卡逐字相同（普通 .row.field：标签 | 下拉），
-    // 标签后的“?”说明“暂停休息”包括哪几种情况。
-    const pauseBlock = document.createElement("div");
-    pauseBlock.className = "row field";
-    const pauseLabel = document.createElement("label");
-    pauseLabel.append(document.createTextNode("暂停休息时"),
-      mkQMark("pause-scope-help", pauseScopeHint()));
-    const pauseHost = document.createElement("div");
-    pauseHost.id = `${cb.id}-pause`;
-    pauseBlock.append(pauseLabel, pauseHost);
-    // 插进“弹窗设置”组的**首位**（组标题下、提醒时长之上）：
-    // 2026-11-09 起卡内参数分成“触发条件 / 弹窗设置”两组，暂停休息时属于后一组 ——
-    // 它描述的是“该弹的时候正在暂停怎么处置”，是这张卡最常用的开关（默认推迟），
-    // 2026-11-10 按用户要求从组末提到组首，省得每次都要越过三个数字才看见。
-    // 2026-11-10 起组是可折叠的描边盒（.pg-head + .pg-body），插的是**内容体首位**，
-    // 不是组的首位 —— 直接 prepend 会把头部挤到下面去。
-    // 组是模板里必有的骨架，取不到就说明模板本身坏了，此时不插也不影响其余功能。
-    const remindGroup = card.querySelector(':scope > .pg[data-pg="reminder"]');
-    if (remindGroup) {
-      const pgBody = remindGroup.querySelector(':scope > .pg-body');
-      if (pgBody) pgBody.prepend(pauseBlock); else remindGroup.prepend(pauseBlock);
+    // “暂停休息时”：2026-11-12 起这是短休息卡模板**自带**的一行（“弹窗设置”组首位），
+    // 克隆时 id 已被 rewrite 改写成 `${cb.id}-pause`，这里只需补挂下拉与“?”。
+    // 模板里找不到这一行（模板被改坏的防御分支）才按外卖卡的样子新建一份并插到组首。
+    // 版式由模板保证：普通 .row.field（标签 | 下拉），与外卖卡、短 / 长休息卡逐字同款。
+    let pauseHost = card.querySelector(`#${cb.id}-pause`);
+    if (!pauseHost) {
+      // 防御分支：模板里没有这一行（比如以后有人手改了 settings.html 的结构）。
+      // 照外卖卡的版式现造“标签 + ? | 下拉”，插到“弹窗设置”组内容体**首位**——
+      // 与短 / 长休息卡一样是组内第一行。
+      const body = card.querySelector('.pg[data-pg="reminder"] > .pg-body');
+      if (body) {
+        const row = document.createElement("div");
+        row.className = "row field";
+        const label = document.createElement("label");
+        label.textContent = "暂停休息时";
+        label.appendChild(mkQMark("pause-scope-help", pauseScopeHint()));
+        pauseHost = document.createElement("div");
+        pauseHost.className = "cdrop-host";
+        pauseHost.id = cb.id + "-pause";
+        row.appendChild(label);
+        row.appendChild(pauseHost);
+        body.prepend(row);
+      }
     }
-    // 插进文档之后才能找到“?”左侧的“暂停休息时”并打标
-    bindQTip(pauseLabel.querySelector(".q-mark"));
-    mountPauseDrop(pauseHost, cb.config?.pauseAction);
+    const pauseRow = pauseHost ? pauseHost.closest(".row.field") : null;
+    // 打标“?”左侧那段文字（纯文本会被包一层 span），之后指针落在文字上也能出提示
+    if (pauseRow) bindQTip(pauseRow.querySelector(".q-mark"));
+    if (pauseHost) mountPauseDrop(pauseHost, cb.config?.pauseAction);
     card.querySelector(".tk-list").innerHTML = "";
     const msgList = card.querySelector(".msg-list");
     msgList.innerHTML = "";
@@ -3473,7 +3474,7 @@
     mountBreakPanes(id);
     bindIdleGate(id);
     // 克隆节点的“已绑过”标记已在 buildCustomBreakCard 里清掉：把卡里每个“?”重绑一遍，
-    // 否则只有“暂停休息时”那一枚（下面是新造的）有提示，克隆来的几枚点不出浮层。
+    // 否则克隆来的几枚点不出浮层（都已打过标，重绑是幂等的空操作）。
     for (const q of card.querySelectorAll(".q-mark")) bindQTip(q);
     $(`${id}-add`).addEventListener("click", async () => {
       const c = breakCfg(id);
@@ -3733,7 +3734,9 @@
     $(`${id}-notify`).value = String(Math.round(c.notifyBeforeMs / 1e3));
     $(`${id}-postpone`).value = String(Math.round(c.postponeMs / 6e4));
     fillIdleGate(id, c);
-    // “暂停休息时”只有自定义提醒卡片有（短 / 长休息的模板本身没有这行）
+    // “暂停休息时”2026-11-12 起四类提醒（短休息 / 长休息 / 外卖 / 自定义提醒）都有：
+    // 短 / 长休息的那两个下拉在 fillForm 里先挂好（模板自带宿主），自定义卡在
+    // buildCustomBreakCard 里挂，这里只负责回填。
     setDropValue($(`${id}-pause`), c.pauseAction);
     renderBreakList(id);
   }
@@ -3782,6 +3785,11 @@
     $("chk-update").checked = S.checkUpdateOnStart;
     $("appPause-enabled").checked = S.appPause.enabled;
     renderAppList();
+    // “暂停休息时”2026-11-12 起短 / 长休息也有（与外卖、自定义提醒同一套）：
+    // 必须先挂下拉再 fillBreakForm —— 后者按 PAUSE_DROPS 里的实例回填当前值，
+    // 顺序反了会回填成默认的“推迟提醒”。
+    mountPauseDrop($("short-pause"), S.short.pauseAction);
+    mountPauseDrop($("long-pause"), S.long.pauseAction);
     for (const id of allBreakIds()) fillBreakForm(id);
     applyBreakModeUI();
     const a = S.appearance;
@@ -3861,7 +3869,8 @@
       const gate = readIdleGate(id);
       c.idleGate = gate.enabled;
       c.idleGateMs = gate.ms;
-      // 暂停休息时：只有自定义提醒卡片有这一行（短 / 长休息不写这个键）
+      // 暂停休息时：四类提醒（短 / 长休息 / 外卖 / 自定义）都有这一行，逐卡回写自己那份。
+      // 宿主不在（理论上不会）就不写键，后端按缺省 postpone 兜底。
       const pauseHost = $(`${id}-pause`);
       if (pauseHost) c.pauseAction = dropValue(pauseHost, "postpone");
     };

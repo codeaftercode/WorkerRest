@@ -629,6 +629,98 @@ async function verifyBreakDurationUnit(page) {
     cfg.long.durationMs + " / " + cfg.short.durationMs,
   );
 
+  // 「暂停休息时」2026-11-12 起短 / 长休息也有（用户要求与外卖提醒、自定义提醒一致）：
+  // 必须是「弹窗设置」组的**第一行**（提醒时长之上），控件与外卖卡逐字同款
+  //（同一套三项、同一套图标、同一个自绘下拉），选中值逐卡落到 short / long.pauseAction。
+  const bl = await page.evaluate(() => {
+    const out = {};
+    for (const id of ["short", "long"]) {
+      const host = document.getElementById(id + "-pause");
+      const row = host && host.closest(".row.field");
+      const pg = host && host.closest('.pg[data-pg="reminder"]');
+      const firstRow = pg && pg.querySelector(":scope > .pg-body > .row");
+      const btn = host && host.querySelector(".cdrop-btn");
+      const items = host ? [...host.querySelectorAll(".cdrop-item")] : [];
+      out[id] = {
+        inReminder: !!pg,
+        isFirstRow: !!row && row === firstRow,
+        label: row ? ((row.querySelector("label") || {}).textContent || "") : "",
+        name: btn ? btn.getAttribute("aria-label") : null,
+        values: items.map((it) => it.dataset.value).join("/"),
+        selected: items
+          .filter((it) => it.getAttribute("aria-selected") === "true")
+          .map((it) => it.dataset.value)
+          .join("/"),
+        text: btn ? ((btn.querySelector(".cdrop-cur") || {}).textContent || "") : "",
+        icons: items.map((it) => it.querySelectorAll(".cdrop-ico > *").length).join("/"),
+      };
+    }
+    return out;
+  });
+  check(
+    !!(bl.short && bl.short.inReminder && bl.short.isFirstRow),
+    "暂停休息时 · 短休息卡有这一行，且是「弹窗设置」组的第一行（提醒时长之上）",
+    JSON.stringify(bl.short),
+  );
+  check(
+    !!(bl.long && bl.long.inReminder && bl.long.isFirstRow),
+    "暂停休息时 · 长休息卡同上",
+    JSON.stringify(bl.long),
+  );
+  check(
+    !!(bl.short && bl.short.label.indexOf("暂停休息时") === 0 && bl.short.name === "暂停休息时"),
+    "暂停休息时 · 标签与可访问名都是“暂停休息时”",
+    bl.short && bl.short.label,
+  );
+  // 图标是 SVG 内层节点（铃铛 path 三条、箭头 / 带斜杠的圆各两条），只断言“画出来了”
+  check(
+    !!(bl.short && bl.short.values === "remind/postpone/skip" &&
+      bl.short.icons.split("/").every((n) => Number(n) > 0)),
+    "暂停休息时 · 短休息卡三项齐全、每项前面都有图标",
+    JSON.stringify(bl.short),
+  );
+  check(
+    !!(bl.short && bl.short.selected === "postpone" && bl.short.text === "推迟提醒"),
+    "暂停休息时 · 短休息卡默认“推迟提醒”",
+    JSON.stringify(bl.short),
+  );
+
+  // 改造短休息那一张：只改它自己那份配置，长休息与外卖不动
+  await page.click("#short-pause .cdrop-btn");
+  await page.click('#short-pause .cdrop-item[data-value="skip"]');
+  cfg = await waitSettled(page);
+  check(
+    cfg.short.pauseAction === "skip",
+    "暂停休息时 · 短休息选“跳过提醒”落盘 pauseAction=skip",
+    cfg.short.pauseAction,
+  );
+  check(
+    cfg.long.pauseAction === "postpone" && cfg.takeout.pauseAction === "postpone",
+    "暂停休息时 · 只改短休息那一份，长休息 / 外卖不动",
+    JSON.stringify({ long: cfg.long.pauseAction, takeout: cfg.takeout.pauseAction }),
+  );
+  // 换成长休息卡：两套菜单互不干扰
+  await page.click("#long-pause .cdrop-btn");
+  await page.click('#long-pause .cdrop-item[data-value="remind"]');
+  cfg = await waitSettled(page);
+  check(
+    cfg.long.pauseAction === "remind" && cfg.short.pauseAction === "skip",
+    "暂停休息时 · 长休息选“正常提醒”落盘 pauseAction=remind",
+    JSON.stringify({ short: cfg.short.pauseAction, long: cfg.long.pauseAction }),
+  );
+  // 还原出厂（两张都回“推迟提醒”）
+  await page.click("#long-pause .cdrop-btn");
+  await page.click('#long-pause .cdrop-item[data-value="postpone"]');
+  cfg = await waitSettled(page);
+  await page.click("#short-pause .cdrop-btn");
+  await page.click('#short-pause .cdrop-item[data-value="postpone"]');
+  cfg = await waitSettled(page);
+  check(
+    cfg.short.pauseAction === "postpone" && cfg.long.pauseAction === "postpone",
+    "暂停休息时 · 已还原成出厂“推迟提醒”",
+    JSON.stringify({ short: cfg.short.pauseAction, long: cfg.long.pauseAction }),
+  );
+
   // 「暂停休息时」自绘下拉（2026-11-10 二次回退：并排三档段控被否 —— 三格把控件列
   // 挤窄、字号还得缩，用户原话“把其他控件都挤小了”，要求回下拉、保留每项前面的图标）。
   // 钉四件事：三项与顺序、默认“推迟提醒”、每项和触发器都带图标、交互落盘；

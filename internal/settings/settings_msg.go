@@ -23,7 +23,8 @@ func normalizeBreakConfigOf(cfg map[string]any) map[string]any {
 		out["mode"] = "countdown"
 	}
 	// 暂停休息时的处置：值非法就落回默认；旧键 skipWhenPaused（内测版）顺手清掉。
-	// 只在原本就有这个键时补写 —— 短 / 长休息不写它（它们不受这个开关影响）。
+	// 只在原本就有这个键时补写 —— 缺键由 breakConfigOf 兜底成“推迟提醒”（2026-11-12 起
+	// 短 / 长休息也有这一项，它们的出厂配置里显式写了 postpone）。
 	if _, has := out["pauseAction"]; has {
 		out["pauseAction"] = normPauseAction(out["pauseAction"])
 	}
