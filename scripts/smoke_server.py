@@ -290,7 +290,7 @@ def main():
     args = ap.parse_args()
 
     if not os.path.isfile(EXE):
-        print("找不到 %s —— 先跑：go build -tags server -o build/bin/rest_server.exe ." % EXE)
+        print("找不到 %s —— 先跑：go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest" % EXE)
         return 2
 
     port = free_port(args.port)
