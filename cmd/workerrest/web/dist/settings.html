@@ -62,13 +62,19 @@
     <main id="content">
       <!-- 通用配置（行为 / 设置窗口（标题·主题） / 提醒窗口（含多屏幕） / 声音） -->
       <section class="tab active" id="tab-general">
-        <div class="card">
-          <h3>行为</h3>
+        <div class="card foldable" id="gen-behavior">
+          <div class="card-head">
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
+            <h3>行为</h3>
+          </div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="autostart" /> 开机自启动</label></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="startMinimized" /> 启动时最小化到托盘</label></div>
         </div>
-        <div class="card">
-          <h3>自动暂停<span class="q-mark" data-tip="满足以下任意条件时自动暂停">?</span></h3>
+        <div class="card foldable" id="gen-autopause">
+          <div class="card-head">
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
+            <h3>自动暂停<span class="q-mark" data-tip="满足以下任意条件时自动暂停">?</span></h3>
+          </div>
           <!-- 系统空闲：与其他四条系统状态开关同一形态（勾选框 + 名称 + 行内窄数字框），
                文字因此和下面四行落在同一条列上。未勾选时分钟框置灰不可编辑 ——
                “不检测空闲”是整条关掉（不暂停、也不记“离开”），不是只停暂停。 -->
@@ -106,8 +112,11 @@
             </div>
           </details>
         </div>
-        <div class="card">
-          <h3>设置窗口</h3>
+        <div class="card foldable" id="gen-window">
+          <div class="card-head">
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
+            <h3>设置窗口</h3>
+          </div>
           <div class="row field"><label for="appName">标题</label><input type="text" id="appName" maxlength="30" placeholder="吃饼人也敢休息？" /></div>
           <div class="row field"><label>主题</label>
             <div class="inline">
@@ -122,8 +131,9 @@
             <label class="switch-row"><input type="checkbox" id="win-remember" /> 自动记录窗口尺寸<span class="q-mark" data-tip="勾选后每次打开设置窗口都沿用上次关闭时的尺寸；取消勾选则始终用默认尺寸">?</span></label>
           </div>
         </div>
-        <div class="card">
+        <div class="card foldable" id="gen-remindwin">
           <div class="card-head">
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
             <h3>提醒窗口</h3>
           </div>
           <div class="row field"><label>背景颜色</label>
@@ -143,8 +153,9 @@
           <div class="row check"><label class="switch-row"><input type="checkbox" id="ap-hideOnShare" /> 共享屏幕时隐藏提醒窗口<span class="q-mark" data-tip="腾讯会议、飞书、钉钉、Zoom、Teams、Google Meet 等共享屏幕时，参会者看不到提醒窗口。副作用：自己截图、录屏也看不到。需要 Windows 10 2004 及以上；更老的系统会变成一块黑色矩形，那种情况建议关掉">?</span></label></div>
           <div class="row field"><label id="ap-displays-label">在以下屏幕显示<span class="q-mark" data-tip="只在勾选的屏上出现；插拔屏后点“刷新”重新检测">?</span></label><div id="ap-displays"></div></div>
         </div>
-        <div class="card">
+        <div class="card foldable" id="gen-sound">
           <div class="card-head">
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
             <h3>声音</h3>
             <!-- 总开关与“时间规划”三张提醒卡同一处：卡头行尾（拨动开关）。卡里再无别的
                  卡级开关，正文直接从“音量”开始。 -->

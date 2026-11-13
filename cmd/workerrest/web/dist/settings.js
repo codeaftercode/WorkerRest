@@ -4640,6 +4640,9 @@
     };
     $("tab-timing").addEventListener("click", onFoldClick);
     $("tab-stats").addEventListener("click", onFoldClick);
+    // 2026-11-13 通用配置五张卡（行为 / 自动暂停 / 设置窗口 / 提醒窗口 / 声音）
+    // 跟上时间规划页：同款 .card-fold + foldable，默认展开，状态记 localStorage。
+    $("tab-general").addEventListener("click", onFoldClick);
   }
   // 2026-11-10 起「提醒时间」不再可折叠（用户：不准折叠，必须展开），
   // 这里原来那条 `.slot-head > .msg-toggle` 的委托已删除；组（触发条件 / 弹窗设置）
