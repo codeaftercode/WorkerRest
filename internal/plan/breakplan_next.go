@@ -198,15 +198,21 @@ func schedulerLines(s *settings.Settings, now int64, shortsSinceLong int, skip m
 	return pool
 }
 
-// countdownAnchor 倒计时线的锚点：上一轮同身份的锚点仍未到期、未被消费且产生间隔
-// 与当前配置一致时原样沿用（倒计时进度跨 replan 保留）；间隔已改的立刻按新间隔
-// 重新起算。到期、被跳过/立即休息（已消费）或该身份被删除后，同样回落到 fresh。
+// countdownAnchor 倒计时线的锚点：上一轮同身份的锚点未被消费、且产生间隔与当前配置
+// 一致时原样沿用（倒计时进度跨 replan 保留）；间隔已改的立刻按新间隔重新起算。
 //
-// 判“到期”一律用真实墙钟：暂停不冻钟（2026-11-12 用户口径），At 早于 now 就是这一跳
-// 已经过去 —— 重算成 fresh，让调度器按 now+interval 重新起算。
+// **已到期（At 早于墙钟）的锚点同样沿用**：它是“这一跳已经到点、但还没有任何一拍把它
+// 消费掉”的现场。旧实现在这里一律重算成 now+interval，于是两种很常见的时序会把这一次
+// 提醒凭空抹掉（用户看不到窗、也没有任何记录）：
+//   - 到点那一瞬（相隔一拍 500ms 内）用户恰好在设置页改了某项 → autoSave → replan；
+//   - 另一条提醒正占着休息窗口，这条到点后要等那个窗口收掉（onTick 休息中直接 return），
+//     期间任何一次 replan 都会把它推后一整个间隔。
+//
+// 沿用之后 NextAt 就停在过去，下一拍按“到点”弹窗；弹完 startBreakAt 会把它记进
+// consumed，下一次 replan 走 skip 分支回到 fresh。真正该“从头计时”的场景（睡眠 / 改系统
+// 时间）由 onTick 的时间大跳分支显式清空挂起线，不依赖这里。
 func countdownAnchor(prev map[string]cdAnchor, typ string, now int64, skip map[string]bool, fresh, curIv int64) int64 {
-	if a, ok := prev[typ]; ok && a.At > now &&
-		!skip[occurrenceKey(typ, a.At)] && a.Iv == curIv {
+	if a, ok := prev[typ]; ok && !skip[occurrenceKey(typ, a.At)] && a.Iv == curIv {
 		return a.At
 	}
 	return fresh

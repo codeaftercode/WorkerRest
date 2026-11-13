@@ -200,6 +200,13 @@ func (a *App) TakeoutAction(win, action string) error {
 		a.closeTakeoutWindows()
 		return nil
 	}
+	// 外卖卡没勾「允许推迟提醒」（postponeMin == 0）：窗口上的按钮已经藏了，但休息窗
+	// 副条、键盘路径仍可能送进来。这里当“没这个动作”办 —— 不记账、不排推迟线、也不关窗
+	//（用户并没有做出决定，把窗关掉等于替他选了一个）。预览态照旧走下面的忽略分支。
+	if action == "postpone" && !cur.Preview && cur.PostponeMin <= 0 {
+		log.Printf("[takeout] 未勾选“允许推迟提醒”，忽略推迟请求")
+		return nil
+	}
 	if !cur.Preview {
 		a.statsStore().RecordTakeoutAction(action)
 	}
@@ -225,5 +232,8 @@ func (a *App) TakeoutAction(win, action string) error {
 		log.Printf("[takeout] 用户选择 %s", label)
 	}
 	a.closeTakeoutWindows()
+	// 这次外卖是被并进休息窗显示的（没有自己的窗口），处理掉之后那张副条也得摘掉 ——
+	// 否则它会一直挂在休息窗右上角，用户以为还没处理。
+	a.dropBreakExtra("takeout")
 	return nil
 }

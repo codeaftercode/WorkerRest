@@ -56,6 +56,10 @@ type App struct {
 	preBreakMu sync.Mutex
 	sess       *model.BreakInfo
 	start      time.Time
+	// carryExtras 上一次休息被“长休息抢占”时，已经并入它的那些“同时提醒”。
+	// 抢占是“立刻换成这次长休息”，中间没有空隙让它们随窗消失 —— 留着挂到新会话上，
+	// 由 ShowBreakSession 续上（a.mu 保护）。
+	carryExtras []model.BreakExtra
 
 	cfg       *settings.Settings // 整份配置（见 settings.go 的说明；保存时会整体替换指针）
 	rolesRoot string             // 督休专员目录落点（随包 supervisors/，见 resourcesRoot）
@@ -303,7 +307,7 @@ func (a *App) ServiceShutdown() error {
 	// 但只要退出流程被拖慢（WebView2 卸载、自更新替换 exe），那扇窗就会在屏幕上
 	// 多停一会儿，用户只能等。一律静默：退出不是“提醒结束”，不该响一声。
 	a.closeTakeoutWindowsOpt(true)
-	a.closeBreakWindowsOpt(true, false)
+	a.closeBreakWindowsOpt(true, false, false, false)
 	// 提前提示窗用 TryLock：退出可能发生在主线程，而建窗路径可能在等主线程处理
 	// InvokeSync —— 硬等这把锁会让“等主线程”和“主线程等锁”互相卡死（退出挂住）。
 	// 抢不到就跳过：进程马上结束，那一扇窗会随进程一起消失。

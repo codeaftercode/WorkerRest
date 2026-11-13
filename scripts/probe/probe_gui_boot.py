@@ -106,8 +106,8 @@ def main():
         if os.path.exists(default_cfg):
             shutil.copyfile(default_cfg, iso)
     # 观察窗口内要让两件事都真的发生：
-    #   ① 提前提示窗弹出来 —— 短休息“8 秒一次、提前 8 秒提示”，`nextAt - notifyBeforeMs <= now`
-    #      立刻成立，启动后调度器第一跳（500ms）就进 pre 阶段；
+    #   ① 提前提示窗弹出来 —— 短休息“8 秒一次、提前 4 秒提示”（提前量最多到间隔的一半，
+    #      归一化会钳住），启动后第 4 秒进 pre 阶段、第 8 秒真的开始休息；
     #   ② 提示音放出来一次 —— 8 秒后真的开始休息（每次 3 秒），于是“休息开始 → 播提示音”
     #      与“休息结束 → 再播一次”都落在窗口里。
     # 改的是隔离副本（真实配置在末尾仍有 SHA-256 断言守着）。
@@ -115,7 +115,7 @@ def main():
         cfg_seed = json.load(open(iso, encoding="utf-8"))
         cfg_seed.setdefault("short", {}).update({
             "enabled": True, "mode": "countdown",
-            "intervalMs": 8000, "notifyBeforeMs": 8000, "durationMs": 3000,
+            "intervalMs": 8000, "notifyBeforeMs": 4000, "durationMs": 3000,
         })
         cfg_seed["long"] = dict(cfg_seed.get("long") or {}, enabled=False)
         cfg_seed["takeout"] = dict(cfg_seed.get("takeout") or {}, enabled=False)

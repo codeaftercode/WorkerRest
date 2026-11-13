@@ -69,6 +69,32 @@ type BreakInfo struct {
 	// EndEarlyShortcut 提前结束休息的全局快捷键（与“设置 → 快捷键”的 endEarly 一致）。
 	// 窗口据此显示“提前结束（Ctrl+Alt+X）”提示；空串 = 未配置（只显示“提前结束”）。
 	EndEarlyShortcut string `json:"endEarlyShortcut"`
+	// Extras 本次休息期间并入的**其他提醒**（单窗多条）：休息进行中到点的自定义提醒、
+	// 外卖提醒都挂在这里，不再另开窗口。渲染层在提醒内容下方逐条列出；
+	// 为 nil 时是普通的一窗一条休息（绝大多数场景）。
+	Extras []BreakExtra `json:"extras,omitempty"`
+}
+
+// BreakExtra 并入当前休息窗口的一条其他提醒。
+//
+// 语义（2026-11-13 用户口径）：一次只开一扇提醒窗。休息正在进行时，另一条提醒到点
+// **不另开窗**，而是作为“同时提醒”挂到这次休息上 —— 用户本来就已经离开屏幕，
+// 这条提醒要达成的效果已经达成；把它悄悄吞掉（或者等休息结束再补弹一次）都不对。
+//
+// 注意它**不是**一次独立休息：没有自己的时长、不参与“完成 / 跳过”统计，也不会延长
+// 主休息。主休息结束，这些副条随之消失。
+type BreakExtra struct {
+	// Kind 这条提醒的身份（cb-xxx / takeout）。内置短 / 长休息不会出现在这里
+	// —— 它们撞车时由“长休息优先”规则处理（短的那次直接记完成）。
+	Kind string `json:"kind"`
+	Name string `json:"name"`
+	// Text 展示用的提醒内容（自定义提醒取本次抽中的那条；外卖取“店铺 · 菜品”摘要）
+	Text string `json:"text"`
+	// At 这一班原本要提醒的时刻（Unix 毫秒），窗口上写成“09:50 的提醒”
+	At int64 `json:"at"`
+	// Takeout 外卖副条的完整会话：窗口要在卡片上给出“推迟 / 知道了”，
+	// 这些按钮直接复用外卖模块的 TakeoutAction（win 参数不影响它）。
+	Takeout *TakeoutInfo `json:"takeout,omitempty"`
 }
 
 // TakeoutInfo 外卖提醒会话（与 历史源码/types.ts 的 TakeoutSessionInfo 逐字对齐）。
@@ -88,7 +114,8 @@ type TakeoutInfo struct {
 	Meal    string `json:"meal"` // 餐段文案：早餐 / 午餐 / 下午茶 / 晚餐 / 夜宵
 	// LeadSec 提前通知秒数（生成会话时的配置快照）：只用于诊断，真实窗口始终按原定时刻弹出
 	LeadSec int `json:"leadSec"`
-	// PostponeMin 推迟时长的分钟数（最小 1；“推迟”按钮文案与主进程推迟时长共用）
+	// PostponeMin 推迟时长的分钟数；**0 = 不允许推迟**（外卖卡「允许推迟提醒」没勾），
+	// 窗口据此隐藏“推迟”按钮。“推迟”按钮文案与主进程推迟时长共用这个数。
 	PostponeMin int `json:"postponeMin"`
 	// PostponedCount 本次是第几次推迟：0=到点正常弹出，>0 显示“已推迟 N 次”
 	PostponedCount int `json:"postponedCount"`

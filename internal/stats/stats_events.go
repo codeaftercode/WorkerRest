@@ -359,6 +359,29 @@ func (st *StatsStore) OnBreakEnd(name string, early bool) (string, int64) {
 	return kind, ms
 }
 
+// OnBreakCounted 记一次“没有单独跑过、但算完成”的内置休息。
+//
+// 用在“短休息被长休息覆盖”的场景（2026-11-13 用户口径：短休息视为完成 1 次，
+// 而不是提前结束）：短休息的那一跳到点时，长休息正在屏幕上，用户也确实在休息 ——
+// 所以次数照 +1，但**时长不记**（那段时间已经由长休息那一段记进去了，再记一遍会重）。
+//
+// 它不经过 OnBreakStart / OnBreakEnd 那一对：那对是“一段休息打开、关上”，
+// 而这次根本没有单独打开过（走到这里的会话是长休息自己的）。
+func (st *StatsStore) OnBreakCounted(kind string) {
+	if kind != "short" && kind != "long" {
+		return
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	last := st.touchTodayLocked()
+	if kind == "short" {
+		last.ShortCount++
+	} else {
+		last.LongCount++
+	}
+	st.markDirtyLocked()
+}
+
 // BreakLogInfo 进行中休息的自检信息（冒烟断言用：证明休息期间真的在实时入账）
 func (st *StatsStore) BreakLogInfo() (string, int64) {
 	st.mu.Lock()

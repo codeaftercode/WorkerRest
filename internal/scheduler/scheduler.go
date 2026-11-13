@@ -42,6 +42,23 @@ type Host interface {
 	ClosePreBreak()
 	ShowBreakSession(kind string, preview bool, forceKey string) string
 	CloseBreakWindows()
+	// CompleteBreakWindows 与 CloseBreakWindows 同义，只是**按“完成”记账**：
+	// 收窗、清会话、照常记 break-end，但不判“提前结束”、也不播结束提示音。
+	//
+	// 唯一用途是“短休息正进行、长休息到点”的抢占（2026-11-13 用户口径）：
+	// 短休息立刻停下换成这次长休息 —— 它确实被长休息顶替了，不是用户提前溜号，
+	// 统计上应当记“完成 1 次”；而且紧接着就开始长休息，再响一遍结束音只是噪音。
+	CompleteBreakWindows()
+	// OnBreakExtra 休息进行中，另一条提醒到点了：把它挂到**当前这次休息**上
+	//（单窗多条，见 model.BreakExtra），不要另开窗口、也不要等休息结束补弹。
+	// kind 是那条提醒的身份（自定义提醒 / takeout），at 是这一班原本的时刻。
+	// 返回 false 表示宿主当前没有可挂的休息会话（窗口被 Alt+F4 掉 / 建窗失败）：
+	// 这种情况下调度器**不动**这一班，让它之后按正常路径再提醒一次 —— 先消费再发现
+	// 没地方显示，就是又一次静默丢失。
+	OnBreakExtra(kind string, at int64) bool
+	// OnBreakCounted 记一次“没有单独跑过、但算完成”的内置休息（只有 short）。
+	// 用在“短休息被长休息覆盖”的场景：时长不记（本来就没坐），次数 +1。
+	OnBreakCounted(kind string)
 	TakeoutPostponedSnapshot() *model.TakeoutPostponed
 	TakeoutFiredSnapshot() map[string]bool
 	// TakeoutIdleWaitSnapshot 外卖“到点了、还在等空闲”的那一笔（nil = 没有）。
@@ -106,12 +123,12 @@ type Scheduler struct {
 	// “已暂停多久”）。它不参与任何处置，也不影响恢复时的时钟：暂停原因与处置无关，
 	// 到点怎么办只看各卡的“暂停休息时”（2026-11-12 口径）。
 	pauseHadAuto bool
-	// pauseTimed 这一段暂停是**定时**手动暂停（PauseUntil 设过到期时刻）。
-	// 恢复时它不再触发任何重锚（2026-11-12 用户口径：暂停不影响倒计时，恢复时也不需要
-	// 补偿）；保留这个字段只为在恢复那一刻把自己清零，别让上一段的痕迹带到下一段。
-	pauseTimed bool
 	// idleWait 正在等空闲的那一跳（见 idleGate.go）。nil = 没有在等。
 	idleWait *idleWait
+	// extraMerged 本次休息里已经“并入”过的提醒身份（键 = 休息身份）：一次休息只并入
+	// 同一条提醒一次，长休息 20 分钟碰上 5 分钟一次的喝水提醒时，不给用户堆四张一样的卡。
+	// 每次开始 / 结束休息都重置（见 startBreakAt / finishBreak）。
+	extraMerged map[string]bool
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
@@ -247,6 +264,13 @@ func (s *Scheduler) onTick() {
 	if last > 0 && tickNow-last > tickJumpThresholdMs {
 		log.Printf("[scheduler] 两次 tick 间隔 %d ms（睡眠 / 休眠 / 系统时间调整）：重排，不补弹过期提醒",
 			tickNow-last)
+		// 挂起线要一起清掉：倒计时锚点的沿用规则会把“已经到点的那一跳”原样留着
+		//（见 prevCountdownAnchorsLocked），不清的话醒来第一拍就会拿一条几小时前
+		// 到点的线去弹窗 —— 正是这个分支要避免的事。
+		s.mu.Lock()
+		s.state.Lines = []model.PlannedBreak{}
+		s.anchorIv = map[string]int64{}
+		s.mu.Unlock()
 		s.scheduleNext()
 		return
 	}
@@ -288,10 +312,22 @@ func (s *Scheduler) onTick() {
 		s.pausedPostpone()
 		return
 	}
-	// 休息进行中不叠加：固定时刻撞上正在进行中的休息时跳过
-	//（不像外卖提醒那样压在休息之上）；到点则收窗。
+	// 休息进行中：先处理“撞车”，再看该不该收窗。
+	//
+	// 撞车分两种（2026-11-13 用户口径）：
+	//   - 长休息到点、而正在休息的是别的（短休息 / 自定义）：立刻换成这次长休息，
+	//     被停掉的那次记「完成」而不是「提前结束」（见 preemptShortWithLong）；
+	//   - 其他提醒在休息期间到点：并入当前休息窗（单窗多条），不另开窗、也不补弹
+	//     （见 mergeDueExtras）。
+	//
+	// 这里是原来最容易“静默丢一轮”的地方：旧实现直接 return，另一条提醒到点后既没人
+	// 弹窗、也没人记账，倒计时锚点还会被重排成 now+interval，用户什么都察觉不到。
 	if inBreak {
 		s.mu.Unlock()
+		if s.preemptShortWithLong() {
+			return
+		}
+		s.mergeDueExtras()
 		if breakDue {
 			s.finishBreak()
 		}
@@ -587,10 +623,20 @@ func (s *Scheduler) pausedFire() {
 
 // pauseDisposition 这条提醒在暂停休息期间的实际处置。
 // 未知取值按默认的推迟。
+//
+// **“推迟提醒”但没勾「允许推迟提醒」（PostponeMs == 0）时降级成“跳过”**：
+// 没有时长可推，硬按推迟办会算出 now+0 的到期时刻 —— 每一拍都“又到点了”，
+// 暂停期间会无限循环、还每轮记一笔。跳过是唯一有意义的替代（这个提醒这次不打扰，
+// 与“推迟到恢复后再说”相反的那一侧）；要照常提醒就去卡里选“正常提醒”。
 func pauseDisposition(c model.BreakConfig) string {
 	switch c.PauseAction {
-	case settings.PauseActionRemind, settings.PauseActionPostpone, settings.PauseActionSkip:
-		return c.PauseAction
+	case settings.PauseActionRemind:
+		return settings.PauseActionRemind
+	case settings.PauseActionSkip:
+		return settings.PauseActionSkip
+	}
+	if !c.CanPostpone() {
+		return settings.PauseActionSkip
 	}
 	return settings.PauseActionPostpone
 }

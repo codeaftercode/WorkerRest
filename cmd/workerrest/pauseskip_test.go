@@ -134,8 +134,9 @@ func TestTakeoutPausedPostponeFiresAfterResume(t *testing.T) {
 	}
 }
 
-// 推迟时长下限 1 分钟：旧配置写 0 也不再退化成跳过，而是按 1 分钟推迟
-func TestTakeoutPausedPostponeZeroClimbsToOneMinute(t *testing.T) {
+// postponeMin=0 = 没勾「允许推迟提醒」（2026-11-13）：暂停期间到点没有时长可推，
+// 处置降级成跳过（与调度器 pauseDisposition 同口径），不留推迟计划
+func TestTakeoutPausedPostponeZeroSkips(t *testing.T) {
 	now := time.Now()
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"pauseAction":"postpone","postponeMin":0,"slots":[` +
 		`{"id":"s1","hour":` + itoa(now.Hour()) + `,"minute":` + itoa(now.Minute()) +
@@ -145,14 +146,11 @@ func TestTakeoutPausedPostponeZeroClimbsToOneMinute(t *testing.T) {
 	s.Pause("manual")
 	a.sched = s
 	a.checkTakeoutReminders()
-	if a.takeoutPostponed == nil {
-		t.Fatal("推迟时长下限 1 分钟：0 的配置应照常推迟，不该退化成跳过")
+	if a.takeoutPostponed != nil {
+		t.Fatal("postponeMin=0 时不该留下推迟计划")
 	}
-	if d := a.takeoutPostponed.DueAt - nowMs(); d <= 0 || d > 61_000 {
-		t.Fatalf("推迟时长应约 1 分钟，得到 %d ms", d)
-	}
-	if got := a.statsStore().Today().TakeoutSkipped; got != 0 {
-		t.Fatalf("推迟不该记跳过，得到 %d", got)
+	if got := a.statsStore().Today().TakeoutSkipped; got != 1 {
+		t.Fatalf("postponeMin=0 暂停期间到点应记 1 次跳过，得到 %d", got)
 	}
 }
 

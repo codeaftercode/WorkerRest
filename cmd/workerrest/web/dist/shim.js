@@ -322,6 +322,11 @@
     onState: function (cb) {
       on("state", cb);
     },
+    // 休息窗口的“同时提醒”清单变了（单窗多条）：回调拿到**完整**的 extras 数组，
+    // 直接整块重绘即可 —— 增量协议在两边各维护一份状态，最容易漏掉移除。
+    onBreakExtras: function (cb) {
+      on("break:extras", cb);
+    },
     onAutostart: function (cb) {
       on("autostart", cb);
     },

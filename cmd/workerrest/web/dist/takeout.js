@@ -2851,8 +2851,14 @@
       postEl.textContent = `已推迟 ${info.postponedCount} 次`;
       postEl.classList.remove("hidden");
     }
-    // “推迟时长”最小 1 分钟（2026-11-10），按钮常显，文案带分钟数
-    el("tk-postpone").textContent = `推迟 ${info.postponeMin} 分钟`;
+    // 允许推迟（postponeMin > 0）才显示按钮；没勾「允许推迟提醒」时整颗藏掉
+    // —— 快捷键那边 Go 侧同口径挡（takeout_watch 的 PostponeMin <= 0 守卫）。
+    const postBtn = el("tk-postpone");
+    if (info.postponeMin > 0) {
+      postBtn.textContent = `推迟 ${info.postponeMin} 分钟`;
+    } else {
+      postBtn.classList.add("hidden");
+    }
     const msgEl = el("tk-msg");
     if (info.message) {
       msgEl.textContent = info.message;

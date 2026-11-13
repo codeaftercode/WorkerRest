@@ -68,12 +68,6 @@ func slotOccurrenceAt(slot model.TimeSlot, leadMs, nowMs int64) int64 {
 	return slotAlertAt(slot, 0, nowMs+leadMs)
 }
 
-// slotFireKey 触发去重键：同一条目在同一天同一时刻（精确到分钟）只会触发一次
-func slotFireKey(slot model.TimeSlot, nowMs, leadMs int64) string {
-	t := time.UnixMilli(nowMs + leadMs)
-	return slot.ID + "#" + localDateKey(t) + "#" + slotTimeText(slot)
-}
-
 // isTimeSlotDue 这一刻该条目是否到期：启用中、时刻吻合（含提前量）、周期吻合
 func isTimeSlotDue(slot model.TimeSlot, nowMs, leadMs int64) bool {
 	if !slot.Enabled {
@@ -87,35 +81,6 @@ func isTimeSlotDue(slot model.TimeSlot, nowMs, leadMs int64) bool {
 		return false
 	}
 	return true
-}
-
-// findDueTimeSlots 找出给定的时刻表中此刻所有到期的条目，并把它们记入已触发集合
-// （重复调用不会重复返回同一个时刻）。fired 跨 tick 复用同一个 map。
-func findDueTimeSlots(slots []model.TimeSlot, nowMs int64, fired map[string]bool, leadMs int64) []model.TimeSlot {
-	var out []model.TimeSlot
-	for _, slot := range slots {
-		if !isTimeSlotDue(slot, nowMs, leadMs) {
-			continue
-		}
-		key := slotFireKey(slot, nowMs, leadMs)
-		if fired[key] {
-			continue
-		}
-		fired[key] = true
-		out = append(out, slot)
-	}
-	pruneFiredSlotKeys(fired, nowMs+leadMs)
-	return out
-}
-
-// pruneFiredSlotKeys 只保留“当前这一天”的键：跨天后旧键没有意义，长期运行也不会把集合撑大
-func pruneFiredSlotKeys(fired map[string]bool, nowMs int64) {
-	today := "#" + localDateKey(time.UnixMilli(nowMs)) + "#"
-	for k := range fired {
-		if !strings.Contains(k, today) {
-			delete(fired, k)
-		}
-	}
 }
 
 // describeTimeSlot 条目描述：界面与日志共用的中文摘要（如“每天 12:00”“每周 一、三 09:30”）

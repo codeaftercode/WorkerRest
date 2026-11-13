@@ -24,19 +24,23 @@ func (s *Scheduler) advanceCounter(id string) {
 	}
 }
 
-// prevCountdownAnchorsLocked 收集挂起线里仍未到期的倒计时锚点（键 = 休息身份，
-// 同身份取最早），并附上产生各锚点的间隔（s.anchorIv）。replan 重算时传回
-// schedulerLines / planNextBreakSplit：未到期且间隔未变的锚点原样保留（倒计时
-// 进度跨 replan 保留），间隔已改的立刻按新间隔重新起算（见 breakplan.go 的
-// countdownAnchor）。调用方必须已持有 s.mu。
+// prevCountdownAnchorsLocked 收集挂起线里的倒计时锚点（键 = 休息身份，同身份取最早），
+// 并附上产生各锚点的间隔（s.anchorIv）。replan 重算时传回 schedulerLines /
+// planNextBreakSplit：未消费且间隔未变的锚点原样保留（倒计时进度跨 replan 保留），
+// 间隔已改的立刻按新间隔重新起算（见 breakplan.go 的 countdownAnchor）。
+// 调用方必须已持有 s.mu。
 //
-// 暂停期间**不再冻结**（2026-11-12 用户口径：倒计时不要停）：判定一律按真实墙钟，
-// 到点的锚点就当过期，replan 按 now+interval 重新起算 —— 与恢复后不平移同源。
-// （曾经这里把基准钳到 PausedAt，配合 resume 的 +delta 平移实现“暂停停表”。）
+// **已到点的锚点也收进来**（不再按 `At <= now` 滤掉）：那一跳是“已经到点、还没被任何
+// 一拍消费”的现场，丢掉它等于让这一次提醒消失一轮 —— 到点那一瞬保存一次设置、或另一条
+// 提醒正占着休息窗口时，用户就是看不到窗也查不到记录。沿用后 NextAt 停在过去，下一拍
+// 直接弹；弹完 startBreakAt 记进 consumed，下一次 replan 自然回到 now+interval。
+//
+// 暂停期间不冻结（2026-11-12 用户口径：倒计时不要停）：暂停中的锚点照样会到期，处置由
+// onTick 的暂停分支按各卡“暂停休息时”办（跳过 / 正常提醒 / 推迟）。
 func (s *Scheduler) prevCountdownAnchorsLocked(now int64) map[string]plan.CdAnchor {
 	prev := map[string]plan.CdAnchor{}
 	for _, l := range s.state.Lines {
-		if l.Source != "countdown" || l.At <= now {
+		if l.Source != "countdown" {
 			continue
 		}
 		if old, ok := prev[l.Type]; !ok || l.At < old.At {
@@ -270,6 +274,8 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	if at > 0 {
 		s.consumed[plan.OccurrenceKey(kind, at)] = true
 	}
+	// 新的一次休息：并入记录清零（同一条提醒在下一次休息里可以再并一次）
+	s.extraMerged = map[string]bool{}
 	// 派生视图立即跟上：刚消费掉的那条不再出现在分组倒计时与卡片摘要的“下次”里
 	s.refreshDerivedLocked(cfg, now)
 	s.mu.Unlock()
@@ -290,6 +296,7 @@ func (s *Scheduler) finishBreak() {
 	kind := s.state.NextType
 	s.state.BreakWhilePaused = false
 	s.advanceCounter(kind)
+	s.extraMerged = nil
 	s.mu.Unlock()
 
 	// break-end 的副作用：关休息窗口、空闲基准清零（空闲计时属下一步的“系统能力”）
@@ -392,6 +399,14 @@ func (s *Scheduler) StateForRenderer() model.SchedulerState {
 	// 与推迟线互斥 —— 空闲门达标后立刻落成推迟线（armed），挂起当场清掉。
 	if g := s.host.TakeoutIdleWaitSnapshot(); g != nil {
 		st.Other = &model.PlanRef{Name: plan.TAKEOUT_NAME, At: g.At, IdleWait: true}
+	}
+	// 这一跳允不允许推迟：设置页侧栏的「推迟休息」按钮据此显隐。判据只认配置里
+	// 那条提醒自己的 PostponeMs（0 = 没勾「允许推迟提醒」）；身份查不到就按允许处理
+	// —— 查不到说明这条提醒刚被删掉，重排马上会换下一条，藏按钮反而更奇怪。
+	if c, ok := cfg.BreakByID(st.NextType); ok {
+		st.PostponeAllowed = c.CanPostpone()
+	} else {
+		st.PostponeAllowed = true
 	}
 	st.Timeline = plan.TodayTimeline(cfg, nowMs(), plan.TimelineOptions{
 		Skip:             s.consumedCopy(),

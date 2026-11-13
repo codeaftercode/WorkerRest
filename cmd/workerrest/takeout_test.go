@@ -89,8 +89,8 @@ func TestBuildTakeoutInfo(t *testing.T) {
 	}
 }
 
-// “推迟时长”下限 1 分钟（2026-11-10）：旧配置里的 0 在读取与保存两条路上都被抬到 1，
-// 渲染层的“推迟”按钮不再有隐藏分支
+// postponeMin=0 = 外卖卡没勾「允许推迟提醒」（2026-11-13）：读取侧原样返回 0
+// （窗口藏“推迟”按钮），保存侧 NormalizeTakeout 也保留 0，不再抬回 1
 func TestTakeoutPostponeFloor(t *testing.T) {
 	cfg := `{"takeout":{"enabled":true,"leadSec":0,"postponeMin":0,"slots":[]}}`
 	a := newTakeoutApp(t, cfg)
@@ -98,27 +98,29 @@ func TestTakeoutPostponeFloor(t *testing.T) {
 	if info == nil {
 		t.Fatal("会话不应为空")
 	}
-	if info.PostponeMin != 1 {
-		t.Fatalf("postponeMin=0 应被抬到 1 分钟，得到 %d", info.PostponeMin)
+	if info.PostponeMin != 0 {
+		t.Fatalf("postponeMin=0 应原样保留（0 = 不允许推迟），得到 %d", info.PostponeMin)
 	}
-	// 归一化侧（保存路径）同样抬到 1
+	// 归一化侧（保存路径）同样保留 0
 	norm := settings.NormalizeTakeout(map[string]any{"takeout": map[string]any{"postponeMin": float64(0)}})
-	if norm["postponeMin"] != float64(1) {
-		t.Fatalf("settings.NormalizeTakeout 应把 postponeMin=0 抬到 1，得到 %v", norm["postponeMin"])
+	if norm["postponeMin"] != float64(0) {
+		t.Fatalf("settings.NormalizeTakeout 应保留 postponeMin=0，得到 %v", norm["postponeMin"])
 	}
 }
 
-// TakeoutPostponeMin 的下限是 1 分钟：负值 / 0 都抬到 1、越界夹到 120
+// TakeoutPostponeMin 的取值域 0–120：0 = 不允许推迟；负值夹到 0；越界夹到 120；
+// 缺键（未归一化的裸配置）按 0（关）兜底 —— 生产配置都经过 normalizeLoad，缺键落出厂默认 2
 func TestTakeoutPostponeMinClamp(t *testing.T) {
 	cases := []struct {
 		js   string
 		want int
 	}{
-		{`{"takeout":{"postponeMin":0}}`, 1},
-		{`{"takeout":{"postponeMin":-5}}`, 1},
+		{`{"takeout":{"postponeMin":0}}`, 0},
+		{`{"takeout":{"postponeMin":-5}}`, 0},
+		{`{"takeout":{"postponeMin":1}}`, 1},
 		{`{"takeout":{"postponeMin":15}}`, 15},
 		{`{"takeout":{"postponeMin":999}}`, 120},
-		{`{"takeout":{}}`, 10}, // 缺省兜底
+		{`{"takeout":{}}`, 10}, // 缺键按 10 分钟兜底（2026-11-10 之前的口径不变）
 	}
 	for _, c := range cases {
 		s := testSettings(t, c.js)

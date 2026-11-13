@@ -55,6 +55,11 @@ type PreBreakInfo struct {
 	// 文字色不在这里下发 —— 由渲染层按这个底色算对比度（浅底配深字 / 深底配浅字），
 	// 保证用户把颜色调到多浅多深，标题、倒计时、两行说明都还看得清。
 	BgColor string `json:"bgColor"`
+	// NoPostpone 这条提醒没勾「允许推迟提醒」：窗口不显示“推迟”按钮，动作也被
+	// PreBreakAction 挡掉。**用否定命名是故意的** —— 零值必须是“允许”，
+	// 否则所有没显式赋值的构造点（单测、旧路径）都会静默把功能关掉。
+	// 只经 URL 的 nopp=1 下发（首帧就要对），不进 PreBreakState 的同名字段。
+	NoPostpone bool `json:"-"`
 }
 
 // builtinPreBreakTitleShort / builtinPreBreakTitleLong 内置短 / 长的标题。它们的名字
@@ -80,10 +85,18 @@ func (a *App) preBreakInfoOfType(kind string) PreBreakInfo {
 		if kind == "long" {
 			title = builtinPreBreakTitleLong
 		}
-		return PreBreakInfo{Custom: false, Title: title, CountdownTail: builtinPreBreakTail, BgColor: bg}
+		return PreBreakInfo{Custom: false, Title: title, CountdownTail: builtinPreBreakTail, BgColor: bg, NoPostpone: a.preKindNoPostpone(kind)}
 	}
 	name := a.CfgSnapshot().BreakNameByID(kind)
-	return PreBreakInfo{Custom: true, Title: plan.PreBreakTitle(name), CountdownTail: plan.PreBreakCountdownTail(name), BgColor: bg}
+	return PreBreakInfo{Custom: true, Title: plan.PreBreakTitle(name), CountdownTail: plan.PreBreakCountdownTail(name), BgColor: bg, NoPostpone: a.preKindNoPostpone(kind)}
+}
+
+// preKindNoPostpone 这条休息身份允不允许推迟的反面（查不到按允许）。
+func (a *App) preKindNoPostpone(kind string) bool {
+	if c, ok := a.CfgSnapshot().BreakByID(kind); ok {
+		return !c.CanPostpone()
+	}
+	return false
 }
 
 // preBreakInfoOf 当前计划里那一条的内容（调度器没起来时按短休息算）
@@ -166,6 +179,10 @@ func preBreakURL(info PreBreakInfo) string {
 	}
 	u := "/prebreak.html?custom=" + flag + "&tail=" + url.QueryEscape(info.CountdownTail) +
 		"&win=prebreak"
+	// 不允许推迟：首帧就把“推迟”按钮藏掉，别让它在 500ms 轮询之前先闪一下
+	if info.NoPostpone {
+		u += "&nopp=1"
+	}
 	if info.BgColor != "" {
 		u += "&bg=" + url.QueryEscape(info.BgColor)
 	}
@@ -315,6 +332,8 @@ func (a *App) PreBreakState() map[string]any {
 			"custom":        info.Custom,
 			"countdownTail": info.CountdownTail,
 			"bgColor":       bgColor,
+			// 允许推迟：没勾「允许推迟提醒」时窗口藏掉“推迟”按钮（0 = 不允许）
+			"allowPostpone": cfg.TakeoutCanPostpone(),
 		}
 	}
 	phase, paused, remain := "idle", false, int64(0)
@@ -342,6 +361,8 @@ func (a *App) PreBreakState() map[string]any {
 		"countdownTail": info.CountdownTail,
 		// 背景颜色（通用配置 → 提醒窗口 → 背景颜色）：渲染层据此算底色 + 自适应文字色
 		"bgColor": bgColor,
+		// 允许推迟：没勾「允许推迟提醒」时窗口藏掉“推迟”按钮
+		"allowPostpone": a.preBreakCanPostpone(),
 	}
 }
 
@@ -351,12 +372,35 @@ func (a *App) PreBreakState() map[string]any {
 //
 // 未知动作返回错误而不是静默无事 —— 静默降级是这类“按名调用”链路最容易漏的坑。
 func (a *App) PreBreakAction(action string) error {
+	// 不允许推迟时，推迟是**空操作**：窗必须留着（用户还得在“立即休息 / 跳过”里选一个），
+	// 不能顺着下面的统一收窗把它关掉 —— 那等于替用户点了“关掉提示、按原时刻休息”。
+	if action == "postpone" && !a.preBreakCanPostpone() {
+		log.Printf("[prebreak] 当前提醒未勾选“允许推迟提醒”，忽略推迟请求")
+		return nil
+	}
 	if err := a.preBreakAct(action); err != nil {
 		return err
 	}
 	// 立即休息会触发 break-start（那里也会关）；推迟 / 跳过 / 暂停都在此直接关
 	a.closePreBreakWindow()
 	return nil
+}
+
+// preBreakCanPostpone 这扇提前提示窗提示的那条提醒允不允许推迟。
+// 外卖预通知看外卖卡，休息 / 自定义提醒看那条提醒自己的卡；身份缺失按允许处理
+// （说不出归属时别把功能关掉，真正的判据在各自的动作实现里还有一道）。
+func (a *App) preBreakCanPostpone() bool {
+	a.mu.Lock()
+	owner, kind := a.preInfo.Owner, a.preInfo.Kind
+	a.mu.Unlock()
+	cfg := a.CfgSnapshot()
+	if owner == "takeout" {
+		return cfg.TakeoutCanPostpone()
+	}
+	if c, ok := cfg.BreakByID(kind); ok {
+		return c.CanPostpone()
+	}
+	return true
 }
 
 // preBreakAct 动作分发（不碰窗口，单测可直接驱动）
@@ -384,6 +428,12 @@ func (a *App) preBreakAct(action string) error {
 		case "postpone":
 			// 先取配置（cfgSnapshot 要加 a.mu，不能在持锁时调用）；再一次性持锁写簿记
 			mins := a.CfgSnapshot().TakeoutPostponeMin()
+			// 没勾「允许推迟提醒」：窗口上的按钮已经藏了，这里再挡一道（键盘 / 旧窗口）。
+			// 不关窗、不改簿记 —— 用户并没有做出决定。
+			if mins <= 0 {
+				log.Printf("[prebreak] 外卖未勾选“允许推迟提醒”，忽略推迟请求")
+				return nil
+			}
 			a.mu.Lock()
 			prevCount := 0
 			if a.takeoutPostponed != nil {

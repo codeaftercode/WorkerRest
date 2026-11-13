@@ -275,10 +275,12 @@
               </div>
             </div>
           </div>
-          <!-- 参数组“弹窗设置”：暂停休息时怎么处置 + 提醒本身怎么弹的三个数（弹多久、提前多久敲门、能推迟多久）。
-               “暂停休息时”2026-11-12 起短 / 长休息也有（用户要求与外卖提醒、自定义提醒一致）：
-               它是组内第一行，标签 | 下拉，与外卖卡逐字同款控件（自绘 .cdrop，见 settings.js 的 mountPauseDrop），
-               标签后的“?”说明“暂停休息”包括哪几种情况。 -->
+          <!-- 参数组“弹窗设置”：暂停休息时怎么处置 + 提醒本身怎么弹。
+               后三项（2026-11-13 用户改版）都是“勾选框 + 数字框”：「提醒窗口显示时长」
+               就是一个数；“提醒前弹出通知，提前 […] 秒”与“允许推迟提醒，每次推迟 […]
+               分钟”由勾选框决定开不开，不勾就等于把那个数写成 0（Go 侧同一口径，
+               见 BreakConfig.NotifyBeforeMs / PostponeMs 的注释），数字框置灰但值留着。
+               版式与「系统空闲」那条同一套：标签列是 .switch-row，数字框在控件列。 -->
           <div class="pg" data-pg="reminder">
             <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
             <div class="pg-body">
@@ -286,9 +288,9 @@
                 <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
                 <div class="cdrop-host" id="short-pause"></div>
               </div>
-              <div class="row field"><label for="short-duration">提醒时长</label><div class="field-line"><input type="number" id="short-duration" min="5" max="600" /><span class="unit">秒</span></div></div>
-              <div class="row field"><label for="short-notify">提前通知<span class="q-mark" data-tip="到达提醒时间前，在屏幕右下角显示提前通知小窗口">?</span></label><div class="field-line"><input type="number" id="short-notify" min="0" max="300" /><span class="unit">秒</span></div></div>
-              <div class="row field"><label for="short-postpone">推迟时长<span class="q-mark" data-tip="若触发推迟提醒，每次推迟的时长">?</span></label><div class="field-line"><input type="number" id="short-postpone" min="1" max="120" /><span class="unit">分钟</span></div></div>
+              <div class="row field"><label for="short-duration">提醒窗口显示时长</label><div class="field-line"><input type="number" id="short-duration" min="5" max="600" /><span class="unit">秒</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="short-notifyOn" />提醒前弹出通知，提前<span class="q-mark" data-tip="到达提醒时间前，提前这么多秒在屏幕右下角弹出提示小窗。不勾选 = 不提前通知，到点直接提醒。">?</span></label><div class="field-line"><input type="number" id="short-notify" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="short-postponeOn" />允许推迟提醒，每次推迟<span class="q-mark" data-tip="勾选后，提醒窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。">?</span></label><div class="field-line"><input type="number" id="short-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
             </div>
           </div>
           <div class="msg-panel" data-kind="short">
@@ -375,9 +377,9 @@
                 <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
                 <div class="cdrop-host" id="long-pause"></div>
               </div>
-              <div class="row field"><label for="long-duration">提醒时长</label><div class="field-line"><input type="number" id="long-duration" min="5" max="3600" /><span class="unit">秒</span></div></div>
-              <div class="row field"><label for="long-notify">提前通知<span class="q-mark" data-tip="到达提醒时间前，在屏幕右下角显示提前通知小窗口">?</span></label><div class="field-line"><input type="number" id="long-notify" min="0" max="300" /><span class="unit">秒</span></div></div>
-              <div class="row field"><label for="long-postpone">推迟时长<span class="q-mark" data-tip="若触发推迟提醒，每次推迟的时长">?</span></label><div class="field-line"><input type="number" id="long-postpone" min="1" max="120" /><span class="unit">分钟</span></div></div>
+              <div class="row field"><label for="long-duration">提醒窗口显示时长</label><div class="field-line"><input type="number" id="long-duration" min="5" max="3600" /><span class="unit">秒</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="long-notifyOn" />提醒前弹出通知，提前<span class="q-mark" data-tip="到达提醒时间前，提前这么多秒在屏幕右下角弹出提示小窗。不勾选 = 不提前通知，到点直接提醒。">?</span></label><div class="field-line"><input type="number" id="long-notify" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="long-postponeOn" />允许推迟提醒，每次推迟<span class="q-mark" data-tip="勾选后，提醒窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。">?</span></label><div class="field-line"><input type="number" id="long-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
             </div>
           </div>
           <div class="msg-panel" data-kind="long">
@@ -441,8 +443,8 @@
                 <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
                 <div class="cdrop-host" id="tk-pause"></div>
               </div>
-              <div class="row field"><label for="tk-lead">提前通知<span class="q-mark" data-tip="到达提醒时间前，在屏幕右下角显示提前通知小窗口">?</span></label><div class="field-line"><input type="number" id="tk-lead" min="0" max="300" /><span class="unit">秒</span></div></div>
-              <div class="row field"><label for="tk-postpone">推迟时长<span class="q-mark" data-tip="若触发推迟提醒，每次推迟的时长">?</span></label><div class="field-line"><input type="number" id="tk-postpone" min="1" max="120" /><span class="unit">分钟</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="tk-leadOn" />提醒前弹出通知，提前<span class="q-mark" data-tip="到达提醒时间前，提前这么多秒在屏幕右下角弹出提示小窗。不勾选 = 不提前通知，到点直接提醒。">?</span></label><div class="field-line"><input type="number" id="tk-lead" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="tk-postponeOn" />允许推迟提醒，每次推迟<span class="q-mark" data-tip="勾选后，外卖窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。">?</span></label><div class="field-line"><input type="number" id="tk-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
             </div>
           </div>
           <div class="msg-panel" data-kind="takeout">

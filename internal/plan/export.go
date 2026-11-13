@@ -85,11 +85,6 @@ func IsTimeSlotDue(slot model.TimeSlot, nowMs, leadMs int64) bool {
 	return isTimeSlotDue(slot, nowMs, leadMs)
 }
 
-// FindDueTimeSlots 找出此刻所有到期的条目。
-func FindDueTimeSlots(slots []model.TimeSlot, nowMs int64, fired map[string]bool, leadMs int64) []model.TimeSlot {
-	return findDueTimeSlots(slots, nowMs, fired, leadMs)
-}
-
 // ExpandBuiltinCountdown 内置短/长倒计时链。
 func ExpandBuiltinCountdown(s *settings.Settings, now int64, shortsSinceLong int, skip map[string]bool, first *model.PlannedBreak) []model.PlannedBreak {
 	return expandBuiltinCountdown(s, now, shortsSinceLong, skip, first)

@@ -5,12 +5,17 @@ package model
 
 // BreakConfig 一次休息的配置（mode = countdown | fixed 决定用间隔还是时刻表）
 type BreakConfig struct {
-	Enabled        bool   `json:"enabled"`
-	Mode           string `json:"mode"`
-	DurationMs     int64  `json:"durationMs"`
-	IntervalMs     int64  `json:"intervalMs"`
-	NotifyBeforeMs int64  `json:"notifyBeforeMs"`
-	PostponeMs     int64  `json:"postponeMs"`
+	Enabled    bool   `json:"enabled"`
+	Mode       string `json:"mode"`
+	DurationMs int64  `json:"durationMs"`
+	IntervalMs int64  `json:"intervalMs"`
+	// NotifyBeforeMs 提前通知的提前量（毫秒）。**0 = 不提前通知**（设置页「提醒前弹出
+	// 通知」没勾），到点直接弹正式提醒窗口。2026-11-13 起设置页用勾选框表达这件事，
+	// 但存的仍是这个数 —— 0 就是“关”，没有第二个开关键。
+	NotifyBeforeMs int64 `json:"notifyBeforeMs"`
+	// PostponeMs 每次推迟的时长（毫秒）。**0 = 不允许推迟**（设置页「允许推迟提醒」
+	// 没勾）：界面不显示推迟按钮，推迟快捷键也不响应。同样只有这一个键表达开关态。
+	PostponeMs int64 `json:"postponeMs"`
 	// PauseAction 暂停休息期间到点时怎么处置：remind / postpone / skip（缺省 postpone，
 	// 见 PauseAction* 常量）。2026-11-12 起短休息 / 长休息也有这一项（用户要求与外卖提醒、
 	// 自定义提醒一致）：remind 照常弹、postpone 顺延到恢复后、skip 跳过并记一笔统计；
@@ -33,6 +38,13 @@ func (c BreakConfig) IdleGateWaitMs() int64 {
 	}
 	return c.IdleGateMs
 }
+
+// CanPostpone 这条提醒允不允许推迟（PostponeMs > 0）。
+//
+// 唯一判据：设置页「允许推迟提醒」勾选框把 PostponeMs 写成 0 或正数。所有入口
+// （侧栏按钮、快捷键、提前提示窗、托盘）都问它一次，别各自比 ms <= 0 —— 一处漏判
+// 就会出现“按钮藏了但快捷键还生效”这种半开半关的状态。
+func (c BreakConfig) CanPostpone() bool { return c.PostponeMs > 0 }
 
 // AppearanceConfig 外观配置（磁盘结构；比下发给渲染层的 Appearance 多几个字段）
 type AppearanceConfig struct {
@@ -156,6 +168,10 @@ type SchedulerState struct {
 	NextAt   int64  `json:"nextAt"`
 	// NextSource 没有安排（全部关闭）时为 null
 	NextSource *string `json:"nextSource"`
+	// PostponeAllowed 当前这一跳（NextType）允不允许推迟 —— 该提醒卡勾了「允许推迟提醒」。
+	// 侧栏「推迟休息」按钮据此显隐；快捷键 / 托盘走同一个调度器入口，由 Scheduler.Postpone
+	// 再挡一道（前端藏起来只是别让人点到一个必然无反应的按钮，判据只有一份）。
+	PostponeAllowed bool `json:"postponeAllowed"`
 	// Rest 短/长休息线里最近的一条（状态卡“下次休息提醒”格）；null = 两者都没安排
 	Rest *PlanRef `json:"rest"`
 	// Other 外卖提醒与所有自定义提醒里最近的一条（状态卡“下次XX提醒”格）；null = 都没启用

@@ -17,14 +17,25 @@ const endEarlyToleranceMs = 1500
 // 目前唯一的调用点是调度器的 finishBreak，所以这里顺带承担“休息结束”的副作用：
 // 播一次提示音（对应 上一版的 break-end → playConfiguredSound）。
 func (a *App) CloseBreakWindows() {
-	a.closeBreakWindowsOpt(false, true)
+	a.closeBreakWindowsOpt(false, true, false, false)
+}
+
+// CompleteBreakWindows 按“完成”收尾当前休息（调度器在“长休息抢占短休息”时调它）。
+//
+// 与 CloseBreakWindows 的区别有三处：不判“提前结束”（这次休息确实是被更长的那次
+// 顶替的，不是用户提前溜号）、不出声（紧接着就开始长休息，两声叠一起只是噪音），
+// 以及**把已并入的副条带给下一次休息**（carry=true）。
+func (a *App) CompleteBreakWindows() {
+	a.closeBreakWindowsOpt(true, true, true, true)
 }
 
 // closeBreakWindowsOpt silent=true 时不播“休息结束”提示音 —— 预览关窗（看一眼就走）
 // 与退出清理都不该出声；countEnd=false 时不记“休息结束”这笔统计 —— 被自动暂停
 // 打断的那种收窗由调度器记成“跳过”，这里再记一次“完成 / 提前结束”就重复了。
+// asComplete=true 时按**完成**记账，绕过“提前结束”判定（长休息抢占短休息的路径）。
+// carry=true 时把已并入的“同时提醒”留给下一次休息（见 finishBreakExtras）。
 // 其余副作用（关窗、清会话、清空闲基准）完全一致。
-func (a *App) closeBreakWindowsOpt(silent, countEnd bool) {
+func (a *App) closeBreakWindowsOpt(silent, countEnd, asComplete, carry bool) {
 	a.mu.Lock()
 	ws := a.breakWins
 	a.breakWins = nil
@@ -58,7 +69,8 @@ func (a *App) closeBreakWindowsOpt(silent, countEnd bool) {
 		// 提前结束：结束时刻明显早于计划结束。留 1.5 秒容差 —— 自然到点由定时器驱动，
 		// 正常不会早于 EndsAt，但别让抖动被记成“提前结束”。
 		// 口径只含短休息 / 长休息：自定义提醒与外卖不算（它们也不在这个窗口里结束）。
-		early := (info.Type == "short" || info.Type == "long") &&
+		// asComplete（长休息抢占短休息）明确要求按完成记，不看时刻。
+		early := !asComplete && (info.Type == "short" || info.Type == "long") &&
 			nowMs()+endEarlyToleranceMs < info.EndsAt
 		// 提前结束的那次不计入“完成”，OnBreakEnd 内部按 early 分开记
 		a.statsStore().OnBreakEnd(name, early)
@@ -68,6 +80,9 @@ func (a *App) closeBreakWindowsOpt(silent, countEnd bool) {
 	if a.idle != nil {
 		a.idle.ResetBaseline()
 	}
+	// 已并入的“同时提醒”：要么带进下一次休息（长休息抢占），要么把还没被处理的外卖
+	// 交回独立窗口 —— 否则那笔提醒随休息窗一起消失，用户压根没看到。
+	a.finishBreakExtras(info, carry)
 }
 
 // ---------- 调度器事件（上一版 scheduler.on(...) 的对应物） ----------
@@ -212,7 +227,7 @@ func (a *App) OnAutoPause(keep scheduler.AutoPauseKeep) {
 	a.mu.Unlock()
 	keepBreak := a.pauseKeepsWindow(breakKind)
 	if hadBreak && !keepBreak {
-		a.closeBreakWindowsOpt(true, false)
+		a.closeBreakWindowsOpt(true, false, false, false)
 	}
 	log.Printf("[autoPause] 自动暂停：在场提醒窗口处理（休息=%v 休息归属=%q 保留休息=%v 外卖=%v 外卖推迟=%v 保留外卖=%v 提前提示归属=%q 保留提前提示=%v）",
 		hadBreak, breakKind, keepBreak, hadTakeoutWin, hadTakeoutPostponed, keep.Takeout, preKind, keepPre)

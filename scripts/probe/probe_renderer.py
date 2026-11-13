@@ -258,8 +258,11 @@ def main():
     iso_settings = os.path.join(ISO, "settings.json")
     if real_settings:
         shutil.copyfile(real_settings, iso_settings)
-    # 提前提示窗需要一个**真的处于提前提示区间**的服务：把短休息改成“10 分钟一次、
-    # 提前 10 分钟提示”，`nextAt - notifyBeforeMs <= now` 立刻成立 → 启动后第一跳就进 pre。
+    # 底座配置：短休息 60 分钟一次、提前 1 分钟提示，只为让服务有一份正常的倒计时配置
+    #（页面上“下次休息”等断言需要它）。**提前提示区间不再靠 seed 造**：提前通知最多到
+    # 间隔的一半，`notify == interval` 的老写法会被归一化钳成一半、刚排好时反而进不了 pre
+    #（旧版本靠这一手让启动第一跳就进 pre，2026-11-13 起不成立）。
+    # 真正的 pre 状态由 renderer_probe.js 在 1b / 1c 两段里显式排出来。
     # 改的是隔离副本（真实配置在末尾仍有 SHA-256 断言守着）。
     # ---- 开跑前的配置快照 ----
     # 断言必须拿“页面启动时读到的配置”比对，不能用跑完再读的那份：探针在过程里会
@@ -269,7 +272,7 @@ def main():
         cfg_seed = json.load(open(iso_settings, encoding="utf-8"))
         cfg_seed.setdefault("short", {}).update({
             "enabled": True, "mode": "countdown",
-            "intervalMs": 600000, "notifyBeforeMs": 600000,
+            "intervalMs": 3600000, "notifyBeforeMs": 60000,
         })
         cfg_seed["long"] = dict(cfg_seed.get("long") or {}, enabled=False)
         cfg_seed["takeout"] = dict(cfg_seed.get("takeout") or {}, enabled=False)
@@ -1187,6 +1190,35 @@ def main():
                       "%s vs %s" % (bi.get("rectBottom"), ci.get("rectBottom")))
             check(not (b.get("errors") or []), "%s提醒窗口：页面无 JS 错误" % label, b.get("errors"))
 
+        # ---- 休息窗副条（单窗多条，2026-11-13 口径）----
+        # 休息期间到点的自定义提醒 / 外卖不另开窗，挂在当前休息窗右上角。Go 侧入账、
+        # 前端只管画 —— 量的是“两张卡都在、都在右上、不压倒计时环与对话条、
+        # 外卖副条带两个按钮”。真实路径要等物理时间凑出一次撞车，所以走替身 shim。
+        ex = m.get("breakExtras") or {}
+        check(not ex.get("error"), "休息窗副条：取到 #extra-notes", ex.get("error"))
+        check(ex.get("visible") is True, "休息窗副条：有副条时整块显示（不挂 hidden）", ex.get("visible"))
+        check(ex.get("count") == 2, "休息窗副条：会话里的两条都画出来了", ex.get("count"))
+        check(ex.get("names") == ["喝水提醒", "外卖提醒"],
+              "休息窗副条：标题按会话顺序（自定义提醒在前、外卖在后）", ex.get("names"))
+        _etexts = ex.get("texts") or []
+        check(bool(_etexts) and "起来喝口水" in _etexts[0],
+              "休息窗副条：正文是这条提醒本次抽中的内容", _etexts[:1])
+        check(ex.get("rightHalf") is True and ex.get("topHalf") is True,
+              "休息窗副条：钉在右上角（不压左下角的立绘）",
+              "right=%s top=%s" % (ex.get("rightHalf"), ex.get("topHalf")))
+        check(ex.get("inViewport") is True, "休息窗副条：整块都在窗口内，没有溢出", ex.get("inViewport"))
+        check(ex.get("overlapCountdown") == 0, "休息窗副条：不压倒计时环",
+              ex.get("overlapCountdown"))
+        check(ex.get("overlapFigure") == 0, "休息窗副条：不压立绘",
+              ex.get("overlapFigure"))
+        check(ex.get("overlapMessages") == 0, "休息窗副条：不压提醒内容",
+              ex.get("overlapMessages"))
+        _ebtns = ex.get("buttons") or []
+        check(len(_ebtns) == 2 and _ebtns[0] == [] and _ebtns[1] == ["推迟 10 分钟", "知道了"],
+              "休息窗副条：只有外卖副条带按钮（推迟时长按配置读）", _ebtns)
+        check(not (ex.get("consoleErrors") or []), "休息窗副条：页面无 JS 错误",
+              ex.get("consoleErrors"))
+
         # ---- 提前提示窗（右下角小窗）----
         # 页面本身是渲染层产物，标题 / 倒计时 / 版式全部来自 Go 的 PreBreakState；
         # 这条链路（按名调用 + 500ms 轮询 + URL 带版式）只有真跑一遍才看得见。
@@ -1467,23 +1499,21 @@ def main():
         check(not (tk.get("consoleErrors") or []), "外卖窗口：页面无控制台错误",
               (tk.get("consoleErrors") or [])[:2])
 
-        # ---- “推迟时长”下限 1 分钟：旧配置写 0，弹窗侧按 1 分钟照常给“推迟” ----
+        # ---- “允许推迟提醒”没勾：postponeMs/postponeMin = 0，弹窗侧藏“推迟”按钮 ----
         # 场景由 renderer_probe.js 的 5b 段造出：short.postponeMs=0、takeout.postponeMin=0。
-        # 0 的语义已于 2026-11-10 删除（读取侧夹到 1 分钟），两个窗口的“推迟”按钮必须常显。
+        # 0 = 没勾「允许推迟提醒」（2026-11-13 新口径）：窗口不显示推迟按钮，快捷键在
+        # Go 侧同口径挡；提前提示窗的按钮显隐由轮询里的 allowPostpone 驱动。
         pbz = m.get("preBreakPostponeFloor") or {}
-        check(pbz.get("postponeShown") is True,
-              "推迟时长下限 1 分钟：提前提示窗照常显示“推迟”按钮", pbz.get("postponeShown"))
+        check(pbz.get("postponeShown") is False,
+              "未勾允许推迟：提前提示窗不显示“推迟”按钮", pbz.get("postponeShown"))
         check(not (pbz.get("consoleErrors") or []),
-              "推迟时长下限 1 分钟：提前提示窗页面无控制台错误",
+              "未勾允许推迟：提前提示窗页面无控制台错误",
               (pbz.get("consoleErrors") or [])[:2])
         tkz = m.get("takeoutPostponeFloor") or {}
-        check(tkz.get("postponeShown") is True,
-              "推迟时长下限 1 分钟：外卖窗口照常显示“推迟”按钮", tkz.get("postponeShown"))
-        check(str(tkz.get("postponeBtn") or "").strip() == "推迟 1 分钟",
-              "推迟时长下限 1 分钟：外卖“推迟”按钮文案是 1 分钟",
-              tkz.get("postponeBtn"))
+        check(tkz.get("postponeShown") is False,
+              "未勾允许推迟：外卖窗口不显示“推迟”按钮", tkz.get("postponeShown"))
         check(not (tkz.get("consoleErrors") or []),
-              "推迟时长下限 1 分钟：外卖窗口页面无控制台错误",
+              "未勾允许推迟：外卖窗口页面无控制台错误",
               (tkz.get("consoleErrors") or [])[:2])
 
         # ---- 全局键鼠活动 → 督休专员二阶段（系统级检测的可观测端）----

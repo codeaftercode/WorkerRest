@@ -1730,6 +1730,19 @@ async function run() {
   console.log("[probe] index:", JSON.stringify(metrics.index));
 
   // ---- 1b. 提前提示窗：内置版式 ----
+  // 需要一个**真的在提前提示区间**的状态。提前通知最多只能到间隔的一半（归一化里钳住：
+  // 填成 notify == interval 会让刚排好的提醒立刻落进提示区间、小窗常驻），所以“排一条
+  // 10 分钟、提前 10 分钟”的老办法已经不成立 —— 这里显式排一条 12 秒的短休息，等 6.5 秒
+  // 落进后半段（提前区间 = [t0+6s, t0+12s]）。时长压到 3 秒：万一这一跳真的到点，也不会
+  // 留一个 20 秒的休息窗挡着下一段。
+  await main.evaluate(
+    "(function(){ return window.api.saveSettings({" +
+      "short:{enabled:true,mode:'countdown',intervalMs:12000,durationMs:3000," +
+      "notifyBeforeMs:6000,postponeMs:120000,slots:[]}," +
+      "long:{enabled:false}, takeout:{enabled:false}," +
+      "supervisor:{enabled:true}}); })()",
+  );
+  await delay(6500);
   const pbErr = [];
   const pre = await open(browser, BASE + "/prebreak.html?win=prebreak", 400, 240, {
     transparent: true, frame: false, onConsole: pbErr,
@@ -1765,15 +1778,18 @@ async function run() {
   // ---- 1c. 提前提示窗：自定义提醒版式 ----
   // supervisor:{enabled:true}：探针断言（has-supervisor 版式 / 立绘解码）以“启用”为前提，
   // 必须在隔离副本上显式打开，不跟随用户真实配置的开关状态。
+  // 间隔 8 秒 / 提前 4 秒（=间隔的一半，正是归一化允许的上限）：等 4.5 秒落进提前区间。
+  // 老写法 notify == interval（180 秒 / 180 秒）会被钳成 90 秒 —— 刚排好时还剩 180 秒，
+  // 反而永远进不了 pre，窗里就退化成内置文案了。
   await main.evaluate(
     "(function(){ return window.api.saveSettings({" +
       "short:{enabled:false}, long:{enabled:false}, takeout:{enabled:false}," +
       "supervisor:{enabled:true}," +
       "customBreaks:[{id:'cb-water',name:'喝水提醒',enabled:true,config:{enabled:true," +
-      "mode:'countdown',intervalMs:180000,durationMs:20000,notifyBeforeMs:180000," +
+      "mode:'countdown',intervalMs:8000,durationMs:20000,notifyBeforeMs:4000," +
       "postponeMs:120000,slots:[]}}]}); })()",
   );
-  await delay(1200);
+  await delay(4500);
   await main.evaluate("(function(){ return window.api.preBreakAction('postpone'); })()");
   await delay(1600);
   const pbCErr = [];
@@ -1790,6 +1806,15 @@ async function run() {
   console.log("[probe] preBreakCustom:", JSON.stringify(metrics.preBreakCustom));
 
   // ---- 2. 让 Go 侧真的建一次会话 ----
+  // 先把短休息恢复成“正常时长”（20 秒）：1b 为了在几秒内造出提前区间把它压到 3 秒，
+  // 而下面的窗口断言要验“倒计时位数按总时长写入”，3 秒的休息会只剩 1 位数。
+  // 间隔 10 分钟 → 探针期间不会再自己到点。
+  await main.evaluate(
+    "(function(){ return window.api.saveSettings({" +
+      "short:{enabled:true,mode:'countdown',intervalMs:600000,durationMs:20000," +
+      "notifyBeforeMs:10000,postponeMs:120000,slots:[]}}); })()",
+  );
+  await delay(300);
   const sessionId = await main.evaluate(
     "(function(){ return window.api.startBreak('short'); })()",
   );
@@ -1852,6 +1877,76 @@ async function run() {
   await shot(tall, "break_tall");
   console.log("[probe] breakTall:", JSON.stringify(metrics.breakTall));
 
+  // ---- 4b. 休息窗副条（单窗多条）：休息期间到点的其他提醒并进当前窗口 ----
+  // 真实路径要等物理时间凑出一次撞车（长休息 20 分钟里到了喝水提醒），探针等不起；
+  // 所以这里用替身 shim 直接喂一份“会话里已经挂着两条副条”的窗口数据 —— HTML/CSS/JS
+  // 全是同一份，量的就是 renderExtras() 这条分支：卡片在右上角、不压倒计时环、
+  // 外卖副条带两个能点的按钮。
+  const extraAt = Date.now();
+  const mockBreakExtras = `window.api = {
+    breakCurrent: async function () { return {
+      appearance: { color: "#4f7cff", transparency: 0.05, fullscreen: false },
+      messages: ["起来喝口水"], name: "短休息", durationMs: 300000,
+      endsAt: Date.now() + 300000, type: "short", endEarlyShortcut: "Ctrl+Alt+X",
+      preview: false, supervisor: null,
+      extras: [
+        { kind: "cb-11111111", name: "喝水提醒", text: "起来喝口水", at: ${extraAt} },
+        { kind: "takeout", name: "外卖提醒", text: "午餐 · 记得下单", at: ${extraAt},
+          takeout: { meal: "午餐", postponeMin: 10 } }
+      ] }; },
+    action: function () {}, closeWindow: function () {}, on: function () {},
+    off: function () {}, supActivity: async function () {}, takeoutAction: function () {} };`;
+  const exErr = [];
+  const exPage = await open(browser, BASE + "/break.html?win=break&sup=0", 1100, 720, {
+    transparent: true, frame: false, onConsole: exErr, mockShim: mockBreakExtras,
+  });
+  await delay(400);
+  metrics.breakExtras = await exPage.evaluate(`(function () {
+    var box = document.getElementById("extra-notes");
+    if (!box) return { error: "no #extra-notes" };
+    var cards = Array.prototype.slice.call(box.querySelectorAll(".extra-note"));
+    var cd = document.getElementById("countdown");
+    var fig = document.getElementById("figure-img");
+    var msg = document.getElementById("messages");
+    var ib = box.getBoundingClientRect();
+    var inter = function (a, b) {
+      if (!a || !b) return 0;
+      var w = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+      var h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      return w > 0 && h > 0 ? Math.round(w * h) : 0;
+    };
+    var cdBox = cd ? cd.getBoundingClientRect() : null;
+    // 立绘在左下、提醒内容在底部：副条钉右上角就是为了避开这两块。
+    // （不要拿 .content 当判据：无督休专员时它是整屏透明容器，压上去也没东西可压。）
+    var figBox = fig && fig.offsetHeight > 0 ? fig.getBoundingClientRect() : null;
+    var msgBox = msg && msg.offsetHeight > 0 ? msg.getBoundingClientRect() : null;
+    var out = {
+      visible: !box.classList.contains("hidden") && box.offsetHeight > 0,
+      count: cards.length,
+      names: cards.map(function (c) { return (c.querySelector(".extra-name") || {}).textContent || ""; }),
+      texts: cards.map(function (c) { return (c.querySelector(".extra-text") || {}).textContent || ""; }),
+      // 右上角：整块必须落在窗口右半边、上半边（钉左边就会压到立绘）
+      rightHalf: ib.left > innerWidth / 2,
+      topHalf: ib.top < innerHeight / 2,
+      inViewport: ib.right <= innerWidth + 0.5 && ib.top >= -0.5,
+      // 与倒计时环 / 立绘 / 提醒内容的重叠面积（要求 0：副条是“加一条”，不是“盖一块”）
+      overlapCountdown: inter(ib, cdBox),
+      overlapFigure: inter(ib, figBox),
+      overlapMessages: inter(ib, msgBox),
+      // 外卖副条的两个按钮（转发给 TakeoutAction，记账与独立窗口同一套）
+      buttons: cards.map(function (c) {
+        return Array.prototype.slice.call(c.querySelectorAll(".extra-btn")).map(function (b) {
+          return b.textContent.trim();
+        });
+      })
+    };
+    return out;
+  })()`);
+  metrics.breakExtras.consoleErrors = exErr;
+  await shot(exPage, "break_extras");
+  console.log("[probe] breakExtras:", JSON.stringify(metrics.breakExtras));
+  await exPage.close().catch(() => {});
+
   // ---- 5. 外卖提醒窗口 ----
   const tkErr = [];
   await main.evaluate("(function(){ return window.api.previewTakeout(); })()");
@@ -1906,7 +2001,11 @@ async function run() {
     await p.close().catch(() => {});
   }
 
-  // ---- 5b. “推迟时长”下限 1 分钟：旧配置写 0，弹窗侧仍按 1 分钟给“推迟”按钮 ----
+  // ---- 5b. 「允许推迟提醒」没勾：postponeMs / postponeMin = 0，弹窗侧藏“推迟”按钮 ----
+  // （2026-11-13 新口径；按钮显隐由 allowPostpone / postponeMin 驱动，断言在 probe_renderer.py）
+  // 提前提示窗侧：静态直开时 Go 侧没有预通知会话，preBreakCanPostpone 查不到身份按
+  // “允许”处理（真窗口的行为由 Go 单测钉 payload）—— 这里把 preBreakState 桩成
+  // allowPostpone=false，量的是 prebreak.js 轮询 → 藏按钮这条前端分支。
   await main.evaluate(
     "(function(){ return window.api.saveSettings({" +
       "short:{postponeMs:0}, takeout:{postponeMin:0}}); })()",
@@ -1919,9 +2018,22 @@ async function run() {
     400, 240,
     { transparent: true, frame: false, onConsole: pbZErr },
   );
+  await preZ.evaluate(function () {
+    var orig = window.api.preBreakState;
+    window.__origPreBreakState = orig;
+    window.api.preBreakState = function () {
+      return orig().then(function (st) {
+        st.allowPostpone = false;
+        return st;
+      });
+    };
+  });
   await delay(700);
   metrics.preBreakPostponeFloor = await preZ.evaluate(PROBE_PREBREAK);
   metrics.preBreakPostponeFloor.consoleErrors = pbZErr;
+  await preZ.evaluate(function () {
+    if (window.__origPreBreakState) window.api.preBreakState = window.__origPreBreakState;
+  });
   await shot(preZ, "prebreak_postpone_floor");
   console.log("[probe] preBreakPostponeFloor:", JSON.stringify(metrics.preBreakPostponeFloor));
 

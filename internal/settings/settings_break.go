@@ -80,11 +80,17 @@ func (s *Settings) CastMirrorPause() bool { return s.Flag(true, "castMirrorPause
 // 真正的外卖提醒窗口仍在“原定时刻”弹出，不会因提前通知而提前）
 func (s *Settings) TakeoutLeadSec() int { return clampInt(s.Int(0, "takeout", "leadSec"), 0, 300) }
 
-// TakeoutPostponeMin 外卖“推迟时长”分钟数（最小 1 分钟：0 分钟等于原地重弹，
-// 语义已删除，见 2026-11-10）
+// TakeoutPostponeMin 外卖“每次推迟”的分钟数。**0 = 不允许推迟**（外卖卡「允许推迟提醒」
+// 没勾）：窗口不显示“推迟”按钮，快捷键与暂停期间的自动推迟也都不做。
+// 非零值最小 1 分钟（0 与 1 之间没有意义），最多 120 分钟。
+// 缺键仍按 10 分钟兜底（与 2026-11-10 之前一致），不因为多了“0 = 关”的语义就把
+// 没写这一项的配置读成“不允许推迟”。
 func (s *Settings) TakeoutPostponeMin() int {
-	return clampInt(s.Int(10, "takeout", "postponeMin"), 1, 120)
+	return clampInt(s.Int(10, "takeout", "postponeMin"), 0, 120)
 }
+
+// TakeoutCanPostpone 外卖允不允许推迟（与 BreakConfig.CanPostpone 同一口径）
+func (s *Settings) TakeoutCanPostpone() bool { return s.TakeoutPostponeMin() > 0 }
 
 // TakeoutPauseAction 暂停休息期间外卖到点的处置：
 // remind（照常弹窗）/ postpone（按“推迟时长”往后推，缺省）/ skip（不弹窗、直接记跳过）。

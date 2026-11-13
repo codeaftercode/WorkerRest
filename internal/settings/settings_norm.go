@@ -141,8 +141,9 @@ func normalizeSound(raw map[string]any) {
 }
 
 // normalizeTakeout 归一化整份外卖配置（对应 types.ts 的 normalizeTakeout）：
-// **重建**对象，只留这 7 个键；leadSec 夹到 0–300、postponeMin 夹到 1–120
-// （“推迟时长”最小 1 分钟，0 的语义已删除）；idleGateMs 夹到 0–30 分钟。
+// **重建**对象，只留这 7 个键；leadSec 夹到 0–300、postponeMin 夹到 0–120
+// （0 = 外卖卡没勾「允许推迟提醒」，不显示推迟按钮；非零最小 1 分钟）；
+// idleGateMs 夹到 0–30 分钟。
 func normalizeTakeout(raw map[string]any) map[string]any {
 	var o map[string]any
 	if m, ok := raw["takeout"].(map[string]any); ok {
@@ -175,9 +176,11 @@ func normalizeTakeout(raw map[string]any) map[string]any {
 		gateMs = pick(v, 0, float64(idleGateMaxMs), float64(idleGateDefaultMs))
 	}
 	return map[string]any{
-		"enabled":     o["enabled"] != false,
-		"leadSec":     pick(leadVal, 0, 300, 0),
-		"postponeMin": pick(o["postponeMin"], 1, 120, 10),
+		"enabled": o["enabled"] != false,
+		"leadSec": pick(leadVal, 0, 300, 0),
+		// 0 = 没勾「允许推迟提醒」（合法值，别抬回 1）；缺键（未归一化的裸配置）按 10
+		// 分钟兜底，与 TakeoutPostponeMin 的兜底一致（生产配置缺键早在合并出厂默认时补上）
+		"postponeMin": pick(o["postponeMin"], 0, 120, 10),
 		// 暂停休息时的处置：三个合法值之外一律落回“推迟提醒”（默认）
 		"pauseAction": normPauseAction(o["pauseAction"]),
 		// 空闲门（鼠标键盘连续无活动多久才真弹）：缺键按“不勾”，时长按 0~30 分钟夹紧。

@@ -84,8 +84,13 @@
     return best;
   }
   // 外卖两项的默认值（区间不在这里：一律读输入框自己的 min/max，见 clampNum）
-  var TAKEOUT_LEAD_DEFAULT = 0;
-  var TAKEOUT_POSTPONE_DEFAULT = 10;
+  // 2026-11-13 起“0 = 不做这件事”（不提前通知 / 不允许推迟），勾选框不勾时配置写 0；
+  // 框里没法显示 0（min=1），所以没勾时回填这两个常规值 —— 与出厂配置同值。
+  var TAKEOUT_LEAD_DEFAULT = 10;
+  var TAKEOUT_POSTPONE_DEFAULT = 2;
+  // 休息卡（短 / 长 / 自定义）的两项常规值，勾选框从“不勾”切回“勾”时用
+  var BREAK_NOTIFY_DEFAULT = 10;
+  var BREAK_POSTPONE_DEFAULT = 2;
   // 只收“打开它基本就是在开会”的客户端（口径与 settings.go 的 appPausePresets 一致）。
   // 飞书 / 钉钉 / 企业微信 / WeLink 是综合办公套件：能开会，但日常是消息与审批入口，
   // 进程常驻并不等于在开会，所以不入列。
@@ -1270,7 +1275,9 @@
     const time = slotTimeText(slot);
     if (slot.repeat === "daily") return `每天 ${time}`;
     const names = WEEKDAYS.filter((d) => slot.days.includes(d.value)).map((d) => d.short);
-    return `每周 ${names.join("、") || "（未选）"} ${time}`;
+    // 旧配置 / 手工改过的配置里可能有“每周但一天都没勾”：这种条目永不触发，
+    // 描述里把后果写出来，不要只留一个“（未选）”。
+    return `每周 ${names.join("、") || "（未选，不会提醒）"} ${time}`;
   }
 
   // renderer/figureTrim.ts
@@ -2985,7 +2992,8 @@
   }
   function slotNextText(next) {
     if (!next) return "";
-    if (dayDiffOf(next.at) > 0) return "今日已无提醒";
+    // 跨午夜也照常报时刻：旧实现在这里写“今日已无提醒”，把最关键的“还有 15 分钟”
+    // 藏掉了 —— 23:55 时下一次是明天 00:10，用户看到的却像今天没有提醒了。
     const mins = Math.max(0, Math.round((next.at - Date.now()) / 6e4));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分` : `${mins} 分`;
     return `下次 ${nextSlotDayLabel(next.at)}（${left}后）`;
@@ -3274,6 +3282,13 @@
       box.type = "checkbox";
       box.checked = slot.days.includes(w.value);
       box.addEventListener("change", () => {
+        // 每周期至少留一天：全不勾的条目永远不会触发，计划层直接返回“没有下一次”，
+        // 界面上只剩一句“每周（未选）”—— 静默失效，用户根本不知道提醒已经没了。
+        if (!box.checked && slot.days.length === 1) {
+          box.checked = true;
+          toast("每周至少选一天，否则这条提醒不会触发");
+          return;
+        }
         slot.days = box.checked ? [.../* @__PURE__ */ new Set([...slot.days, w.value])].sort((a, b) => a - b) : slot.days.filter((v) => v !== w.value);
         lab.classList.toggle("on", box.checked);
         opts.onChange();
@@ -3473,6 +3488,10 @@
     // 所以会补面板头并重新绑定，且不会重复注册）。
     mountBreakPanes(id);
     bindIdleGate(id);
+    // 「提醒前弹出通知」/「允许推迟提醒」的勾选框：克隆卡里的勾选态变了也得立刻
+    // 把数字框点亮 / 置灰（存盘由上面那圈 bindAutoSaveEl 负责）
+    bindNumGate($(`${id}-notifyOn`), $(`${id}-notify`));
+    bindNumGate($(`${id}-postponeOn`), $(`${id}-postpone`));
     // 克隆节点的“已绑过”标记已在 buildCustomBreakCard 里清掉：把卡里每个“?”重绑一遍，
     // 否则克隆来的几枚点不出浮层（都已打过标，重绑是幂等的空操作）。
     for (const q of card.querySelectorAll(".q-mark")) bindQTip(q);
@@ -3703,6 +3722,33 @@
     // 勾选框只管“这条门槛生不生效”：立刻反映到秒数框的灰/亮上（存盘另由 bindAutoSaveEl 负责）
     el.box.addEventListener("change", () => { syncIdleGateUI(id); });
   }
+  // ---------- 「提醒前弹出通知」/「允许推迟提醒」（勾选框 + 数字框，2026-11-13） ----------
+  // 与上面的空闲门同一套版式与同一套“勾选态 / 数值是两个字段”的口径，区别只有一处：
+  // 这两项不另存开关，**没勾就是把这个数写成 0**（Go 侧 BreakConfig.NotifyBeforeMs /
+  // PostponeMs 的 0 分别表示“不提前通知”“不允许推迟”）。所以不勾时数字框置灰、
+  // 值留在框里（勾回来还是原来那个数），存盘时写 0。
+  function syncNumGate(box, num) {
+    if (box && num) num.disabled = !box.checked;
+  }
+  // 回填：0 = 没勾。框里不能显示 0（min=1），没勾时填常规值占位。
+  function fillNumGate(box, num, value, fallback) {
+    if (!box || !num) return;
+    box.checked = value > 0;
+    num.value = String(value > 0 ? value : fallback);
+    syncNumGate(box, num);
+  }
+  // 读值：勾了取框里的数（clampNum 已按 min=1 / max 钳好并回写），没勾返回 0。
+  function readNumGate(box, num, fallback) {
+    var v = clampNum(num, fallback);
+    if (box && !box.checked) return 0;
+    return v;
+  }
+  // 勾选框只管那件事生不生效：立刻反映到数字框的灰 / 亮（存盘另由 bindAutoSaveEl 负责）
+  function bindNumGate(box, num) {
+    if (!box || !num) return;
+    box.addEventListener("change", function () { syncNumGate(box, num); });
+    num.addEventListener("change", function () { clampNum(num, 1); });
+  }
   // 卡头总开关的“关闭态”：给卡片挂 .off，CSS 据此把正文降到 0.55（卡头不降）。
   // 只认**卡头里的**开关 —— 正文里也有 id 以 -enabled 结尾的勾选框（如 appPause-enabled），
   // 那些是卡内参数，关掉不该让整张卡变灰。自定义卡是克隆出来的，同一条路数就够，
@@ -3728,11 +3774,13 @@
     syncCardOff($(`${id}-enabled`));
     setDropValue($(`${id}-mode`), c.mode);
     $(`${id}-interval`).value = String(Math.round(c.intervalMs / 6e4));
-    // 提醒时长一律按**秒**回填（长休息也是：输入框标的是“提醒时长（秒）”，
+    // 提醒窗口显示时长一律按**秒**回填（长休息也是：输入框标的是「提醒窗口显示时长」，
     // 内部存 durationMs，单位差只在乘除 1000 这一步）
     $(`${id}-duration`).value = String(Math.round(c.durationMs / 1e3));
-    $(`${id}-notify`).value = String(Math.round(c.notifyBeforeMs / 1e3));
-    $(`${id}-postpone`).value = String(Math.round(c.postponeMs / 6e4));
+    // 提前通知 / 允许推迟：勾选框 + 数字框，配置里的 0 表示“没勾”。
+    // 没勾时框里填常规值占位（短 / 自定义 2 分钟、长休息 5 分钟，与出厂默认一致）
+    fillNumGate($(`${id}-notifyOn`), $(`${id}-notify`), Math.round(c.notifyBeforeMs / 1e3), BREAK_NOTIFY_DEFAULT);
+    fillNumGate($(`${id}-postponeOn`), $(`${id}-postpone`), Math.round(c.postponeMs / 6e4), id === "long" ? 5 : BREAK_POSTPONE_DEFAULT);
     fillIdleGate(id, c);
     // “暂停休息时”2026-11-12 起四类提醒（短休息 / 长休息 / 外卖 / 自定义提醒）都有：
     // 短 / 长休息的那两个下拉在 fillForm 里先挂好（模板自带宿主），自定义卡在
@@ -3818,8 +3866,9 @@
     fillGeomControls(normalizeSupGeom(geomOf(currentGeomName())));
     $("tk-enabled").checked = S.takeout.enabled;
     mountPauseDrop($("tk-pause"), S.takeout.pauseAction);
-    $("tk-lead").value = String(S.takeout.leadSec);
-    $("tk-postpone").value = String(S.takeout.postponeMin);
+    // 外卖的提前通知 / 允许推迟：同样是勾选框 + 数字框（0 = 没勾）
+    fillNumGate($("tk-leadOn"), $("tk-lead"), S.takeout.leadSec, TAKEOUT_LEAD_DEFAULT);
+    fillNumGate($("tk-postponeOn"), $("tk-postpone"), S.takeout.postponeMin, TAKEOUT_POSTPONE_DEFAULT);
     fillIdleGate("tk", S.takeout);
     $("sc-postpone").value = S.shortcuts.postpone;
     $("sc-endEarly").value = S.shortcuts.endEarly;
@@ -3859,12 +3908,29 @@
       c.enabled = $(`${id}-enabled`).checked;
       c.mode = dropValue($(`${id}-mode`), "countdown") === "fixed" ? "fixed" : "countdown";
       c.intervalMs = clampNum($(`${id}-interval`), 10) * 6e4;
-      // 提醒时长统一按秒读写（长休息卡 2026-11-09 从“分钟”改成“秒”，与短休息、自定义
-      // 提醒同一口径）。空值兜底按类型的常规量给：短休息 20 秒、长休息 300 秒（5 分钟）。
+      // 提醒窗口显示时长统一按秒读写（长休息卡 2026-11-09 从“分钟”改成“秒”，与短休息、
+      // 自定义提醒同一口径）。空值兜底按类型的常规量给：短休息 20 秒、长休息 300 秒。
       const dv = clampNum($(`${id}-duration`), id === "long" ? 300 : 20);
       c.durationMs = dv * 1e3;
-      c.notifyBeforeMs = clampNum($(`${id}-notify`), 10) * 1e3;
-      c.postponeMs = clampNum($(`${id}-postpone`), 2) * 6e4;
+      // 提前通知：没勾「提醒前弹出通知」就是 0（不提前通知，到点直接弹）。
+      // 勾了才继续钳：提前量最多到间隔的一半 —— 填成 >= 间隔时刚排好就落进提前区间，
+      // 状态会永远停在“即将休息”、右下角提示小窗常驻。与 Go 侧 breakConfigOf 同一口径
+      //（那边兜住手工改过的配置文件）。这里顺手把输入框改回真实生效值并说明一句 ——
+      // 只悄悄存一个不是用户填的数字，下次打开会以为设置丢了。
+      if (!$(`${id}-notifyOn`).checked) {
+        c.notifyBeforeMs = 0;
+      } else {
+        const nbSec = clampNum($(`${id}-notify`), BREAK_NOTIFY_DEFAULT);
+        const nbMaxSec = c.mode === "countdown" ? Math.floor(c.intervalMs / 2e3) : nbSec;
+        const nbUse = Math.min(nbSec, nbMaxSec);
+        if (nbUse < nbSec) {
+          $(`${id}-notify`).value = String(nbUse);
+          toast(`提前通知不能超过间隔的一半，已按 ${nbUse} 秒记`);
+        }
+        c.notifyBeforeMs = nbUse * 1e3;
+      }
+      // 允许推迟：没勾就是 0（不允许推迟 —— 界面藏推迟按钮、快捷键不响应）
+      c.postponeMs = readNumGate($(`${id}-postponeOn`), $(`${id}-postpone`), BREAK_POSTPONE_DEFAULT) * 6e4;
       // 空闲门：勾选态 + 时长（没勾也存时长，下次勾回来还是原值）
       const gate = readIdleGate(id);
       c.idleGate = gate.enabled;
@@ -3889,8 +3955,8 @@
     S.supervisor.enabled = $("sup-enabled").checked;
     S.takeout.enabled = $("tk-enabled").checked;
     S.takeout.pauseAction = dropValue($("tk-pause"), "postpone");
-    S.takeout.leadSec = clampNum($("tk-lead"), TAKEOUT_LEAD_DEFAULT);
-    S.takeout.postponeMin = clampNum($("tk-postpone"), TAKEOUT_POSTPONE_DEFAULT);
+    S.takeout.leadSec = readNumGate($("tk-leadOn"), $("tk-lead"), TAKEOUT_LEAD_DEFAULT);
+    S.takeout.postponeMin = readNumGate($("tk-postponeOn"), $("tk-postpone"), TAKEOUT_POSTPONE_DEFAULT);
     const tkGate = readIdleGate("tk");
     S.takeout.idleGate = tkGate.enabled;
     S.takeout.idleGateMs = tkGate.ms;
@@ -4452,9 +4518,10 @@
     // “暂停休息/恢复休息”互斥显示：暂停中只显示“恢复休息”，否则只显示“暂停休息”
     const qaPause = $("qa-pause");
     if (qaPause) qaPause.textContent = st.paused ? "恢复休息" : "暂停休息";
-    // “推迟休息”按钮：休息进行中不显示（已经在休息了，没有“再往后推”这回事）。
-    // 2026-11-10 起“推迟时长”最小 1 分钟，不再有“推迟 0 分钟”这种配置，
-    // 也就不再需要按 postponeMs 显隐。
+    // “推迟休息”按钮：休息进行中不显示（已经在休息了，没有“再往后推”这回事）；
+    // 这一跳所属的提醒**没勾「允许推迟提醒」**（st.postponeAllowed === false）时也不显示
+    // —— 显示出来点了必然没反应，比藏起来更让人以为坏了。2026-11-13 之前推迟时长
+    // 最小 1 分钟、永远可推，所以这里没有这条判据。
     const inBreak = st.phase === "break";
     // 休息中：“立即休息”无从谈起，禁用而不是让点了没反应；
     // “跳过本次”在休息中等价于提前结束（与托盘“提前结束休息”同义，
@@ -4473,7 +4540,11 @@
     const qaSkip = $("qa-skip");
     if (qaSkip) qaSkip.textContent = inBreak ? "提前结束" : "跳过本次";
     const qaPostpone = $("qa-postpone");
-    if (qaPostpone) qaPostpone.classList.toggle("hidden", inBreak);
+    if (qaPostpone) {
+      const canPostpone = st.postponeAllowed !== false;
+      qaPostpone.classList.toggle("hidden", inBreak || !canPostpone);
+      qaPostpone.title = canPostpone ? "" : "这条提醒没有勾选「允许推迟提醒」，不能推迟";
+    }
     const phaseText = st.phase === "break" ? "休息中" : st.phase === "pre" ? "即将休息" : "努力工作中";
     // 暂停统一显示“暂停休息”：不论是手动暂停、系统空闲（人离开工位）、系统勿扰
     // 还是指定应用占用运行，状态格只给一个结论；具体原因挂到该格的 title 上悬停可看
@@ -4497,27 +4568,31 @@
       ? st.pausedAt
       : now;
     const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
-    // 一个格子的值有三种形态：{text} 给中文结论（等待空闲 / 未安排 / 今日已无提醒 / —），
+    // 一个格子的值有三种形态：{text} 给中文结论（等待空闲 / 未安排 / 明天 08:10 / —），
     // {led} 给剩余毫秒、交给数码管。只有真正的倒计时才走段码 ——「等待空闲」不是时间，
     // 硬画成段码只会得到一串 0。
     //
     // idleWait：这一跳已经到点，但这条提醒勾了「系统空闲（秒）」，人还在忙 ——
     // 用户口径就是让时间格直接写“等待空闲”，等键鼠安静下来它自己会变成倒计时。
+    //
+    // 跨午夜：不写“今日已无提醒”（那会把“还有 15 分钟”藏掉），改报“明天 00:10”。
+    // 再远的（周重复的提醒）报“周X 09:00”，与卡片摘要的写法同一套（nextSlotDayLabel）。
     const remainCell = (at, idleWait) => idleWait
       ? { text: "等待空闲" }
       : dayDiffOf(at) > 0
-        ? { text: "今日已无提醒" }
+        ? { text: nextSlotDayLabel(at) }
         : { led: Math.max(0, at - now) };
-    // “下次提醒”取外卖/自定义里最近的一次（st.other 已合并两者）；
-    // 仅当该最近提醒落在“今天”（at 在当天剩余时间）才显示，否则隐藏整格。
-    // 等待空闲的那一条不按“今天/明天”判：它的时刻本来就在刚才（已经到点了）。
-    const otherCell = st.other && (st.other.idleWait || dayDiffOf(st.other.at) === 0)
+    // “下次提醒”取外卖/自定义里最近的一次（st.other 已合并两者）。
+    // 不再按“是不是今天”整格隐藏：跨午夜的那一次同样要能看到，具体时刻由 remainCell 表达。
+    const otherCell = st.other
       ? [otherKey(st.other.name), remainCell(st.other.at, st.other.idleWait)]
       : null;
     const cells = [["状态", { text: phaseVal }, pauseTitle]];
     if (st.phase === "break") {
       cells.push(["正在休息", { led: Math.max(0, st.breakEndsAt - nowBreak) }]);
-      if (otherCell) cells.push(["下次提醒", { text: "—" }]);
+      // 休息中照样报“下一次外卖 / 自定义提醒还有多久”：这里曾固定写“—”，把排在
+      // 这次休息之后的提醒整段藏掉了。st.other 已经是“这次休息消费之后”的下一次。
+      if (otherCell) cells.push(otherCell);
     } else {
       cells.push(
         st.rest ? [`下次${st.rest.name}`, remainCell(st.rest.at, st.rest.idleWait)] : ["下次休息提醒", { text: "未安排" }]
@@ -7525,6 +7600,14 @@
     bindIdleGate("short");
     bindIdleGate("long");
     bindIdleGate("tk");
+    // 「提醒前弹出通知」/「允许推迟提醒」：内置短 / 长与外卖三张卡统一绑
+    //（自定义卡在 setupCustomBreakCard 里按新宿主各绑一份）
+    bindNumGate($("short-notifyOn"), $("short-notify"));
+    bindNumGate($("long-notifyOn"), $("long-notify"));
+    bindNumGate($("short-postponeOn"), $("short-postpone"));
+    bindNumGate($("long-postponeOn"), $("long-postpone"));
+    bindNumGate($("tk-leadOn"), $("tk-lead"));
+    bindNumGate($("tk-postponeOn"), $("tk-postpone"));
     window.addEventListener("focus", () => {
       if (document.querySelector("#tab-stats.active")) void renderStats();
     });

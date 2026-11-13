@@ -62,10 +62,11 @@ func TestPausedReplanKeepsLiveCountdown(t *testing.T) {
 	}
 }
 
-// TestPausedScheduleNextRealignsExpiredCountdown 走完整链路（scheduleNext，设置保存用的
-// 就是它）：暂停期间已经过期的倒计时线必须按 now+间隔重新起算（不能把过去那一刻钉住等
-// 恢复），同时 phase 回到 idle。
-func TestPausedScheduleNextRealignsExpiredCountdown(t *testing.T) {
+// TestPausedScheduleNextKeepsExpiredCountdown 走完整链路（scheduleNext，设置保存用的
+// 就是它）：暂停期间已经过期的倒计时线**不再**被悄悄改成 now+间隔 —— 那等于把这一跳
+// 作废（用户看不到窗、也没有任何记录）。它原样留在“已到点”上，由紧随其后的一拍按卡片
+// 的“暂停休息时”处置；出厂默认是“推迟提醒”，所以下一拍剩余变成「推迟时长」。
+func TestPausedScheduleNextKeepsExpiredCountdown(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
 
@@ -85,14 +86,19 @@ func TestPausedScheduleNextRealignsExpiredCountdown(t *testing.T) {
 	if st := s.StateCopy(); st.Phase != "idle" {
 		t.Fatalf("重排后应回到等待态，实际 phase=%q", st.Phase)
 	}
-	const interval = 600_000
-	if got := s.RemainingMs(); got < interval-2000 || got > interval+2000 {
-		t.Fatalf("过期线应按 now+间隔重新起算（≈%d ms），实际 %d ms", int64(interval), got)
+	if got := s.RemainingMs(); got > 2000 {
+		t.Fatalf("过期线被重排成满间隔：这一跳会凭空消失（实际还剩 %d ms）", got)
+	}
+	// 下一拍：仍暂停 → 按“暂停休息时”（shortCountdown 用的是缺省 postpone，2 分钟）处置
+	s.onTick()
+	const postpone = 120_000
+	if got := s.RemainingMs(); got < postpone-3000 || got > postpone+3000 {
+		t.Fatalf("过期线应按“暂停休息时=推迟”挪到 ≈%d ms，实际 %d ms", int64(postpone), got)
 	}
 
 	s.Resume(PauseReasonIdle)
-	if got := s.RemainingMs(); got < interval-2000 || got > interval+2000 {
-		t.Fatalf("恢复后剩余应≈%d ms，实际 %d ms", int64(interval), got)
+	if got := s.RemainingMs(); got < postpone-3000 || got > postpone+3000 {
+		t.Fatalf("恢复后剩余应≈%d ms（恢复不补偿），实际 %d ms", int64(postpone), got)
 	}
 }
 

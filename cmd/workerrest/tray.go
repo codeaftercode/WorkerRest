@@ -293,10 +293,18 @@ func trayTextsAt(st model.SchedulerState, pausedCleared bool, hold []string, now
 		// 不能像以前那样留个空串把菜单项清成空白。
 		actionText = "立即休息"
 		pauseText = "恢复休息"
+		// 暂停中还有一次“冻结着的休息”（它自己选的是“推迟”，剩余时间停在 PausedAt）：
+		// 除了暂停原因，也把这次休息还剩多久说出来 —— 恢复之后要接着走完，用户需要知道
+		// 还剩多少。旧实现只在 tooltip 里说“已暂停 12 分钟”，休息剩多少完全看不见。
+		if st.Phase == "break" && !st.BreakWhilePaused && st.BreakEndsAt > 0 {
+			tip += "；这次休息还剩 " + fmtTrayRemain(max0(st.BreakEndsAt-st.PausedAt))
+		}
 	case st.Phase == "break":
 		// 休息剩余时间只在“暂停 + 该休息选推迟”时按 pausedAt 折算，而那种情况已被
-		// 上一个分支拦下，走到这里就是真实时钟在走，按当前时间算。
-		tip = "休息中，剩余 " + fmtTrayRemain(max0(st.BreakEndsAt-nowMs()))
+		// 上一个分支拦下，走到这里就是真实时钟在走，按传入的 now 算 ——
+		// 曾经这里写的是包级 nowMs()，让 trayTextsAt 的 now 注入在休息态失效
+		// （其余分支都认 now），时序用例没法测“再过 30 秒托盘该写什么”。
+		tip = "休息中，剩余 " + fmtTrayRemain(max0(st.BreakEndsAt-now))
 		statusText = "状态：休息中"
 		actionText = "提前结束休息"
 		pauseText = "暂停休息"

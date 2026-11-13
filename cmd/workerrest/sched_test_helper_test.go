@@ -40,6 +40,15 @@ type testHost struct {
 	pauseKeepPre string
 	// idleMs 系统级“连续无输入”读数的假值（空闲门测试用）
 	idleMs int64
+	// extras 休息期间被并入当前窗口的提醒身份（单窗多条）
+	extras []string
+	// counted 被另一次休息覆盖、按“完成”记账的内置休息身份
+	counted []string
+	// completed 按“完成”收尾的窗口次数（长休息抢占短休息时 +1）
+	completed int
+	// breakOK OnBreakExtra 的返回值（是否“有可挂的休息会话”）；默认 true，
+	// 需要模拟“窗口被 Alt+F4 关掉”的用例把它置 false
+	breakOK bool
 }
 
 func (h *testHost) CfgSnapshot() *settings.Settings  { return h.cfg }
@@ -51,8 +60,14 @@ func (h *testHost) OnAutoPause(keep scheduler.AutoPauseKeep) {
 	h.autoPauses++
 	h.autoKeep = keep
 }
-func (h *testHost) ClosePreBreak()                                    {}
-func (h *testHost) CloseBreakWindows()                                { h.closed++ }
+func (h *testHost) ClosePreBreak()        {}
+func (h *testHost) CloseBreakWindows()    { h.closed++ }
+func (h *testHost) CompleteBreakWindows() { h.closed++; h.completed++ }
+func (h *testHost) OnBreakExtra(kind string, _ int64) bool {
+	h.extras = append(h.extras, kind)
+	return h.breakOK
+}
+func (h *testHost) OnBreakCounted(kind string)                        { h.counted = append(h.counted, kind) }
 func (h *testHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }
 func (h *testHost) TakeoutFiredSnapshot() map[string]bool             { return nil }
 func (h *testHost) TakeoutIdleWaitSnapshot() *model.TakeoutIdleWait   { return nil }
@@ -66,7 +81,7 @@ func (h *testHost) ShowBreakSession(kind string, _ bool, _ string) string {
 // newTestSched 造一个带记录宿主的调度器（尚未 replan，调用方按需 ResetCycle）
 func newTestSched(t *testing.T, cfgJSON string) (*scheduler.Scheduler, *testHost) {
 	t.Helper()
-	host := &testHost{cfg: testSettings(t, cfgJSON)}
+	host := &testHost{cfg: testSettings(t, cfgJSON), breakOK: true}
 	return scheduler.New(host), host
 }
 

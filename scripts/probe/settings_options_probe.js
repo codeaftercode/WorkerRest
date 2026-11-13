@@ -438,7 +438,8 @@ async function verifyIdleGateControls(page) {
     // 控件位置：2026-11-09 起卡内参数分成「触发条件 / 弹窗设置」两组，系统空闲属于前者、
     // 暂停休息时属于后者 —— 这里按**组**断言，不再按“行的绝对序号”
     // 2026-11-10：暂停休息时从组末提到组首（用户要求，它是最常用的那一行），
-    // 所以断言从「在提醒时长之后」翻成「在提醒时长之前，且是组内第一行」。
+    // 所以断言从「在时长行之后」翻成「在时长行之前，且是组内第一行」（2026-11-13 改版后
+    // 时长行的标签是「提醒窗口显示时长」）。
     const order = await page.evaluate((id) => {
       const card = document.querySelector(`#tab-timing > .card[data-cb="${id}"]`);
       if (!card) return null;
@@ -453,7 +454,7 @@ async function verifyIdleGateControls(page) {
         // 2026-11-10 起计时方法是上下两块面板（不是 .row），按它的文案找位置
         mode: idx(trig, /倒计时/),
         gate: idx(trig, /只在空闲时提醒/),
-        dur: idx(rem, /提醒时长/),
+        dur: idx(rem, /提醒窗口显示时长/),
         pause: idx(rem, /暂停休息时/),
       };
     }, cbID);
@@ -469,7 +470,7 @@ async function verifyIdleGateControls(page) {
     );
     check(
       !!order && order.pause === 0 && order.dur > order.pause,
-      "分组 · 暂停休息时是「弹窗设置」组内第一行（提醒时长之前）",
+      "分组 · 暂停休息时是「弹窗设置」组内第一行（提醒窗口显示时长之前）",
       JSON.stringify(order),
     );
     // 卡头对齐（2026-11-10）：自定义卡的摘要不再和 ✎ / ✕ 包在一起，回到标题右侧；
@@ -580,13 +581,13 @@ async function verifyBreakDurationUnit(page) {
     };
   });
   check(
-    !!labels.short && labels.short.label === "提醒时长" && labels.short.unit === "秒",
+    !!labels.short && labels.short.label === "提醒窗口显示时长" && labels.short.unit === "秒",
     "时长 · 短休息标签与单位（标签写名字、单位在框右侧）",
     JSON.stringify(labels.short),
   );
   check(
-    !!labels.long && labels.long.label === "提醒时长" && labels.long.unit === "秒",
-    "时长 · 长休息标签与单位（原来是“时长（分钟）”）",
+    !!labels.long && labels.long.label === "提醒窗口显示时长" && labels.long.unit === "秒",
+    "时长 · 长休息标签与单位（2026-11-13 改名「提醒窗口显示时长」）",
     JSON.stringify(labels.long),
   );
   check(labels.shortMode === "计时方法", "计时方法 · 短休息段控有 aria-label", labels.shortMode);
@@ -956,19 +957,19 @@ async function verifyParamGroups(page) {
       s.trig.slice(0, 60),
     );
     check(
-      !/提醒时长|提前通知|推迟时长/.test(s.trig),
+      !/提醒窗口显示时长|提醒前弹出通知|允许推迟提醒/.test(s.trig),
       "分组 · " + id + " “弹窗设置”组那三个数没有混进“触发条件”",
       s.trig.slice(0, 60),
     );
     check(
-      /提前通知秒/.test(s.rem) && /推迟时长分钟/.test(s.rem),
-      "分组 · " + id + " “提前通知 / 推迟时长”在“弹窗设置”组里",
+      /提醒前弹出通知，提前秒/.test(s.rem) && /允许推迟提醒，每次推迟分钟/.test(s.rem),
+      "分组 · " + id + " “提醒前弹出通知 / 允许推迟提醒”在“弹窗设置”组里",
       s.rem.slice(0, 60),
     );
   }
-  // “推迟时长 / 提前通知”的浮层提示与下限（2026-11-10）：三个入口（short / long / tk）
-  // 文案必须逐字一致；推迟时长最小 1 分钟 —— “0 = 不显示推迟按钮”的语义已整体删除，
-  // 输入框的下限与 Go 侧 clamp 必须同值。
+  // “允许推迟提醒 / 提醒前弹出通知”的浮层提示与下限（2026-11-13 复选框改版）：
+  // 三个入口（short / long / tk）的“?”文案逐字一致，都说明“不勾 = 关闭”；
+  // 数字框最小 1（0 的语义已挪到复选框上），与 Go 侧 clamp 必须同值。
   // 提示挂在**左侧文字末尾的“?”**上（不是数字框的 title）：挂在输入框上时，用户得先
   // 把指针移到框上才知道有说明，而“这个标签是什么意思”本来就是文字的疑问。
   const attrs = await page.evaluate(() => {
@@ -1003,20 +1004,23 @@ async function verifyParamGroups(page) {
   for (const id of ["short", "long", "tk"]) {
     const a = attrs[id] || {};
     check(a.min === "1", "推迟时长 · " + id + " 输入框最小值是 1 分钟", a.min);
+    const postponeTip = id === "tk"
+      ? "勾选后，外卖窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。"
+      : "勾选后，提醒窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。";
     check(
-      !!a.pmark && a.pmark.tip === "若触发推迟提醒，每次推迟的时长",
-      "推迟时长 · " + id + " 浮层提示挂在文字末尾的“?”上",
+      !!a.pmark && a.pmark.tip === postponeTip,
+      "允许推迟 · " + id + " 浮层提示挂在文字末尾的“?”上",
       JSON.stringify(a.pmark),
     );
-    check(!!a.pmark && a.pmark.last, "推迟时长 · " + id + " “?”在标签文字末尾", JSON.stringify(a.pmark));
+    check(!!a.pmark && a.pmark.last, "允许推迟 · " + id + " “?”在标签文字末尾", JSON.stringify(a.pmark));
     check(
-      !!a.nmark && a.nmark.tip === "到达提醒时间前，在屏幕右下角显示提前通知小窗口",
+      !!a.nmark && a.nmark.tip === "到达提醒时间前，提前这么多秒在屏幕右下角弹出提示小窗。不勾选 = 不提前通知，到点直接提醒。",
       "提前通知 · " + id + " 浮层提示挂在文字末尾的“?”上",
       JSON.stringify(a.nmark),
     );
     check(!!a.nmark && a.nmark.last, "提前通知 · " + id + " “?”在标签文字末尾", JSON.stringify(a.nmark));
     // 输入框上不能再留 title：同一个说明出现两套提示（系统气泡 + 自绘浮层）
-    check(a.pTitle === null, "推迟时长 · " + id + " 输入框上不再挂 title", a.pTitle);
+    check(a.pTitle === null, "允许推迟 · " + id + " 输入框上不再挂 title", a.pTitle);
     check(a.nTitle === null, "提前通知 · " + id + " 输入框上不再挂 title", a.nTitle);
   }
 
@@ -1026,7 +1030,7 @@ async function verifyParamGroups(page) {
   check(/倒计时/.test(struct.short?.trig || ""), "分组 · 短休息“触发条件”含计时方法");
   check(/倒计时/.test(struct.long?.trig || ""), "分组 · 长休息“触发条件”含计时方法");
   check(!/倒计时/.test(struct.tk?.trig || ""), "分组 · 外卖提醒没有计时方法（只有固定时刻）");
-  check(/提醒时长秒/.test(struct.short?.rem || ""), "分组 · 短休息“提醒”含提醒时长");
+  check(/提醒窗口显示时长秒/.test(struct.short?.rem || ""), "分组 · 短休息“提醒”含提醒窗口显示时长");
 
   // ② 倒计时 ↔ 固定时间：**两侧面板的选中态互换**
   // 2026-11-10 起两个面板并列、内容同时可见可编辑（不再“藏一边显示一边”），

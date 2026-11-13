@@ -101,7 +101,12 @@ func (a *App) checkTakeoutReminders() {
 			case settings.PauseActionRemind:
 				// 照常提醒：继续往下走下面的四条触发线
 			case settings.PauseActionPostpone:
-				// “推迟时长”最小 1 分钟，永远有时长可推
+				// 没勾「允许推迟提醒」时没有时长可推：降级成跳过（与调度器 pauseDisposition
+				// 同一口径）。不降级的话 DueAt = now + 0，下一秒 tick 又到点，无限循环。
+				if !cfg.TakeoutCanPostpone() {
+					a.skipTakeoutWhilePaused(cfg)
+					return
+				}
 				a.postponeTakeoutWhilePaused(cfg, hasPP)
 				return
 			default:
@@ -344,6 +349,8 @@ func (a *App) showTakeoutPreNotify(slot model.TimeSlot, targetAt int64) {
 		CountdownTail: " 秒",
 		// 背景色与休息预通知同源（通用配置 → 提醒窗口 → 背景颜色）
 		BgColor: cfg.AppearanceCfg().Color,
+		// 外卖卡没勾「允许推迟提醒」：小窗不显示“推迟”按钮
+		NoPostpone: !cfg.TakeoutCanPostpone(),
 	}
 	a.mu.Lock()
 	a.preInfo = info

@@ -893,8 +893,10 @@ func TestManualPauseClearsAutoPauseIgnores(t *testing.T) {
 // 对照组故意直接调公开的 Resume（不静默，恢复后仍落在提前区间 → 弹一次），证明差别来自
 // 这一次调用，而不是“这个场景本身弹不出来”。
 func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
-	// 4 秒一次短休息、提前 3 秒提示：提前区间 = [t0+1s, t0+4s]
-	const tight = `{"short":{"enabled":true,"mode":"countdown","intervalMs":4000,"durationMs":2000,` +
+	// 6 秒一次短休息、提前 3 秒提示：提前区间 = [t0+3s, t0+6s]。
+	// 注意提前通知最多只能到间隔的一半（超出会被归一化钳住，见 settings.breakConfigOf），
+	// 所以这里不能再写“4 秒间隔 + 提前 3 秒”。
+	const tight = `{"short":{"enabled":true,"mode":"countdown","intervalMs":6000,"durationMs":2000,` +
 		`"notifyBeforeMs":3000,"postponeMs":60000,"slots":[]}}`
 
 	a, s, host := newWatchAppWithHost(t, tight)
@@ -902,7 +904,7 @@ func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
 	_, sOld, hostOld := newWatchAppWithHost(t, tight)
 
 	// 让“现在”落进提前区间
-	time.Sleep(1100 * time.Millisecond)
+	time.Sleep(3200 * time.Millisecond)
 
 	// 实验组：走真实空闲链路
 	a.idle.ForceIdle(6 * 60_000)
@@ -933,8 +935,8 @@ func TestIdleReturnDoesNotFlashPreWindow(t *testing.T) {
 	if s.IsPaused() {
 		t.Fatalf("回来应已恢复，得到 reasons=%v", s.StateCopy().PauseReasons)
 	}
-	// 重锚仍要发生：内置倒计时从“现在”重新计时（4 秒），不是残留的 2.9 秒
-	if remain := s.RemainingMs(); remain < 3500 || remain > 4200 {
+	// 重锚仍要发生：内置倒计时从“现在”重新计时（6 秒），不是残留的 2.8 秒
+	if remain := s.RemainingMs(); remain < 5500 || remain > 6300 {
 		t.Fatalf("回来应把内置倒计时重锚到满间隔，得到剩余 %d ms", remain)
 	}
 }

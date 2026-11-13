@@ -746,20 +746,32 @@ def main():
         #   ② 四个动作真的汇聚到调度器（不是只返回了个形状对的壳）。
         # “那个小窗真的弹出来了”由 scripts/probe_gui_boot.py 拉起 GUI 产物读日志覆盖。
 
+        arm_seq = [0]
+
         def arm_prebreak():
-            """把配置改成“马上进入提前提示区间”：短休息 60 秒倒计时、提前 60 秒提示。
+            """把配置改成“马上进入提前提示区间”：短休息 8 秒倒计时、提前 4 秒提示。
+
+            「提前通知不能超过间隔的一半」（settings.breakConfigOf 归一化 + 设置页保存时
+            同一口径），所以这里不能再写“60 秒间隔 + 提前 60 秒”——那会被钳成 30 秒，
+            刚排好时还剩 60 秒，反而进不了提前区间。8/4 秒既满足约束，又能在 4.3 秒后
+            稳稳落进区间（提前区间 = [t0+4s, t0+8s]）。
 
             每次动作前都要重来一遍：推迟 / 跳过会把 nextAt 推到两分钟外，不再落在提前
             区间里，不重设就等不到下一次 pre（调度器只在 idle→pre 那一刻发通知）。
+            间隔在 8.0 / 8.1 秒之间来回写：**间隔没变时保存设置会沿用未到期的锚点**
+            （“改设置不该清零倒计时”的核心行为），一直写 8 秒反而让上一次剩下的几秒
+            继续走，动作还没发出去这一跳就到点了。
             """
+            arm_seq[0] += 1
+            iv = 8000 if arm_seq[0] % 2 else 8100
             call(base, "SaveSettings", [{
                 "short": {"enabled": True, "mode": "countdown",
-                          "intervalMs": 60000, "notifyBeforeMs": 60000},
+                          "intervalMs": iv, "notifyBeforeMs": 4000},
                 "long": {"enabled": False},
                 "takeout": {"enabled": False},
                 "customBreaks": [],
             }])
-            time.sleep(1.3)  # 调度器 500ms 一跳，等它把 phase 推成 pre
+            time.sleep(4.3)  # 调度器 500ms 一跳，等它把 phase 推成 pre（剩 4s 时进入）
 
         arm_prebreak()
         st, gs_pre = call(base, "GetState", [])
@@ -816,8 +828,8 @@ def main():
                   "got=%d want=%d orig=%d" % (got_pb, want_pb, orig_pb))
 
         # 跳过：重排下一条、且不进入休息。
-        # phase 只断言 != "break"：arm_prebreak 的配置（间隔 60s = 提前 60s）下，
-        # 跳过重排出的新线恰好落在提前区间边界上，调度器下一个 tick 把 phase 推成
+        # phase 只断言 != "break"：arm_prebreak 的配置（间隔 8s = 提前 4s）下，
+        # 跳过重排出的新线可能很快又落进提前区间，调度器下一个 tick 把 phase 推成
         # pre 是**产品合法行为**——是否已经 tick 到是 500ms 轮询相位的掷骰子。
         arm_prebreak()
         st, gs_before_skip = call(base, "GetState", [])

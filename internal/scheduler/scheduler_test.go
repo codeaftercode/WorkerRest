@@ -52,6 +52,12 @@ type fakeHost struct {
 	gated *model.TakeoutIdleWait
 	// idleMs 系统级“连续无输入”读数的假值（空闲门测试用；0 = 人一直在敲键盘）
 	idleMs int64
+	// extras 休息期间被并入当前窗口的提醒身份（单窗多条）
+	extras []string
+	// counted 被另一次休息覆盖、按“完成”记账的内置休息身份
+	counted []string
+	// completed 按“完成”收尾的窗口次数（长休息抢占短休息时 +1）
+	completed int
 }
 
 func (h *fakeHost) CfgSnapshot() *settings.Settings  { return h.cfg }
@@ -63,8 +69,14 @@ func (h *fakeHost) OnAutoPause(keep AutoPauseKeep) {
 	h.autoPauses++
 	h.autoKeep = keep
 }
-func (h *fakeHost) ClosePreBreak()                                    {}
-func (h *fakeHost) CloseBreakWindows()                                { h.closed++ }
+func (h *fakeHost) ClosePreBreak()        {}
+func (h *fakeHost) CloseBreakWindows()    { h.closed++ }
+func (h *fakeHost) CompleteBreakWindows() { h.closed++; h.completed++ }
+func (h *fakeHost) OnBreakExtra(kind string, _ int64) bool {
+	h.extras = append(h.extras, kind)
+	return true
+}
+func (h *fakeHost) OnBreakCounted(kind string)                        { h.counted = append(h.counted, kind) }
 func (h *fakeHost) TakeoutPostponedSnapshot() *model.TakeoutPostponed { return h.pp }
 func (h *fakeHost) TakeoutFiredSnapshot() map[string]bool             { return nil }
 func (h *fakeHost) TakeoutIdleWaitSnapshot() *model.TakeoutIdleWait   { return h.gated }

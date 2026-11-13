@@ -30,34 +30,6 @@ func TestNextSlotAtIsStrictlyAfter(t *testing.T) {
 	}
 }
 
-func TestFindDueTimeSlotsDedupAndPrune(t *testing.T) {
-	now := time.Date(2026, 10, 8, 12, 0, 30, 0, time.Local).UnixMilli()
-	slots := []model.TimeSlot{
-		{ID: "a", Hour: 12, Minute: 0, Repeat: "daily", Enabled: true},
-		{ID: "b", Hour: 12, Minute: 0, Repeat: "daily", Enabled: true},
-		{ID: "c", Hour: 13, Minute: 0, Repeat: "daily", Enabled: true},
-		{ID: "d", Hour: 12, Minute: 0, Repeat: "daily", Enabled: false},
-	}
-	fired := map[string]bool{}
-	got := plan.FindDueTimeSlots(slots, now, fired, 0)
-	if len(got) != 2 {
-		t.Fatalf("应命中 a/b 两条（c 未到点、d 已停用），得到 %d", len(got))
-	}
-	// 同一分钟再跑一次：不重复返回
-	if again := plan.FindDueTimeSlots(slots, now+5_000, fired, 0); len(again) != 0 {
-		t.Fatalf("同一分钟不该重复触发，得到 %d", len(again))
-	}
-	if len(fired) != 2 {
-		t.Fatalf("已触发集合应有 2 个键，得到 %d", len(fired))
-	}
-	// 跨天：旧键该被清掉
-	nextDay := now + 86_400_000
-	plan.FindDueTimeSlots(nil, nextDay, fired, 0)
-	if len(fired) != 0 {
-		t.Fatalf("跨天后旧键应清空，得到 %v", fired)
-	}
-}
-
 func TestSlotAlertAtCrossesDayWithLead(t *testing.T) {
 	slot := model.TimeSlot{ID: "s", Hour: 0, Minute: 10, Repeat: "daily", Enabled: true}
 	day := time.Date(2026, 10, 8, 12, 0, 0, 0, time.Local).UnixMilli()

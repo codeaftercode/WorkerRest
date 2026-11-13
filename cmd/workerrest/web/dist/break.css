@@ -846,3 +846,98 @@ body.has-supervisor .particles { display: none; }
 }
 
 .hidden { display: none !important; }
+
+/* ---------- 单窗多条：休息期间并入的“同时提醒” ----------
+   一次只开一扇提醒窗（撞车时另一个如不开窗，用户就漏看了），所以别的提醒到点
+   就挂在这里。位置钉右上角：立绘在左下、倒计时环在正中，右上是唯一长期空着的区域。
+   用半透明卡片而不是纯文字 —— 外卖卡上还带“推迟 / 知道了”两个按钮，需要明确的边界。 */
+.extra-notes {
+  position: fixed;
+  top: 3vh;
+  right: 3vw;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: min(34vw, 420px);
+  max-height: 60vh;
+  overflow-y: auto;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+.extra-note {
+  background: rgba(12, 16, 28, 0.62);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-left: 3px solid var(--accent);
+  border-radius: 12px;
+  padding: 10px 14px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  animation: extra-in 0.26s ease both;
+}
+
+@keyframes extra-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.extra-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.extra-name {
+  font-size: clamp(13px, 1.15vw, 17px);
+  font-weight: 600;
+  color: #fff;
+}
+
+.extra-at {
+  font-size: clamp(11px, 0.95vw, 14px);
+  color: rgba(255, 255, 255, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.extra-text {
+  margin-top: 4px;
+  font-size: clamp(12px, 1.05vw, 16px);
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.82);
+  word-break: break-word;
+}
+
+.extra-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.extra-btn {
+  flex: 1;
+  padding: 6px 10px;
+  font-size: clamp(11px, 0.95vw, 14px);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.extra-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+/* 竖屏 / 窄窗：右上角的卡片会压到倒计时环，改成整宽铺在顶部 */
+@media (max-aspect-ratio: 1/1) {
+  .extra-notes {
+    right: 4vw;
+    left: 4vw;
+    max-width: none;
+    max-height: 34vh;
+  }
+}
+

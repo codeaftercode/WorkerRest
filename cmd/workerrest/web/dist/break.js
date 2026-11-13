@@ -1147,6 +1147,75 @@
       nameEl.textContent = data.name || "";
       if (data.name) nameEl.classList.remove("hidden");
     }
+    // 单窗多条：休息期间到点的其他提醒（自定义 / 外卖）挂右上角，不另开窗。
+    // 首帧按会话里已有的清单铺一遍，之后由主进程推送整份清单（见 break:extras）。
+    renderExtras(data.extras || []);
+    if (api.onBreakExtras) api.onBreakExtras(renderExtras);
+
+    function fmtClock(ms) {
+      const d = new Date(Number(ms) || 0);
+      return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    }
+
+    function renderExtras(list) {
+      const box = document.getElementById("extra-notes");
+      if (!box) return;
+      box.textContent = "";
+      const items = Array.isArray(list) ? list : [];
+      if (!items.length) {
+        box.classList.add("hidden");
+        return;
+      }
+      box.classList.remove("hidden");
+      for (const ex of items) box.appendChild(renderExtra(ex));
+    }
+
+    function renderExtra(ex) {
+      const card = document.createElement("div");
+      card.className = "extra-note";
+      const head = document.createElement("div");
+      head.className = "extra-head";
+      const nm = document.createElement("span");
+      nm.className = "extra-name";
+      nm.textContent = ex.name || "";
+      const at = document.createElement("span");
+      at.className = "extra-at";
+      at.textContent = ex.at ? fmtClock(ex.at) : "";
+      head.appendChild(nm);
+      head.appendChild(at);
+      card.appendChild(head);
+      if (ex.text) {
+        const tx = document.createElement("div");
+        tx.className = "extra-text";
+        tx.textContent = ex.text;
+        card.appendChild(tx);
+      }
+      // 外卖副条带按钮：走的是外卖模块自己的 TakeoutAction（推迟 / 已点好），
+      // 与外卖窗口上的按钮同一套记账，不在这里另算一遍。
+      if (ex.takeout) {
+        const acts = document.createElement("div");
+        acts.className = "extra-actions";
+        // 外卖卡没勾「允许推迟提醒」（postponeMin = 0）时不给“推迟”按钮，
+        // 只留“知道了”；主窗口那边与 TakeoutAction 的守卫同口径。
+        const mins = Number(ex.takeout.postponeMin) || 0;
+        if (mins > 0) {
+          const later = document.createElement("button");
+          later.type = "button";
+          later.className = "extra-btn";
+          later.textContent = "推迟 " + mins + " 分钟";
+          later.addEventListener("click", () => api.takeoutAction("postpone"));
+          acts.appendChild(later);
+        }
+        const ok = document.createElement("button");
+        ok.type = "button";
+        ok.className = "extra-btn";
+        ok.textContent = "知道了";
+        ok.addEventListener("click", () => api.takeoutAction("ordered"));
+        acts.appendChild(ok);
+        card.appendChild(acts);
+      }
+      return card;
+    }
     // 环内两行直排铭文“整理思绪 / 积蓄能量”已静态写在 break.html 的
     // #inscribe-lines 中（进度百分数下方，非弧形），无需在此设置。
     if (data.supervisor) {

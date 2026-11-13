@@ -111,14 +111,6 @@ func TestSlotAlertAtCrossesMidnight(t *testing.T) {
 	}
 }
 
-func TestSlotFireKeyUsesOccurrenceDate(t *testing.T) {
-	slot := model.TimeSlot{ID: "s1", Hour: 0, Minute: 10, Enabled: true}
-	key := slotFireKey(slot, at(2026, 3, 11, 23, 55), 20*60_000)
-	if key != "s1#2026-03-12#00:10" {
-		t.Fatalf("去重键应挂次日日期，得到 %q", key)
-	}
-}
-
 func TestIsTimeSlotDue(t *testing.T) {
 	slot := model.TimeSlot{ID: "s", Hour: 12, Minute: 0, Enabled: true, Repeat: "daily"}
 	if !isTimeSlotDue(slot, at(2026, 3, 12, 12, 0), 0) {
@@ -144,31 +136,6 @@ func TestIsTimeSlotDue(t *testing.T) {
 	}
 	if isTimeSlotDue(weekly, at(2026, 3, 13, 12, 0), 0) {
 		t.Fatal("周五没勾，不该到期")
-	}
-}
-
-func TestFindDueTimeSlotsDedupesAndPrunes(t *testing.T) {
-	slots := []model.TimeSlot{
-		{ID: "a", Hour: 12, Minute: 0, Enabled: true, Repeat: "daily"},
-		{ID: "b", Hour: 12, Minute: 0, Enabled: false, Repeat: "daily"},
-	}
-	fired := map[string]bool{"a#2026-03-11#09:00": true} // 昨天的残留键
-	now := at(2026, 3, 12, 12, 0)
-
-	first := findDueTimeSlots(slots, now, fired, 0)
-	if len(first) != 1 || first[0].ID != "a" {
-		t.Fatalf("应只命中启用中的 a，得到 %v", first)
-	}
-	if fired["a#2026-03-11#09:00"] {
-		t.Fatal("昨天的键应被清掉，否则长期运行集合越撑越大")
-	}
-	// 同一分钟内重复 tick 不该重复弹
-	if again := findDueTimeSlots(slots, now+30_000, fired, 0); len(again) != 0 {
-		t.Fatalf("同一分钟第二次 tick 不该再返回，得到 %v", again)
-	}
-	// 第二天同一时刻可以再弹一次
-	if next := findDueTimeSlots(slots, now+dayMs, fired, 0); len(next) != 1 {
-		t.Fatalf("第二天应重新命中，得到 %v", next)
 	}
 }
 
@@ -374,16 +341,18 @@ func TestCountdownAnchor(t *testing.T) {
 	if got := countdownAnchor(prev, "short", now, skip, now+900_000, 900_000); got != now+900_000 {
 		t.Fatalf("间隔变了应重算，得到 %s", time.UnixMilli(got))
 	}
-	// 已到期 → 重算（这一跳已经过去，不能沿用）
+	// 已到期（这一跳到点了、还没有任何一拍消费掉它）→ **照样原样沿用**：把它换成
+	// now+interval 等于让这一次提醒凭空消失（到点那一瞬保存设置、或另一条提醒正占着
+	// 休息窗口时都会走到这里）。沿用后 NextAt 停在过去，下一拍直接弹。
 	expired := map[string]cdAnchor{"short": {At: now - 1, Iv: 600_000}}
-	if got := countdownAnchor(expired, "short", now, skip, now+600_000, 600_000); got != now+600_000 {
-		t.Fatalf("已到期应重算，得到 %s", time.UnixMilli(got))
+	if got := countdownAnchor(expired, "short", now, skip, now+600_000, 600_000); got != now-1 {
+		t.Fatalf("已到期但未消费的锚点应原样沿用，得到 %s", time.UnixMilli(got))
 	}
-	// 暂停中收集的锚点也不例外：暂停不冻钟，At 早于墙钟就是过期（旧口径里那种
-	// “冻结锚点原样沿用”的 Frozen 分支已随 2026-11-12 的冻钟取消一起删除）
+	// 暂停中收集的锚点同理：暂停不冻钟，At 早于墙钟就是“这一刻该提醒了”，
+	// 由 onTick 的暂停分支按各卡“暂停休息时”处置。
 	pausedPrev := map[string]cdAnchor{"short": {At: now - 1, Iv: 600_000}}
-	if got := countdownAnchor(pausedPrev, "short", now, skip, now+600_000, 600_000); got != now+600_000 {
-		t.Fatalf("过期的锚点一律重算，得到 %s", time.UnixMilli(got))
+	if got := countdownAnchor(pausedPrev, "short", now, skip, now+600_000, 600_000); got != now-1 {
+		t.Fatalf("暂停中的过期锚点同样沿用，得到 %s", time.UnixMilli(got))
 	}
 	// 已被消费 → 重算
 	consumed := map[string]cdAnchor{"short": {At: now + 300_000, Iv: 600_000}}

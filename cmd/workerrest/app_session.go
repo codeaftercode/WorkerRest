@@ -261,6 +261,12 @@ func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) strin
 		Supervisor:       a.buildSupervisorSession(preview, forceKey),
 		EndEarlyShortcut: endEarly,
 	}
+	// 上一次休息被“长休息抢占”时已经并入的副条，接着挂到这次休息上：
+	// 抢占是立刻换窗，中间没有空隙让它们随旧窗消失（那些提醒已经被消费掉了）。
+	if len(a.carryExtras) > 0 && !preview {
+		info.Extras = append(info.Extras, a.carryExtras...)
+		a.carryExtras = nil
+	}
 	a.sess = info
 	a.mu.Unlock()
 
@@ -278,6 +284,11 @@ func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) strin
 		a.closePreBreakWindow()
 	}
 	a.ShowBreakWindow(kind)
+	// 首帧那次 breakCurrent 可能早于这里的推送（页面还在加载）：再推一份全量清单，
+	// 让刚接过来的副条也能在窗上出现。
+	if len(info.Extras) > 0 {
+		a.emitBreakExtras(info.Extras)
+	}
 	// 提示音：只给真实休息放（预览是“看一眼窗口长什么样”，不该出声）
 	if !preview {
 		a.playConfiguredSound()

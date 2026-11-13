@@ -169,6 +169,9 @@
       // 底色与暂停态无关：暂停中也要保持用户配的颜色。
       // 地址里带了的 bg 优先，轮询值只作旧地址的备份。
       if (urlBg === null && st.bgColor) applyPalette(st.bgColor);
+      // 这条提醒没勾「允许推迟提醒」时藏掉推迟按钮（旧地址 / 旧主进程没有这个
+      // 字段，undefined 按“允许”处理，行为与 2026-11-13 之前一致）。
+      postponeBtn.classList.toggle("hidden", st.allowPostpone === false);
       if (st.paused) {
         titleEl.textContent = "已暂停";
         secondsEl.textContent = "--";

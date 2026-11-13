@@ -22,6 +22,10 @@
          预览时只显示 badge（点任意处即可关），真实休息时只显示它。
          文案（含快捷键）由 break.js 按“设置 → 快捷键”的 endEarly 动态填充。 -->
     <a href="#" id="skip-link" class="skip-link hidden">提前结束</a>
+    <!-- 单窗多条：休息期间到点的其他提醒（自定义提醒 / 外卖）挂在这里，
+         不再另开窗口。位置钉在右上角，避开立绘（左下）与倒计时环（居中）。
+         由 break.js 的 renderExtras() 填充，主进程新增/移除时通过事件推送。 -->
+    <div class="extra-notes hidden" id="extra-notes" aria-live="polite"></div>
     <!-- 督休专员题名：竖排金色宋体，钉在立绘头部左侧的空白区（不再进对话条）。
          位置与字号由 break.js 的 layoutRoleTitle() 按“零遮挡”实测后写进 inline style，
          所以它必须和 #figure 处在同一定位上下文（#app），不能留在 .content 里——

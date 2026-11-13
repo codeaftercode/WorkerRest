@@ -323,8 +323,33 @@ func breakConfigOf(m map[string]any) model.BreakConfig {
 	cfg.DurationMs = mapInt(m, "durationMs", 20_000)
 	cfg.IntervalMs = mapInt(m, "intervalMs", 600_000)
 	cfg.NotifyBeforeMs = mapInt(m, "notifyBeforeMs", 10_000)
-	// “推迟时长”最小 1 分钟（0 分钟等于原地重弹，2026-11-10 起不再支持）、最多 120 分钟
-	cfg.PostponeMs = clampInt64(mapInt(m, "postponeMs", 120_000), 60_000, 120*60_000)
+	// 提前通知必须明显早于间隔：填成 >= 间隔时，刚排完就落进提前区间（剩余 == 提前量），
+	// 状态从此永远停在“即将休息”、右下角提示小窗常驻，看起来就是程序卡住了。
+	// 上限取间隔的一半，保证每个周期至少有一半时间在正常“努力工作中”。
+	// 只对倒计时方式有意义（固定时刻的提前量相对时刻表，与间隔无关）。
+	// 设置页在保存时做同一件事并当场把输入框改回来（见 settings.js 的 readBreak），
+	// 这里再兜一道：手工改过的配置、导入的配置也走同一口径。
+	if cfg.NotifyBeforeMs < 0 {
+		cfg.NotifyBeforeMs = 0
+	}
+	if cfg.Mode == "countdown" && cfg.IntervalMs > 0 {
+		if maxNb := cfg.IntervalMs / 2; cfg.NotifyBeforeMs > maxNb {
+			cfg.NotifyBeforeMs = maxNb
+		}
+	}
+	// “允许推迟提醒”没勾时 writing 0：0 就是“不允许推迟”，不再是“推迟 0 分钟”。
+	// 2026-11-13 用户口径：0 从“原地重弹”的怪值改成开关态，设置页由勾选框表达。
+	// 上限仍是 120 分钟；非零值下限抬到 1 分钟（0 与 1 之间没有意义）。
+	cfg.PostponeMs = mapInt(m, "postponeMs", 120_000)
+	if cfg.PostponeMs < 0 {
+		cfg.PostponeMs = 0
+	}
+	if cfg.PostponeMs > 0 && cfg.PostponeMs < 60_000 {
+		cfg.PostponeMs = 60_000
+	}
+	if cfg.PostponeMs > 120*60_000 {
+		cfg.PostponeMs = 120 * 60_000
+	}
 	cfg.PauseAction = normPauseAction(m["pauseAction"])
 	// 空闲门：默认不勾、默认 30 秒。时长上限 30 分钟 —— 再长就没有“离开工位顺手休息”
 	// 的意思了，那种需求该用「暂停休息」表达。

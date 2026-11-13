@@ -142,7 +142,9 @@ func todayTimeline(s *settings.Settings, now int64, opts TimelineOptions) []mode
 		// 被推迟的固定时刻线：上面的循环把“原时刻那一跳”跳过了，但没把“推迟后的时刻”
 		// 补回来——否则推迟后该条会从今日时间线消失。这里把 shifts 里覆盖过的时刻补成
 		// 这一身份下一次实际触发（若该时刻已作为后续 slot 出现则不再重复）。
-		if shift, ok := opts.Shifts[e.ID]; ok && shift > now {
+		// 只补**今天**的：shifts 里的值也可能指向明天（今天的固定时刻都过去了，摘要表
+		// 自然报明天那一班），把它补进“今日”时间线就会多出一条昨天的时刻。
+		if shift, ok := opts.Shifts[e.ID]; ok && shift > now && sameLocalDay(shift, now) {
 			dup := false
 			for _, it := range out {
 				if it.Type == e.ID && it.At == shift {
@@ -158,7 +160,12 @@ func todayTimeline(s *settings.Settings, now int64, opts TimelineOptions) []mode
 		}
 	}
 	// ② 外卖：展开当天剩余条目（原定时刻；提前通知只弹小窗，真实窗口仍按原定时刻弹出）
+	//
+	// 推迟线在场时，同一条目在推迟后的时刻之前不再列原定时刻 —— 否则 11:30 的外卖在
+	// 11:20 点了“推迟到 11:40”，时间线上 11:30 与 11:40 会同时出现，看起来像两次提醒。
+	// 休息的固定线有 Shifts 负责跳过原时刻，外卖这条推迟线在宿主手里，只能在这里比。
 	if s.TakeoutEnabled() {
+		pp := opts.TakeoutPostponed
 		day := time.UnixMilli(now)
 		for _, sl := range s.TakeoutSlots() {
 			if !sl.Enabled {
@@ -174,12 +181,15 @@ func todayTimeline(s *settings.Settings, now int64, opts TimelineOptions) []mode
 			if opts.TakeoutFired[occurrenceKey("takeout", at)] {
 				continue
 			}
+			if pp != nil && pp.Slot.ID == sl.ID && at <= pp.DueAt {
+				continue
+			}
 			out = append(out, model.TimelineItem{
 				Key:  "takeout#" + strconv.FormatInt(at, 10) + "#" + sl.ID,
 				Type: "takeout", Name: TAKEOUT_NAME, At: at, Source: "fixed",
 			})
 		}
-		if pp := opts.TakeoutPostponed; pp != nil && pp.DueAt > now {
+		if pp != nil && pp.DueAt > now {
 			out = append(out, model.TimelineItem{
 				Key:  "takeout#pp#" + strconv.FormatInt(pp.DueAt, 10),
 				Type: "takeout", Name: TAKEOUT_NAME, At: pp.DueAt, Source: "fixed",
@@ -191,6 +201,12 @@ func todayTimeline(s *settings.Settings, now int64, opts TimelineOptions) []mode
 	// 暂停不冻钟（2026-11-12 用户口径）：时刻就是真实墙钟上的时刻，暂停与非暂停没有区别，
 	// 所以这里也不再给时间线项挂“已暂停”标记。
 	pushCd := func(p model.PlannedBreak) {
+		// 已经到点的挂起线不列：它可能是“等下一拍弹窗”的倒计时线，也可能是勾了空闲门、
+		// 正卡在“等待空闲”的那一跳（时刻本来就停在过去）。列表标题是“待触发”，
+		// 摆一条已经过去的时刻等于报了一个不存在的漏。
+		if p.At < now {
+			return
+		}
 		out = append(out, model.TimelineItem{
 			Key:  "cd#" + p.Type + "#" + strconv.FormatInt(p.At, 10),
 			Type: p.Type, Name: p.Name, At: p.At, Source: "countdown",

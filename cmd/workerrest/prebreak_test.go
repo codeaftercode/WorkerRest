@@ -271,16 +271,45 @@ func TestPreBreakURL(t *testing.T) {
 	}
 }
 
-// 推迟时长下限 1 分钟：旧配置里的 0 / 负数一律抬到 1 分钟，不再有“推迟 0 分钟”的语义
+// 推迟时长 0 = 没勾「允许推迟提醒」（2026-11-13）：0 / 负数归一化后都落 0（不允许推迟）；
+// 0 与 1 之间没有意义，非零但仍不足 1 分钟的值抬到 1 分钟
 func TestPreBreakPostponeFloor(t *testing.T) {
-	for _, raw := range []string{"0", "-5"} {
+	for _, tc := range []struct {
+		raw  string
+		want int64
+	}{{"0", 0}, {"-5", 0}, {"30000", 60_000}} {
 		cfg := `{"short":{"enabled":true,"mode":"countdown","intervalMs":600000,` +
-			`"durationMs":20000,"notifyBeforeMs":10000,"postponeMs":` + raw + `,"slots":[]}}`
+			`"durationMs":20000,"notifyBeforeMs":10000,"postponeMs":` + tc.raw + `,"slots":[]}}`
 		a, _ := newPreBreakApp(t, cfg)
 		got, ok := a.CfgSnapshot().BreakByID("short")
-		if !ok || got.PostponeMs != 60_000 {
-			t.Fatalf("postponeMs=%s 应被抬到 1 分钟，得到 %d（ok=%v）", raw, got.PostponeMs, ok)
+		if !ok || got.PostponeMs != tc.want {
+			t.Fatalf("postponeMs=%s 应归一到 %d，得到 %d（ok=%v）", tc.raw, tc.want, got.PostponeMs, ok)
 		}
+	}
+}
+
+// 预通知 payload 的 allowPostpone：身份指向的那条提醒没勾「允许推迟提醒」
+// （postponeMs=0）时必须是 false，渲染层据此藏“推迟”按钮；勾了 / 身份缺失按允许
+func TestPreBreakStateAllowPostpone(t *testing.T) {
+	mk := func(postpone string) *App {
+		cfg := `{"short":{"enabled":true,"mode":"countdown","intervalMs":600000,` +
+			`"durationMs":20000,"notifyBeforeMs":10000,"postponeMs":` + postpone + `,"slots":[]}}`
+		a, _ := newPreBreakApp(t, cfg)
+		a.mu.Lock()
+		a.preInfo = PreBreakInfo{Owner: "break", Kind: "short", Title: "短休息"}
+		a.mu.Unlock()
+		return a
+	}
+	if v, _ := mk("0").PreBreakState()["allowPostpone"].(bool); v {
+		t.Fatal("postponeMs=0 时 allowPostpone 应为 false（渲染层要藏“推迟”按钮）")
+	}
+	if v, _ := mk("120000").PreBreakState()["allowPostpone"].(bool); !v {
+		t.Fatal("postponeMs=120000 时 allowPostpone 应为 true")
+	}
+	// 身份缺失（无会话）：按允许处理，别把功能关掉
+	a, _ := newPreBreakApp(t, shortCountdown)
+	if v, _ := a.PreBreakState()["allowPostpone"].(bool); !v {
+		t.Fatal("无会话时 allowPostpone 应按 true 兜底")
 	}
 }
 
@@ -289,7 +318,7 @@ func TestPreBreakPostponeFloor(t *testing.T) {
 func TestPreBreakStateShape(t *testing.T) {
 	a, _ := newPreBreakApp(t, customWaterCfg)
 	st := a.PreBreakState()
-	for _, k := range []string{"phase", "paused", "remainMs", "title", "custom", "countdownTail", "bgColor"} {
+	for _, k := range []string{"phase", "paused", "remainMs", "title", "custom", "countdownTail", "bgColor", "allowPostpone"} {
 		if _, ok := st[k]; !ok {
 			t.Fatalf("PreBreakState 少了字段 %q（渲染层直接读它，缺字段只会静默显示错内容）：%v", k, st)
 		}

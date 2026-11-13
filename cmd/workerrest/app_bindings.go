@@ -122,7 +122,7 @@ func (a *App) CloseWindow(win string) {
 	if win == "break" {
 		// 预览点任意处关闭（真实休息的结束由调度器 finishBreak 走 closeBreakWindows）：
 		// 收尾走同一条路径，只是不出声。预览会话的 info.Preview 会让统计那一段自动跳过。
-		a.closeBreakWindowsOpt(true, false)
+		a.closeBreakWindowsOpt(true, false, false, false)
 		return
 	}
 	a.mu.Lock()
@@ -284,7 +284,7 @@ func (a *App) schedEndBreak() {
 	// 绝不把无主窗口留给用户。正常路径上 finishBreak 已经关过窗，这步是空操作。
 	if a.sched.StateCopy().Phase != "break" && a.hasBreakWindows() {
 		log.Printf("[action] endBreak 无效（调度器不在休息阶段），直接收掉残留的休息窗口")
-		a.closeBreakWindowsOpt(true, false)
+		a.closeBreakWindowsOpt(true, false, false, false)
 	}
 }
 

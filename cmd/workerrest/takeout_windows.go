@@ -126,6 +126,14 @@ func (a *App) showTakeoutWindows(slot model.TimeSlot, preview bool, postponedCou
 func (a *App) showTakeoutWindowsAt(slot model.TimeSlot, preview bool, postponedCount int, atMs int64) {
 	info := a.buildTakeoutInfo(slot, preview, postponedCount, atMs)
 
+	// 休息窗正在场：并入休息窗（单窗多条），不另开外卖窗。
+	// 两扇窗都是 95%×95% 的置顶窗，叠在一起时用户只看得到上面那扇 —— 休息倒计时被
+	// 整个盖住，而外卖卡挤在同一个窗里反而两边都看得见。
+	if !preview && a.attachTakeoutToBreak(info) {
+		log.Printf("[takeout] 休息窗在场，外卖提醒并入当前休息窗（%s）", info.Meal)
+		return
+	}
+
 	if serverMode || a.app == nil {
 		a.mu.Lock()
 		a.takeoutCurrent = info

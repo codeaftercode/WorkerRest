@@ -107,7 +107,10 @@ func (s *Scheduler) Postpone() {
 	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
-	if st.Phase == "break" || st.Paused || st.NextAt == 0 {
+	// 暂停中照样可以推迟：倒计时不冻钟（2026-11-12 口径），侧栏那两个按钮在暂停时也
+	// 照常可点，点了就该真的把这一跳往后挪。这里曾有一条 `|| st.Paused` 早退（冻结
+	// 时代的遗留），结果暂停中「推迟休息」点了没反应，界面也不禁用 —— 静默空操作。
+	if st.Phase == "break" || st.NextAt == 0 {
 		s.mu.Unlock()
 		return
 	}
@@ -120,6 +123,15 @@ func (s *Scheduler) Postpone() {
 		return
 	}
 	ms := bcfg.PostponeMs
+	// “允许推迟提醒”没勾（PostponeMs == 0）：这一次推迟请求整体作废。
+	// 界面上的按钮已经藏了，但快捷键、托盘、提前提示窗可能仍有入口 —— 判据只在这里
+	// 认一次，别让“按钮没了、快捷键还能推”这种半开半关的状态存在。
+	// 顺手也别清“等待空闲”的挂起：什么都没变，状态就不该动。
+	if ms <= 0 {
+		s.mu.Unlock()
+		log.Printf("[scheduler] %s 不允许推迟（未勾选“允许推迟提醒”），忽略本次推迟", nextType)
+		return
+	}
 	oldAt := st.NextAt
 	// 推迟意味着“这一跳到点了但先不提醒”，等待空闲的挂起一并结束：新时刻由推迟算出来，
 	// 到点后如果空闲门还开着，会重新进入等待（见 onTick 的空闲门分支）
@@ -229,7 +241,10 @@ func (s *Scheduler) Skip() {
 		s.finishBreak()
 		return
 	}
-	if st.Paused || st.NextAt == 0 {
+	// 暂停中同样受理（与 Postpone 同口径）：点“跳过本次”就是这一次不提醒了，
+	// 该记一笔跳过并把这一跳消费掉。旧实现这里的 `st.Paused` 早退让暂停中的按钮
+	// 完全失效 —— 而暂停期间倒计时照常走，用户正需要它能用。
+	if st.NextAt == 0 {
 		s.mu.Unlock()
 		return
 	}
@@ -285,7 +300,8 @@ func (s *Scheduler) PauseToggle() {
 // PauseUntil 定时暂停：at 是到期时刻（毫秒），0 表示取消定时、退回无限暂停。
 //
 // 原因仍然记 manual —— 定时暂停是“我接下来一段时间不工作”，不是软件判定你在开会，
-// 所以清场、跳过、托盘文案全走手动那一套；新增的只有“到点自动结束”和“恢复重锚”。
+// 所以清场、跳过、托盘文案全走手动那一套；它比普通手动暂停只多一件事：到点自动结束
+// （到点后与手动恢复走同一条 resume，不额外重锚任何倒计时 —— 2026-11-12 口径）。
 //
 // 已暂停时只改到期时刻，不重置 PausedAt：把 1 小时改成 2 小时，已经过去的那段不该
 // 从头算。传进来的时刻若已过期也没关系，下一拍到期判定就会恢复。
@@ -303,7 +319,6 @@ func (s *Scheduler) PauseUntil(at int64) {
 		return
 	}
 	s.state.PauseDeadline = at
-	s.pauseTimed = at > 0
 	s.mu.Unlock()
 	if already {
 		// 已经在暂停里：只更新到期时刻，PausedAt 保持原值
@@ -562,7 +577,6 @@ func (s *Scheduler) resume(reason string, allowPre bool) {
 	// 一起清掉：留着的话托盘会继续显示“还有 25 分钟（到 22:30）”、菜单里还挂着
 	// “取消定时”——而那段暂停已经被用户按掉了，剩下的只是别的自动原因（勿扰 / 投屏
 	// 还挂着）。全部恢复时下面主体也会清零，这里只是提前一步覆盖“没恢复彻底”那一支。
-	// pauseTimed 不动：真正恢复那一跳是否重锚，仍按“这段暂停里有没有过定时”判。
 	if reason == PauseReasonManual {
 		st.PauseDeadline = 0
 	}
@@ -585,9 +599,6 @@ func (s *Scheduler) resume(reason string, allowPre bool) {
 	// 到期时刻随暂停一起结束：留着会让托盘继续显示“还有 0 分钟”，也可能被下一段
 	// 暂停误当成自己的截止时间
 	st.PauseDeadline = 0
-	// 定时暂停到期也不再重锚（2026-11-12 用户口径：暂停不影响倒计时，恢复时自然也不需要
-	// 重锚）。这条标志只用于“这段暂停有没有定时到期”，现在没有读者了，一并清掉。
-	s.pauseTimed = false
 	// 这一段暂停结束了：清掉“已按跳过记账”“已照常弹过”两张 occurrence 表，
 	// 下一段暂停重新计
 	s.pauseSkipped = map[string]bool{}
