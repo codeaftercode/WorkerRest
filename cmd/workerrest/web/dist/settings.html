@@ -39,12 +39,12 @@
   <div id="layout">
     <aside id="sidebar">
       <nav id="nav">
-        <button class="nav-item active" data-tab="general"><span class="icon">⚙️</span>通用配置</button>
-        <button class="nav-item" data-tab="timing"><span class="icon">⏱️</span>时间规划</button>
-        <button class="nav-item" data-tab="supervisor"><span class="icon">🕵️</span>督休专员</button>
-        <button class="nav-item" data-tab="stats"><span class="icon">📊</span>统计报表</button>
-        <button class="nav-item" data-tab="shortcuts"><span class="icon">⌨️</span>快捷键</button>
-        <button class="nav-item" data-tab="about"><span class="icon">🗂️</span>关于</button>
+        <button class="nav-item active" data-tab="general"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33h.09a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82v.09a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></span>通用配置</button>
+        <button class="nav-item" data-tab="timing"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></span>时间规划</button>
+        <button class="nav-item" data-tab="supervisor"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="7.5" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>督休专员</button>
+        <button class="nav-item" data-tab="stats"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 20h15"/><path d="M7.5 20v-5.5"/><path d="M12 20V9.5"/><path d="M16.5 20v-15"/></svg></span>统计报表</button>
+        <button class="nav-item" data-tab="shortcuts"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6.5" width="19" height="11" rx="2"/><path d="M6 10h.01M9.5 10h.01M13 10h.01M16.5 10h.01"/><path d="M6 13h.01M9.5 13h.01M13 13h.01M16.5 13h.01"/><path d="M9 16h6"/></svg></span>快捷键</button>
+        <button class="nav-item" data-tab="about"><span class="icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg></span>关于</button>
       </nav>
       <div class="sidebar-footer">
         <div id="data-status" class="status-grid"></div>
@@ -164,7 +164,7 @@
                 <button type="button" class="snd-mode-btn" id="snd-mode" aria-label="播放方式" title="单曲循环">
                   <span class="snd-mode-ico"></span>
                 </button>
-                <button type="button" class="snd-music-add" id="snd-music-add" title="导入音频文件（支持批量导入）">＋</button>
+                <button type="button" class="snd-music-add" id="snd-music-add" title="导入音频文件（支持批量导入）"><span class="msg-add-ico">＋</span></button>
               </div>
             </div>
             <div class="msg-body hidden" id="snd-music-body">
@@ -277,9 +277,10 @@
           </div>
           <!-- 参数组“弹窗设置”：暂停休息时怎么处置 + 提醒本身怎么弹。
                后三项（2026-11-13 用户改版）都是“勾选框 + 数字框”：「提醒窗口显示时长」
-               就是一个数；“提醒前弹出通知，提前 […] 秒”与“允许推迟提醒，每次推迟 […]
+               就是一个数；“提醒前弹出通知，提前时长 […] 秒”与“允许推迟提醒，推迟时长 […]
                分钟”由勾选框决定开不开，不勾就等于把那个数写成 0（Go 侧同一口径，
                见 BreakConfig.NotifyBeforeMs / PostponeMs 的注释），数字框置灰但值留着。
+               三个字段的“?”浮层提示已按用户要求撤掉（2026-11-13）：标签本身就是完整语义。
                版式与「系统空闲」那条同一套：标签列是 .switch-row，数字框在控件列。 -->
           <div class="pg" data-pg="reminder">
             <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
@@ -289,8 +290,8 @@
                 <div class="cdrop-host" id="short-pause"></div>
               </div>
               <div class="row field"><label for="short-duration">提醒窗口显示时长</label><div class="field-line"><input type="number" id="short-duration" min="5" max="600" /><span class="unit">秒</span></div></div>
-              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="short-notifyOn" />提醒前弹出通知，提前<span class="q-mark" data-tip="到达提醒时间前，提前这么多秒在屏幕右下角弹出提示小窗。不勾选 = 不提前通知，到点直接提醒。">?</span></label><div class="field-line"><input type="number" id="short-notify" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
-              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="short-postponeOn" />允许推迟提醒，每次推迟<span class="q-mark" data-tip="勾选后，提醒窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。">?</span></label><div class="field-line"><input type="number" id="short-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="short-notifyOn" />提醒前弹出通知，提前时长</label><div class="field-line"><input type="number" id="short-notify" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="short-postponeOn" />允许推迟提醒，推迟时长</label><div class="field-line"><input type="number" id="short-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
             </div>
           </div>
           <div class="msg-panel" data-kind="short">
@@ -298,7 +299,7 @@
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
               <div class="snd-music-actions">
                 <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
-                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）"><span class="msg-add-ico">＋</span></button>
               </div>
             </div>
             <div class="msg-body hidden">
@@ -378,8 +379,8 @@
                 <div class="cdrop-host" id="long-pause"></div>
               </div>
               <div class="row field"><label for="long-duration">提醒窗口显示时长</label><div class="field-line"><input type="number" id="long-duration" min="5" max="3600" /><span class="unit">秒</span></div></div>
-              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="long-notifyOn" />提醒前弹出通知，提前<span class="q-mark" data-tip="到达提醒时间前，提前这么多秒在屏幕右下角弹出提示小窗。不勾选 = 不提前通知，到点直接提醒。">?</span></label><div class="field-line"><input type="number" id="long-notify" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
-              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="long-postponeOn" />允许推迟提醒，每次推迟<span class="q-mark" data-tip="勾选后，提醒窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。">?</span></label><div class="field-line"><input type="number" id="long-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="long-notifyOn" />提醒前弹出通知，提前时长</label><div class="field-line"><input type="number" id="long-notify" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="long-postponeOn" />允许推迟提醒，推迟时长</label><div class="field-line"><input type="number" id="long-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
             </div>
           </div>
           <div class="msg-panel" data-kind="long">
@@ -387,7 +388,7 @@
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
               <div class="snd-music-actions">
                 <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
-                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）"><span class="msg-add-ico">＋</span></button>
               </div>
             </div>
             <div class="msg-body hidden">
@@ -407,17 +408,23 @@
               <span class="card-switch-track" aria-hidden="true"></span>
             </label>
           </div>
-          <!-- 外卖提醒只有固定时刻这一种触发条件，组里没有“计时方法” -->
+          <!-- 外卖提醒只有固定时刻这一种触发条件，组里没有“计时方法”（没有二选一的圆点）；
+               时刻清单装进与其他卡同款的虚线面板（.mode-pane）：标题行就叫「固定时间」，
+               时刻行由 .pane-body 缩进 48，与休息卡固定时间下面的行同一条竖线。 -->
           <div class="pg" data-pg="trigger">
             <div class="pg-head"><span class="pg-title">触发条件</span></div>
             <div class="pg-body">
-              <div class="slot-fixed">
-                <div class="slot-head">
-                  <span class="slot-title">提醒时间</span>
+              <div class="mode-pane" data-mode="fixed">
+                <div class="pane-head">
+                  <span class="slot-title">固定时间</span>
                   <button type="button" class="slot-add" id="tk-add" title="添加提醒时间">＋<span class="slot-add-t">添加</span></button>
                 </div>
-                <div class="slot-body">
-                  <div id="tk-list" class="tk-list"></div>
+                <div class="pane-body">
+                  <div class="slot-fixed">
+                    <div class="slot-body">
+                      <div id="tk-list" class="tk-list"></div>
+                    </div>
+                  </div>
                 </div>
               </div>
               <div class="row field idle-gate" data-kind="takeout">
@@ -443,8 +450,8 @@
                 <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
                 <div class="cdrop-host" id="tk-pause"></div>
               </div>
-              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="tk-leadOn" />提醒前弹出通知，提前<span class="q-mark" data-tip="到达提醒时间前，提前这么多秒在屏幕右下角弹出提示小窗。不勾选 = 不提前通知，到点直接提醒。">?</span></label><div class="field-line"><input type="number" id="tk-lead" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
-              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="tk-postponeOn" />允许推迟提醒，每次推迟<span class="q-mark" data-tip="勾选后，外卖窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。">?</span></label><div class="field-line"><input type="number" id="tk-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="tk-leadOn" />提醒前弹出通知，提前时长</label><div class="field-line"><input type="number" id="tk-lead" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
+              <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="tk-postponeOn" />允许推迟提醒，推迟时长</label><div class="field-line"><input type="number" id="tk-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
             </div>
           </div>
           <div class="msg-panel" data-kind="takeout">
@@ -452,7 +459,7 @@
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span>提醒内容</button>
               <div class="snd-music-actions">
                 <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
-                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）"><span class="msg-add-ico">＋</span></button>
               </div>
             </div>
             <div class="msg-body hidden">
@@ -544,7 +551,7 @@
               <button type="button" class="msg-toggle"><span class="msg-arrow">▸</span><span class="toggle-label">提醒内容（<span id="sup-msg-role">—</span>）</span></button>
               <div class="snd-music-actions">
                 <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
-                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）">＋</button>
+                <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）"><span class="msg-add-ico">＋</span></button>
               </div>
             </div>
             <div class="msg-body hidden">

@@ -2992,11 +2992,15 @@
   }
   function slotNextText(next) {
     if (!next) return "";
-    // 跨午夜也照常报时刻：旧实现在这里写“今日已无提醒”，把最关键的“还有 15 分钟”
-    // 藏掉了 —— 23:55 时下一次是明天 00:10，用户看到的却像今天没有提醒了。
+    // 卡头只报**当天**的下一次（2026-11-13 用户定稿）：跨天的下一次
+    // （明天 00:10 / 周四 09:00）不再显示 —— 标题行只关心今天还剩多久弹；
+    // 跨天的班次侧栏与今日时间线都能看到。（旧实现曾在这里报“今日已无提醒”，
+    // 把“还有 15 分钟”藏掉；后来改报跨天时刻，现在按新口径整段不报。）
+    if (dayDiffOf(next.at) !== 0) return "";
+    const at = new Date(next.at);
     const mins = Math.max(0, Math.round((next.at - Date.now()) / 6e4));
     const left = mins >= 60 ? `${Math.floor(mins / 60)} 小时 ${mins % 60} 分` : `${mins} 分`;
-    return `下次 ${nextSlotDayLabel(next.at)}（${left}后）`;
+    return `下次 ${pad22(at.getHours())}:${pad22(at.getMinutes())}（${left}后）`;
   }
   function defaultSlotTime() {
     const d = /* @__PURE__ */ new Date();
@@ -3343,7 +3347,7 @@
   }
   function renderTakeoutList() {
     const t = S.takeout;
-    renderSlotList($("tk-list"), t.slots, "还没有外卖提醒时间，点上方“＋ 添加”加一条", {
+    renderSlotList($("tk-list"), t.slots, "还没有外卖提醒时间，点上方“＋”加一条", {
       what: "这条外卖提醒",
       onChange: () => {
         updateTakeoutSummary();
@@ -3649,13 +3653,16 @@
     }
     const plannedAt = LAST_STATE?.fixedNext?.[id];
     const next = plannedAt !== void 0 ? { at: plannedAt } : nextSlotAt(c.slots);
-    el.textContent = `固定时间 \xB7 ${n} 条 \xB7 ${slotNextText(next)}`;
+    // 卡头的“下次 …”只报当天的下一次（slotNextText 对跨天返回空串），
+    // 空串时不留结尾的“·”。
+    const nx = slotNextText(next);
+    el.textContent = nx ? `固定时间 \xB7 ${n} 条 \xB7 ${nx}` : `固定时间 \xB7 ${n} 条`;
     el.classList.add("customized");
   }
   function renderBreakList(id) {
     const c = breakCfg(id);
     if (!c) return;
-    renderSlotList($(`${id}-list`), c.slots, "还没有提醒时间，点上方“＋ 添加”加一条", {
+    renderSlotList($(`${id}-list`), c.slots, "还没有提醒时间，点上方“＋”加一条", {
       what: "这条休息时刻",
       onChange: () => {
         updateBreakSummary(id);

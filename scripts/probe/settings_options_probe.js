@@ -473,6 +473,19 @@ async function verifyIdleGateControls(page) {
       "分组 · 暂停休息时是「弹窗设置」组内第一行（提醒窗口显示时长之前）",
       JSON.stringify(order),
     );
+    // 虚线框同款（2026-11-13）：自定义卡克隆长卡结构，面板也必须带 1px 虚线边框
+    const cbPaneBorder = await page.evaluate((id) => {
+      const card = document.querySelector(`#tab-timing > .card[data-cb="${id}"]`);
+      const pane = card && card.querySelector(".mode-pane");
+      return pane
+        ? getComputedStyle(pane).borderTopStyle + "/" + getComputedStyle(pane).borderTopWidth
+        : "";
+    }, cbID);
+    check(
+      cbPaneBorder === "dashed/1px",
+      "面板 · 自定义卡的面板同样带 1px 虚线边框（克隆不丢样式）",
+      cbPaneBorder,
+    );
     // 卡头对齐（2026-11-10）：自定义卡的摘要不再和 ✎ / ✕ 包在一起，回到标题右侧；
     // 图标组自带 auto margin 推到行尾，预览与总开关跟在它后面 —— 于是预览右缘、
     // 开关左右缘必须与短休息卡逐像素同线（否则上下两张卡的卡头会错位半格）。
@@ -962,16 +975,14 @@ async function verifyParamGroups(page) {
       s.trig.slice(0, 60),
     );
     check(
-      /提醒前弹出通知，提前秒/.test(s.rem) && /允许推迟提醒，每次推迟分钟/.test(s.rem),
+      /提醒前弹出通知，提前时长秒/.test(s.rem) && /允许推迟提醒，推迟时长分钟/.test(s.rem),
       "分组 · " + id + " “提醒前弹出通知 / 允许推迟提醒”在“弹窗设置”组里",
       s.rem.slice(0, 60),
     );
   }
-  // “允许推迟提醒 / 提醒前弹出通知”的浮层提示与下限（2026-11-13 复选框改版）：
-  // 三个入口（short / long / tk）的“?”文案逐字一致，都说明“不勾 = 关闭”；
+  // “允许推迟提醒 / 提醒前弹出通知”的浮层提示已撤（2026-11-13 用户定稿）：
+  // 三个入口（short / long / tk）的标签本身就是完整语义，不再挂“?”。
   // 数字框最小 1（0 的语义已挪到复选框上），与 Go 侧 clamp 必须同值。
-  // 提示挂在**左侧文字末尾的“?”**上（不是数字框的 title）：挂在输入框上时，用户得先
-  // 把指针移到框上才知道有说明，而“这个标签是什么意思”本来就是文字的疑问。
   const attrs = await page.evaluate(() => {
     const out = {};
     for (const id of ["short", "long", "tk"]) {
@@ -979,24 +990,14 @@ async function verifyParamGroups(page) {
       const n = document.getElementById(id + "-notify") || document.getElementById(id + "-lead");
       const mark = (input) => {
         const lab = input ? input.closest(".row")?.querySelector("label") : null;
-        if (!lab) return null;
-        const q = lab.querySelector(".q-mark");
-        return q
-          ? {
-              tip: q.dataset.tip || "",
-              // “?”必须是 label 的最后一个孩子 —— 说明的是这段文字，所以要吊在文字末尾
-              last: lab.lastElementChild === q,
-              // 视觉上要跟文字同一行（inline 上下文），不能被拆成独立一块
-              display: getComputedStyle(q).display,
-            }
-          : null;
+        return lab ? lab.querySelector(".q-mark") : null;
       };
       out[id] = {
         min: p ? p.min : "",
         pTitle: p ? p.getAttribute("title") : null,
         nTitle: n ? n.getAttribute("title") : null,
-        pmark: mark(p),
-        nmark: mark(n),
+        pmark: !!mark(p),
+        nmark: !!mark(n),
       };
     }
     return out;
@@ -1004,22 +1005,10 @@ async function verifyParamGroups(page) {
   for (const id of ["short", "long", "tk"]) {
     const a = attrs[id] || {};
     check(a.min === "1", "推迟时长 · " + id + " 输入框最小值是 1 分钟", a.min);
-    const postponeTip = id === "tk"
-      ? "勾选后，外卖窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。"
-      : "勾选后，提醒窗口上给出“推迟”按钮，每次按这里填的时长往后推。不勾选 = 不允许推迟：界面不显示推迟按钮，推迟快捷键也不响应。";
-    check(
-      !!a.pmark && a.pmark.tip === postponeTip,
-      "允许推迟 · " + id + " 浮层提示挂在文字末尾的“?”上",
-      JSON.stringify(a.pmark),
-    );
-    check(!!a.pmark && a.pmark.last, "允许推迟 · " + id + " “?”在标签文字末尾", JSON.stringify(a.pmark));
-    check(
-      !!a.nmark && a.nmark.tip === "到达提醒时间前，提前这么多秒在屏幕右下角弹出提示小窗。不勾选 = 不提前通知，到点直接提醒。",
-      "提前通知 · " + id + " 浮层提示挂在文字末尾的“?”上",
-      JSON.stringify(a.nmark),
-    );
-    check(!!a.nmark && a.nmark.last, "提前通知 · " + id + " “?”在标签文字末尾", JSON.stringify(a.nmark));
-    // 输入框上不能再留 title：同一个说明出现两套提示（系统气泡 + 自绘浮层）
+    // “?”提示已撤（2026-11-13）：标签文字后面不许再挂浮层说明
+    check(!a.pmark, "允许推迟 · " + id + " 不再挂“?”浮层提示（已撤）", a.pmark);
+    check(!a.nmark, "提前通知 · " + id + " 不再挂“?”浮层提示（已撤）", a.nmark);
+    // 输入框上也不许挂 title：同一个说明出现两套提示（系统气泡 + 自绘浮层）
     check(a.pTitle === null, "允许推迟 · " + id + " 输入框上不再挂 title", a.pTitle);
     check(a.nTitle === null, "提前通知 · " + id + " 输入框上不再挂 title", a.nTitle);
   }
@@ -1134,7 +1123,16 @@ async function verifyParamGroups(page) {
       pgBody: textLeft(trig.querySelector(":scope > .pg-body")),
       msgToggle: textLeft(msgPanel.querySelector(".msg-head > .msg-toggle")),
       // 三项对齐的对照点：面板块 / 系统空闲整行 / 弹窗设置的字段行
+      // 2026-11-13 短卡面板进了虚线框且向外各借 13px：这里量的是**框内内容线**
+      //（边框 1 + 内边距 12 之内，也就是圆点那条线），不再量边框盒。
       pane: panes[0] ? r("#short-mode > .mode-pane") : null,
+      paneInner: (() => {
+        const p = document.querySelector("#short-mode > .mode-pane");
+        if (!p) return null;
+        const b = p.getBoundingClientRect();
+        const cs = getComputedStyle(p);
+        return Math.round(b.left + (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0));
+      })(),
       gate: r('.pg[data-pg="trigger"] .idle-gate'),
       gateLabel: r('.pg[data-pg="trigger"] .idle-gate > label'),
       remLabel: r('.pg[data-pg="reminder"] .row > label'),
@@ -1229,23 +1227,25 @@ async function verifyParamGroups(page) {
     JSON.stringify(foldProbe),
   );
   // 用户要的“三项对齐”（2026-11-11 起基准换成卡头标题文字）：卡头标题 / 组标题 / 组内容 /
-  // 面板块 / 系统空闲行 / 弹窗设置字段行 / 提醒内容标题 —— 正文整体缩进 24 后，
+  // 面板圆点那条线 / 系统空闲行 / 弹窗设置字段行 / 提醒内容标题 —— 正文整体缩进 24 后，
   // 这一列从卡头盒子左缘（293）挪到标题文字左缘（317）。
+  // 2026-11-13 短卡面板进虚线框并向外各借 13px：面板这一项量框内内容线（paneInner），
+  // 边框盒本身比这条线深出 13，不该参与对齐。
   check(
     !!geo && geo.cardHead && geo.h3 && geo.pgTitle !== null && geo.pgBody !== null &&
-      geo.pane && geo.gate && geo.gateLabel && geo.remLabel && geo.msgToggle !== null &&
+      geo.paneInner !== null && geo.gate && geo.gateLabel && geo.remLabel && geo.msgToggle !== null &&
       Math.abs(geo.pgTitle - geo.h3.l) <= 1 &&
       Math.abs(geo.pgBody - geo.h3.l) <= 1 &&
-      Math.abs(geo.pane.l - geo.h3.l) <= 1 &&
+      Math.abs(geo.paneInner - geo.h3.l) <= 1 &&
       Math.abs(geo.gate.l - geo.h3.l) <= 1 &&
       Math.abs(geo.gateLabel.l - geo.h3.l) <= 1 &&
       Math.abs(geo.remLabel.l - geo.h3.l) <= 1 &&
       Math.abs(geo.msgToggle - geo.h3.l) <= 1,
-    "分组 · 正文七点全缩进到卡头标题文字那条竖线",
+    "分组 · 正文七点全缩进到卡头标题文字那条竖线（面板量框内内容线）",
     JSON.stringify(geo && {
       h3: geo.h3 && geo.h3.l,
       title: geo.pgTitle, body: geo.pgBody,
-      pane: geo.pane && geo.pane.l, gate: geo.gate && geo.gate.l,
+      paneInner: geo.paneInner, gate: geo.gate && geo.gate.l,
       rem: geo.remLabel && geo.remLabel.l, msg: geo.msgToggle,
     }),
   );
@@ -1293,12 +1293,13 @@ async function verifyParamGroups(page) {
     "面板 · “＋添加”紧跟在「固定时间」后面（并进标题行）",
     JSON.stringify(geo && { add: geo.paneAdd, label: geo.paneLabel }),
   );
-  // 缩进的层次只剩一处：时刻表仍比面板名退后一级（16 + 8 + 24 = 48）
-  check(
-    !!geo && geo.slotBody && geo.pane &&
-      geo.slotBody.l - geo.pane.l === 48,
-    "缩进 · 时刻表比面板名退后一级（48 = 圆点 16 + 间距 8 + 台阶 24）",
-    JSON.stringify(geo && { slot: geo.slotBody && geo.slotBody.l, pane: geo.pane && geo.pane.l }),
+// 缩进的层次只剩一处：时刻表仍比面板名（面板块边框盒）退后一级。
+// 2026-11-13 短卡面板进了虚线框：48 + 边框 1 + 左内边距 12 = 61
+check(
+  !!geo && geo.slotBody && geo.pane &&
+  geo.slotBody.l - geo.pane.l === 61,
+  "缩进 · 时刻表比面板名退后一级（61 = 原缩进 48 + 边框 1 + 内边距 12）",
+  JSON.stringify(geo && { slot: geo.slotBody && geo.slotBody.l, pane: geo.pane && geo.pane.l }),
   );
   // 面板没有底色（2026-11-10 晚第四次调整，用户：有缩进足以体现层次，不需要背景色块）。
   // 选中 / 未选中都是透明的，映射到卡片白底 —— 互斥只由面板头那枚圆点表达。
@@ -1351,10 +1352,10 @@ async function verifyParamGroups(page) {
     "分组 · 组标题与行标签是不同的灰度（标题先于行标签被读到）",
     geo ? geo.titleColor + " vs " + geo.labelColor : "量不到",
   );
-  // 组标题 13/700：比组内子标签（12/700 灰）与字段标签都重一档
+  // 组标题 14/600（2026-11-13 规格：与字段标签同字号，层级靠字色与组间虚线表达）
   check(
-    !!geo && geo.titleSize === 13 && (geo.titleWeight === "700" || geo.titleWeight === "bold"),
-    "分组 · 组标题 13px / 700（先于内容被读到）",
+    !!geo && geo.titleSize === 14 && (geo.titleWeight === "600" || geo.titleWeight === "bold"),
+    "分组 · 组标题 14px / 600（先于内容被读到）",
     geo ? `${geo.titleSize}px / ${geo.titleWeight}` : "量不到",
   );
   // 数值框 + 框外单位是同一套度量单元：面板外的两个框同左缘、同宽，单位紧跟
@@ -1533,9 +1534,9 @@ async function verifyParamGroups(page) {
     "卡头 · 恢复后关闭态跟着开关同步（没有残留 .off）",
   );
   check(
-    !!geo && geo.titleSize < geo.labelSize,
-    "分组 · 组标题字号小于行标签",
-    geo ? geo.titleSize + " < " + geo.labelSize : "量不到",
+    !!geo && geo.titleSize === geo.labelSize,
+    "分组 · 组标题与行标签同字号（2026-11-13 规格：层级靠字色，不靠字号差）",
+    geo ? geo.titleSize + " = " + geo.labelSize : "量不到",
   );
 
   // ④ 暗色主题下也成立（组标题走 --text，两套主题各一份变量）
@@ -1677,10 +1678,10 @@ async function verifyParamGroups(page) {
   );
   // 「提醒时间」这一层**整体不可折叠**（2026-11-10 用户要求：不准折叠，必须展开）。
   // 全页扫一遍：任何 .slot-fixed 都不许再挂折叠开关，内容体也不许有 hidden 类。
-  // 扫全页而不是只看短休息卡，是因为这三块是同一段模板复制出来的，漏改一处就会露出来。
-  // 2026-11-10 晚起短 / 长休息的「提醒时间」子标签行**并进了面板头**（“固定时间 ＋添加”），
-  // 因此这两块的 .slot-fixed 里没有 .slot-head；外卖卡的「提醒时间」是组内独立子标签，
-  // 仍然保留 head —— 两种长相各自钉住，别让谁把 head 又塞回休息卡里。
+  // 扫全页而不是只看短休息卡，是因为这几块是同一段模板复制出来的，漏改一处就会露出来。
+  // 2026-11-10 晚起短 / 长休息的「提醒时间」子标签行**并进了面板头**（“固定时间 ＋添加”）；
+  // 2026-11-13 晚起外卖卡同样装进虚线面板、子标签改叫「固定时间」并进 pane-head ——
+  // 于是所有 .slot-fixed 都住进 .pane-body、都没有 .slot-head，两种长相归成一种。
   const slots = await page.evaluate(() =>
     [...document.querySelectorAll(".slot-fixed")].map((p) => ({
       toggle: p.querySelectorAll(".msg-toggle").length,
@@ -1691,8 +1692,8 @@ async function verifyParamGroups(page) {
   );
   check(
     slots.length >= 3 &&
-      slots.every((s) => s.toggle === 0 && s.head !== s.inPane && !s.bodyHidden),
-    "时刻表 · 全部「提醒时间」都不折叠（休息卡里的并进面板头、外卖卡仍留子标签）",
+      slots.every((s) => s.toggle === 0 && !s.head && s.inPane && !s.bodyHidden),
+    "时刻表 · 全部「提醒时间」都不折叠（外卖卡也进虚线面板，子标签并进面板头）",
     JSON.stringify(slots),
   );
 }
@@ -1755,6 +1756,8 @@ async function verifyModePanes(page) {
           addInHead: !!(head && head.querySelector(".slot-add")),
           intervalInBody: !!(body && body.querySelector("#" + k + "-interval")),
           hasSlot: !!(body && body.querySelector(".slot-fixed")),
+          // 2026-11-13 起所有提醒卡的面板都带虚线框：钉住边框样式不回退
+          border: getComputedStyle(p).borderTopStyle + "/" + getComputedStyle(p).borderTopWidth,
         };
       };
       return {
@@ -1766,6 +1769,18 @@ async function verifyModePanes(page) {
     };
     return { short: one("short"), long: one("long"), tk: one("tk") };
   });
+
+  // 虚线框推广到全部提醒卡（2026-11-13：先短卡，当天用户要求加上其余卡）。
+  // 有「计时方法」两块面板的是短休息 / 长休息 / 自定义（克隆长卡结构、同一份 CSS）；
+  // 外卖卡只有固定时刻、组里没有计时方法，不在口径内。这里钉住短 / 长共 4 块面板。
+  {
+    const allPanes = ["short", "long"].flatMap((id) => (st[id] ? st[id].panes : []));
+    check(
+      allPanes.length >= 4 && allPanes.every((p) => p.border === "dashed/1px"),
+      "面板 · 短 / 长两卡的面板全部带 1px 虚线边框（自定义卡克隆同款；外卖卡无计时方法面板）",
+      JSON.stringify(allPanes.map((p) => p.border)),
+    );
+  }
 
   for (const id of ["short", "long"]) {
     const s = st[id];
@@ -1978,6 +1993,11 @@ async function verifyModePanes(page) {
       slotBodyL: fixedBody ? Math.round(fixedBody.querySelector(".slot-body").getBoundingClientRect().left) : -1,
       topOp: panes[0] ? parseFloat(getComputedStyle(panes[0]).opacity) : -1,
       bottomOp: panes[1] ? parseFloat(getComputedStyle(panes[1]).opacity) : -1,
+      // 2026-11-13 虚线框推广到全部提醒卡：两块面板各有一圈 1px 虚线边框，框之间 8px
+      paneBorder: panes[0]
+        ? getComputedStyle(panes[0]).borderTopStyle + "/" + getComputedStyle(panes[0]).borderTopWidth
+        : "",
+      paneGap: getComputedStyle(host).rowGap,
       // 组内字段行（系统空闲门）的标签：面板这一行的圆点必须与它同一条竖线
       gateLabel: r(card.querySelector('.pg[data-pg="trigger"] .idle-gate > label')),
       // 系统空闲那行的原生勾选框：圆点要与它同左缘、同尺寸
@@ -2007,6 +2027,18 @@ async function verifyModePanes(page) {
     "面板 · 两块等宽（上下排列不是两块各占半宽）",
     JSON.stringify({ top: geo.top && geo.top.w, bottom: geo.bottom && geo.bottom.w }),
   );
+  // 虚线框（2026-11-13 用户要求，当天推广到全部提醒卡）：两块面板各一圈 1px 虚线，
+  // 把标题与选项框在一起；框与框之间 8px，不贴框。
+  check(
+    geo.paneBorder === "dashed/1px",
+    "面板 · 两块面板带 1px 虚线边框（标题与选项都框在内，所有提醒卡同款）",
+    geo.paneBorder,
+  );
+  check(
+    geo.paneGap === "8px",
+    "面板 · 两块虚线框之间 8px（不贴框）",
+    geo.paneGap,
+  );
   // 两行要读成一组（2026-11-11 用户：“距离小一点、联系紧密一些”）：间距只由 .mode-panes 的
   // gap 给，头自己的上下内边距已清零，所以这里量到的就是那 4px。留 2~8 的窗口 ——
   // 写死 4 会把“手一抖改成 6”也算回归，而 0 会让两行贴到一起。
@@ -2029,26 +2061,29 @@ async function verifyModePanes(page) {
     "面板 · 两个面板头等高（两行的圆点在同一条水平节奏上）",
     JSON.stringify({ count: geo.countHead && geo.countHead.h, fixed: geo.fixedHead && geo.fixedHead.h }),
   );
-  // 组取消边框后没有需要抵消的东西：面板块左缘 = 组左缘 = 卡片内容左缘
+  // 面板进了虚线框且只向左侧外借 13px（2026-11-13 下午改：右侧收回不外借）：框左缘比
+  // 组左缘深出 13（向左伸进卡片留白），框内内容的左缘仍压在组内容那条竖线上。
   check(
-    !!geo.top && !!geo.pgBox && geo.top.l === geo.pgBox.l,
-    "面板 · 面板块左缘与组左缘齐平（组不再是盒子，没有负外边距要抵）",
+    !!geo.top && !!geo.pgBox && geo.pgBox.l - geo.top.l === 13,
+    "面板 · 虚线框向左外借 13px（伸进卡片留白，框内内容仍与组左缘齐平）",
     JSON.stringify({ pane: geo.top && geo.top.l, pg: geo.pgBox && geo.pgBox.l }),
   );
-  // 层次只剩缩进这一处：固定时间的时刻表相对面板块退后一级 48（16 + 8 + 24）。
+  // 层次只剩缩进这一处：固定时间的时刻表相对面板块退后一级 48（16 + 8 + 24），
+  // 2026-11-13 短卡面板进了虚线框：面板块左缘现在是边框盒的左缘，再算上
+  // 边框 1 + 左内边距 12，时刻表相对它退后 61。
   // 间隔框已并进标题行，不再参与缩进 —— 谁把它搬回下面、又忘了缩进，这条不会管，
   // 但「内容归属」那条会红。
   check(
-    !!geo.bottom && geo.slotBodyL - geo.bottom.l === 48,
-    "面板 · 时刻表比面板块退后一级缩进（48 = 圆点 16 + 间距 8 + 台阶 24）",
+    !!geo.bottom && geo.slotBodyL - geo.bottom.l === 61,
+    "面板 · 时刻表比面板块退后一级缩进（61 = 边框 1 + 内边距 12 + 原缩进 48）",
     JSON.stringify({ slot: geo.slotBodyL, pane: geo.bottom && geo.bottom.l }),
   );
-  // 对齐的最后一环：圆点就是面板这一行的行首 —— 左缘与「系统空闲」的勾选框重合，
-  // 直径也相同（同一个 16px）；两块面板的圆点也同一条竖线。
+  // 对齐的最后一环（2026-11-13 下午框外借 13px 后口径复原）：圆点重新压在卡片内容
+  // 那条竖线上，与「系统空闲」的勾选框同一条线（同尺寸 16×16）、两块面板的圆点也同线。
   check(
-    !!geo.dotL && !!geo.gateCheck && geo.dotL === geo.gateCheck.l && geo.dotL === geo.dotL2 &&
+    !!geo.dotL && !!geo.gateCheck && geo.dotL - geo.gateCheck.l === 0 && geo.dotL === geo.dotL2 &&
       geo.dotD === geo.gateCheck.w && geo.dotD === 16,
-    "面板 · 圆点与系统空闲复选框同左缘、同尺寸（16×16），两块圆点同线",
+    "面板 · 圆点与系统空闲复选框同一条竖线（虚线框外借后对齐复原），同尺寸 16×16、两块圆点同线",
     JSON.stringify(geo && { dotL: geo.dotL, dotL2: geo.dotL2, gate: geo.gateCheck, d: geo.dotD }),
   );
   // 间隔框住在倒计时面板头那一行里（不是下面又长出一行）
@@ -2062,7 +2097,7 @@ async function verifyModePanes(page) {
   );
   check(
     !!geo.bottom && !!geo.pgBox && geo.bottom.r === geo.pgBox.r,
-    "面板 · 面板块右缘与组右缘齐平（左右对称）",
+    "面板 · 虚线框右缘与组右缘齐平（右侧不外借，离卡片右缘留足一档）",
     JSON.stringify({ pane: geo.bottom && geo.bottom.r, pg: geo.pgBox && geo.pgBox.r }),
   );
   check(
@@ -2551,8 +2586,10 @@ async function verifySlotPanel(page) {
       JSON.stringify(weekly.mids),
     );
 
-    // 最窄窗口（760，程序允许的最小宽度）下同样不许换行：星期方块可以一起变窄，
-    // 但必须仍是一行、仍不越出行尾。
+    // 最窄窗口（760，程序允许的最小宽度）下同样不许换行：星期方块是**固定宽度**
+    // （2026-11-13 用户定稿，不随页面宽度伸缩），必须仍是一行、仍不越出行尾。
+    // 2026-11-13 晚起分两档：外卖卡时刻行进虚线面板后，760 下行宽只剩 353，
+    // 23px 方块装不下 → 窄档 19px（见 settings.css @media 780 那条）。
     await page.setViewportSize({ width: 760, height: 900 });
     await sleep(400);
     const narrow = await page.evaluate(() => {
@@ -2568,17 +2605,29 @@ async function verifySlotPanel(page) {
         daysR: Math.round(days.getBoundingClientRect().right),
         rowR: Math.round(rb.right),
         overflow: Math.round(rb.right - days.getBoundingClientRect().right),
+        // 真裁切检查（2026-11-13 补）：方块不许画到 tk-days 盒外（此前盒矩形
+        // 断言漏掉了 scrollWidth 溢出，方块实际盖在删除键底下）
+        daysSW: days.scrollWidth,
+        daysCW: days.clientWidth,
       };
     });
     check(
-      narrow.chipRows === 1 && narrow.rowH <= 52 && narrow.daysR <= narrow.rowR,
-      "时刻表 · 760 宽（最小窗口）下仍是一行：星期方块一起收窄，不掉行也不越界",
+      narrow.chipRows === 1 && narrow.rowH <= 52 && narrow.daysR <= narrow.rowR &&
+        narrow.daysSW <= narrow.daysCW,
+      "时刻表 · 760 宽（最小窗口）下仍是一行：方块收进窄档 19px，不掉行、不越界、无裁切",
       JSON.stringify(narrow),
     );
     check(
       narrow.chipMin >= 17,
       "时刻表 · 窄窗口下星期方块仍有 17px 以上（字母还看得清）",
       JSON.stringify({ min: narrow.chipMin, w: narrow.chipW }),
+    );
+    // 固定宽度（2026-11-13，晚起分两档）：宽窗口恒 23px、760 窄档恒 19px ——
+    // 每一档内固定，不随页面宽度连续伸缩（23=23 的旧口径已被窄档取代）。
+    check(
+      weekly.chipW === 23 && narrow.chipW === 19,
+      "时刻表 · 星期方块分档固定：宽窗口 23px、760 窄档 19px（档内不随页面宽度伸缩）",
+      JSON.stringify({ wide: weekly.chipW, narrow: narrow.chipW }),
     );
     await page.setViewportSize({ width: 1010, height: 900 });
     await sleep(300);
@@ -2635,6 +2684,35 @@ async function verifySlotPanel(page) {
     !!empty && empty.style === "solid" && empty.align === "left",
     "时刻表 · 空状态是一行左对齐提示，不再是虚线框",
     JSON.stringify(empty),
+  );
+
+  // 外卖卡（2026-11-13 用户要求）：时刻清单装进与其他卡同款的虚线面板 ——
+  // 子标签改叫「固定时间」并进 pane-head，时刻行缩进 48，与短卡固定时间的行同一条竖线。
+  const tkGeo = await page.evaluate(() => {
+    const card = document.getElementById("tk-card");
+    const pane = card && card.querySelector('.pg[data-pg="trigger"] .mode-pane');
+    const list = card && card.querySelector("#tk-list");
+    const shortList = document.querySelector(
+      '#short-mode .mode-pane[data-mode="fixed"] .pane-body .tk-list',
+    );
+    const L = (el) => (el ? Math.round(el.getBoundingClientRect().left) : -1);
+    return {
+      border: pane ? getComputedStyle(pane).borderTopStyle + "/" + getComputedStyle(pane).borderTopWidth : "",
+      title: card ? ((card.querySelector(".pane-head .slot-title") || {}).textContent || "").trim() : "",
+      listL: L(list),
+      shortListL: L(shortList),
+      noRadio: !(pane && pane.querySelector(".pane-radio")),
+    };
+  });
+  check(
+    tkGeo.border === "dashed/1px" && tkGeo.title === "固定时间" && tkGeo.noRadio,
+    "时刻表 · 外卖卡面板带同款虚线框，子标签改叫「固定时间」（无圆点）",
+    JSON.stringify(tkGeo),
+  );
+  check(
+    tkGeo.listL === tkGeo.shortListL && tkGeo.listL > 0,
+    "时刻表 · 外卖卡时刻行与短卡固定时间的行同一条竖线（缩进 48）",
+    JSON.stringify({ tk: tkGeo.listL, short: tkGeo.shortListL }),
   );
 
   await pickMode("short", "倒计时");
