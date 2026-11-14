@@ -3198,11 +3198,28 @@ async function verifyScrollbarGutter(page) {
 
   const style = await page.evaluate(() => {
     const cs = getComputedStyle(document.getElementById("content"));
-    return { gutter: cs.scrollbarGutter || "", padR: parseFloat(cs.paddingRight) || 0 };
+    return {
+      gutter: cs.scrollbarGutter || "",
+      padR: parseFloat(cs.paddingRight) || 0,
+      pad: ["Top", "Right", "Bottom", "Left"].map((k) => parseFloat(cs["padding" + k]) || 0),
+      brd: [parseFloat(cs.borderRightWidth) || 0, parseFloat(cs.borderBottomWidth) || 0],
+    };
   });
+  // 卡片 → 窗口四边的可见留白（2026-11-14 用户：原来 26/32 太大，收到 16 一档）：
+  //   上 16                    = padding-top
+  //   左 16                    = padding-left（侧栏内边距另算）
+  //   右 22                    = 6 内边距 + 10 常驻滚槽 + 6 透明拖动带
+  //   下 16                    = 10 内边距 + 6 透明拖动带
   check(
-    style.gutter === "stable" && Math.abs(style.padR - 16) <= 0.5,
-    "滚动条 · #content 常驻滚槽（scrollbar-gutter: stable；右内边距 16 = 26 − 10 槽）",
+    Math.abs(style.pad[0] - 16) <= 0.5 && Math.abs(style.pad[3] - 16) <= 0.5 &&
+      Math.abs(style.pad[1] - 6) <= 0.5 && Math.abs(style.pad[2] - 10) <= 0.5 &&
+      style.brd[0] === 6 && style.brd[1] === 6,
+    "留白 · 卡片到窗口四边：上 16 / 左 16 / 右 22 / 下 16（不再是一圈 26~32）",
+    JSON.stringify(style),
+  );
+  check(
+    style.gutter === "stable" && Math.abs(style.padR - 6) <= 0.5,
+    "滚动条 · #content 常驻滚槽（scrollbar-gutter: stable；右内边距 6 = 卡片到滚动条那点呼吸位）",
     JSON.stringify(style),
   );
 
@@ -3239,9 +3256,11 @@ async function verifyScrollbarGutter(page) {
     "滚动条 · 对照：去掉滚槽后卡片正好宽 10px（差的正是那条滚动条，证明量到了真对象）",
     JSON.stringify(rows.map((r) => [r.tab, r.noScroll.cardW, r.ctrl.cardW])),
   );
+  // gap = 内容盒右缘 − 卡片右缘 = 滚槽 10 + 右内边距 6；卡片到窗口最外缘还要再加
+  // 6px 透明拖动带（border-right），那一层不算在这里。
   check(
-    rows.every((r) => Math.abs(r.base.gap - 26) <= 1 && Math.abs(r.noScroll.gap - 26) <= 1),
-    "滚动条 · 卡片右缘到滚动条/空槽恒为 26px（滚不滚，右侧留白都不跳）",
+    rows.every((r) => Math.abs(r.base.gap - 16) <= 1 && Math.abs(r.noScroll.gap - 16) <= 1),
+    "滚动条 · 卡片右缘到滚动条/空槽恒为 16px（滚不滚，右侧留白都不跳）",
     JSON.stringify(rows.map((r) => [r.tab, r.base.gap, r.noScroll.gap])),
   );
 }
