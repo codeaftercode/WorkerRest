@@ -289,19 +289,25 @@ body {
    通用配置「声音」卡的「提示音」列表相同）：正文左缘从 273 挪到 297，与另两页同一条
    竖线，三块描边面板（margin-left -13）因此落在 284 —— 与通用配置页「提示音」面板的
    绝对位置分毫不差。
-   2026-11-14 这一页拆成两张卡：立绘预览单独一张（.figure-card，不缩进、无内边距，
-   图铺满整张卡），其余设置收进可折叠卡 #sup-main —— 于是这一页也有了卡头，
-   折叠箭头 / 标题 / 预览 / 总开关与时间规划页的提醒卡同款。 */
+   2026-11-14 这一页重排成“左列选人 / 右列工作台”的一张卡（#sup-main）：
+   立绘舞台、尺寸位置、提醒内容并进右列，共用卡头的折叠与总闸。
+   *** 2026-11-14 二版后：这一页**退出** +24 正文缩进（见下）***。 */
 #tab-timing,
-#tab-general,
-#tab-supervisor { --body-indent: 24px; }
+#tab-general { --body-indent: 24px; }
+/* 督休专员页不使用 +24 正文缩进（用户：减小列表外部左侧缩进）。
+   另两页的缩进是为"标签列 + 控件列"的两栏表单留出与卡头标题同一条竖线的基准；
+   这一页左列是名单、右列是舞台，没有标签列可对齐，24px 只是把整块工作台右推 ——
+   而这一页最稀缺的资源正是名字的可用宽度。归零后卡头也不再外拉（margin-left: 0），
+   箭头与标题仍在卡片自己的 16px 内边距里。 */
+#tab-supervisor { --body-indent: 0px; }
 #tab-timing .card,
 #tab-general .card,
 #tab-supervisor .card { padding-left: calc(16px + var(--body-indent)); }
-/* 立绘预览卡把内边距全部去掉，让图铺满：卡片自己 overflow:hidden + 圆角裁边，
-   预览块的交角跟着卡片走（.sup-preview 自带的 16px 圆角在这里会和卡片圆角错位）。 */
-#tab-supervisor .card.figure-card { padding: 0; overflow: hidden; }
-#tab-supervisor .card.figure-card > .sup-preview { margin: 0; border-radius: 0; }
+/* 工作台内的左列面板 / 台词面板不再套“卡内分区”那套 -13px 外挂：
+   分栏里每块自己就是一条竖线，外挂会让它越出列宽、左右两列右缘对不齐。
+   缩进仍由卡片的 padding-left 统一给出。 */
+#tab-supervisor .sup-grid > .gallery-panel,
+#tab-supervisor .sup-grid .msg-panel { margin: 0; }
 /* 卡头两种写法（.card-head 与时间线卡的 .tl-head）都要抵消，否则时间线那张卡的
    箭头 / 标题会比其它三张卡整段右移 24px —— 实测 tl-head 317 / 其余卡 293
    （箭头 308 / 284）。.tl-head 是 <button>，width:auto 对它等于 shrink-to-fit
@@ -1134,42 +1140,32 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .msg-add:hover,
 .snd-music-add:hover { background: var(--accent-weak); color: var(--text); }
 
-/* 候选专员折叠面板：复用 .fold-panel 折叠外观与 .msg-head/.msg-toggle 头部行。
-   展开后列表体固定高度（默认 = 两行磁贴，由脚本按实测行高写入），溢出出纵向滚动条；
-   底部拖柄上下拖动调高度（记 localStorage，下次打开保持）。折叠时体与拖柄一并隐藏。 */
+/* 候选专员列表（2026-11-14 二版：不是折叠面板，也没有底部拖柄）。
+   面板头是静态标题 + “＋”，列表体高度恒等于右列、行数多了在体内滚动。
+   左右内边距从 12 收到 4：这一列最稀缺的是名字宽度，每边 12px 等于白丢两三个字。 */
 .gallery-tip {
-  /* 拖拽排序说明：放在面板头与列表体之间（列表体是固定高度 + 滚动区，
-     说明写在列表体内会被滚走）。
-     水平内边距 12 与 .gallery-body / 头部标题同一条左缘（盒子本身不吃内边距）。 */
-  padding: 0 12px 8px; font-size: 11px; color: var(--text-2); line-height: 1.5;
+  /* 拖拽排序说明：放在面板头与列表体之间（列表体是滚动区，说明写在列表体内会被滚走）。
+     左内边距 5 = 列表体 4 + 磁贴 1，说明文字与磁贴里的名字同一条左缘。
+     两行分别是“勾选与预览 / 排序与改名”：一行放不下 30 个字，自动折行会断在词中间。 */
+  /* 上 8 让说明离标题行下的发丝线有一步距离（线在 .msg-head 的 border-bottom 上），
+     下 6 与列表体之间留缝；左 5 = 列表体 4 + 磁贴 1，说明文字与磁贴里的名字同一条左缘。 */
+  padding: 8px 8px 6px 5px; font-size: 11px; color: var(--text-2); line-height: 1.5;
 }
+.gallery-tip > span { display: block; }
 .gallery-body {
-  padding: 0 12px 10px;
+  padding: 0 4px 8px;
   overflow-y: auto;
   /* 纵向允许**滚动链**（scroll chaining）：列表滚到顶 / 到底后，继续滚同一个滚轮
      会接着带动外层页面（#content）继续滚，而不是“卡住不动”。
      之前这里写的是 overscroll-behavior: contain —— 那会**掐断**滚动链，
      滚到边界后滚轮就没反应了，是全站唯一一处与其它内层滚动区（.msg-list /
      .rc-scroll 等都是默认 auto）行为不一致的地方。
-     只放开纵向：横向不链（画廊是 auto-fill 自适应网格，本来也不会横向溢出）。 */
+     只放开纵向：横向不链（列表是单列，本来也不会横向溢出）。 */
   overscroll-behavior-y: auto;
 }
 /* 磁贴悬停的“右键操作”提示画在磁贴边框外上方：给网格顶部留出提示高度，
    避免首行磁贴的提示被滚动容器裁掉（收窄至 24px，首行紧贴头部） */
-.gallery-body .role-gallery { padding-top: 24px; }
-.gallery-panel:not(.open) .gallery-body,
-.gallery-panel:not(.open) .gallery-resize { display: none; }
-.gallery-resize {
-  display: flex; align-items: center; justify-content: center;
-  height: 9px; cursor: ns-resize; user-select: none;
-  border-top: 1px solid var(--border);
-}
-.gallery-resize::before {
-  content: ''; width: 42px; height: 3px; border-radius: 2px;
-  background: var(--border);
-}
-.gallery-resize:hover::before,
-.gallery-resize.dragging::before { background: var(--accent); }
+.gallery-body .role-gallery { padding-top: 2px; }
 .msg-list { display: flex; flex-direction: column; gap: 8px; max-height: 320px; overflow-y: auto; }
 .msg-item {
   display: flex; align-items: center; gap: 8px;
@@ -1216,29 +1212,39 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 只读的文件路径显示（立绘） */
 .file-input { width: 200px; color: var(--text-2); }
 
-/* 内置立绘库：缩略图网格，点击即选 */
+/* 内置立绘库：单列紧凑列表（2026-11-14 重排）。
+   侧栏只有 ~200px，原网格一行两块、十五位要排八行，整列会长到 1100px；
+   列表一行一位（34px 缩略图 + 名字 + 勾选），一屏看全，拖拽落点也从
+   “先分行、再比左右”简化成纯 y 判断。 */
 .role-gallery {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 10px;
-  padding: 2px 0 6px;
-  position: relative; /* 拖拽排序的插入指示条按本容器定位（绝对定位的参照系） */
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 0 6px;
+  position: relative; /* 拖拽的插入指示横线按本容器定位 */
 }
 .role-item {
   position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  background: var(--panel-2); border: 1px solid var(--border); border-radius: var(--r-md);
-  padding: 6px 6px 8px; cursor: pointer; font: inherit;
-  user-select: none; /* 拖动磁贴时不要顺手选中磁贴上的名字 */
+  /* 列宽 38（缩略图）/ 名字 / 15（勾选）；间距 6、内边距左 3 右 4 —— 都是往小里调的：
+     左列最窄 168px，每省 1px 都直接变成名字里的一个字（原来 12+7+8 那套一进一出
+     要吃掉 19px，名字只剩 5 个字；现在同一位置能读 7 个）。 */
+  display: grid; grid-template-columns: 38px minmax(0, 1fr) 15px;
+  align-items: center; gap: 6px;
+  background: transparent; border: 1px solid transparent; border-radius: var(--r-sm);
+  padding: 4px 4px 4px 3px; cursor: pointer; font: inherit;
+  user-select: none; /* 拖动列表项时不要顺手选中名字 */
 }
-.role-item:hover { border-color: var(--accent); }
-.role-item.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+/* 选中态（正在编辑的那位）用浅品牌底 + 品牌描边；悬停只给一层灰底 ——
+   两者必须一眼能分：列表里始终有一位是“active”，悬停不该看起来像选中 */
+.role-item:hover { background: var(--panel-2); border-color: var(--border); }
+.role-item.active { background: var(--accent-weak); border-color: var(--accent); }
 .role-item img {
-  width: 100%; height: 92px; object-fit: contain; object-position: center top;
-  border-radius: var(--r-sm); background: linear-gradient(180deg, rgba(127, 127, 127, 0.16), rgba(127, 127, 127, 0.04));
+  width: 38px; height: 38px; object-fit: contain; object-position: center;
+  border-radius: var(--r-sm);
+  background: linear-gradient(180deg, rgba(127, 127, 127, 0.14), rgba(127, 127, 127, 0.03));
 }
-.role-item span { font-size: 12px; color: var(--text-2); }
-.role-item.active span { color: var(--accent); }
+.role-item .role-cap { font-size: 12.5px; color: var(--text); }
+.role-item.active .role-cap { color: var(--accent); font-weight: 600; }
 
 /* 列表选择指示：固定模式为单选框（按 fixedKey），随机/顺序为复选框（按 enabled）；置于名字前 */
 .role-item .role-sel {
@@ -1265,22 +1271,13 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   content: ""; position: absolute; inset: 0; background: #fff;
   clip-path: polygon(6% 35%, 40% 69%, 94% 17%, 94% 35%, 40% 83%, 6% 49%);
 }
-.role-cap-row { display: flex; align-items: center; justify-content: center; gap: 5px; width: 100%; }
 .role-cap { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 
 /* 悬停提示浮层：磁贴边框外上方提示“右键操作”——深色实底胶囊 + 白字 + 白描边，
    明暗两套主题下都醒目；禁用磁贴同样式（提示不受置灰影响）。尺寸克制，不遮挡立绘。 */
-.role-hint {
-  position: absolute; bottom: calc(100% + 2px); left: 50%; transform: translateX(-50%);
-  padding: 2px 8px; border-radius: var(--r-pill);
-  background: rgba(20, 20, 20, 0.9); color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-  font-size: 11px; font-weight: 500; letter-spacing: 1px; line-height: 1.4; white-space: nowrap;
-  opacity: 0; transition: opacity 0.12s ease; pointer-events: none;
-}
-.role-item:hover .role-hint,
-.role-item:focus-within .role-hint { opacity: 1; }
+/* “右键操作”胶囊在紧凑列表里没有悬挂空间（绝对定位到行上方会压住上一行），
+   提示改由面板上方的说明承担；元素仍由脚本创建，这里直接不显示 */
+.role-hint { display: none; }
 
 /* 候选专员拖拽排序（顺序会落盘，也决定“顺序轮换”的出场次序）：
    拖起来的磁贴置灰 + 虚线（与提醒内容列表 / 提示音列表同一套观感）；
@@ -1288,7 +1285,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    “高亮某一块”说得清“插在谁前面”，也不会和“选中态”的描边混淆。 */
 .role-item.dragging { opacity: 0.45; border-style: dashed; }
 .role-drop-marker {
-  position: absolute; z-index: 5; width: 3px; border-radius: 2px;
+  /* 单列列表的落点是一条横线（宽高由脚本按行宽写入） */
+  position: absolute; z-index: 5; height: 2px; border-radius: 2px;
   background: var(--accent); pointer-events: none;
 }
 /* 拖拽进行中：光标变抓手；磁贴上的“右键操作”提示收起（别挡着插入指示） */
@@ -1311,23 +1309,14 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .role-menu-item:hover { background: var(--accent); color: var(--on-accent); }
 .role-menu-item.danger:hover { background: var(--danger); }
 
-/* 末尾“＋”磁贴：导入自定义立绘。骨架与 .role-item 一致（同网格、同内边距、
-   图案区同为 92px 高），使“＋”占位与立绘磁贴等大；提示文字画在图案区上。 */
+/* 末尾“＋”：导入自定义立绘。与 .role-item 同高的一行虚线，不抢立绘的位置 */
 .role-add {
-  position: relative;
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-  background: var(--bg); border: 1px dashed var(--border); border-radius: var(--r-md);
-  padding: 6px 6px 8px; cursor: pointer; font: inherit;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  background: transparent; border: 1px dashed var(--border); border-radius: var(--r-sm);
+  padding: 7px 7px; cursor: pointer; font: inherit; margin-top: 2px;
 }
-.role-add:hover { border-color: var(--accent); }
-.role-add-box {
-  width: 100%; height: 92px; border-radius: var(--r-sm);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; text-align: center;
-  background: linear-gradient(180deg, rgba(127, 127, 127, 0.12), rgba(127, 127, 127, 0.03));
-}
-.role-add-plus { font-size: 24px; line-height: 1; color: var(--accent); }
-.role-add-hint { font-size: 10px; line-height: 1.35; color: var(--text-2); }
+.role-add:hover { border-color: var(--accent); background: var(--accent-weak); }
+.role-add-plus { font-size: 15px; line-height: 1; color: var(--accent); }
 .role-add-cap { font-size: 12px; color: var(--text-2); }
 
 /* 命名输入弹窗（promptDialog）：复用确认框骨架，仅补输入框与图标配色 */
@@ -1346,15 +1335,214 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 命名框的校验错误（重名等）：留在框里提示，用户改完再提交 */
 .pm-error { margin: 8px 0 0; color: var(--danger); font-size: 12px; line-height: 1.5; }
 
+/* ================= 督休专员工作台（2026-11-14 一版 → 二版） =================
+   一屏回答三件事：这是谁（左列高亮）、长什么样（舞台 + 立绘调节）、说什么（提醒内容）。
+
+   **两列固定，任何宽度都不折成上下堆叠。** 窗口最窄 760px（settings_window.go）时
+   内容区约 516px：左列收到 168px 仍够「缩略图 + 名字 + 勾选」，右列还剩 300+
+   调滑条、读台词。原来 <900px 就改单列，是为了救"整宽舞台 + 整宽列表"那版，
+   现在左列本来就是窄条，没有需要抢救的空间。
+
+   与其它页 `max-width: 860` 不同，这一页放宽到 1040 —— 它是工作台不是表单，
+   窗口拉宽时该长大的是舞台。 */
+#tab-supervisor { max-width: 1040px; }
+
+.sup-grid {
+  display: grid;
+  grid-template-columns: clamp(168px, 26%, 212px) minmax(0, 1fr);
+  /* 两列之间**没有间距**：它们是同一块工作台的左右半边，各自带边框并排就会出现
+     “双线 / 一条缝”。现在由 .sup-grid 出一个外框和圆角，中间只留一条发丝线
+     （左列的 border-right）—— 舞台图的左上角因此是直角，直接跟名单连在一起。 */
+  gap: 0;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  background: var(--panel);
+  /* 圆角要靠裁切：舞台图与名单都贴到框边上，自己带不了圆角 */
+  overflow: hidden;
+}
+/* 卡头只有折叠箭头 / 标题 / 总闸 —— “显示方式”已回到左列名单的标题行（见下），
+   那才是它管的那一列。开关的 margin-left:auto 不再被别的控件分走，恢复默认即可。 */
+
+/* ---------- 左列：候选专员名单（静态面板，不可折叠） ---------- */
+.sup-grid > .gallery-panel {
+  /* 铺满整行高（右列多高它多高），列表体在内部吃掉剩余空间 */
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border: none;
+  border-radius: 0;
+  /* 与右列之间那唯一的一条竖线（右列自己不再带左边框） */
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+}
+/* 列表体吃满左列剩余空间。flex-basis 必须是 0 而不是 auto：写 auto 时这一列的
+   max-content 会把 grid 行高顶到十几行的 690px，整张卡跟着变高；写 0 之后基准尺寸
+   不算内容，行高由右列决定，列表再长也在内部滚动（拖柄已取消，没有“固定高度”态了）。 */
+.sup-grid > .gallery-panel .gallery-body { min-height: 0; flex: 1 1 0; }
+/* 列头 / 提醒内容头：静态标题。原来的 .msg-toggle 是折叠开关，现在两处都不折叠 ——
+   样式沿用头部行的字号与内边距，但没有悬停底色、没有 ▸ 箭头：
+   一个按下去没反应的按钮比没有按钮更糟。 */
+.sup-head {
+  flex: 1; min-width: 0;
+  display: block;
+  padding: 9px 10px 8px;
+  font-size: 12px; font-weight: 700; letter-spacing: .02em;
+  color: var(--text); line-height: 1.35;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* 侧栏头只有 ~180px，标题左缘跟列表里磁贴的名字对齐（5px），不吃 10px */
+.sup-grid > .gallery-panel .sup-head { padding-left: 5px; }
+.sup-grid > .gallery-panel .snd-music-actions { flex: none; }
+/* 标题行下面那条发丝线：与“提醒内容”标题下的分隔线同一条（那边是 .msg-body 的
+   border-top，这里名单体不是 .msg-body，落在标题行的 border-bottom 上）。
+   线的上下各留一点呼吸：上方 8（原来 .sup-head 的 padding-bottom）、下方给
+   .gallery-tip 的 8px —— 线不会被文字贴住。 */
+.sup-grid > .gallery-panel > .msg-head { border-bottom: 1px solid var(--border); }
+/* 计数从「（15）」的括号里拿出来当独立小字：括号+全角字宽在 188px 的侧栏里
+   正好把标题挤成"候选专…"，去掉括号省 ~20px，数字用等宽字形不跳动 */
+#sup-gallery-count { color: var(--text-2); font-variant-numeric: tabular-nums; }
+
+/* ---------- 右列：一块表面，三段落，发丝线分隔 ----------
+   舞台 / 立绘调节 / 提醒内容不是三个各自带边框圆角的盒子 —— 它们连同左列一起
+   住在 .sup-grid 那一个框里，内部只留 1px 分隔线：图、它的调节器、它的台词，
+   本来就是同一个人身上的三件事。 */
+.sup-stage {
+  display: flex; flex-direction: column; gap: 0;
+  min-width: 0;
+  border: none;
+  background: var(--panel);
+}
+
+/* ---------- 舞台上唯一的一枚浮标：预览 ----------
+   原来这里是一整条 HUD："正在编辑 秦始皇 [参与轮换] [预览]"。名字在竖排名牌里
+   已经写着（那是实机里本人头顶的名字），参与状态在左列勾选框里管着 ——
+   画面上再摆一份只是重复，还把右上角的天空挡掉一块。现在只剩“预览”：
+   它是在这块画面上唯一做不了别处的操作（就地看真机效果）。
+   底色压深 + 毛玻璃：任何立绘（浅色天空 / 深色夜空）上都能读。
+   选择器用 #id 而不是类：.btn.ghost / .btn.mini 都是两个类（0,2,0），
+   单类写在这里会被它们按特异性压掉 —— 背景变透明、圆角从药丸退回 6px。 */
+#sup-break-preview {
+  position: absolute;
+  top: 10px; right: 10px;
+  z-index: 12;
+  font-size: 11px; line-height: 1.5; padding: 3px 10px;
+  border-radius: var(--r-pill);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  background: rgba(8, 12, 24, 0.44);
+  backdrop-filter: blur(9px) saturate(1.15);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.28);
+  color: #eef2f9;
+}
+#sup-break-preview:hover {
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+/* ---------- 立绘调节：头部一行 + 三个等宽参数格 ----------
+   原“高级选项”折叠块，拎出来常显（拖滑条时得一直看着上面那张脸）。
+   四个参数原来占四行"标签 + 滑条"，现在摊成三格（标签在上、滑条在下），
+   翻转不是数值，跟标题、恢复默认并进头部一行 —— 高度从 ~134px 收到 ~86px。 */
+.sup-geom {
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--panel);
+}
+.sup-geom-head {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 12px 6px;
+}
+.sup-geom-title { flex: none; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
+.sup-geom-flip {
+  display: flex; align-items: center; gap: 5px;
+  font-size: 12px; color: var(--text-2); cursor: pointer; white-space: nowrap;
+}
+/* 摘要与滑条读数重复（"高度 80%" 就在滑条上方），只在够宽时留一份全文，
+   窄了直接让位给恢复默认按钮 */
+.sup-geom-head .adv-summary { margin-left: 2px; font-size: 11px; }
+.sup-geom-reset { margin-left: auto; flex: none; }
+.sup-geom-rows {
+  padding: 2px 12px 10px;
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px;
+}
+.sup-geom-cell { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.sup-geom-cell label { font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
+.sup-geom-cell b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.sup-geom-cell input[type="range"] { width: 100%; margin: 0; }
+
+/* ---------- 提醒内容：这张卡的正文 ---------- */
+.sup-msg {
+  border: none; border-top: 1px solid var(--border); border-radius: 0;
+  background: var(--panel);
+}
+/* 台词列表在右列里限高滚动：别让一屏台词把整个工作台撑到需要翻页 */
+.sup-stage .msg-panel .msg-list { max-height: 264px; }
+/* 行尾的 ✎ / ✕ 平时浮在行右端、不占布局宽度（绝对定位），悬停或键盘聚焦本行才显形。
+   它们原来只是 opacity:0，但仍在流里吃着 60px —— 472px 宽的一行台词只剩 21 个字，
+   截断处右边还留着一片空白，看起来像渲染坏了。浮起来之后同一行能多放 3~4 个字。
+   编辑态给输入框留出右内边距，别让浮出来的按钮压住正在敲的字。 */
+/* 前缀带 #tab-supervisor：通用的 .msg-body .msg-item > .btn 那几条（去框、透明底）
+   特异性更高，不加 id 的话下面这个"浮起来要垫底色"会被它顶掉，按钮悬停时
+   台词会从按钮底下透出来。 */
+#tab-supervisor .sup-msg .msg-item { position: relative; }
+#tab-supervisor .sup-msg .msg-item > .btn {
+  position: absolute; top: 50%; transform: translateY(-50%);
+  opacity: 0; pointer-events: none;
+  background: var(--panel);
+  transition: opacity 0.12s ease;
+}
+#tab-supervisor .sup-msg .msg-item > .btn:not(.danger) { right: 38px; }
+#tab-supervisor .sup-msg .msg-item > .btn.danger { right: 8px; }
+/* 浮出来的按钮底下要先有一层"把文字擦掉"的底：只给按钮自己垫底的话，
+   两枚按钮之间的 3px 缝、以及按钮左边，都会漏出被盖住的半截字
+   （实测能看到 "...敲击键 ✎ 誓 ✕" 这种残影）。用一条从透明到面板色的
+   渐变铺满行右端 76px，文字自然淡出，按钮干干净净浮在上面。 */
+#tab-supervisor .sup-msg .msg-item::after {
+  content: "";
+  position: absolute; top: 1px; right: 1px; bottom: 1px; width: 76px;
+  border-radius: var(--r-md);
+  background: linear-gradient(90deg, transparent, var(--panel) 34%);
+  opacity: 0; pointer-events: none;
+  transition: opacity 0.12s ease;
+}
+#tab-supervisor .sup-msg .msg-item:hover::after,
+#tab-supervisor .sup-msg .msg-item:focus-within::after,
+#tab-supervisor .sup-msg .msg-item.editing::after { opacity: 1; }
+#tab-supervisor .sup-msg .msg-item > .btn { z-index: 1; }
+/* 浮出来的时候颜色提一档：常态那枚是 --text-2 的幽灵灰，压在渐隐的文字上像水印 */
+#tab-supervisor .sup-msg .msg-item:hover > .btn { color: var(--text); }
+#tab-supervisor .sup-msg .msg-item:hover > .btn,
+#tab-supervisor .sup-msg .msg-item:focus-within > .btn,
+#tab-supervisor .sup-msg .msg-item.editing > .btn { opacity: 1; pointer-events: auto; }
+.sup-msg .msg-item.editing .msg-text { padding-right: 66px; }
+/* 正在舞台里"试说"的那一条：左侧一道细竖条，说明上面对话框那句话是从这来的 */
+.sup-msg .msg-item.peeking { box-shadow: inset 2px 0 0 var(--accent); }
+
+@media (max-width: 1020px) {
+  /* 头部一行挤不下摘要时先砍摘要（它和滑条读数重复） */
+  .sup-geom-head .adv-summary { display: none; }
+}
+
 /* 督休专员预览：忠实还原休息窗口的版式（立绘左下、底部悬浮对话框 + 左上角名字牌）。
-   圆角 16px 与真机 --app-radius 对齐（预览面板 overflow:hidden 会把贴边对话框的
-   底部两角裁出与提醒窗口一致的圆角）。 */
+   外圆角交给 .sup-grid 的 overflow:hidden 裁 —— 舞台贴着框边（上 / 右两边不留白），
+   自己带圆角会在左上角与名单之间露出一段内凹的白弧。 */
 .sup-preview {
   position: relative;
-  height: 260px;
-  border-radius: 16px;
+  flex: none;                      /* 别被 flex column 压扁，高度只由宽高比决定 */
+  /* 舞台尺寸跟着右列宽度走：16:9 撑开（真机提醒窗就是 16:9，所见即真机），
+     max-height 封顶防止超宽窗口下把整页推走。 */
+  aspect-ratio: 16 / 9;
+  min-height: 200px;
+  max-height: 360px;
+  /* 四角都是直角：左上角要跟左边的候选专员名单直接连成一片，
+     右上角交给 .sup-grid 的外圆角去裁（见上）。 */
+  border-radius: 0;
   overflow: hidden;
-  margin-bottom: 12px;
+  margin-bottom: 0;
   background:
     radial-gradient(700px 420px at 12% -10%, color-mix(in srgb, var(--accent) 62%, #00000000), transparent 62%),
     linear-gradient(160deg, color-mix(in srgb, var(--accent) 78%, #10142a), #10142a);

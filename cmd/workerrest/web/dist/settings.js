@@ -2056,13 +2056,21 @@
     const btn = $("sup-selection-btn");
     if (!btn) return;
     applyModeIcon(btn, S.supervisor.selection ?? "random");
+    // 这枚按钮现在住在左列名单的标题行右端，与“提醒内容”右侧那枚同款：**只有图标**，
+    // 固定 / 随机 / 顺序全靠图标形状 + title / aria-label 说清（applyModeIcon 一并写入）。
+    // 三种模式在图标上的区别（见 DISPLAY_MODE）：带“1”的循环箭头 = 固定、
+    // 交叉箭头 = 随机、循环箭头 = 顺序 —— 与提示音的播放方式图标同一套画法。
+    // 切换“固定显示 / 随机 / 顺序”会换掉勾选语义（单选框 ↔ 复选框），
+    // 名单里的勾选框形态与名字牌都要跟着换口径（syncRoleSelUI 由 selectRole 触发，
+    // 这里补一次名字同步，免得“提醒内容（谁）”停在旧名字上）
+    fillSupervisorImageName();
   }
   function fillSupervisorImageName() {
     const name = currentRoleName();
     const msgRole = $("sup-msg-role");
     if (msgRole) msgRole.textContent = name;
-    const advRole = $("sup-adv-role");
-    if (advRole) advRole.textContent = name;
+    // 舞台画面上不再有 HUD（名字 / 状态徽章都撤了，只剩一枚“预览”）：名字由画面里的
+    // 竖排名牌承载，参与状态由左列勾选框承载 —— 画面不重复这两件事。
     for (const btn of document.querySelectorAll("#sup-gallery .role-item")) {
       btn.classList.toggle("active", btn.dataset.name === supEditName);
     }
@@ -2073,6 +2081,7 @@
     const role = ROLES.find((r) => r.name === key);
     if (!role) return;
     supEditName = key;
+    supPeek = null; // 换人：上一个人的台词不能留在下一个人的脸上
     if (S.supervisor.selection === "fixed") {
       // 固定显示：单选框语义 —— 选中即设为固定项；再点已选中那枚不产生变化（单选框不能取消）
       if (S.supervisor.fixedRole !== key) {
@@ -2096,6 +2105,7 @@
     if (!ROLES.some((r) => r.name === key)) return;
     if (supEditName === key) return;
     supEditName = key;
+    supPeek = null;
     fillSupervisorImageName();
     fillGeomControls(normalizeSupGeom(geomOf(supEditName)));
     void refreshSupervisorPreview();
@@ -2324,64 +2334,11 @@
     await autoSave();
     await previewBreak("short", key);
   }
-  var GALLERY_H_KEY = "wr.galleryH";
-  function galleryMinHeight() {
-    const body = $("sup-gallery-body");
-    const box = $("sup-gallery");
-    const first = box.querySelector(".role-item") ?? box.querySelector(".role-add");
-    if (!first) return 0;
-    const rowH = first.getBoundingClientRect().height;
-    if (rowH < 40) return 0;
-    const gap = parseFloat(getComputedStyle(box).rowGap) || 0;
-    const padV = (el) => {
-      const s = getComputedStyle(el);
-      return parseFloat(s.paddingTop) + parseFloat(s.paddingBottom);
-    };
-    return Math.round(rowH * 2 + gap + padV(body) + padV(box) + 1);
-  }
-  function applyGalleryHeight(stored) {
-    const body = $("sup-gallery-body");
-    const min = galleryMinHeight();
-    if (min <= 0) return;
-    body.style.minHeight = String(min) + "px";
-    const h = Math.max(min, Math.round(stored ?? 0) || min);
-    body.style.height = String(h) + "px";
-  }
-  function setupGalleryPanel() {
-    const panel = $("sup-gallery-panel");
-    const body = $("sup-gallery-body");
-    panel.querySelector(".msg-toggle").addEventListener("click", () => {
-      panel.classList.toggle("open");
-      body.classList.toggle("hidden");
-    });
-    const grip = $("sup-gallery-resize");
-    grip.addEventListener("mousedown", (e) => {
-      e.preventDefault();
-      grip.classList.add("dragging");
-      const startY = e.clientY;
-      const startH = body.getBoundingClientRect().height;
-      const onMove = (ev) => {
-        applyGalleryHeight(startH + (ev.clientY - startY));
-      };
-      const onUp = () => {
-        grip.classList.remove("dragging");
-        document.removeEventListener("mousemove", onMove);
-        document.removeEventListener("mouseup", onUp);
-        localStorage.setItem(GALLERY_H_KEY, String(Math.round(body.getBoundingClientRect().height)));
-      };
-      document.addEventListener("mousemove", onMove);
-      document.addEventListener("mouseup", onUp);
-    });
-    const ro = new ResizeObserver(() => {
-      if (grip.classList.contains("dragging")) return;
-      const min = galleryMinHeight();
-      if (min <= 0) return;
-      body.style.minHeight = String(min) + "px";
-      if (!(Number(localStorage.getItem(GALLERY_H_KEY)) || 0)) body.style.height = String(min) + "px";
-    });
-    ro.observe($("sup-gallery"));
-    applyGalleryHeight(Number(localStorage.getItem(GALLERY_H_KEY)) || null);
-  }
+  // 候选专员列表的高度完全由 CSS 决定（.gallery-body { flex: 1 1 0 }，右列多高它多高）：
+  // 2026-11-14 用户要求取消底部拖柄调高度与折叠——名单只有十几行，两个控件换不来
+  // 任何信息，反倒要在 localStorage 里记一份高度、在 resize / ResizeObserver 里重算。
+  // 旧版本记过的 wr.galleryH 在这里清掉，免得留在 localStorage 里当垃圾。
+  try { localStorage.removeItem("wr.galleryH"); } catch { /* 隐私模式等场景忽略 */ }
   /* ---------- 候选专员拖拽排序 ----------
      画廊是**多列网格**（auto-fill），落点不能照搬单列列表的“上/下半”判断：
      必须先按行分组，再在行内按左右比较，最后换算成全局下标。
@@ -2394,48 +2351,17 @@
   function roleTiles() {
     return Array.prototype.slice.call($("sup-gallery").querySelectorAll(".role-item"));
   }
-  // 按行分组：同一行的磁贴 top 基本一致（阈值取磁贴高度的 40%，够容错又不串行）
-  function roleRows() {
-    const rows = [];
-    for (const el of roleTiles()) {
-      const r = el.getBoundingClientRect();
-      const row = rows.find((rr) => Math.abs(rr.top - r.top) < Math.max(4, r.height * 0.4));
-      if (row) row.items.push({ el: el, r: r });
-      else rows.push({ top: r.top, items: [{ el: el, r: r }] });
-    }
-    return rows;
-  }
+  // 单列列表：落点只看 y —— 指针落在第 i 块的**上半**就插到它前面，下半插到它后面。
+  // （原来画廊是多列网格，得先按行分组、再在行内比左右；现在一行就是一位，
+  //  判断简单，也不会出现“拖到两列之间的缝里算谁”这种歧义）
   function computeRoleDropIndex(mx, my) {
     const tiles = roleTiles();
     if (!tiles.length) return -1;
-    const rows = roleRows();
-    if (!rows.length) return -1;
-    // ① 鼠标落在哪一行（行带 = 该行磁贴 top..bottom）
-    let row = rows.find((rr) => {
-      const top = Math.min.apply(null, rr.items.map((x) => x.r.top));
-      const bottom = Math.max.apply(null, rr.items.map((x) => x.r.bottom));
-      return my >= top && my <= bottom;
-    });
-    if (!row) {
-      // ② 落在行与行的缝里：取垂直距离最近的一行
-      let best = null;
-      let bestD = Infinity;
-      for (const rr of rows) {
-        const top = Math.min.apply(null, rr.items.map((x) => x.r.top));
-        const bottom = Math.max.apply(null, rr.items.map((x) => x.r.bottom));
-        const d = my < top ? top - my : my > bottom ? my - bottom : 0;
-        if (d < bestD) { bestD = d; best = rr; }
-      }
-      row = best;
+    for (let i = 0; i < tiles.length; i++) {
+      const r = tiles[i].getBoundingClientRect();
+      if (my < r.top + r.height / 2) return i;
     }
-    if (!row) return 0;
-    // ③ 行内按左右比较：落在某块磁贴左半 → 插到它前面；右半 → 插到它后面
-    for (const it of row.items) {
-      if (mx < it.r.left + it.r.width / 2) return tiles.indexOf(it.el);
-    }
-    // ④ 行内最右侧 → 插到该行最后一块之后（= 下一行第一块之前，线性下标上是同一个位置）
-    const last = row.items[row.items.length - 1];
-    return tiles.indexOf(last.el) + 1;
+    return tiles.length;
   }
   function clearRoleDropHint() {
     const mk = document.getElementById("role-drop-marker");
@@ -2455,25 +2381,17 @@
       mk.className = "role-drop-marker";
       box.appendChild(mk);
     }
-    let left;
+    // 单列列表：插入指示是一条**横线**，画在两行之间的缝里（多列网格时代是竖条）
     let top;
-    let height;
     if (idx < tiles.length) {
-      // 插到第 idx 块之前 → 竖条画在它左边那道缝隙里
-      const r = tiles[idx].getBoundingClientRect();
-      left = r.left - boxRect.left - 5;
-      top = r.top - boxRect.top;
-      height = r.height;
+      top = tiles[idx].getBoundingClientRect().top - boxRect.top - 3;
     } else {
-      // 插到末尾 → 竖条画在最后一块右边那道缝隙里（末尾的“＋新增”磁贴在这道缝之后）
-      const r = tiles[tiles.length - 1].getBoundingClientRect();
-      left = r.right - boxRect.left + 2;
-      top = r.top - boxRect.top;
-      height = r.height;
+      top = tiles[tiles.length - 1].getBoundingClientRect().bottom - boxRect.top + 1;
     }
-    mk.style.left = Math.max(0, Math.round(left)) + "px";
+    mk.style.left = "0px";
+    mk.style.width = "100%";
     mk.style.top = Math.round(top) + "px";
-    mk.style.height = Math.round(height) + "px";
+    mk.style.height = "2px";
   }
   // 把 ROLES 按新顺序重排并落盘（supervisor.order = 全部 key，数组整体替换）
   function applyRoleMove(from, to) {
@@ -2553,10 +2471,9 @@
       const cap = document.createElement("span");
       cap.className = "role-cap";
       cap.textContent = r.name;
-      const capRow = document.createElement("span");
-      capRow.className = "role-cap-row";
-      capRow.append(sel, cap);
-      tile.append(img, hint, capRow);
+      // 单列列表：缩略图 / 名字 / 勾选三点一线。半宽侧栏里网格一行只放得下两块，
+      // 十五位要排八行、把整列拉到 1100px 长；列表一行 46px，一屏看全。
+      tile.append(img, hint, cap, sel);
       tile.addEventListener("click", () => {
         // 拖完浏览器可能补一个 click（此时磁贴已经重排），那不是用户想看的人
         if (supDragEndAt && Date.now() - supDragEndAt < 400) {
@@ -2605,12 +2522,11 @@
     add.type = "button";
     add.className = "role-add";
     add.title = "新增：支持 PNG / JPG / WebP，建议透明背景的竖版人物图；图片会复制到配置目录，原文件移动或删除后仍可用";
-    add.innerHTML = '<span class="role-add-box"><span class="role-add-plus">＋</span><span class="role-add-hint">PNG / JPG / WebP<br>透明底竖版图</span></span><span class="role-add-cap">新增</span>';
+    add.innerHTML = '<span class="role-add-plus">＋</span><span class="role-add-cap">新增立绘</span>';
     add.addEventListener("click", () => void addCustomRole());
     box.appendChild(add);
     $("sup-gallery-count").textContent = String(ROLES.length);
     fillSupervisorImageName();
-    applyGalleryHeight(Number(localStorage.getItem(GALLERY_H_KEY)) || null);
   }
   function updateGeomSummary(g) {
     const el = $("sup-geom-summary");
@@ -2618,7 +2534,7 @@
     const custom = g.sizePct !== SUP_GEOM_DEFAULT.sizePct || g.posXPct !== SUP_GEOM_DEFAULT.posXPct || g.posYPct !== SUP_GEOM_DEFAULT.posYPct || g.flip !== SUP_GEOM_DEFAULT.flip;
     el.textContent = `${custom ? "已调整 \xB7 " : ""}高度 ${g.sizePct}% \xB7 距左 ${g.posXPct}% \xB7 距底 ${g.posYPct}%` + (g.flip ? " \xB7 已翻转" : "");
     el.classList.toggle("customized", custom);
-    el.title = "点开“高级选项”可调整当前立绘的显示尺寸与位置，以及是否水平翻转";
+    el.title = "拖动下面的滑条可调整当前立绘的显示尺寸与位置，以及是否水平翻转";
   }
   var supRelayout = null;
   function applySupGeometry(g) {
@@ -2664,6 +2580,38 @@
   // 预览面板的名字牌与真实提醒窗口同款：每次重绘随机换一枚“章”（牌底 + 碎点同下标），
   // 并避开上一次。档数与 web/dist 里的 seal-ink-1..6.svg、两份提醒页 JS 的
   // SEAL_VARIANTS 一致 —— 改档数要一起改（探针会红）。
+  // 舞台对话框正在“试说”哪一条台词：null = 用 Go 侧挑的那条（固定项 / 随机一条）。
+  // 点台词行的文本框（或在里面改字）把它钉到那一行上 —— 改台词时立刻看得到它落地的样子。
+  // 切专员时清空：上一个人的句子不能留在下一个人的脸上。
+  var supPeek = null; // { id, text }
+
+  function supPeekText() {
+    if (supPeek) return supPeek.text;
+    if (!supPreview) return "无法读取立绘文件";
+    return curSupStage === 2
+      ? supPreview.lines.command || supPreview.lines.urge
+      : supPreview.lines.urge;
+  }
+  // 只换台词文本与“正在试说”标记 —— 不走 renderSupervisorPreview，
+  // 那条路会重设 <img> 的 src（整张立绘重新解码），每敲一个字都跑一遍会卡。
+  function applySupPreviewLine() {
+    const el = $("sup-preview-line");
+    if (!el) return;
+    // 台词被删掉时 peek 会指向一个不存在的 id：先校验，再上屏，
+    // 否则舞台会一直念着一条已经删掉的句子
+    if (supPeek && !document.querySelector(`.sup-msg .msg-item[data-id="${CSS.escape(supPeek.id)}"]`)) {
+      supPeek = null;
+    }
+    el.textContent = supPeekText();
+    for (const row of document.querySelectorAll(".sup-msg .msg-item")) {
+      row.classList.toggle("peeking", !!supPeek && row.dataset.id === supPeek.id);
+    }
+  }
+  function setSupPeek(id, text) {
+    supPeek = id ? { id: id, text: text } : null;
+    applySupPreviewLine();
+  }
+
   var PREVIEW_SEAL_VARIANTS = 6;
   var previewLastSeal = 0;
   function pickPreviewSeal(el) {
@@ -2708,7 +2656,7 @@
     const badge = $("sup-preview-badge");
     badge.classList.toggle("hidden", !off);
     badge.textContent = off ? "功能已关闭 \xB7 提醒窗口不会显示督休专员" : "";
-    $("sup-preview-line").textContent = supPreview ? stage === 2 ? supPreview.lines.command || supPreview.lines.urge : supPreview.lines.urge : "无法读取立绘文件";
+    applySupPreviewLine();
     // 说话人由对话框左上角的名字牌承载（与休息窗口的 dialog-name 同款），不再挂在台词上
     const previewName = $("sup-preview-name");
     pickPreviewSeal(previewName);
@@ -4083,7 +4031,10 @@
       list.appendChild(d);
       return;
     }
-    for (const item of cfg.items) list.appendChild(buildMsgRow(target, item, fixedMode));
+    for (const item of cfg.items) list.appendChild(buildMsgRow(target, item, fixedMode, list.childElementCount + 1));
+    // 整表重绘会丢掉 .peeking 标记：按 supPeek 重新标一遍（台词已被删掉的，
+    // applySupPreviewLine 会把 supPeek 一起清掉，舞台退回 Go 侧挑的那条）
+    if (target === "sup") applySupPreviewLine();
   }
   // 退出所有“提醒内容”列表中仍处于编辑态的行（折叠 / 切页 / 关窗时调用）
   function exitAllMsgEditing() {
@@ -4091,7 +4042,7 @@
       if (typeof row._cancelEdit === "function") row._cancelEdit();
     });
   }
-  function buildMsgRow(target, item, fixedMode) {
+  function buildMsgRow(target, item, fixedMode, idx = 0) {
     const cfg = msgCfgOf(target);
     const row = document.createElement("div");
     row.className = "msg-item" + (!fixedMode && !item.enabled ? " disabled" : "");
@@ -4130,8 +4081,25 @@
     txt.className = "msg-text";
     txt.value = item.text;
     txt.placeholder = "提醒内容（纯文本）";
+    // 一行放不下整句（右列窄的时候只露出二十来个字）：悬停给一份全文，
+    // 比“截断 + 干瞪眼”强。只在督休专员页加，其它面板的行更宽、也没这么长的文案
+    if (target === "sup") txt.title = item.text;
+    // 可访问名：整行是“序号 + 文案”，读屏只念 value 会分不清是第几条
+    // （督休专员页的提醒内容现在默认展开，这十行是页面上最先被读到的内容）
+    txt.setAttribute("aria-label", "提醒内容" + (idx ? " " + idx : "") + "：" + item.text.slice(0, 20));
     txt.readOnly = true; // 默认不可编辑，点“编辑”图标才进入编辑态
     const ICON_EDIT = "✎", ICON_DEL = "✕", ICON_SAVE = "✓", ICON_CANCEL = "↺";
+    // 督休专员：点这一行的文本框（readonly 也照样能聚焦）→ 上面舞台的对话框换成这一句，
+    // 编辑时逐字同步。其余面板（休息 / 自定义 / 外卖）没有舞台，不需要这条联动。
+    if (target === "sup") {
+      txt.addEventListener("focus", () => setSupPeek(item.id, item.text));
+      txt.addEventListener("input", () => {
+        if (supPeek && supPeek.id === item.id) {
+          supPeek.text = txt.value;
+          applySupPreviewLine();
+        }
+      });
+    }
     let editing = false;
     function setButtonsToEdit() {
       editBtn.textContent = ICON_EDIT; editBtn.title = "编辑";
@@ -4156,10 +4124,13 @@
       txt.readOnly = true;
       row.classList.remove("editing");
       setButtonsToEdit();
+      // 舞台可能已经跟着输入框念了半句被放弃的草稿：退回原文
+      if (target === "sup" && supPeek && supPeek.id === item.id) setSupPeek(item.id, item.text);
     }
     function saveEdit() {
       editing = false;
       item.text = txt.value;
+      if (target === "sup") txt.title = item.text;
       txt.readOnly = true;
       row.classList.remove("editing");
       setButtonsToEdit();
@@ -4268,11 +4239,16 @@
     if (msgPanelBound.has(panel)) return;
     msgPanelBound.add(panel);
     const target = panel.dataset.kind ?? "short";
-    panel.querySelector(".msg-toggle").addEventListener("click", () => {
-      if (panel.classList.contains("open")) exitAllMsgEditing();
-      panel.classList.toggle("open");
-      panel.querySelector(".msg-body").classList.toggle("hidden");
-    });
+    // 督休专员页的“提醒内容”不再折叠（2026-11-14 用户要求）：那块面板的头部是
+    // 静态标题，没有 .msg-toggle —— 这里必须允许“没有开关的面板”，不能一律解引用。
+    const toggle = panel.querySelector(".msg-toggle");
+    if (toggle) {
+      toggle.addEventListener("click", () => {
+        if (panel.classList.contains("open")) exitAllMsgEditing();
+        panel.classList.toggle("open");
+        panel.querySelector(".msg-body").classList.toggle("hidden");
+      });
+    }
     const modeBtn = panel.querySelector(".snd-mode-btn");
     if (modeBtn) {
       modeBtn.addEventListener("click", () => {
@@ -7676,7 +7652,6 @@
       autoSave();
       toast(r.items.length > 1 ? `已添加 ${r.items.length} 首音乐` : "已添加到音乐列表");
     });
-    setupGalleryPanel();
     bindRoleGalleryDrag();
     void renderRoleGallery();
     const supSelBtn = $("sup-selection-btn");

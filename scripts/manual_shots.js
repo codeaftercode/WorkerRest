@@ -37,6 +37,17 @@ async function shot(page, name) {
   await page.screenshot({ path: path.join(OUT, name + ".png") });
   console.log("[shot] " + name);
 }
+// 按 CSS 像素矩形裁一刀：局部图（比如"图 + 它的调节器"）比整页图更有说明力，
+// 也不至于和同一页的另一张长得一模一样。
+async function shotClip(page, name, clip) {
+  if (ONLY.length && !ONLY.includes(name)) return;
+  if (!clip || clip.width < 40 || clip.height < 40) {
+    await shot(page, name);
+    return;
+  }
+  await page.screenshot({ path: path.join(OUT, name + ".png"), clip });
+  console.log("[shot] " + name + " (clip " + Math.round(clip.width) + "x" + Math.round(clip.height) + ")");
+}
 
 async function run() {
   fs.mkdirSync(OUT, { recursive: true });
@@ -108,20 +119,25 @@ async function run() {
   await delay(700);
   await shot(set, "m_supervisor");
 
-  // 0g. 督休专员 · 高级选项（尺寸与位置）展开
-  // 注意：必须点 <summary> 才能开合 —— 直接对 <details> 调 click() 不会切换展开态，
-  // 之前这步一直没生效（拍出来的两张图逐字节相同）。
-  // 展开后再滚到视口中间，否则内容留在折叠线以下，截图里只能看到标题行。
-  await set.evaluate(`(function(){var s=document.querySelector('#sup-advanced');if(s&&!s.open){var h=s.querySelector('summary');if(h)h.click();}})()`);
-  await delay(600);
-  await set.evaluate(`(function(){var s=document.querySelector('#sup-advanced');if(s)s.scrollIntoView({block:'center'});})()`);
-  await delay(400);
-  await shot(set, "m_supervisor_advanced");
-  // 收起高级选项并回到顶部，避免影响后续
-  await set.evaluate(`(function(){var s=document.querySelector('#sup-advanced');if(s&&s.open){var h=s.querySelector('summary');if(h)h.click();}})()`);
+  // 0g. 督休专员 · 立绘调节（尺寸与位置）
+  // 这块现在常显在舞台正下方（原来要展开 details.advanced），整页只有一屏高，
+  // 整页截图和上一张几乎一样。改按几何裁一刀：舞台顶 → 调节条底，
+  // 正好是"那张脸 + 它的调节器"这一段，手册里看图就知道滑条对着谁。
+  const geomClip = await set.evaluate(() => {
+    const a = document.getElementById("sup-preview");
+    const b = document.getElementById("sup-geom");
+    if (!a || !b) return null;
+    const ra = a.getBoundingClientRect();
+    const rb = b.getBoundingClientRect();
+    return {
+      x: Math.max(0, ra.left - 10),
+      y: Math.max(0, ra.top - 10),
+      width: ra.width + 20,
+      height: rb.bottom - ra.top + 20,
+    };
+  });
   await delay(300);
-  await set.evaluate(`(function(){var c=document.getElementById('content');if(c)c.scrollTop=0;})()`);
-  await delay(200);
+  await shotClip(set, "m_supervisor_advanced", geomClip);
 
   // 0h. 统计报表页
   await set.evaluate(`(function(){var b=document.querySelector('#nav .nav-item[data-tab="stats"]');if(b)b.click();})()`);

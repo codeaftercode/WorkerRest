@@ -169,15 +169,11 @@ async function poke(page, handle, kind) {
 // 不是 settings.json。用 listSupervisorRoles() 读回来验“接到了没 / 可不可逆”。
 async function verifyGeomControls(page) {
   console.log("  ---- 立绘尺寸与位置（写 meta.json 的 geom，不走 settings）");
-  // 高级选项是折叠面板，展开才能量到元素
-  await page.evaluate(() => {
-    const d = document.getElementById("sup-advanced");
-    if (d) d.open = true;
-  });
-  await sleep(200);
-
+  // 2026-11-14 重排后“立绘调节”不再折叠，控件常显，不必先展开；
+  // 当前编辑的专员名从“提醒内容（专员名）”的标题里取 —— 舞台上的 HUD 名字已在
+  // 2026-11-14 二版删除（画面里只剩“预览”一枚浮标）。
   const roleName = await page.evaluate(() => {
-    const el = document.getElementById("sup-adv-role");
+    const el = document.getElementById("sup-msg-role");
     return (el && el.textContent ? el.textContent : "").trim();
   });
   if (!roleName || roleName === "—") {
@@ -226,7 +222,9 @@ async function verifyGeomControls(page) {
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }
     }, id);
-    await sleep(350);
+    // 600ms 不是随手写的：autoSave 有去抖，meta.json 落盘再读回，
+    // 350ms 在整套探针（几十个操作）连跑时偶发抢不到（实测有过一次 posY 读回旧值）
+    await sleep(600);
     const changed = await readGeom();
     check(changed !== base, "supervisor · " + id + " 写进了 meta.json 的 geom", changed);
 
@@ -242,7 +240,7 @@ async function verifyGeomControls(page) {
         el.dispatchEvent(new Event("change", { bubbles: true }));
       }
     }, { sel: id, o: orig });
-    await sleep(350);
+    await sleep(600);
     const back = await readGeom();
     check(back === base, "supervisor · " + id + " 可逆（还原后 geom 逐字一致）", back);
   }
@@ -2784,6 +2782,7 @@ async function verifyCardIndent(page) {
   await pick("supervisor");
   const sup = await page.evaluate(() => {
     const L = (el) => (el ? +el.getBoundingClientRect().left.toFixed(1) : null);
+    const R = (el) => (el ? +el.getBoundingClientRect().right.toFixed(1) : null);
     const line = (el) => {
       const r = el.getBoundingClientRect();
       const cs = getComputedStyle(el);
@@ -2791,92 +2790,379 @@ async function verifyCardIndent(page) {
     };
     const cards = [...document.querySelectorAll("#tab-supervisor > .card")];
     const main = document.getElementById("sup-main");
-    const fig = document.querySelector("#tab-supervisor > .figure-card");
-    const pre = document.getElementById("sup-preview");
-    const pr = pre ? pre.getBoundingClientRect() : null;
-    const fr = fig ? fig.getBoundingClientRect() : null;
     const head = main && main.querySelector(":scope > .card-head");
+    const grid = document.querySelector("#tab-supervisor .sup-grid");
+    const side = document.getElementById("sup-gallery-panel");
+    const stage = document.querySelector("#tab-supervisor .sup-stage");
+    const pre = document.getElementById("sup-preview");
+    const geom = document.getElementById("sup-geom");
+    const msg = document.querySelector('#tab-supervisor .msg-panel[data-kind="sup"]');
+    const previewBtn = document.getElementById("sup-break-preview");
+    const tile = document.querySelector("#sup-gallery .role-item");
+    const thumb = tile && tile.querySelector("img");
+    const cap = tile && tile.querySelector(".role-cap");
+    const rect = (el) => {
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { l: Math.round(r.left), w: Math.round(r.width), h: Math.round(r.height) };
+    };
+    const cs = (el, prop) => (el ? getComputedStyle(el)[prop] : null);
+    const pb = previewBtn && previewBtn.getBoundingClientRect();
+    const pr = pre && pre.getBoundingClientRect();
     return {
       cardCount: cards.length,
+      cardL: L(main),
       line: main ? line(main) : null,
-      // 卡头里的三件套：折叠箭头 / 标题 / 预览 / 总开关
       head: head
         ? {
             fold: !!head.querySelector(".card-fold"),
             title: (head.querySelector("h3") || {}).textContent || "",
+            l: L(head),
             h3: L(head.querySelector("h3")),
-            preview: !!document.getElementById("sup-break-preview"),
             switchInHead: !!head.querySelector(".card-switch > input#sup-enabled"),
+            previewInHead: !!head.querySelector("#sup-break-preview"),
+            modeInHead: !!head.querySelector("#sup-selection-btn"),
           }
         : null,
-      gallery: L(document.getElementById("sup-gallery-panel")),
-      adv: L(document.getElementById("sup-advanced")),
-      msg: L(document.querySelector('#tab-supervisor .msg-panel[data-kind="sup"]')),
-      figure: {
-        exists: !!fig,
-        pad: fig ? getComputedStyle(fig).padding : "",
-        overflow: fig ? getComputedStyle(fig).overflow : "",
-        // 图铺满：预览块的四条边要贴到卡片内沿（1px 边框之内）
-        insetL: pr && fr ? +(pr.left - fr.left).toFixed(1) : null,
-        insetR: pr && fr ? +(fr.right - pr.right).toFixed(1) : null,
-        insetT: pr && fr ? +(pr.top - fr.top).toFixed(1) : null,
-        insetB: pr && fr ? +(fr.bottom - pr.bottom).toFixed(1) : null,
-        w: pr ? Math.round(pr.width) : null,
-        cardW: fr ? Math.round(fr.width) : null,
-      },
+      // 显示方式按钮：住在左列名单标题行右端、“＋”的左侧，与“提醒内容”那枚同款
+      mode: (() => {
+        const btn = document.getElementById("sup-selection-btn");
+        const add = document.getElementById("sup-gallery-add");
+        const ref = document.querySelector('#tab-supervisor .msg-panel[data-kind="sup"] .snd-mode-btn');
+        if (!btn || !add) return null;
+        const b = btn.getBoundingClientRect();
+        const a = add.getBoundingClientRect();
+        const rb = ref && ref.getBoundingClientRect();
+        const c1 = getComputedStyle(btn);
+        const c2 = ref ? getComputedStyle(ref) : null;
+        const svg = btn.querySelector("svg");
+        return {
+          cls: btn.className.trim(),
+          parentCls: (btn.parentElement.className || "").trim(),
+          sameRow: Math.abs(b.top + b.height / 2 - (a.top + a.height / 2)) <= 1,
+          leftOfAdd: b.right <= a.left + 1,
+          inGalleryHead: !!btn.closest("#sup-gallery-panel .msg-head"),
+          // 与“提醒内容”那枚同款：盒高、内边距、圆角、底色、图标尺寸全一致
+          sameStyle:
+            !!c2 && b.height === rb.height && Math.abs(b.width - rb.width) <= 0.5 &&
+            c1.padding === c2.padding && c1.borderRadius === c2.borderRadius &&
+            c1.backgroundColor === c2.backgroundColor,
+          mode: btn.dataset.mode || null,
+          iconW: svg ? Math.round(svg.getBoundingClientRect().width) : 0,
+        };
+      })(),
+      cols: cs(grid, "gridTemplateColumns") || "",
+      gap: cs(grid, "gap"),
+      gridRadius: cs(grid, "borderTopLeftRadius"),
+      gridBorder: cs(grid, "borderTopWidth"),
+      sideL: L(side),
+      sideR: R(side),
+      sideBorderRight: cs(side, "borderRightWidth"),
+      stageL: L(stage),
+      stageBorderLeft: cs(stage, "borderLeftWidth"),
+      preRect: rect(pre),
+      preRadiusTL: cs(pre, "borderTopLeftRadius"),
+      geomL: L(geom),
+      msgL: L(msg),
+      // 画面右上只剩一枚“预览”：名字与状态徽章都不该再出现在预览里
+      preButtons: pre ? pre.querySelectorAll("button").length : -1,
+      preOtherHud: document.querySelectorAll("#sup-preview .sup-stage-name, #sup-preview .sup-stage-badge").length,
+      previewBtn: pb && pr ? {
+        inside: pb.top >= pr.top && pb.right <= pr.right + 1 && pb.bottom <= pr.bottom,
+        gapTop: Math.round(pb.top - pr.top),
+        gapRight: Math.round(pr.right - pb.right),
+        w: Math.round(pb.width),
+      } : null,
+      // 拖柄与折叠开关：这两样功能已取消，DOM 里不该再留
+      grips: document.querySelectorAll("#tab-supervisor .gallery-resize").length,
+      toggles: document.querySelectorAll("#tab-supervisor .msg-toggle, #tab-supervisor .fold-panel").length,
+      // 名单标题行下的分隔线：与“提醒内容”标题下那条（.msg-body 的 border-top）同宽同色
+      divider: (() => {
+        const gh = document.querySelector("#sup-gallery-panel > .msg-head");
+        const body = document.querySelector('#tab-supervisor .msg-panel[data-kind="sup"] .msg-body');
+        if (!gh || !body) return null;
+        const g = getComputedStyle(gh);
+        const m = getComputedStyle(body);
+        return {
+          w: g.borderBottomWidth, c: g.borderBottomColor,
+          refW: m.borderTopWidth, refC: m.borderTopColor,
+          headH: Math.round(gh.getBoundingClientRect().height),
+        };
+      })(),
+      // 名字的可用宽度 + 缩略图离列表框左边框的距离（用户要求：缩进压到最小）
+      capW: cap ? Math.round(cap.getBoundingClientRect().width) : null,
+      thumbInset: thumb && pr ? Math.round(thumb.getBoundingClientRect().left - side.getBoundingClientRect().left) : null,
+      // 右列三块自上而下的实际位置：舞台 → 调节 → 台词（顺序即操作顺序）
+      order: [pre, geom, msg].every(Boolean)
+        ? [pre, geom, msg].map((el) => Math.round(el.getBoundingClientRect().top))
+        : [],
     };
   });
-  const sups = [sup.gallery, sup.adv, sup.msg];
   check(
-    sup.line !== null && Math.abs(sup.line - gen.soundLine) <= 1,
-    "缩进 · 督休专员页正文线与通用配置页同一条（正文 +24）",
-    JSON.stringify({ sup: sup.line, gen: gen.soundLine }),
+    sup.divider && sup.divider.w === "1px" && sup.divider.w === sup.divider.refW &&
+      sup.divider.c === sup.divider.refC,
+    "督休专员 · 名单标题行下有一条发丝线（与“提醒内容”标题下那条同宽同色）",
+    JSON.stringify(sup.divider),
   );
+  check(sup.cardCount === 1, "督休专员 · 整页一张卡：左列选人 + 右列工作台", String(sup.cardCount));
+  // 2026-11-14 二版：这一页退出 +24 正文缩进 —— 卡片左内边距回到 16（+1 边框 = 17）
   check(
-    sups.every((v) => v !== null && Math.abs(v - gen.soundPanel) <= 1),
-    "缩进 · 候选专员 / 高级选项 / 提醒内容三块面板与「提示音」面板落在同一个 x 上",
-    JSON.stringify({ panels: sups, genPanel: gen.soundPanel }),
+    sup.line !== null && sup.cardL !== null && Math.abs(sup.line - sup.cardL - 17) <= 1,
+    "缩进 · 督休专员页正文线 = 卡片左缘 +16（不再借用另两页的 +24，名单贴左）",
+    JSON.stringify({ line: sup.line, cardL: sup.cardL, delta: sup.line - sup.cardL, gen: gen.soundLine }),
   );
+  // 卡头不再外拉（margin-left 归零）：它的左缘就是正文线，箭头吊在名单左边框上方；
+  // 标题文字因此比正文线右 24px（箭头 16 + gap 8），这是这一页自己的对齐口径。
   check(
-    sup.head && sup.head.fold && sup.head.title.trim() === "督休专员" && sup.head.preview &&
-      sup.head.switchInHead && Math.abs(sup.head.h3 - sup.line) <= 1,
-    "督休专员 · 可折叠卡头：箭头 / 标题「督休专员」/ 预览 / 总开关，标题与正文同一条竖线",
+    sup.head && sup.head.fold && sup.head.title.trim() === "督休专员" && sup.head.switchInHead &&
+      !sup.head.previewInHead && !sup.head.modeInHead && Math.abs(sup.head.l - sup.line) <= 1,
+    "督休专员 · 卡头只有折叠箭头 / 标题 / 总闸（显示方式与预览都不在卡头）",
     JSON.stringify(sup.head),
   );
+  // 显示方式：从卡头搬回左列名单的标题行右端，紧贴“＋”左侧，与“提醒内容”那枚同款
   check(
-    sup.figure.exists && sup.figure.pad === "0px" && sup.figure.overflow === "hidden" &&
-      sup.figure.insetL === 1 && sup.figure.insetR === 1 &&
-      sup.figure.insetT === 1 && sup.figure.insetB === 1,
-    "督休专员 · 立绘预览独立成卡且铺满整张卡（四边只留 1px 边框，无内边距）",
-    JSON.stringify(sup.figure),
+    sup.mode && sup.mode.inGalleryHead && sup.mode.leftOfAdd && sup.mode.sameRow &&
+      sup.mode.cls === "snd-mode-btn" && sup.mode.iconW >= 14,
+    "督休专员 · 显示方式按钮在名单标题行、位于“＋”左侧（与“提醒内容”同款图标按钮）",
+    JSON.stringify(sup.mode),
+  );
+  check(
+    sup.mode && sup.mode.sameStyle,
+    "督休专员 · 显示方式按钮与“提醒内容”那枚盒高 / 内边距 / 圆角 / 底色完全一致",
+    JSON.stringify(sup.mode),
+  );
+  // 左列是 clamp(168px, 26%, 212px)：探针窗口 1000 宽 → 内容区 ~724 → 26% ≈ 188px。
+  // 要点是**必须两列**（不因宽度不足回落成上下堆叠），且左列落在 168..212 区间内。
+  const colParts = String(sup.cols || "").trim().split(/\s+/);
+  const leftCol = parseFloat(colParts[0]) || 0;
+  check(
+    colParts.length === 2 && leftCol >= 168 && leftCol <= 212,
+    "督休专员 · 固定两栏：左列 168~212px 随宽自适应、右列吃掉剩余宽度",
+    sup.cols,
+  );
+  check(
+    Math.abs(sup.sideL - sup.line) <= 1,
+    "督休专员 · 左列面板左缘落在正文线上",
+    JSON.stringify({ side: sup.sideL, line: sup.line }),
+  );
+  // 两列之间零间距、只隔一条竖线：右列自己不带左边框（不然就是双线 / 一条缝）
+  check(
+    sup.gap === "0px" && Math.abs(sup.stageL - sup.sideR) <= 1 &&
+      sup.stageBorderLeft === "0px" && sup.sideBorderRight === "1px",
+    "督休专员 · 左右两列紧贴、共用一条发丝线（无间距、无双重边框）",
+    JSON.stringify({
+      gap: sup.gap, sideR: sup.sideR, stageL: sup.stageL,
+      sideBorderRight: sup.sideBorderRight, stageBorderLeft: sup.stageBorderLeft,
+    }),
+  );
+  check(
+    sup.gridBorder === "1px" && sup.preRadiusTL === "0px" && parseFloat(sup.gridRadius) > 0,
+    "督休专员 · 工作台一个外框：外框圆角，舞台图左上角直角（与名单连成一片）",
+    JSON.stringify({ border: sup.gridBorder, gridRadius: sup.gridRadius, preTL: sup.preRadiusTL }),
+  );
+  check(
+    sup.preRect && sup.preRect.w > 300 && sup.preRect.h > 150,
+    "督休专员 · 舞台在右列内拿到实际尺寸",
+    JSON.stringify(sup.preRect),
+  );
+  // 容差 2px：三块共处 .sup-stage 一个盒子（舞台贴边、另两块在列宽内），亚像素舍入会差 1px+
+  check(
+    sup.preRect && sup.geomL !== null && sup.msgL !== null &&
+      Math.abs(sup.preRect.l - sup.stageL) <= 2 && Math.abs(sup.geomL - sup.stageL) <= 2 &&
+      Math.abs(sup.msgL - sup.stageL) <= 2,
+    "督休专员 · 舞台 / 立绘调节 / 提醒内容三块左缘对齐",
+    JSON.stringify({ stage: sup.stageL, pre: sup.preRect && sup.preRect.l, geom: sup.geomL, msg: sup.msgL }),
+  );
+  check(
+    sup.order.length === 3 && sup.order[0] < sup.order[1] && sup.order[1] < sup.order[2],
+    "督休专员 · 右列自上而下：舞台 → 立绘调节 → 提醒内容",
+    JSON.stringify(sup.order),
   );
 
-  // 折叠 / 展开：点卡头收起（正文隐藏）→ 再点展开；状态记 localStorage
+  // ---- 画面右上：只保留“预览”（名字与“参与轮换”徽章已删除）
+  check(
+    sup.preButtons === 1 && sup.preOtherHud === 0 && sup.previewBtn &&
+      sup.previewBtn.inside && sup.previewBtn.gapTop > 0 && sup.previewBtn.gapTop < 30 &&
+      sup.previewBtn.gapRight > 0 && sup.previewBtn.gapRight < 30,
+    "督休专员 · 预览图右上只有“预览”一枚浮标（名称与轮换徽章已撤）",
+    JSON.stringify({ buttons: sup.preButtons, extraHud: sup.preOtherHud, btn: sup.previewBtn }),
+  );
+
+  // ---- 取消的两套控件：列表底部拖柄、列表与台词面板的折叠开关
+  check(
+    sup.grips === 0 && sup.toggles === 0,
+    "督休专员 · 列表底部拖柄与两处折叠开关都不再存在",
+    JSON.stringify({ grips: sup.grips, toggles: sup.toggles }),
+  );
+
+  // ---- 名字宽度：内边距压到最小之后，168px 的左列也该读得下 7 个字以上
+  check(
+    sup.capW !== null && sup.capW >= 90 && sup.thumbInset !== null && sup.thumbInset <= 9,
+    "督休专员 · 缩略图贴着列表框左边框（≤9px），名字可用宽度 ≥90px",
+    JSON.stringify({ capW: sup.capW, thumbInset: sup.thumbInset }),
+  );
+
+  // ---- 台词 → 舞台：点哪条，上面的对话框就念哪条
+  const peek = await page.evaluate(async () => {
+    const rows = [...document.querySelectorAll(".sup-msg .msg-item")];
+    if (rows.length < 2) return null;
+    const txt = rows[1].querySelector(".msg-text");
+    txt.focus();
+    await new Promise((r) => setTimeout(r, 250));
+    const got = document.getElementById("sup-preview-line").textContent;
+    const marked = document.querySelectorAll(".sup-msg .msg-item.peeking").length;
+    txt.blur();
+    return { want: txt.value, got, marked };
+  });
+  check(
+    !!peek && peek.got === peek.want,
+    "督休专员 · 点第 2 条台词，舞台对话框改念这一句（所言即所见）",
+    peek ? JSON.stringify({ got: peek.got.slice(0, 14), want: peek.want.slice(0, 14) }) : "null",
+  );
+  check(
+    !!peek && peek.marked === 1,
+    "督休专员 · 只有被点的那一行带“正在试说”标记",
+    String(peek && peek.marked),
+  );
+
+  // ---- 固定双列：窄到窗口下限也不塌成上下（2026-11-14 二版的核心契约）
+  await page.setViewportSize({ width: 760, height: 900 });
+  await sleep(500);
+  const narrow = await page.evaluate(() => {
+    const g = document.querySelector("#tab-supervisor .sup-grid");
+    const side = document.getElementById("sup-gallery-panel").getBoundingClientRect();
+    const stage = document.querySelector("#tab-supervisor .sup-stage").getBoundingClientRect();
+    const content = document.getElementById("content");
+    return {
+      cols: getComputedStyle(g).gridTemplateColumns,
+      sideRight: Math.round(side.right),
+      stageLeft: Math.round(stage.left),
+      stageW: Math.round(stage.width),
+      sideW: Math.round(side.width),
+      overflowX: content ? content.scrollWidth - content.clientWidth : 0,
+    };
+  });
+  await page.setViewportSize({ width: 1010, height: 900 });
+  await sleep(500); // 等窗口尺寸变化后的重排落定
+  check(
+    narrow.cols.trim().split(/\s+/).length === 2 && narrow.sideW >= 160 && narrow.stageW >= 200,
+    "督休专员 · 760px 窗口仍是两列（左列 160+、右列 200+），不回落成上下堆叠",
+    JSON.stringify(narrow),
+  );
+  check(
+    narrow.sideRight <= narrow.stageLeft + 1 && narrow.overflowX <= 0,
+    "督休专员 · 窄窗口下左列仍在右列左侧且无横向溢出",
+    JSON.stringify({ sideRight: narrow.sideRight, stageLeft: narrow.stageLeft, overflowX: narrow.overflowX }),
+  );
+
+  // 折叠 / 展开：这一页只有一张卡，收起时列表与舞台一起隐藏；状态记 localStorage
   const foldState = [];
   for (let i = 0; i < 2; i++) {
     await page.click("#sup-main > .card-head .card-fold");
     await sleep(250);
     foldState.push(await page.evaluate(() => {
       const card = document.getElementById("sup-main");
-      const body = document.getElementById("sup-gallery-panel");
+      const grid = document.querySelector("#tab-supervisor .sup-grid");
       return {
         closed: card.classList.contains("closed"),
-        bodyVisible: body.getBoundingClientRect().height > 0,
+        gridVisible: grid.getBoundingClientRect().height > 0,
         ls: localStorage.getItem("wr-fold-sup-main"),
-        figVisible: document.getElementById("sup-preview").getBoundingClientRect().height > 0,
       };
     }));
   }
   check(
-    foldState[0].closed && !foldState[0].bodyVisible && foldState[0].ls === "1" &&
-      foldState[0].figVisible,
-    "督休专员 · 点折叠箭头收起正文（预览卡不受影响，状态记 localStorage）",
+    foldState[0].closed && !foldState[0].gridVisible && foldState[0].ls === "1",
+    "督休专员 · 收起后整块工作台隐藏（列表与舞台一起）",
     JSON.stringify(foldState[0]),
   );
   check(
-    !foldState[1].closed && foldState[1].bodyVisible && foldState[1].ls === "0",
-    "督休专员 · 再点一次展开正文（默认展开、可反复开合）",
+    !foldState[1].closed && foldState[1].gridVisible && foldState[1].ls === "0",
+    "督休专员 · 再点一次展开（默认展开、可反复开合）",
     JSON.stringify(foldState[1]),
+  );
+
+  // 拖拽排序（2026-11-14 单列重排后新增的唯一验证点）：
+  // 名单从多列网格改成单列，落点判断由“先分行、再比左右”简化成纯 y，
+  // 插入指示也从竖条改成横线。这里手动派发 HTML5 拖拽事件（page.dragTo 走鼠标手势，
+  // 不触发 dragstart），断言落点横线的位置与形状、顺序变化、以及落盘。
+  const dragBefore = await page.evaluate(() =>
+    [...document.querySelectorAll("#sup-gallery .role-item")].map((e) => e.dataset.name),
+  );
+  const dragInfo = await page.evaluate(() => {
+    const tiles = [...document.querySelectorAll("#sup-gallery .role-item")];
+    const box = document.getElementById("sup-gallery");
+    const from = tiles[0];
+    const to = tiles[2];
+    const dt = new DataTransfer();
+    const fire = (el, type, x, y) =>
+      el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y }));
+    const fr = from.getBoundingClientRect();
+    const tr = to.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+    fire(from, "dragstart", fr.left + 20, fr.top + 10);
+    // 落在第三块的**下半** → 插到它后面
+    fire(box, "dragover", tr.left + 40, tr.top + tr.height * 0.8);
+    const mk = document.getElementById("role-drop-marker");
+    const mkRect = mk ? mk.getBoundingClientRect() : null;
+    const marker = mkRect
+      ? { h: Math.round(mkRect.height), w: Math.round(mkRect.width), relTop: Math.round(mkRect.top - boxRect.top) }
+      : null;
+    fire(box, "drop", tr.left + 40, tr.top + tr.height * 0.8);
+    fire(from, "dragend", 0, 0);
+    return { marker, expectTop: Math.round(tr.bottom - boxRect.top) };
+  });
+  await sleep(700);
+  const dragAfter = await page.evaluate(() =>
+    [...document.querySelectorAll("#sup-gallery .role-item")].map((e) => e.dataset.name),
+  );
+  const dragOrder = await page.evaluate(async () => (await window.api.getSettings()).supervisor.order || []);
+  check(
+    dragInfo.marker && dragInfo.marker.h <= 3 && dragInfo.marker.w > 100,
+    "督休专员 · 拖拽落点是一条铺满列表宽的横线",
+    JSON.stringify(dragInfo.marker),
+  );
+  check(
+    dragInfo.marker && Math.abs(dragInfo.marker.relTop - dragInfo.expectTop) <= 4,
+    "督休专员 · 横线画在目标行的下沿（落在下半 → 插到它后面）",
+    JSON.stringify({ marker: dragInfo.marker, expect: dragInfo.expectTop }),
+  );
+  check(
+    dragAfter[2] === dragBefore[0] && dragAfter[0] === dragBefore[1],
+    "督休专员 · 拖动后名单顺序变化（第 1 位移到第 3 位之后）",
+    JSON.stringify({ before: dragBefore.slice(0, 4), after: dragAfter.slice(0, 4) }),
+  );
+  check(
+    JSON.stringify(dragOrder) === JSON.stringify(dragAfter),
+    "督休专员 · 新顺序落盘到 supervisor.order",
+    JSON.stringify(dragOrder.slice(0, 4)),
+  );
+  // 拖回原位：后面的断言与收尾都假定原始顺序
+  await page.evaluate((names) => {
+    const first = names[0];
+    const tiles = [...document.querySelectorAll("#sup-gallery .role-item")];
+    const from = tiles.find((t) => t.dataset.name === first);
+    const to = tiles[0];
+    const box = document.getElementById("sup-gallery");
+    const dt = new DataTransfer();
+    const fire = (el, type, x, y) =>
+      el.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: x, clientY: y }));
+    const fr = from.getBoundingClientRect();
+    const tr = to.getBoundingClientRect();
+    fire(from, "dragstart", fr.left + 20, fr.top + 10);
+    fire(box, "dragover", tr.left + 40, tr.top + 4);
+    fire(box, "drop", tr.left + 40, tr.top + 4);
+    fire(from, "dragend", 0, 0);
+  }, dragBefore);
+  await sleep(700);
+  const dragRestored = await page.evaluate(() =>
+    [...document.querySelectorAll("#sup-gallery .role-item")].map((e) => e.dataset.name),
+  );
+  const orderRestored = await page.evaluate(async () => (await window.api.getSettings()).supervisor.order || []);
+  check(
+    JSON.stringify(dragRestored) === JSON.stringify(dragBefore) &&
+      JSON.stringify(orderRestored) === JSON.stringify(dragBefore),
+    "督休专员 · 拖回原位后顺序与落盘都复原",
+    JSON.stringify(dragRestored.slice(0, 4)),
   );
 }
 
