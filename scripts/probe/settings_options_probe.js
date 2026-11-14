@@ -2718,6 +2718,248 @@ async function verifySlotPanel(page) {
   await pickMode("short", "倒计时");
 }
 
+/* 卡片缩进体系（2026-11-13）：时间规划 / 通用配置 / 督休专员三页共用一套
+   ——「卡内正文 +24，描边面板再往左挂 13」。
+   督休专员页这一条是当天傍晚补的：用户要求候选专员 / 高级选项 / 提醒内容的缩进
+   与通用配置「声音」卡的「提示音」列表相同。量的是**绝对位置**（同一窗口宽度下
+   两页的卡左缘相同），因此三块面板与提示音面板必须落在同一个 x 上，而不是各自
+   “相对卡左缘 -13”就算过 —— 那正是改之前的错误状态（260 vs 284）。 */
+async function verifyCardIndent(page) {
+  console.log("\n[缩进] 三页卡内正文与描边面板同线");
+
+  const pick = async (tab) => {
+    await page.evaluate((t) => {
+      [...document.querySelectorAll(".nav-item")].find((b) => b.dataset.tab === t).click();
+    }, tab);
+    await sleep(400);
+  };
+  // 正文左缘 = 盒左缘 + 边框 + 内边距（.card 有 1px 边框）
+
+  await pick("general");
+  const gen = await page.evaluate(() => {
+    const L = (el) => (el ? +el.getBoundingClientRect().left.toFixed(1) : null);
+    const line = (el) => {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return +(r.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft)).toFixed(1);
+    };
+    const cards = [...document.querySelectorAll("#tab-general > .card")];
+    const h3s = cards.map((c) => c.querySelector(":scope > .card-head h3"));
+    const sound = document.getElementById("gen-sound");
+    return {
+      titles: h3s.map((h) => (h ? h.textContent.trim() : "?")),
+      foldable: cards.map((c) => !!c.querySelector(":scope > .card-head > .card-fold")),
+      lines: cards.map(line),
+      h3: h3s.map(L),
+      rowLabel: cards.map((c) => L(c.querySelector(":scope > .row label, :scope > .row .switch-row"))),
+      soundLine: sound ? line(sound) : null,
+      soundPanel: L(document.getElementById("snd-music-panel")),
+    };
+  });
+
+  check(
+    gen.foldable.length === 5 && gen.foldable.every(Boolean),
+    "缩进 · 通用配置五张卡都带折叠按钮（缩进基准 = 卡头标题文字）",
+    JSON.stringify(gen.titles),
+  );
+  check(
+    gen.titles[0] === "启动",
+    "缩进 · 通用配置第一张卡标题是「启动」（原「行为」）",
+    gen.titles[0],
+  );
+  const sameLine = gen.lines.every((v) => Math.abs(v - gen.lines[0]) <= 1);
+  const h3OnLine = gen.h3.every((v, i) => v === null || Math.abs(v - gen.lines[i]) <= 1);
+  const rowsOnLine = gen.rowLabel.every((v, i) => v === null || Math.abs(v - gen.lines[i]) <= 1);
+  check(
+    sameLine && h3OnLine && rowsOnLine,
+    "缩进 · 通用配置：五张卡正文左缘同一条竖线，且与卡头标题、卡片行标签齐平",
+    JSON.stringify({ lines: gen.lines, h3: gen.h3, rows: gen.rowLabel }),
+  );
+  check(
+    gen.soundPanel !== null && Math.abs(gen.soundLine - 13 - gen.soundPanel) <= 1,
+    "缩进 · 通用配置「提示音」面板左缘比正文线外挂 13px（左侧伸进卡片留白）",
+    JSON.stringify({ line: gen.soundLine, panel: gen.soundPanel }),
+  );
+
+  await pick("supervisor");
+  const sup = await page.evaluate(() => {
+    const L = (el) => (el ? +el.getBoundingClientRect().left.toFixed(1) : null);
+    const line = (el) => {
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      return +(r.left + parseFloat(cs.borderLeftWidth) + parseFloat(cs.paddingLeft)).toFixed(1);
+    };
+    const cards = [...document.querySelectorAll("#tab-supervisor > .card")];
+    const main = document.getElementById("sup-main");
+    const fig = document.querySelector("#tab-supervisor > .figure-card");
+    const pre = document.getElementById("sup-preview");
+    const pr = pre ? pre.getBoundingClientRect() : null;
+    const fr = fig ? fig.getBoundingClientRect() : null;
+    const head = main && main.querySelector(":scope > .card-head");
+    return {
+      cardCount: cards.length,
+      line: main ? line(main) : null,
+      // 卡头里的三件套：折叠箭头 / 标题 / 预览 / 总开关
+      head: head
+        ? {
+            fold: !!head.querySelector(".card-fold"),
+            title: (head.querySelector("h3") || {}).textContent || "",
+            h3: L(head.querySelector("h3")),
+            preview: !!document.getElementById("sup-break-preview"),
+            switchInHead: !!head.querySelector(".card-switch > input#sup-enabled"),
+          }
+        : null,
+      gallery: L(document.getElementById("sup-gallery-panel")),
+      adv: L(document.getElementById("sup-advanced")),
+      msg: L(document.querySelector('#tab-supervisor .msg-panel[data-kind="sup"]')),
+      figure: {
+        exists: !!fig,
+        pad: fig ? getComputedStyle(fig).padding : "",
+        overflow: fig ? getComputedStyle(fig).overflow : "",
+        // 图铺满：预览块的四条边要贴到卡片内沿（1px 边框之内）
+        insetL: pr && fr ? +(pr.left - fr.left).toFixed(1) : null,
+        insetR: pr && fr ? +(fr.right - pr.right).toFixed(1) : null,
+        insetT: pr && fr ? +(pr.top - fr.top).toFixed(1) : null,
+        insetB: pr && fr ? +(fr.bottom - pr.bottom).toFixed(1) : null,
+        w: pr ? Math.round(pr.width) : null,
+        cardW: fr ? Math.round(fr.width) : null,
+      },
+    };
+  });
+  const sups = [sup.gallery, sup.adv, sup.msg];
+  check(
+    sup.line !== null && Math.abs(sup.line - gen.soundLine) <= 1,
+    "缩进 · 督休专员页正文线与通用配置页同一条（正文 +24）",
+    JSON.stringify({ sup: sup.line, gen: gen.soundLine }),
+  );
+  check(
+    sups.every((v) => v !== null && Math.abs(v - gen.soundPanel) <= 1),
+    "缩进 · 候选专员 / 高级选项 / 提醒内容三块面板与「提示音」面板落在同一个 x 上",
+    JSON.stringify({ panels: sups, genPanel: gen.soundPanel }),
+  );
+  check(
+    sup.head && sup.head.fold && sup.head.title.trim() === "督休专员" && sup.head.preview &&
+      sup.head.switchInHead && Math.abs(sup.head.h3 - sup.line) <= 1,
+    "督休专员 · 可折叠卡头：箭头 / 标题「督休专员」/ 预览 / 总开关，标题与正文同一条竖线",
+    JSON.stringify(sup.head),
+  );
+  check(
+    sup.figure.exists && sup.figure.pad === "0px" && sup.figure.overflow === "hidden" &&
+      sup.figure.insetL === 1 && sup.figure.insetR === 1 &&
+      sup.figure.insetT === 1 && sup.figure.insetB === 1,
+    "督休专员 · 立绘预览独立成卡且铺满整张卡（四边只留 1px 边框，无内边距）",
+    JSON.stringify(sup.figure),
+  );
+
+  // 折叠 / 展开：点卡头收起（正文隐藏）→ 再点展开；状态记 localStorage
+  const foldState = [];
+  for (let i = 0; i < 2; i++) {
+    await page.click("#sup-main > .card-head .card-fold");
+    await sleep(250);
+    foldState.push(await page.evaluate(() => {
+      const card = document.getElementById("sup-main");
+      const body = document.getElementById("sup-gallery-panel");
+      return {
+        closed: card.classList.contains("closed"),
+        bodyVisible: body.getBoundingClientRect().height > 0,
+        ls: localStorage.getItem("wr-fold-sup-main"),
+        figVisible: document.getElementById("sup-preview").getBoundingClientRect().height > 0,
+      };
+    }));
+  }
+  check(
+    foldState[0].closed && !foldState[0].bodyVisible && foldState[0].ls === "1" &&
+      foldState[0].figVisible,
+    "督休专员 · 点折叠箭头收起正文（预览卡不受影响，状态记 localStorage）",
+    JSON.stringify(foldState[0]),
+  );
+  check(
+    !foldState[1].closed && foldState[1].bodyVisible && foldState[1].ls === "0",
+    "督休专员 · 再点一次展开正文（默认展开、可反复开合）",
+    JSON.stringify(foldState[1]),
+  );
+}
+
+/* 页面级滚动条不许挤占宽度（2026-11-14 用户：出现垂直滚动条时卡片不要缩短）。
+   做法是 #content 的 scrollbar-gutter: stable —— 滚槽常驻，有无滚动条内容盒同宽。
+   逐页对比三种状态：
+     base     现状
+     noScroll 强制 overflowY:hidden（滚槽仍在）
+     ctrl     再把 gutter 打回 auto（无槽，应正好宽出一条滚动条）
+   断言以**卡片宽度**为准，因为用户看的就是卡片有没有缩；ctrl 那一条是对照组，
+   用来证明"差 10px"确实来自滚动条，而不是量到了别的盒子。 */
+async function verifyScrollbarGutter(page) {
+  console.log("\n[滚动条] 出现滚动条不挤占页面宽度");
+
+  const GRAB = `(() => {
+    const c = document.getElementById("content");
+    const tab = document.querySelector("#content .tab.active");
+    const cs = getComputedStyle(c);
+    const cr = c.getBoundingClientRect();
+    const bl = parseFloat(cs.borderLeftWidth) || 0;
+    const br = parseFloat(cs.borderRightWidth) || 0;
+    const card = tab ? tab.querySelector(".card") : null;
+    const cardR = card ? card.getBoundingClientRect() : null;
+    const r1 = (v) => Math.round(v * 10) / 10;
+    return {
+      gutter: cs.scrollbarGutter || "",
+      padR: parseFloat(cs.paddingRight) || 0,
+      barW: r1(c.offsetWidth - c.clientWidth - bl - br),
+      cardW: cardR ? r1(cardR.width) : null,
+      gap: cardR ? r1(cr.right - br - cardR.right) : null,
+    };
+  })()`;
+
+  const style = await page.evaluate(() => {
+    const cs = getComputedStyle(document.getElementById("content"));
+    return { gutter: cs.scrollbarGutter || "", padR: parseFloat(cs.paddingRight) || 0 };
+  });
+  check(
+    style.gutter === "stable" && Math.abs(style.padR - 16) <= 0.5,
+    "滚动条 · #content 常驻滚槽（scrollbar-gutter: stable；右内边距 16 = 26 − 10 槽）",
+    JSON.stringify(style),
+  );
+
+  const rows = [];
+  for (const tab of ["timing", "general", "supervisor", "stats", "shortcuts", "about"]) {
+    await page.evaluate((t) => {
+      const b = document.querySelector('#nav .nav-item[data-tab="' + t + '"]');
+      if (b) b.click();
+    }, tab);
+    await sleep(420);
+
+    const base = await page.evaluate(GRAB);
+    const noScroll = await page.evaluate(
+      `(() => { document.getElementById("content").style.overflowY = "hidden"; return ${GRAB}; })()`,
+    );
+    const ctrl = await page.evaluate(
+      `(() => { document.getElementById("content").style.scrollbarGutter = "auto"; return ${GRAB}; })()`,
+    );
+    await page.evaluate(() => {
+      const c = document.getElementById("content");
+      c.style.overflowY = "";
+      c.style.scrollbarGutter = "";
+    });
+    rows.push({ tab, base, noScroll, ctrl });
+  }
+
+  check(
+    rows.every((r) => r.base.cardW !== null && Math.abs(r.base.cardW - r.noScroll.cardW) <= 1),
+    "滚动条 · 六页：有滚动条与无滚动条时卡片同宽（滚动条不再挤占宽度）",
+    JSON.stringify(rows.map((r) => [r.tab, r.base.cardW, r.noScroll.cardW])),
+  );
+  check(
+    rows.every((r) => Math.abs(r.ctrl.cardW - r.noScroll.cardW - 10) <= 1),
+    "滚动条 · 对照：去掉滚槽后卡片正好宽 10px（差的正是那条滚动条，证明量到了真对象）",
+    JSON.stringify(rows.map((r) => [r.tab, r.noScroll.cardW, r.ctrl.cardW])),
+  );
+  check(
+    rows.every((r) => Math.abs(r.base.gap - 26) <= 1 && Math.abs(r.noScroll.gap - 26) <= 1),
+    "滚动条 · 卡片右缘到滚动条/空槽恒为 26px（滚不滚，右侧留白都不跳）",
+    JSON.stringify(rows.map((r) => [r.tab, r.base.gap, r.noScroll.gap])),
+  );
+}
+
 async function main() {  const browser = await chromium.launch({ channel: "msedge", headless: true });
   const ctx = await browser.newContext({ viewport: { width: 1010, height: 900 }, deviceScaleFactor: 1 });
   const page = await ctx.newPage();
@@ -2842,6 +3084,10 @@ async function main() {  const browser = await chromium.launch({ channel: "msedg
     await verifyModePanes(page);
     // 提醒时间（固定时刻表）的版式：无框清单 + 五列网格，见函数头注释
     await verifySlotPanel(page);
+    // 卡片缩进体系：三页共用一套（正文 +24、描边面板再挂 13）
+    await verifyCardIndent(page);
+    // 页面级滚动条：常驻滚槽，出现滚动条不挤窄卡片（六页对比三种状态）
+    await verifyScrollbarGutter(page);
 
     // 统计页：图表与表格由数据驱动，控件都是“导出 / 清空”这类不可逆动作，
     // 这里只验渲染，不点按钮（按钮由绑定级探针覆盖）。
