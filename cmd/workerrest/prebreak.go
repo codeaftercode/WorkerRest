@@ -468,9 +468,19 @@ func (a *App) preBreakAct(action string) error {
 			a.schedBreakNow()
 		}
 	case "postpone":
-		a.schedPostpone()
+		// 目标就是**这扇窗正在提示的那条提醒**（可能是自定义提醒）：按身份传下去，
+		// 别让调度器拿“全局 next”去猜 —— 暂停中照常弹出的自定义提醒会让两者不是同一个。
+		if kind != "" {
+			a.schedPostponeOf(kind)
+		} else {
+			a.schedPostpone()
+		}
 	case "skip":
-		a.schedSkip()
+		if kind != "" {
+			a.schedSkipOf(kind)
+		} else {
+			a.schedSkip()
+		}
 	case "pause":
 		a.schedPauseToggle()
 	default:

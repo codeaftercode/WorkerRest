@@ -40,7 +40,9 @@ type hotkeyDef struct {
 }
 
 var hotkeyDefs = []hotkeyDef{
-	{hkIdPostpone, "postpone", (*App).schedPostpone},
+	// “推迟当前休息”与侧栏「推迟休息」同一口径：只认下一条短 / 长休息，
+	// 外卖与自定义提醒不参与（2026-11-14 用户口径）。
+	{hkIdPostpone, "postpone", (*App).schedPostponeRest},
 	{hkIdEndEarly, "endEarly", (*App).schedEndBreak},
 	{hkIdPause, "pause", (*App).schedPauseToggle},
 	{hkIdNextBreak, "nextBreak", (*App).schedBreakNow},

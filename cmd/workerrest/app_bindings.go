@@ -147,6 +147,13 @@ func (a *App) BreakCurrent(win string) *model.BreakInfo {
 //
 //	调度器类（设置页侧栏按钮 / 托盘 / 快捷键共用同一批名字）：
 //	  breakNow / postpone / skip / pauseToggle / resetCycle / endBreak
+//
+// **侧栏这五个按钮全部只针对下一条短 / 长休息**（两者取最近的那一个，2026-11-14 用户口径）：
+// 外卖提醒与自定义提醒不参与 —— 它们各自有自己的窗口与入口，被侧栏按钮推走会把本该
+// 准点响的那次提醒吃掉。所以 postpone / skip 都走 *Rest 那一支；提前提示窗属于“窗上那条
+// 提醒”，走 PostponeOf / SkipOf（见 preBreakAct）。
+// 暂停 / 恢复是全局开关（暂停的是所有提醒），不针对某一条，没有“目标”可言。
+//
 //	设置窗口自绘标题栏：winMin / winMaxToggle / winClose
 //	休息窗口：endBreak（提前结束）、close（预览点任意处）
 //
@@ -158,10 +165,10 @@ func (a *App) Action(win, name string) error {
 		a.schedBreakNow()
 		return nil
 	case "postpone":
-		a.schedPostpone()
+		a.schedPostponeRest()
 		return nil
 	case "skip":
-		a.schedSkip()
+		a.schedSkipRest()
 		return nil
 	case "pauseToggle":
 		a.schedPauseToggle()
@@ -226,9 +233,39 @@ func (a *App) schedPostpone() {
 		a.sched.Postpone()
 	}
 }
+
+// schedPostponeRest 推迟「下一次短 / 长休息」：设置页侧栏「推迟休息」与快捷键
+// 「推迟当前休息」用。外卖提醒与自定义提醒不参与（2026-11-14 用户口径）——
+// 全局 next 是外卖 / 自定义提醒时，那一条不能被这个按钮推走。
+func (a *App) schedPostponeRest() {
+	if a.sched != nil {
+		a.sched.PostponeRest()
+	}
+}
+
+// schedPostponeOf 推迟指定身份的提醒（提前提示窗用：窗上那条才是目标）
+func (a *App) schedPostponeOf(kind string) {
+	if a.sched != nil {
+		a.sched.PostponeOf(kind)
+	}
+}
 func (a *App) schedSkip() {
 	if a.sched != nil {
 		a.sched.Skip()
+	}
+}
+
+// schedSkipRest 跳过「下一次短 / 长休息」（侧栏「跳过本次」/ 托盘同一口径）
+func (a *App) schedSkipRest() {
+	if a.sched != nil {
+		a.sched.SkipRest()
+	}
+}
+
+// schedSkipOf 跳过指定身份的提醒（提前提示窗用）
+func (a *App) schedSkipOf(kind string) {
+	if a.sched != nil {
+		a.sched.SkipOf(kind)
 	}
 }
 

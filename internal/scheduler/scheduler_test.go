@@ -309,11 +309,19 @@ func TestSchedulerPostponeShiftsPlan(t *testing.T) {
 
 // 原定时刻已经过去（例如系统刚从睡眠里醒、tick 还没跟上）时，推迟仍要保证往后走：
 // 基准退化成“现在”，不能算出比现在更早的时刻。
+//
+// 构造要连挂起线一起挪：NextAt 与 line.At 在生产里永远是同一份 replan 推导出来的，
+// 只改 NextAt 造出的是不可能存在的状态（推迟会找不到要挪的那条线）。
 func TestSchedulerPostponeFromOverdue(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)
 	s.replan()
 	s.mu.Lock()
 	s.state.NextAt = nowMs() - 60_000 // 已经过期 1 分钟
+	for i := range s.state.Lines {
+		if s.state.Lines[i].Type == "short" {
+			s.state.Lines[i].At = s.state.NextAt
+		}
+	}
 	s.mu.Unlock()
 
 	s.Postpone()
@@ -321,6 +329,9 @@ func TestSchedulerPostponeFromOverdue(t *testing.T) {
 	want := nowMs() + 120_000
 	if diff := got.NextAt - want; diff < -2000 || diff > 2000 {
 		t.Fatalf("过期后推迟应是现在+2 分钟，want=%d got=%d", want, got.NextAt)
+	}
+	if len(got.Lines) != 1 || got.Lines[0].At != got.NextAt {
+		t.Fatalf("过期后推迟也要把挂起线挪到新时刻，得到 %+v", got.Lines)
 	}
 }
 

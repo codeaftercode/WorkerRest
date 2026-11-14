@@ -168,10 +168,18 @@ type SchedulerState struct {
 	NextAt   int64  `json:"nextAt"`
 	// NextSource 没有安排（全部关闭）时为 null
 	NextSource *string `json:"nextSource"`
-	// PostponeAllowed 当前这一跳（NextType）允不允许推迟 —— 该提醒卡勾了「允许推迟提醒」。
-	// 侧栏「推迟休息」按钮据此显隐；快捷键 / 托盘走同一个调度器入口，由 Scheduler.Postpone
-	// 再挡一道（前端藏起来只是别让人点到一个必然无反应的按钮，判据只有一份）。
+	// PostponeAllowed 下一条短 / 长休息（RestKind）允不允许推迟 —— 那条提醒卡勾了
+	// 「允许推迟提醒」。侧栏「推迟休息」按钮据此显隐；快捷键 / 托盘走同一个调度器入口
+	// （Scheduler.PostponeRest），由它再挡一道（前端藏起来只是别让人点到一个必然无反应的
+	// 按钮，判据只有一份）。
+	//
+	// 注意口径：它说的是 **短 / 长休息那一条**，不是全局 NextType。全局 next 可能是外卖或
+	// 自定义提醒（它们各自有自己的推迟入口），拿它们的设置来决定「推迟休息」显不显示，
+	// 就会出现“下一条休息明明能推、按钮却没了”这种错位（2026-11-14 修正）。
 	PostponeAllowed bool `json:"postponeAllowed"`
+	// RestKind 下一条短 / 长休息的身份（short | long；两者都没排上时为空串）。
+	// 侧栏那组按钮（立即休息 / 推迟休息 / 跳过本次 / 重置周期）的目标就是它。
+	RestKind string `json:"restKind"`
 	// Rest 短/长休息线里最近的一条（状态卡“下次休息提醒”格）；null = 两者都没安排
 	Rest *PlanRef `json:"rest"`
 	// Other 外卖提醒与所有自定义提醒里最近的一条（状态卡“下次XX提醒”格）；null = 都没启用

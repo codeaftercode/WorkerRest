@@ -9,25 +9,59 @@ import (
 
 // ---------- 对外的动作（托盘 / 设置页 / 快捷键 / 提前提示窗都汇聚到这里） ----------
 
-// resetCycle 重置周期：休息进行中先正常收尾（关窗口、落账），再重置——
-// 否则状态归零了窗口还挂着，直到下一次休息开始才被顺带关掉。
+// ResetCycle 重置周期：把「短休息 → 长休息」这一轮从头算。
+//
+// 目标**只是内置短 / 长休息**（与侧栏那组按钮同一口径，2026-11-14 用户口径）：
+// 外卖提醒、自定义提醒的挂起线、倒计时进度、推迟待办、等待空闲一律不动 ——
+// 点一次「重置周期」不该把下午三点的喝水提醒也按新配置推后。
+//
+// 休息进行中先正常收尾（关窗、落账），否则状态归零了窗口还挂着；但只在结束的
+// 是短 / 长休息时这样做 —— 自定义提醒的窗不归这个按钮管，硬收掉等于替用户结束一次
+// 他没让结束的提醒。
 func (s *Scheduler) ResetCycle() {
 	s.mu.Lock()
 	inBreak := s.state.Phase == "break"
+	builtinBreak := isBuiltinBreakID(s.state.NextType)
+	s.resetBuiltinCycleLocked()
 	s.mu.Unlock()
+	if inBreak && !builtinBreak {
+		// 正在提醒的是外卖 / 自定义提醒：只重排短 / 长这一轮，phase 不动。
+		// 走 scheduleNext 会把 phase 拉回 idle，挂着的那扇提醒窗就没人收窗了。
+		s.replan()
+		s.emitState()
+		return
+	}
 	if inBreak {
 		s.EndBreak()
 	}
-	s.mu.Lock()
-	s.state.ShortsSinceLong = 0
-	// 显式重置周期：挂起线清空，本次重排全部按当前配置重新起算（不保留旧倒计时进度）
-	s.state.Lines = []model.PlannedBreak{}
-	s.anchorIv = map[string]int64{}
-	// 推迟表与“等待空闲”的挂起也一起清：显式重置就是要按新配置从头来
-	s.postponed = map[string]*postponedBreak{}
-	s.clearIdleWaitLocked()
-	s.mu.Unlock()
 	s.scheduleNext()
+}
+
+// resetBuiltinCycleLocked 清掉内置短 / 长这一轮的进度与挂起线（调用方必须已持有 s.mu）。
+// 自定义提醒的线与锚点原样留着，replan 时它们的倒计时进度照样沿用。
+func (s *Scheduler) resetBuiltinCycleLocked() {
+	st := &s.state
+	st.ShortsSinceLong = 0
+	kept := make([]model.PlannedBreak, 0, len(st.Lines))
+	for _, l := range st.Lines {
+		if isBuiltinBreakID(l.Type) {
+			continue
+		}
+		kept = append(kept, l)
+	}
+	st.Lines = kept
+	// 锚点表只清内置两条：其余身份的锚点是它们各自的倒计时进度，不能连带清零
+	delete(s.anchorIv, "short")
+	delete(s.anchorIv, "long")
+	// 内置短 / 长挂着的推迟待办一起撤：显式重置就是从当前配置重新起算
+	for k, p := range s.postponed {
+		if isBuiltinBreakID(p.kind) {
+			delete(s.postponed, k)
+		}
+	}
+	if s.idleWait != nil && isBuiltinBreakID(s.idleWait.kind) {
+		s.clearIdleWaitLocked()
+	}
 }
 
 // BreakNow 立即开始一次休息（跳过等待）。托盘 / 侧栏 / 快捷键的“立即休息”都走这里。
@@ -50,6 +84,33 @@ func (s *Scheduler) BreakNow() {
 	log.Printf("[scheduler] 立即休息：当前没有可用的短 / 长休息（外卖与自定义提醒不参与）")
 }
 
+// builtinNextLocked 当前挂起线里最早的一条内置短 / 长休息（外卖与自定义提醒不参与）。
+// 侧栏那组按钮的目标都从它来：全局 next（NextType / NextAt）可能是外卖或自定义提醒，
+// 拿它当目标会推错东西。调用方必须已持有 s.mu。
+func (s *Scheduler) builtinNextLocked() (string, int64, bool) {
+	kind, at := "", int64(0)
+	for _, l := range s.state.Lines {
+		if !isBuiltinBreakID(l.Type) {
+			continue
+		}
+		if kind == "" || l.At < at {
+			kind, at = l.Type, l.At
+		}
+	}
+	if kind == "" {
+		return "", 0, false
+	}
+	return kind, at, true
+}
+
+// RestTarget 下一条短 / 长休息的身份与时刻（外卖与自定义提醒不参与）。
+// 设置页拿它决定侧栏那组按钮显不显示、能不能点 —— 判据只有这一份。
+func (s *Scheduler) RestTarget() (kind string, at int64, ok bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.builtinNextLocked()
+}
+
 // builtinBreakNowOf 挑一条内置短 / 长休息立即开始。
 // 返回会话 id（没有可用的内置休息时为空串）与“是否本来就在休息中”。
 func (s *Scheduler) builtinBreakNowOf() (string, bool) {
@@ -58,17 +119,9 @@ func (s *Scheduler) builtinBreakNowOf() (string, bool) {
 		s.mu.Unlock()
 		return "", true
 	}
-	kind, at := "", int64(0)
-	for _, l := range s.state.Lines {
-		if l.Type != "short" && l.Type != "long" {
-			continue
-		}
-		if kind == "" || l.At < at {
-			kind, at = l.Type, l.At
-		}
-	}
+	kind, at, ok := s.builtinNextLocked()
 	s.mu.Unlock()
-	if kind == "" {
+	if !ok {
 		return "", false
 	}
 	return s.startBreakAt(kind, at), false
@@ -91,7 +144,22 @@ func (s *Scheduler) BreakNowOf(kind string) string {
 	return s.startBreak()
 }
 
-// postpone 推迟当前休息（仅在未进入休息窗口时有效）
+// Postpone 推迟「当前这一跳」= 计划里的下一次提醒（可能是自定义提醒）。
+// 提前提示窗上的“推迟”走这条路（窗上提示哪条就推哪条，见 PostponeOf）。
+//
+// 侧栏与快捷键**不走这里**：它们只认短 / 长休息（见 PostponeRest）。
+func (s *Scheduler) Postpone() { s.postpone("", false) }
+
+// PostponeOf 推迟指定身份的提醒。提前提示窗用它：窗上那条才是目标，
+// 别拿“调度器的全局 next”去猜 —— 暂停中照常弹出的自定义提醒就会让两者不是同一个。
+func (s *Scheduler) PostponeOf(kind string) { s.postpone(kind, false) }
+
+// PostponeRest 推迟「下一次短 / 长休息」（两者取最近的那一个）。
+// 设置页侧栏的「推迟休息」与快捷键「推迟当前休息」走它：外卖提醒与自定义提醒
+// 都不参与（2026-11-14 用户口径），它们自己的窗口里另有推迟入口。
+func (s *Scheduler) PostponeRest() { s.postpone("", true) }
+
+// postpone 推迟目标的实现（仅在未进入休息窗口时有效）
 //
 // 推迟后的时刻 = 基准 + 卡片里的“推迟时长”，基准取“现在”与原定时刻的较晚者
 // （推迟只能是往后推）。两种计时方式的落点不同：
@@ -103,18 +171,24 @@ func (s *Scheduler) BreakNowOf(kind string) string {
 //     若推迟后的时刻已经碰上或越过列表里的**下一次**，这次就别再单独弹了 —— 跳过本次、
 //     直接按下一个固定时刻算（2026-11-12 用户口径）。否则“12:00 推迟 3 小时”会在 15:00
 //     弹一次，把 14:00 那班整个挤掉，用户看到的是配置里根本不存在的时刻。
-func (s *Scheduler) Postpone() {
+func (s *Scheduler) postpone(kind string, restOnly bool) {
 	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
 	// 暂停中照样可以推迟：倒计时不冻钟（2026-11-12 口径），侧栏那两个按钮在暂停时也
 	// 照常可点，点了就该真的把这一跳往后挪。这里曾有一条 `|| st.Paused` 早退（冻结
 	// 时代的遗留），结果暂停中「推迟休息」点了没反应，界面也不禁用 —— 静默空操作。
-	if st.Phase == "break" || st.NextAt == 0 {
+	if st.Phase == "break" {
 		s.mu.Unlock()
 		return
 	}
-	nextType := st.NextType
+	nextType, oldAt, ok := s.actionTargetLocked(kind, restOnly)
+	if !ok {
+		s.mu.Unlock()
+		log.Printf("[scheduler] 推迟：当前没有可推迟的%s（kind=%q）",
+			restLabel(restOnly), kind)
+		return
+	}
 	bcfg, ok := cfg.BreakByID(nextType)
 	if !ok {
 		// 计划里的这条休息已被删除：没有“推迟多久”可言，直接重排下一条
@@ -132,10 +206,12 @@ func (s *Scheduler) Postpone() {
 		log.Printf("[scheduler] %s 不允许推迟（未勾选“允许推迟提醒”），忽略本次推迟", nextType)
 		return
 	}
-	oldAt := st.NextAt
 	// 推迟意味着“这一跳到点了但先不提醒”，等待空闲的挂起一并结束：新时刻由推迟算出来，
-	// 到点后如果空闲门还开着，会重新进入等待（见 onTick 的空闲门分支）
-	s.clearIdleWaitLocked()
+	// 到点后如果空闲门还开着，会重新进入等待（见 onTick 的空闲门分支）。
+	// 只清目标这一条：目标是短 / 长休息时，别的提醒的“等待空闲”不该被顺手抹掉。
+	if s.idleWait != nil && s.idleWait.kind == nextType {
+		s.clearIdleWaitLocked()
+	}
 	// 基准取“现在”与“原定时刻”的较晚者：推迟只能是往后推。
 	// 早先直接写 now+ms，工作态里点一次“推迟”会把 30 分钟后的提醒拉到 5 分钟后
 	// （既违反“推迟”的语义，也把统计里的“推后时长”记成了负数般的假值）。
@@ -148,33 +224,116 @@ func (s *Scheduler) Postpone() {
 		s.postponeFixedLocked(nextType, bcfg, oldAt, postAt, ms)
 		return
 	}
-	st.NextAt = postAt
+	// 相位：只有“被推迟的就是屏幕上正在提示的那一条”才回 idle（那扇提前提示窗该收了）。
+	// 推的是另一条时保留相位 —— 侧栏只推短 / 长休息，而提示窗里可能是喝水提醒，关掉它
+	// 等于替用户取消了一次没被推迟的提醒，500ms 后 onTick 又会弹回来，用户看到闪一下。
+	wasPre := st.Phase == "pre"
 	st.Phase = "idle"
+	if wasPre && (st.NextType != nextType || st.NextAt != oldAt) {
+		st.Phase = "pre"
+	}
 	// 统计：记一次推迟 + 推后时长。nextType 也可能是自定义提醒（cb-…），
 	// 但统计页“休息”四项只认短 / 长休息 —— 过滤在 App.onBreakPostponed 里一处做掉。
 	s.host.OnBreakPostponed(nextType, ms)
 	// 被推迟的那条线在挂起线表里同步平移（今日时间线读的是这份表）
+	moved := false
 	for i := range st.Lines {
 		if st.Lines[i].Type == nextType && st.Lines[i].At == oldAt {
-			st.Lines[i].At = st.NextAt
+			st.Lines[i].At = postAt
+			moved = true
 		}
+	}
+	if !moved {
+		// 目标时刻在挂起线里找不到（NextAt 与 line 失配，只可能来自构造出来的状态）：
+		// 记一条日志，别让“点了推迟、界面无变化”变成无声的空操作。
+		log.Printf("[scheduler] 推迟 %s：挂起线里没有 %d 这一刻，计划未改动", nextType, oldAt)
 	}
 	plan.SortPlans(st.Lines)
-	// 被推迟的这条必是其分组里最早的一条（它是全局最早）：状态卡上的分组倒计时跟着走
-	if nextType == "short" || nextType == "long" {
-		if st.Rest != nil {
-			st.Rest = &model.PlanRef{Name: st.Rest.Name, At: st.NextAt}
-		}
-	} else if st.Other != nil {
-		st.Other = &model.PlanRef{Name: st.Other.Name, At: st.NextAt}
-	}
 	s.mu.Unlock()
 	// 统计用：不管推迟来自托盘、快捷键还是休息前提示窗，都从这里过一遍
 	log.Printf("[scheduler] 推迟 %s %d ms", nextType, ms)
-	s.emitState()
-	// 推迟把原定时刻推远 → 已不在提前区间：托盘 / 侧栏 / 快捷键这几条路径不经过
-	// PreBreakAction，必须在这里收窗（否则窗口继续显示已失效的提醒倒计时）
-	s.syncPreBreakWindow()
+	// 统一重排而不是就地改 NextAt：目标可能不是全局那一条（侧栏只推短 / 长），
+	// NextType / NextAt 必须按新的挂起线重算，否则托盘和侧栏会继续指着被推走的那一跳。
+	// 重排也会收掉已失效的提前提示窗（推迟把原定时刻推远，已不在提前区间）。
+	s.scheduleNext()
+}
+
+// restLabel 日志用：目标口径的中文说法
+func restLabel(restOnly bool) string {
+	if restOnly {
+		return "短 / 长休息"
+	}
+	return "提醒"
+}
+
+// actionTargetLocked 解析「推迟 / 跳过」的目标（调用方必须已持有 s.mu）。
+//
+//	restOnly   → 只认下一次短 / 长休息（侧栏与快捷键）
+//	kind != "" → 指定身份：取它挂起线里最早的一跳（提前提示窗）
+//	其余       → 计划里的全局下一次（st.NextType / st.NextAt）
+//
+// 三种口径不能混：全局 next 可能是外卖或自定义提醒，拿它当“休息”的目标会推错东西。
+func (s *Scheduler) actionTargetLocked(kind string, restOnly bool) (string, int64, bool) {
+	st := &s.state
+	if restOnly {
+		return s.restTargetLocked()
+	}
+	if kind != "" {
+		typ, at := "", int64(0)
+		for _, l := range st.Lines {
+			if l.Type != kind {
+				continue
+			}
+			if typ == "" || l.At < at {
+				typ, at = l.Type, l.At
+			}
+		}
+		if typ == "" {
+			// 这条提醒已经不在挂起线里（刚被关掉 / 删掉）：重排会换下一条，
+			// 别退回去拿全局 next 顶替 —— 那会推错另一条提醒。
+			return "", 0, false
+		}
+		if due, ok := s.pendingPostponedDueLocked(kind); ok && due < at {
+			at = due
+		}
+		return typ, at, true
+	}
+	if st.NextType == "" || st.NextAt == 0 {
+		return "", 0, false
+	}
+	return st.NextType, st.NextAt, true
+}
+
+// restTargetLocked 下一次短 / 长休息的目标（kind, 时刻）。
+//
+// 固定时刻线挂着“改到 dueAt 再弹”的推迟待办时，dueAt 才是这一跳现在的时刻 ——
+// 点「推迟 / 跳过」针对的就是它（否则下一次点推迟会跳过那条待办，直接作用在
+// 时刻表里的下一班上）。
+func (s *Scheduler) restTargetLocked() (string, int64, bool) {
+	kind, at, ok := s.builtinNextLocked()
+	if !ok {
+		return "", 0, false
+	}
+	if due, ok := s.pendingPostponedDueLocked(kind); ok && due < at {
+		at = due
+	}
+	return kind, at, true
+}
+
+// pendingPostponedDueLocked 这条提醒挂着的最早一条“还没到点”的推迟待办时刻
+// （没有则 false）。调用方必须已持有 s.mu。
+func (s *Scheduler) pendingPostponedDueLocked(kind string) (int64, bool) {
+	var due int64
+	found := false
+	for _, p := range s.postponed {
+		if p.kind != kind || p.dueAt <= nowMs() {
+			continue
+		}
+		if !found || p.dueAt < due {
+			due, found = p.dueAt, true
+		}
+	}
+	return due, found
 }
 
 // postponeFixedLocked 固定时刻线的推迟（调用方必须已持有 s.mu）。
@@ -226,12 +385,25 @@ func (s *Scheduler) pendingPostponedLocked(kind string, dueAt int64) *postponedB
 	return nil
 }
 
-// skip 跳过当前休息，直接进入下一周期。
+// Skip 跳过「当前这一跳」= 计划里的下一次提醒（可能是自定义提醒）。
+// 提前提示窗上的“跳过”走这条路（见 SkipOf）。
+//
+// 侧栏与快捷键**不走这里**：它们只认短 / 长休息（见 SkipRest）。
+func (s *Scheduler) Skip() { s.skip("", false) }
+
+// SkipOf 跳过指定身份的提醒（提前提示窗用：窗上那条才是目标）。
+func (s *Scheduler) SkipOf(kind string) { s.skip(kind, false) }
+
+// SkipRest 跳过「下一次短 / 长休息」（两者取最近的那一个）。设置页侧栏的「跳过本次」
+// 与托盘 / 休息窗口的“提前结束”之外的那条入口走它：外卖提醒与自定义提醒不参与。
+func (s *Scheduler) SkipRest() { s.skip("", true) }
+
+// skip 跳过目标的实现：休息进行中就等于提前结束，否则消费这一跳并进入下一周期。
 //
 // 休息进行中点“跳过 / 提前结束”（设置页侧栏、托盘、快捷键都汇聚到这里）：
 // 语义上就是立刻结束这次休息，落 endBreak 路径——早先直接 return，
 // 界面上点了没反应，用户只能去休息窗口里另找入口。
-func (s *Scheduler) Skip() {
+func (s *Scheduler) skip(kind string, restOnly bool) {
 	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
@@ -244,11 +416,12 @@ func (s *Scheduler) Skip() {
 	// 暂停中同样受理（与 Postpone 同口径）：点“跳过本次”就是这一次不提醒了，
 	// 该记一笔跳过并把这一跳消费掉。旧实现这里的 `st.Paused` 早退让暂停中的按钮
 	// 完全失效 —— 而暂停期间倒计时照常走，用户正需要它能用。
-	if st.NextAt == 0 {
+	nextType, at, ok := s.actionTargetLocked(kind, restOnly)
+	if !ok {
 		s.mu.Unlock()
+		log.Printf("[scheduler] 跳过：当前没有可跳过的%s（kind=%q）", restLabel(restOnly), kind)
 		return
 	}
-	nextType := st.NextType
 	bcfg, ok := cfg.BreakByID(nextType)
 	if !ok {
 		s.mu.Unlock()
@@ -257,16 +430,18 @@ func (s *Scheduler) Skip() {
 	}
 	skippedMs := bcfg.DurationMs
 	s.advanceCounter(nextType)
-	// 跳过消费了这次安排：等待空闲的挂起也该随之结束
-	s.clearIdleWaitLocked()
+	// 跳过消费了这次安排：目标这一条的“等待空闲”也随之结束（别的提醒的不动）
+	if s.idleWait != nil && s.idleWait.kind == nextType {
+		s.clearIdleWaitLocked()
+	}
 	// 固定时刻线可能正挂着一条“改到 dueAt 再弹”的待办（Postpone）：跳过这次就得把那条
 	// 一起撤掉，否则 dueAt 一到 flushPostponed 又弹一次 —— 用户明明点了“跳过”。
-	if p := s.pendingPostponedLocked(nextType, st.NextAt); p != nil {
+	if p := s.pendingPostponedLocked(nextType, at); p != nil {
 		delete(s.postponed, plan.OccurrenceKey(p.kind, p.at))
 		s.consumed[plan.OccurrenceKey(p.kind, p.at)] = true
 	}
 	// 固定时刻线：不消费的话 replan 会把同一时刻原样排回来，“跳过”等于没跳
-	s.consumed[plan.OccurrenceKey(nextType, st.NextAt)] = true
+	s.consumed[plan.OccurrenceKey(nextType, at)] = true
 	s.mu.Unlock()
 	// 统计：记一次跳过 + 被跳过那次的时长。同样只认短 / 长休息，过滤在 App 侧。
 	s.host.OnBreakSkipped(nextType, skippedMs)

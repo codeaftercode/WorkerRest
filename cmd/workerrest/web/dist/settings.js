@@ -4525,11 +4525,12 @@
     // “暂停休息/恢复休息”互斥显示：暂停中只显示“恢复休息”，否则只显示“暂停休息”
     const qaPause = $("qa-pause");
     if (qaPause) qaPause.textContent = st.paused ? "恢复休息" : "暂停休息";
-    // “推迟休息”按钮：休息进行中不显示（已经在休息了，没有“再往后推”这回事）；
-    // 这一跳所属的提醒**没勾「允许推迟提醒」**（st.postponeAllowed === false）时也不显示
-    // —— 显示出来点了必然没反应，比藏起来更让人以为坏了。2026-11-13 之前推迟时长
-    // 最小 1 分钟、永远可推，所以这里没有这条判据。
+    // 侧栏这组按钮（立即休息 / 推迟休息 / 跳过本次 / 重置周期）**全部只针对下一条
+    // 短 / 长休息**（两者取最近的那一个，2026-11-14 用户口径）。外卖提醒与自定义提醒
+    // 不参与：它们有自己的窗口与入口，被这里推走会把本该准点响的那次提醒吃掉。
+    // 判据统一用 st.rest（分组里最近的短 / 长休息），不用全局 nextType —— 那可能是外卖。
     const inBreak = st.phase === "break";
+    const noRest = !inBreak && !st.rest;
     // 休息中：“立即休息”无从谈起，禁用而不是让点了没反应；
     // “跳过本次”在休息中等价于提前结束（与托盘“提前结束休息”同义，
     // 判定落在 scheduler.skip：休息相位直接结束本次休息）。
@@ -4538,16 +4539,23 @@
       // 「立即休息」只对短休息、长休息有效（外卖提醒、自定义提醒不参与）。
       // 两条内置都没排上时点下去什么也不会发生，索性禁用并说明原因，
       // 免得看起来像按钮坏了。
-      const noBuiltin = !inBreak && !st.rest;
-      qaBreak.disabled = inBreak || noBuiltin;
+      qaBreak.disabled = inBreak || noRest;
       qaBreak.title = inBreak
         ? ""
-        : noBuiltin ? "短休息、长休息都没有安排时，「立即休息」不适用" : "";
+        : noRest ? "短休息、长休息都没有安排时，「立即休息」不适用" : "";
     }
     const qaSkip = $("qa-skip");
-    if (qaSkip) qaSkip.textContent = inBreak ? "提前结束" : "跳过本次";
+    if (qaSkip) {
+      qaSkip.textContent = inBreak ? "提前结束" : "跳过本次";
+      // 「跳过本次」同样只针对下一条短 / 长休息；休息中则是提前结束当前这次
+      qaSkip.disabled = noRest;
+      qaSkip.title = noRest ? "短休息、长休息都没有安排时，「跳过本次」不适用" : "";
+    }
     const qaPostpone = $("qa-postpone");
     if (qaPostpone) {
+      // 「推迟休息」隐藏的条件只有两条：正在休息（没有“再往后推”这回事）+
+      // 下一条休息**没勾「允许推迟提醒」**（st.postponeAllowed 是按短 / 长休息那一条
+      // 算的，不是全局 next）。排不上休息时不禁用而隐藏：没有目标可推。
       const canPostpone = st.postponeAllowed !== false;
       qaPostpone.classList.toggle("hidden", inBreak || !canPostpone);
       qaPostpone.title = canPostpone ? "" : "这条提醒没有勾选「允许推迟提醒」，不能推迟";

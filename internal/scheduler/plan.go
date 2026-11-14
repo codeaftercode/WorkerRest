@@ -403,10 +403,19 @@ func (s *Scheduler) StateForRenderer() model.SchedulerState {
 	// 这一跳允不允许推迟：设置页侧栏的「推迟休息」按钮据此显隐。判据只认配置里
 	// 那条提醒自己的 PostponeMs（0 = 没勾「允许推迟提醒」）；身份查不到就按允许处理
 	// —— 查不到说明这条提醒刚被删掉，重排马上会换下一条，藏按钮反而更奇怪。
-	if c, ok := cfg.BreakByID(st.NextType); ok {
-		st.PostponeAllowed = c.CanPostpone()
-	} else {
-		st.PostponeAllowed = true
+	//
+	// **目标是下一条短 / 长休息，不是全局 NextType**（2026-11-14 用户口径：侧栏那组按钮
+	// 全部只针对短 / 长休息，外卖与自定义提醒不参与）。拿全局 NextType 判会错位：
+	// 下一条休息明明能推，赶上下一条是“不允许推迟”的喝水提醒，按钮就平白消失了。
+	restKind, _, hasRest := s.RestTarget()
+	st.RestKind = restKind
+	st.PostponeAllowed = false
+	if hasRest {
+		if c, ok := cfg.BreakByID(restKind); ok {
+			st.PostponeAllowed = c.CanPostpone()
+		} else {
+			st.PostponeAllowed = true
+		}
 	}
 	st.Timeline = plan.TodayTimeline(cfg, nowMs(), plan.TimelineOptions{
 		Skip:             s.consumedCopy(),
