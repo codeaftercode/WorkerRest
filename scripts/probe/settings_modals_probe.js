@@ -1,17 +1,20 @@
 /**
- * 设置页十个对话框的**交互**探针（Playwright 驱动系统 Edge）。
+ * 设置页各对话框的**交互**探针（Playwright 驱动系统 Edge）。
  *
  * 与 settings_ui_probe.js 的分工：那个只做**静态契约**（role / aria-modal /
  * aria-labelledby / 有可聚焦项 / 宽度在视口内）；本脚本管**打开与关闭的整条动作**：
  *
  *   1. 真触发：点页面上真实存在的按钮把对话框打开（不是直接改 class），
  *      断言“可见 + 焦点落进 .modal-box”；
- *   2. Esc 关闭：十个都必须能关（其中五个历史上只能点按钮关，见 settings.js 的
+ *   2. Esc 关闭：打开着的都必须能关（其中几个历史上只能点按钮关，见 settings.js 的
  *      ESC_DISMISS 兜底表）；
  *   3. 焦点归位：关掉之后焦点必须回到打开它的那个元素，不能掉到 <body>；
  *   4. Tab 陷阱：对话框打开时连按 Tab 焦点不得跑到框外，Shift+Tab 从第一个回绕到最后；
  *   5. 点遮罩关闭：支持的对话框点空白处要关；
  *   6. 无对话框时按 Esc 是空操作（不能误关别的东西、不能报错）。
+ *   7. [A2] 候选专员磁贴的「双击 = 预览提醒窗口」单独一段：它由**双击**打开
+ *      （磁贴是 div、不可聚焦），塞进 TRIGGERED 的“先 focus 再 click”流程会不自洽，
+ *      而且弹的是原生提醒窗（无头服务里不出现），所以换成记录 PreviewBreak 调用参数。
  *
  * 分两类覆盖，如实标注：
  *   · 有真实触发器的六个 → 走真点击；
@@ -185,6 +188,49 @@ async function main() {
         (trgKey.id !== "" || (a2.title === trgKey.title && a2.cls === trgKey.cls));
       check(!!back && !a2.inModal, `对话框 ${m.id} 关闭后焦点回到触发控件`,
         `active=${a2.tag}${a2.id ? "#" + a2.id : ""}${a2.title ? "[title=" + a2.title + "]" : ""}`);
+      await closeAll(page);
+    }
+
+    // ---------- 一·补：候选专员立绘「双击 = 预览提醒窗口」 ----------
+    // 它不是 button 打开的（磁贴是 div，双击才开），塞进上面的 TRIGGERED 循环会把
+    // “先 focus 触发控件再 click”那套假设弄脏（div 不可聚焦），所以单列一段。
+    // 真窗口在无头服务里不显示，所以把 window.api.previewBreak 换成记录器，只断言
+    // “双击确实走了 PreviewBreak("short", 该专员)”这条链路 —— 与卡头“预览”同口径。
+    console.log("\n[A2] 双击立绘 → 预览该专员的提醒窗口（PreviewBreak 链路）");
+    {
+      await page.locator('.nav-item[data-tab="supervisor"]').click();
+      await delay(300);
+      const tile = page.locator("#sup-gallery .role-item").first();
+      if (await tile.count()) {
+        const roleName = await tile.evaluate((el) => el.dataset.name);
+        await page.evaluate(() => {
+          window.__wrPreviewCalls = [];
+          window.__wrPreviewReal = window.api.previewBreak;
+          window.api.previewBreak = (kind, key) => {
+            window.__wrPreviewCalls.push([kind, key]);
+            return Promise.resolve("");
+          };
+        });
+        await tile.dblclick();
+        await delay(700);
+        const calls = await page.evaluate(() => window.__wrPreviewCalls);
+        check(calls.length === 1, "双击立绘触发一次预览", JSON.stringify(calls));
+        check(!!calls[0] && calls[0][0] === "short", "预览类型是短休息（与卡头预览同口径）",
+          calls[0] ? calls[0][0] : "");
+        check(!!calls[0] && calls[0][1] === roleName, "预览的是被双击的那位专员",
+          calls[0] ? String(calls[0][1]) : "");
+
+        // 勾选框上的双击是“连点勾选”，不能顺手弹预览
+        await page.evaluate(() => { window.__wrPreviewCalls = []; });
+        await page.locator("#sup-gallery .role-item").first().locator(".role-sel").dblclick();
+        await delay(500);
+        const calls2 = await page.evaluate(() => window.__wrPreviewCalls);
+        check(calls2.length === 0, "双击勾选框不触发预览", JSON.stringify(calls2));
+
+        await page.evaluate(() => { window.api.previewBreak = window.__wrPreviewReal; });
+      } else {
+        check(false, "督休专员页签里能找到立绘磁贴");
+      }
       await closeAll(page);
     }
 

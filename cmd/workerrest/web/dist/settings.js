@@ -2296,7 +2296,7 @@
       b.textContent = it.label;
       b.addEventListener("click", () => {
         closeRoleMenu();
-        if (it.act === "preview") void previewRoleFromMenu(key);
+        if (it.act === "preview") void previewRoleBreak(key);
         else if (it.act === "rename") void renameRole(key);
         else if (it.act === "replace") void replaceRoleImage(key);
         else void removeRole(key);
@@ -2317,8 +2317,11 @@
       if (e.key === "Escape") closeRoleMenu();
     });
   }
-  async function previewRoleFromMenu(key) {
-    autoSave();
+  // 预览某位专员的提醒窗口（右键菜单“预览”与磁贴双击共用）。
+  // autoSave 必须 await：Go 侧 PreviewBreak 是按**磁盘上的配置**建会话的，配置还没落盘
+  // 就弹窗，看到的是改名 / 换图 / 改台词之前的旧样子（卡头“预览”按钮也是先 await）。
+  async function previewRoleBreak(key) {
+    await autoSave();
     await previewBreak("short", key);
   }
   var GALLERY_H_KEY = "wr.galleryH";
@@ -2561,6 +2564,16 @@
           return;
         }
         focusRole(r.name);
+      });
+      // 双击立绘 = 弹这位专员的**提醒预览窗**，与右键菜单里的“预览”走同一条链路
+      // （autoSave → PreviewBreak("short", 该专员)），不是另造一个看图窗。
+      // 单击那两下照旧走 focusRole（幂等，不会重复刷预览舞台）；
+      // 勾选框上的双击是“连点勾选”，不能弹预览 —— 它自己的 click 拦了冒泡，
+      // 但 dblclick 没有，会冒到磁贴这里，所以按 target 排除。
+      tile.addEventListener("dblclick", (e) => {
+        if (e.target instanceof Element && e.target.closest(".role-sel")) return;
+        if (supDragEndAt && Date.now() - supDragEndAt < 400) return; // 拖完补的那一下
+        void previewRoleBreak(r.name);
       });
       tile.addEventListener("contextmenu", (e) => {
         e.preventDefault();
