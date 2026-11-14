@@ -60,12 +60,12 @@
     </aside>
 
     <main id="content">
-      <!-- 通用配置（行为 / 设置窗口（标题·主题） / 提醒窗口（含多屏幕） / 声音） -->
+      <!-- 通用配置（启动 / 自动暂停 / 设置窗口（标题·主题） / 提醒窗口（含多屏幕） / 声音） -->
       <section class="tab active" id="tab-general">
         <div class="card foldable" id="gen-behavior">
           <div class="card-head">
             <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
-            <h3>行为</h3>
+            <h3>启动</h3>
           </div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="autostart" /> 开机自启动</label></div>
           <div class="row check"><label class="switch-row"><input type="checkbox" id="startMinimized" /> 启动时最小化到托盘</label></div>
@@ -485,17 +485,13 @@
         </div>
       </section>
 
-      <!-- 督休专员（开关 / 预览 / 立绘） -->
+      <!-- 督休专员（立绘预览 / 开关 / 候选专员 / 高级选项 / 提醒内容） -->
       <section class="tab" id="tab-supervisor">
-        <div class="card">
-          <!-- 总开关行与其他提醒卡一致（has-btn）：“预览”按钮在右侧，弹当前选中督休专员的休息预览窗 -->
-          <div class="row check has-btn">
-            <label class="switch-row"><input type="checkbox" id="sup-enabled" />启用</label>
-            <!-- id 不能叫 sup-preview：那是下方常驻立绘预览面板的 id，重名会砸掉它 -->
-            <button class="btn ghost" id="sup-break-preview" title="预览督休专员">预览</button>
-          </div>
-        </div>
-        <div class="card">
+        <!-- 立绘预览单独一张卡：卡内无内边距，图铺满整张卡（圆角由卡片自己裁，
+             见 settings.css 的 .figure-card 一节）。2026-11-14 用户要求独立出来 ——
+             原来它和下面三块面板同挤一张卡，图的左右比面板各多出一档内边距，
+             视觉上既不像“卡片封面”，也不像独立画面。 -->
+        <div class="card figure-card">
           <div class="sup-preview" id="sup-preview" data-stage="1">
             <div class="sup-preview-fig">
               <div class="sup-preview-trim" id="sup-preview-trim">
@@ -518,7 +514,24 @@
                  故意放在 content 之外，这样隐藏对话框时提示仍可见 -->
             <div class="sup-preview-badge hidden" id="sup-preview-badge"></div>
           </div>
-          <!-- “预览”按钮已收进督休专员磁贴的右键菜单（按菜单所属督休专员预览） -->
+        </div>
+        <!-- 其余设置收进一张可折叠卡：标题 / 折叠箭头 / 预览按钮 / 总开关排成卡头一条线，
+             样式与缩进跟时间规划页的提醒卡完全同款（2026-11-14 用户要求）。
+             “启用”原来是卡片正文里的第一行，收进卡头后与其它提醒卡一致 ——
+             它是卡级总闸，不是卡内参数。 -->
+        <div class="card foldable" id="sup-main">
+          <div class="card-head">
+            <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
+            <h3>督休专员</h3>
+            <!-- id 不能叫 sup-preview：那是上方立绘预览面板的 id，重名会砸掉它 -->
+            <button class="btn ghost mini card-head-act" id="sup-break-preview" title="预览督休专员">预览</button>
+            <label class="card-switch" title="启用督休专员">
+              <input type="checkbox" id="sup-enabled" aria-label="启用督休专员" />
+              <span class="card-switch-track" aria-hidden="true"></span>
+            </label>
+          </div>
+          <!-- 单张磁贴的“预览”已收进磁贴右键菜单（按菜单所属督休专员预览）；
+               卡头那枚“预览”弹的是当前选中专员的休息预览窗。 -->
           <!-- 候选专员：所有督休专员（内置 + 自定义）都可改名、可禁用、可删除。
                收进可折叠面板（默认展开、两行磁贴高，溢出出纵向滚动条，底部拖柄可拖调高度） -->
           <div class="fold-panel gallery-panel open" id="sup-gallery-panel">

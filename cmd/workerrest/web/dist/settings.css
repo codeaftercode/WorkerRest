@@ -280,21 +280,36 @@ body {
    16 只比按钮右缘多 3px，看着仍像被按钮压着。
    宽度代价：正文可用宽度 -24。760（最小窗宽）实测输入框 180 → 156（仍够 4 位数），
    卡 / idle-gate / 消息面板的 scrollWidth - clientWidth 全为 0，没有横向裁切。
-   只作用于时间规划与通用配置两页：这两页的卡片有折叠按钮（2026-11-13 通用配置
-   五张卡跟上），缩进在卡头标题文字上找得到基准；其它页的卡没有折叠按钮。 */
+   作用于时间规划 / 通用配置 / 督休专员三页（2026-11-13：前两页的卡有折叠按钮，
+   缩进在卡头标题文字上找得到基准；督休专员页没有卡头，只借“正文 +24”让三块描边
+   面板与通用配置页的提示音面板落在同一条竖线上）。其余页的卡不缩进。 */
 /* 2026-11-13 起通用配置页五张卡也折叠（用户要求与时间规划页一致），同一套缩进：
    正文左缘与卡头标题文字同一条竖线，折叠箭头吊在内容线左侧的留白里。 */
+/* 2026-11-13 傍晚督休专员页跟上（用户：候选专员 / 高级选项 / 提醒内容的缩进要与
+   通用配置「声音」卡的「提示音」列表相同）：正文左缘从 273 挪到 297，与另两页同一条
+   竖线，三块描边面板（margin-left -13）因此落在 284 —— 与通用配置页「提示音」面板的
+   绝对位置分毫不差。
+   2026-11-14 这一页拆成两张卡：立绘预览单独一张（.figure-card，不缩进、无内边距，
+   图铺满整张卡），其余设置收进可折叠卡 #sup-main —— 于是这一页也有了卡头，
+   折叠箭头 / 标题 / 预览 / 总开关与时间规划页的提醒卡同款。 */
 #tab-timing,
-#tab-general { --body-indent: 24px; }
+#tab-general,
+#tab-supervisor { --body-indent: 24px; }
 #tab-timing .card,
-#tab-general .card { padding-left: calc(16px + var(--body-indent)); }
+#tab-general .card,
+#tab-supervisor .card { padding-left: calc(16px + var(--body-indent)); }
+/* 立绘预览卡把内边距全部去掉，让图铺满：卡片自己 overflow:hidden + 圆角裁边，
+   预览块的交角跟着卡片走（.sup-preview 自带的 16px 圆角在这里会和卡片圆角错位）。 */
+#tab-supervisor .card.figure-card { padding: 0; overflow: hidden; }
+#tab-supervisor .card.figure-card > .sup-preview { margin: 0; border-radius: 0; }
 /* 卡头两种写法（.card-head 与时间线卡的 .tl-head）都要抵消，否则时间线那张卡的
    箭头 / 标题会比其它三张卡整段右移 24px —— 实测 tl-head 317 / 其余卡 293
    （箭头 308 / 284）。.tl-head 是 <button>，width:auto 对它等于 shrink-to-fit
    （实测只剩 197，右侧“待触发 N 条”被拉到标题旁边），所以宽度必须显式补回来：
    百分比按内容宽 504 算，+24 = 528，抵消后正好 293→821，与其它卡完全重合。 */
 #tab-timing .card > .card-head,
-#tab-general .card > .card-head { margin-left: calc(0px - var(--body-indent)); }
+#tab-general .card > .card-head,
+#tab-supervisor .card > .card-head { margin-left: calc(0px - var(--body-indent)); }
 #tab-timing .card > .tl-head {
   margin-left: calc(0px - var(--body-indent));
   width: calc(100% + var(--body-indent));
