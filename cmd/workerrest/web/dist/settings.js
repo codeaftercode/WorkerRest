@@ -2555,6 +2555,8 @@
       const img = document.createElement("img");
       if (r.thumb) img.src = r.thumb;
       img.alt = r.name;
+      // 异步解码：磁贴图在切到本页时才第一次绘制，同步解码会把主线程揪住
+      img.decoding = "async";
       img.draggable = false; // 图片默认可拖，会抢走磁贴的拖拽（拖的是图而不是整块磁贴）
       const hint = document.createElement("span");
       hint.className = "role-hint";
@@ -2794,11 +2796,21 @@
     }
     if (supPreview) {
       const img = $("sup-preview-img");
-      img.src = supPreview.image;
+      // 同一个 data URL 不重复赋值。这段每 5 秒被调一次（轮换台词），原来每次都
+      // `img.src = …`：给 src 赋值等于重新发起一次图片加载，刚解码好的位图被打回
+      // “未解码”，于是切到本页时又得重来一遍。只在真换图（换人 / 导入）时赋值，
+      // 并把 load 只挂一次（once 挂在不变化的 src 上会一直不触发、越挂越多）。
+      // 另外走 stageSmallOf：真正上屏的是**按舞台尺寸缩过的**小图，见 prepareStageImage。
+      const shown = stageSmallOf(supPreview.image);
+      if (img.getAttribute("src") !== shown) {
+        img.src = shown;
+        // 立绘解码完才会量到真实的可见左缘，落位要等这一刻（applyFigureTrim 内部
+        // 也是等 load 再量，这里跟它同一条时机）
+        img.addEventListener("load", () => {
+          placeSupNamePlate();
+        }, { once: true });
+      }
       applyFigureTrim($("sup-preview-trim"), img, supPreview.geom.flip === true);
-      // 立绘解码完才会量到真实的可见左缘，落位要等这一刻（applyFigureTrim 内部
-      // 也是等 load 再量，这里跟它同一条时机）
-      img.addEventListener("load", placeSupNamePlate, { once: true });
       placeSupNamePlate();
     }
   }
@@ -2811,6 +2823,61 @@
     }
     renderMsgList("sup");
     renderSupervisorPreview(curSupStage);
+  }
+  // ---------- 切页卡顿：让舞台上屏的位图变小 ----------
+  // 症状：点侧栏切到「督休专员」，侧栏数码管跟着停一秒多（用户 2026-11-15 报的就是这条）。
+  // 实测（scripts/oneoff/probe_click_jank*.js，LoAF + rAF 掉帧）：
+  //   · 掉帧全在**渲染/上屏**，styleAndLayout 只占 1~3ms、脚本 0ms；
+  //   · 主因是舞台那张 1024×1536 的立绘首次上屏，0.55s + 0.58s 两段；
+  //   · 提前 img.decode() 没用 —— 解码本来就在解码线程上，异步得很；
+  //   · 把舞台图按显示尺寸缩小后再上屏：掉帧 1200ms → 316ms。
+  // 为什么一张图这么贵：main.go 里为了「共享屏幕时隐藏提醒窗口」加了
+  // --disable-direct-composition，画面改由窗口表面呈现（SetWindowDisplayAffinity
+  // 只对这种表面生效），最终呈现少一次 GPU 合成 —— 大位图首次上屏的钱就得自己付。
+  // 舞台是 16:9 面板 × 立绘高度 72%，最宽 1040px 时立绘约 335 CSS px 高；
+  // 取 640 已覆盖 200% 缩放，位图量只有原来的 1/5.5。
+  var STAGE_IMG_H = 640;
+  var stageSmall = new Map(); // 全尺寸 data URL → 缩小后的 data URL（同一张图只算一次）
+  function stageSmallOf(src) {
+    return stageSmall.get(src) || src;
+  }
+  // 切页前调用：把当前立绘降采样好，之后 renderSupervisorPreview 就会拿小图去上屏。
+  // createImageBitmap(el, {resizeHeight}) 的解码与缩放都在工作线程上，主线程只做
+  // 一次 427×640 的 drawImage + webp 编码（十几毫秒，一张图一次）。
+  async function prepareStageImage() {
+    if (!supPreview || !supPreview.image) return;
+    const full = supPreview.image;
+    if (stageSmall.has(full)) return;
+    const img = $("sup-preview-img");
+    if (!img || typeof createImageBitmap !== "function") return;
+    if (img.getAttribute("src") !== full) img.src = full;
+    if (!img.complete || !img.naturalWidth) {
+      // 图还没加载完（换人那一下）：等 load，最多等 1.5s 免得卡住切页
+      await new Promise((resolve) => {
+        img.addEventListener("load", resolve, { once: true });
+        img.addEventListener("error", resolve, { once: true });
+        setTimeout(resolve, 1500);
+      });
+    }
+    if (!img.naturalWidth || img.naturalHeight <= STAGE_IMG_H) return; // 本来就不大，别多此一举
+    try {
+      const bmp = await createImageBitmap(img, { resizeHeight: STAGE_IMG_H, resizeQuality: "high" });
+      const c = document.createElement("canvas");
+      c.width = bmp.width;
+      c.height = bmp.height;
+      c.getContext("2d").drawImage(bmp, 0, 0);
+      if (bmp.close) bmp.close();
+      const url = c.toDataURL("image/webp", 0.9);
+      if (!url || url === "data:,") return; // 内核不支持 webp 编码：照旧用全尺寸
+      if (stageSmall.size > 8) stageSmall.delete(stageSmall.keys().next().value);
+      stageSmall.set(full, url);
+    } catch (e) {
+      // 降采样失败就照旧用全尺寸：宁可慢一拍，也不能让预览空掉
+      console.error("[prepareStageImage] 降采样失败，改用原始立绘", e);
+    }
+  }
+  function nextFrame() {
+    return new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
   }
   var previewAudio = null;
   var previewFile = "";
@@ -4635,6 +4702,147 @@
       childList: true, subtree: true, characterData: true,
     });
   })();
+  // ---------- 状态格：结构不变时原地改数字 ----------
+  // 曾经每秒都整块 `innerHTML = …` 重建状态格，后果有两条：
+  //   1) 新建的节点让 fitStatusCells() 的“逐档缩字号”整个重跑一遍 —— 每格最多 80 次
+  //      getComputedStyle + scrollWidth，全是强制重排，每秒白烧一遍主线程；
+  //   2) 侧栏每秒重排一次，和“点侧栏按钮”的布局撞在同一条主线程上时，
+  //      数码管明显停一拍（用户看到的就是“倒计时卡了一秒”）。
+  // 现在只有**结构**变了才重建（格数 / 标签 / 值形态 text↔led / 数码管位数），
+  // 其余每秒只改每个数字位的 data-d（点亮哪几段由 CSS 决定），一次重排都不强制。
+  var LAST_CELL_SIG = "";
+  var LED_DIGITS = new WeakMap();
+  function statusSig(cells) {
+    return cells.map(([k, cell]) => (cell && cell.led != null
+      ? `${k}|led${fmtRemainLed(cell.led).length}`
+      : `${k}|text`)).join(";;");
+  }
+  // 原地更新一块数码管。位数变了（MM:SS ↔ H:MM:SS）才重建内部结构。
+  function paintLed(ledEl, ms) {
+    const txt = fmtRemainLed(ms);
+    const digits = txt.replace(/:/g, "");
+    let dgs = LED_DIGITS.get(ledEl);
+    if (!dgs || dgs.length !== digits.length) {
+      ledEl.innerHTML = ledDigits(txt);
+      dgs = Array.from(ledEl.querySelectorAll(".dg"));
+      LED_DIGITS.set(ledEl, dgs);
+    } else {
+      for (let i = 0; i < dgs.length; i++) {
+        if (dgs[i].dataset.d !== digits[i]) dgs[i].dataset.d = digits[i];
+      }
+    }
+    // 读屏用的一行中文读法跟着走（视觉层 aria-hidden，不重复朗读）
+    const sr = ledEl.parentElement && ledEl.parentElement.querySelector(".sr-only");
+    const say = fmtRemain(ms);
+    if (sr && sr.textContent !== say) sr.textContent = say;
+  }
+  // 状态格该显示什么：纯计算、不碰 DOM、不写全局 —— 本地时钟每 200ms 也要调它一次。
+  function statusCells(st, now) {
+    const phaseText = st.phase === "break" ? "休息中" : st.phase === "pre" ? "即将休息" : "努力工作中";
+    // 暂停统一显示“暂停休息”：不论是手动暂停、系统空闲（人离开工位）、系统勿扰
+    // 还是指定应用占用运行，状态格只给一个结论；具体原因挂到该格的 title 上悬停可看
+    // （托盘 tooltip 里照旧是“已暂停：原因”）。
+    const phaseVal = st.paused ? "暂停休息" : phaseText;
+    // 定时暂停多一句“到 X 自动结束”：状态格只写“暂停休息”的话，过一会儿就忘了
+    // 自己设过时长（托盘那边写的是剩余时间，两处口径不同，但指的是同一件事）。
+    const pauseUntilText = st.paused && st.pauseDeadline > 0
+      ? "；到 " + fmtClockMs(st.pauseDeadline) + " 自动结束"
+      : "";
+    const pauseTitle = st.paused && st.pauseReasons.length
+      ? "暂停原因：" + st.pauseReasons.map(pauseReasonText).join("、") + pauseUntilText
+      : "";
+    // 暂停不再冻结“下一次提醒”的倒计时（2026-11-12 用户口径）：无论手动还是自动暂停，
+    // 长/短休息、外卖提醒、自定义提醒的倒计时都照常往下掉，到 0 由调度器按各卡
+    // “暂停休息时”处置（跳过 / 正常提醒 / 推迟）。
+    // 唯一保留冻结的是“正在进行、且它自己选的是推迟”的那次休息的剩余时间 ——
+    // 那正是“推迟”的含义，恢复后接着走。
+    const nowBreak = st.paused && st.phase === "break" && !st.breakWhilePaused
+      ? st.pausedAt
+      : now;
+    const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
+    // 一个格子的值有三种形态：{text} 给中文结论（等待空闲 / 未安排 / 明天 08:10 / —），
+    // {led} 给剩余毫秒、交给数码管。只有真正的倒计时才走段码 ——「等待空闲」不是时间，
+    // 硬画成段码只会得到一串 0。
+    //
+    // idleWait：这一跳已经到点，但这条提醒勾了「系统空闲（秒）」，人还在忙 ——
+    // 用户口径就是让时间格直接写“等待空闲”，等键鼠安静下来它自己会变成倒计时。
+    //
+    // 跨午夜：不写“今日已无提醒”（那会把“还有 15 分钟”藏掉），改报“明天 00:10”。
+    // 再远的（周重复的提醒）报“周X 09:00”，与卡片摘要的写法同一套（nextSlotDayLabel）。
+    const remainCell = (at, idleWait) => idleWait
+      ? { text: "等待空闲" }
+      : dayDiffOf(at) > 0
+        ? { text: nextSlotDayLabel(at) }
+        : { led: Math.max(0, at - now) };
+    // “下次提醒”取外卖/自定义里最近的一次（st.other 已合并两者）。
+    // 不再按“是不是今天”整格隐藏：跨午夜的那一次同样要能看到，具体时刻由 remainCell 表达。
+    const otherCell = st.other
+      ? [otherKey(st.other.name), remainCell(st.other.at, st.other.idleWait)]
+      : null;
+    const cells = [["状态", { text: phaseVal }, pauseTitle]];
+    if (st.phase === "break") {
+      cells.push(["正在休息", { led: Math.max(0, st.breakEndsAt - nowBreak) }]);
+      // 休息中照样报“下一次外卖 / 自定义提醒还有多久”：这里曾固定写“—”，把排在
+      // 这次休息之后的提醒整段藏掉了。st.other 已经是“这次休息消费之后”的下一次。
+      if (otherCell) cells.push(otherCell);
+    } else {
+      cells.push(
+        st.rest ? [`下次${st.rest.name}`, remainCell(st.rest.at, st.rest.idleWait)] : ["下次休息提醒", { text: "未安排" }]
+      );
+      if (otherCell) cells.push(otherCell);
+    }
+    return cells;
+  }
+  // 画状态格：结构变了整块重建，只是数字在走就原地改（见 paintLed / LAST_CELL_SIG 注释）
+  function paintStatusCells(cells) {
+    const host = $("data-status");
+    const sig = statusSig(cells);
+    if (sig !== LAST_CELL_SIG) {
+      // 结构变了：整块重建，并重跑一次字号适配（新节点没有 fitDone 标记）
+      LAST_CELL_SIG = sig;
+      host.innerHTML = cells.map(([k, cell, t]) => {
+        const isLed = cell && cell.led != null;
+        return `<div class="status-cell${isLed ? " has-led" : ""}"${t ? ` title="${String(t).replace(/"/g, "&quot;")}"` : ""}><div class="k">${k}</div><div class="v${isLed ? " v-led" : ""}">${isLed ? ledHTML(cell.led) : (cell.text || "")}</div></div>`;
+      }).join("");
+      fitStatusCells();
+    } else {
+      // 结构没变：只把每秒在变的那些值写回已有节点
+      const nodes = host.querySelectorAll(".status-cell");
+      cells.forEach(([, cell, t], i) => {
+        const node = nodes[i];
+        if (!node) return;
+        const tip = t ? String(t) : "";
+        if ((node.getAttribute("title") || "") !== tip) {
+          if (tip) node.setAttribute("title", tip);
+          else node.removeAttribute("title");
+        }
+        const v = node.querySelector(".v");
+        if (!v) return;
+        if (cell && cell.led != null) {
+          const led = v.querySelector(".led");
+          if (led) paintLed(led, cell.led);
+        } else {
+          const txt = cell ? cell.text || "" : "";
+          // 文字长度会变（“等待空闲”↔“明天 08:10”）：变了才重新适配这一格
+          if (v.textContent !== txt) {
+            v.textContent = txt;
+            delete node.dataset.fitDone;
+            fitStatusCells();
+          }
+        }
+      });
+    }
+  }
+  // ---------- 数码管自走 ----------
+  // 读数只跟“锚点时刻 − 现在”有关，状态里已经有锚点，本地的 Date.now() 就能算。
+  // 原来完全靠那条 1s 的 getState 往返驱动：那一次往返只要晚半秒（Go 侧处置、IPC、
+  // 磁盘、渲染暂停……实测点“暂停休息”后有两次晚到 1.4s / 1.9s），数字就先停一拍、
+  // 再一下跳两格 —— 用户看到的就是“点按钮时倒计时卡了一秒”。
+  // 现在每秒的走动由本地时钟负责，状态刷新只负责改锚点和结论，晚了也不影响读数。
+  function tickStatusClock() {
+    if (!LAST_STATE) return;
+    paintStatusCells(statusCells(LAST_STATE, Date.now()));
+  }
   function renderStatus(st) {
     LAST_STATE = st;
     // “暂停休息/恢复休息”互斥显示：暂停中只显示“恢复休息”，否则只显示“暂停休息”
@@ -4675,65 +4883,8 @@
       qaPostpone.classList.toggle("hidden", inBreak || !canPostpone);
       qaPostpone.title = canPostpone ? "" : "这条提醒没有勾选「允许推迟提醒」，不能推迟";
     }
-    const phaseText = st.phase === "break" ? "休息中" : st.phase === "pre" ? "即将休息" : "努力工作中";
-    // 暂停统一显示“暂停休息”：不论是手动暂停、系统空闲（人离开工位）、系统勿扰
-    // 还是指定应用占用运行，状态格只给一个结论；具体原因挂到该格的 title 上悬停可看
-    // （托盘 tooltip 里照旧是“已暂停：原因”）。
-    const phaseVal = st.paused ? "暂停休息" : phaseText;
-    // 定时暂停多一句“到 X 自动结束”：状态格只写“暂停休息”的话，过一会儿就忘了
-    // 自己设过时长（托盘那边写的是剩余时间，两处口径不同，但指的是同一件事）。
-    const pauseUntilText = st.paused && st.pauseDeadline > 0
-      ? "；到 " + fmtClockMs(st.pauseDeadline) + " 自动结束"
-      : "";
-    const pauseTitle = st.paused && st.pauseReasons.length
-      ? "暂停原因：" + st.pauseReasons.map(pauseReasonText).join("、") + pauseUntilText
-      : "";
-    // 暂停不再冻结“下一次提醒”的倒计时（2026-11-12 用户口径）：无论手动还是自动暂停，
-    // 长/短休息、外卖提醒、自定义提醒的倒计时都照常往下掉，到 0 由调度器按各卡
-    // “暂停休息时”处置（跳过 / 正常提醒 / 推迟）。
-    // 唯一保留冻结的是“正在进行、且它自己选的是推迟”的那次休息的剩余时间 ——
-    // 那正是“推迟”的含义，恢复后接着走。
-    const now = Date.now();
-    const nowBreak = st.paused && st.phase === "break" && !st.breakWhilePaused
-      ? st.pausedAt
-      : now;
-    const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
-    // 一个格子的值有三种形态：{text} 给中文结论（等待空闲 / 未安排 / 明天 08:10 / —），
-    // {led} 给剩余毫秒、交给数码管。只有真正的倒计时才走段码 ——「等待空闲」不是时间，
-    // 硬画成段码只会得到一串 0。
-    //
-    // idleWait：这一跳已经到点，但这条提醒勾了「系统空闲（秒）」，人还在忙 ——
-    // 用户口径就是让时间格直接写“等待空闲”，等键鼠安静下来它自己会变成倒计时。
-    //
-    // 跨午夜：不写“今日已无提醒”（那会把“还有 15 分钟”藏掉），改报“明天 00:10”。
-    // 再远的（周重复的提醒）报“周X 09:00”，与卡片摘要的写法同一套（nextSlotDayLabel）。
-    const remainCell = (at, idleWait) => idleWait
-      ? { text: "等待空闲" }
-      : dayDiffOf(at) > 0
-        ? { text: nextSlotDayLabel(at) }
-        : { led: Math.max(0, at - now) };
-    // “下次提醒”取外卖/自定义里最近的一次（st.other 已合并两者）。
-    // 不再按“是不是今天”整格隐藏：跨午夜的那一次同样要能看到，具体时刻由 remainCell 表达。
-    const otherCell = st.other
-      ? [otherKey(st.other.name), remainCell(st.other.at, st.other.idleWait)]
-      : null;
-    const cells = [["状态", { text: phaseVal }, pauseTitle]];
-    if (st.phase === "break") {
-      cells.push(["正在休息", { led: Math.max(0, st.breakEndsAt - nowBreak) }]);
-      // 休息中照样报“下一次外卖 / 自定义提醒还有多久”：这里曾固定写“—”，把排在
-      // 这次休息之后的提醒整段藏掉了。st.other 已经是“这次休息消费之后”的下一次。
-      if (otherCell) cells.push(otherCell);
-    } else {
-      cells.push(
-        st.rest ? [`下次${st.rest.name}`, remainCell(st.rest.at, st.rest.idleWait)] : ["下次休息提醒", { text: "未安排" }]
-      );
-      if (otherCell) cells.push(otherCell);
-    }
-    $("data-status").innerHTML = cells.map(([k, cell, t]) => {
-      const isLed = cell && cell.led != null;
-      return `<div class="status-cell${isLed ? " has-led" : ""}"${t ? ` title="${String(t).replace(/"/g, "&quot;")}"` : ""}><div class="k">${k}</div><div class="v${isLed ? " v-led" : ""}">${isLed ? ledHTML(cell.led) : (cell.text || "")}</div></div>`;
-    }).join("");
-    fitStatusCells();
+
+    paintStatusCells(statusCells(st, Date.now()));
     updateTakeoutSummary();
     for (const t of allBreakIds()) updateBreakSummary(t);
     renderTimeline(st);
@@ -4781,6 +4932,7 @@
     for (let i = 0; i < it.key.length; i++) h = h * 31 + it.key.charCodeAt(i) >>> 0;
     return TL_COLOR_PALETTE[h % TL_COLOR_PALETTE.length];
   }
+  var TL_SIG = "";
   function renderTimeline(st) {
     const card = document.getElementById("tl-card");
     const count = document.getElementById("tl-count");
@@ -4793,7 +4945,15 @@
     body.classList.toggle("hidden", !tlExpanded);
     card.classList.toggle("open", tlExpanded);
     empty.classList.toggle("hidden", items.length > 0);
-    if (!tlExpanded) return;
+    if (!tlExpanded) {
+      TL_SIG = ""; // 收起时作废，下次展开无条件重建
+      return;
+    }
+    // 时间线每秒会被 renderStatus 调一次，而列表内容只在提醒增减 / 到点后才变。
+    // 原来不管变没变都清空重排一遍（几十行 DOM，1 秒一次），纯属白烧 —— 先比签名。
+    const sig = items.map((it) => `${it.key}@${it.at}:${it.source}:${it.name}`).join("|");
+    if (sig === TL_SIG) return;
+    TL_SIG = sig;
     list.textContent = "";
     for (const it of items) {
       const row = document.createElement("div");
@@ -7684,8 +7844,44 @@
   // 程序化切到指定 tab（与点击导航项同效），供自更新重启后恢复页面用。
   function goTab(name) {
     if (!name) return;
-    exitAllMsgEditing();
+    void applyTab(name);
+  }
+  // 切页前把目标页的图解码好（解码在解码线程上，不占主线程）。
+  // 启动时预热没用：从未绘制、也没被需要的图，浏览器不会长期保留解码结果
+  //（实测预热后照样 1.4s 掉帧），只有紧挨着切换之前做才有意义。
+  // 真正的降本手段是 prepareStageImage（把舞台位图缩小），这里只兜剩下的缩略图。
+  async function preDecodeTab(name) {
+    const box = $(`tab-${name}`);
+    if (!box) return false;
+    const imgs = Array.from(box.querySelectorAll("img")).filter((i) => i.src);
+    if (!imgs.length || typeof imgs[0].decode !== "function") return false;
+    await Promise.all(imgs.map((i) => i.decode().catch(() => {})));
+    return true;
+  }
+  var tabSwitchSeq = 0;
+  async function applyTab(name) {
+    if (!name) return;
+    const seq = ++tabSwitchSeq;
+    // 高亮立刻跟手：后面的降采样 / 解码要几十到几百毫秒，先让点击有反馈，
+    // 否则按钮点下去“没动静”，观感上又是一次卡顿。
     document.querySelectorAll(".nav-item").forEach((b) => b.classList.toggle("active", b.dataset.tab === name));
+    if (name === "supervisor") {
+      // 舞台立绘先换成小图再上屏（这一步决定切页卡不卡，详见 prepareStageImage）
+      await prepareStageImage();
+      if (seq !== tabSwitchSeq) return;
+      if (supPreview) renderSupervisorPreview(curSupStage);
+      if (seq !== tabSwitchSeq) return;
+    }
+    const hadImages = await preDecodeTab(name);
+    // 等解码期间用户又点了别的页签：这一次过期了，让最后一次说了算
+    if (seq !== tabSwitchSeq) return;
+    if (hadImages) {
+      // decode() 只是把位图解码出来，真正“可直接绘制”的那一步发生在随后的渲染机会里；
+      // 点完立刻切页，这一帧又要在绘制通道上现做。
+      await nextFrame();
+      if (seq !== tabSwitchSeq) return;
+    }
+    exitAllMsgEditing();
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     const tab = $(`tab-${name}`);
     if (tab) tab.classList.add("active");
@@ -7700,16 +7896,7 @@
     initQTips();
     for (const btn of document.querySelectorAll(".nav-item")) {
       btn.addEventListener("click", () => {
-        exitAllMsgEditing();
-        document.querySelectorAll(".nav-item").forEach((b) => b.classList.remove("active"));
-        document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
-        btn.classList.add("active");
-        $(`tab-${btn.dataset.tab}`).classList.add("active");
-        if (btn.dataset.tab === "stats") {
-          void renderStats();
-        }
-        // 上报当前 tab 给 Go，供自更新重启后恢复“更新前所在的页面”
-        void window.api.setActiveTab(btn.dataset.tab);
+        void applyTab(btn.dataset.tab);
       });
     }
     renderCustomCards();
@@ -8260,6 +8447,11 @@
       $("autostart").checked = v;
     });
     renderStatus(await window.api.getState());
+    // 数码管自走：读数只跟锚点时刻有关，本地时钟每 200ms 补绘一次即可，
+    // 不再靠上面那条 1s 的 getState 往返驱动。往返只要晚半秒（Go 侧处置 / IPC /
+    // 磁盘 / 渲染暂停…），数字就先停一拍再跳两格 —— 用户看到的就是“卡了一秒”。
+    // 现在往返只负责改锚点与结论，晚到也不影响读数连续。
+    setInterval(tickStatusClock, 200);
     // 连续运行跨天：页面不会自己重画，这里每秒比一次本地日期，变了就重拉统计页。
     // 默认范围已改成“现算”（见 rcGetRange），所以只要重画，日 / 周 / 月 / 季 / 年的
     // 最后一个桶就自然推到新的一天；“今天”卡本身靠 stats:changed 每秒推送，不受影响。
