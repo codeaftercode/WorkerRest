@@ -269,7 +269,7 @@ body {
    （用户两次报“折叠后高度不一样”，第一次我按 min-height 统一到 26，真机上依然是错的，
    因为真机那 26 本身就被撑破了）。
    现在高度只由这个常量决定：卡里有没有按钮、开关，字体度量怎么变，都不影响。
-   控件本身也给固定高度（见 .card-head-act.btn 的 22px），不让它溢出这 26px。
+   控件本身也给固定高度（见 .card-head-act.btn 的 26px），不让字体度量决定它有多高。
    时间线卡的卡头是另一种写法（.tl-head），同一行同样钉死，规则见 .tl-head。 */
 /* 2026-11-11 卡片正文整体缩进（用户：「各提醒卡片内容都应该增加缩进，至少要比卡片标题
    左侧的折叠按钮缩进更大」）。
@@ -363,11 +363,14 @@ body {
   border-color: transparent;
   background: transparent;
   color: var(--text-2);
-  /* 高度写死（border-box 22 = 行盒 20 + 上下边框 2）：不再让字体行盒决定它有多高。
-     原来 padding: 4px 6px + 12px 字，行盒在 WebView2 里算出 17.5，整枚按钮 27.5，
-     把卡头的 26px 撑破 —— 折叠后那一张卡就比同页其它卡高 1.5px。 */
-  height: 22px;
-  line-height: 20px;
+  /* 高度写死（border-box 26 = 行盒 24 + 上下边框 2）：不再让字体行盒决定它有多高。
+     原来 padding: 4px 6px + 12px 字，行盒在 WebView2 里算出 17.5，整枚按钮 27.5。
+     2026-11-15：用户要求「预览」与同排的 ✎ / ✕ 等高 —— 那两枚走通用 .btn.mini
+     （4px 内边距 + 12px 字行盒 + 1px 边框），实测 26px，于是预览也取 26（不是把那两枚
+     压到 22）。卡头本身是 32px（见 .card-head 的 height），26px 仍在行内居中，
+     不会把卡头撑高。 */
+  height: 26px;
+  line-height: 24px;
   padding: 0 6px;
 }
 .card-head-act.btn:hover {
