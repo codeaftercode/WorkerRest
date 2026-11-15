@@ -1540,11 +1540,13 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .sup-preview {
   position: relative;
   flex: none;                      /* 别被 flex column 压扁，高度只由宽高比决定 */
-  /* 舞台尺寸跟着右列宽度走：16:9 撑开（真机提醒窗就是 16:9，所见即真机），
-     max-height 封顶防止超宽窗口下把整页推走。 */
+  /* 舞台尺寸严格跟着右列宽度走：16:9 撑开（真机提醒窗就是 16:9，所见即真机）。
+     这里**不能**加 max-height —— 高度一旦封顶，aspect-ratio 会反过来把宽度压低，
+     图就窄于右列、右侧露出一条白缝（1280 宽窗口实测 25px），与下方「立绘调节 /
+     提醒内容」的左缘对不齐，看着像一张贴上去的图。卡片本身有 #tab-supervisor
+     的 max-width: 1040px 封顶，图最高 466px，不会把整页推走。 */
   aspect-ratio: 16 / 9;
   min-height: 200px;
-  max-height: 360px;
   /* 四角都是直角：左上角要跟左边的候选专员名单直接连成一片，
      右上角交给 .sup-grid 的外圆角去裁（见上）。 */
   border-radius: 0;
