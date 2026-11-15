@@ -601,16 +601,21 @@
         </div>
       </section>
 
-      <!-- 快捷键 -->
+      <!-- 快捷键：与前三页同一套版式 —— 卡头一行标题、正文缩进到标题文字那条竖线、
+           说明文字跟在正文末尾（而不是压在标题下面当副标题），见 settings.css 的
+           #tab-shortcuts 一段。这张卡只有四行、页面上也只此一张，所以不做折叠：
+           收起来等于把整页清空，且折叠状态记本地，容易让人以为页面坏了。 -->
       <section class="tab" id="tab-shortcuts">
         <div class="card">
-          <p class="hint">点击输入框后按下组合键即可录入（至少要带一个修饰键：Ctrl / Alt / Shift / Super）；按 Esc 清空；留空表示禁用。</p>
-          <!-- 录入不合规（缺修饰键 / 和别的动作撞车）时在这里汇总说明，平时隐藏 -->
-          <p class="hint hidden" id="sc-warn"></p>
+          <div class="card-head"><h3>快捷键</h3></div>
           <div class="row field"><label>推迟当前休息</label><input type="text" class="shortcut" id="sc-postpone" readonly placeholder="点击后按键录入" /></div>
           <div class="row field"><label>提前结束休息</label><input type="text" class="shortcut" id="sc-endEarly" readonly placeholder="点击后按键录入" /></div>
           <div class="row field"><label>暂停 / 恢复休息</label><input type="text" class="shortcut" id="sc-pause" readonly placeholder="点击后按键录入" /></div>
           <div class="row field"><label>跳转到下一次休息</label><input type="text" class="shortcut" id="sc-nextBreak" readonly placeholder="点击后按键录入" /></div>
+          <!-- 录入不合规（缺修饰键 / 和别的动作撞车）时在这里汇总说明，平时隐藏。
+               紧跟在四行后面：它说的是上面那几个框，不是整页的注解。 -->
+          <p class="hint hidden" id="sc-warn"></p>
+          <p class="hint">点击输入框后按下组合键即可录入（至少要带一个修饰键：Ctrl / Alt / Shift / Super）；按 Esc 清空；留空表示禁用。</p>
         </div>
       </section>
 

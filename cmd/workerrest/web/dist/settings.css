@@ -297,15 +297,24 @@ body {
    立绘舞台、尺寸位置、提醒内容并进右列，共用卡头的折叠与总闸。
    *** 2026-11-14 二版后：这一页**退出** +24 正文缩进（见下）***。 */
 #tab-timing,
-#tab-general { --body-indent: 24px; }
+#tab-general,
+#tab-shortcuts { --body-indent: 24px; }
 /* 督休专员页不使用 +24 正文缩进（用户：减小列表外部左侧缩进）。
    另两页的缩进是为"标签列 + 控件列"的两栏表单留出与卡头标题同一条竖线的基准；
    这一页左列是名单、右列是舞台，没有标签列可对齐，24px 只是把整块工作台右推 ——
    而这一页最稀缺的资源正是名字的可用宽度。归零后卡头也不再外拉（margin-left: 0），
    箭头与标题仍在卡片自己的 16px 内边距里。 */
 #tab-supervisor { --body-indent: 0px; }
+/* 快捷键页 2026-11-15 加入这一组：它原先是一张没有卡头的裸卡，正文贴着卡片 16px 内边距，
+   切页时四行标签比别的页面左跳 24px —— 用户的原话是“看起来好像不太一样”。
+   现在补上卡头标题、正文回到与标题文字同一条竖线（760 宽下两者都在 281），
+   和通用配置页逐像素对齐。
+   注意这张卡**没有**折叠按钮（见 settings.html 的注释：一张四行的卡收起来等于清空整页），
+   所以它只进这条 padding 规则、**不进**下面那条负左边距规则 —— 没有箭头需要让位，
+   负 24 会把标题单独推到正文左侧。 */
 #tab-timing .card,
 #tab-general .card,
+#tab-shortcuts .card,
 #tab-supervisor .card { padding-left: calc(16px + var(--body-indent)); }
 /* 工作台内的左列面板 / 台词面板不再套“卡内分区”那套 -13px 外挂：
    分栏里每块自己就是一条竖线，外挂会让它越出列宽、左右两列右缘对不齐。
@@ -1750,6 +1759,11 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 快捷键录入不合规（缺修饰键 / 和别的动作撞车）：红框 + 说明行，颜色走主题变量 */
 .shortcut.bad { border-color: var(--danger); background: var(--danger-weak); }
 #sc-warn { color: var(--danger); }
+
+/* 快捷键页的两条说明都排在四行之后（其他卡片的 .hint 也一律在正文末尾，不在标题下当副标题）。
+   .row 自身带 4px 下内边距，这里再补 4px：说明与最后一行之间 8px，错误行与操作说明之间 4px
+   —— 两行都是 12px 小字，4px 已能读出层次，再大就把这一小段说明从四行里割出去了。 */
+#tab-shortcuts .card > .hint { margin-top: 4px; }
 
 .status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
 .status-cell { background: var(--bg); border-radius: var(--r-md); padding: 10px 14px; }
