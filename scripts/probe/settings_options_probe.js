@@ -170,11 +170,11 @@ async function poke(page, handle, kind) {
 async function verifyGeomControls(page) {
   console.log("  ---- 立绘尺寸与位置（写 meta.json 的 geom，不走 settings）");
   // 2026-11-14 重排后“立绘调节”不再折叠，控件常显，不必先展开；
-  // 当前编辑的专员名从“提醒内容（专员名）”的标题里取 —— 舞台上的 HUD 名字已在
-  // 2026-11-14 二版删除（画面里只剩“预览”一枚浮标）。
+  // 当前编辑的专员名从磁贴高亮（.role-item.active）取 —— 2026-11-15 起“提醒内容”标题
+  // 不再挂“（专员名）”，标题只剩四个字，没有可读的名字了。
   const roleName = await page.evaluate(() => {
-    const el = document.getElementById("sup-msg-role");
-    return (el && el.textContent ? el.textContent : "").trim();
+    const el = document.querySelector("#sup-gallery .role-item.active");
+    return el ? (el.dataset.name || "").trim() : "";
   });
   if (!roleName || roleName === "—") {
     check(false, "立绘几何控件：取不到当前编辑的专员名");
@@ -195,7 +195,8 @@ async function verifyGeomControls(page) {
   }
   const baseObj = JSON.parse(base);
 
-  const IDS = ["sup-flip", "sup-size", "sup-posx", "sup-posy"];
+  // 五个控件同住 geom（同一个对象、同一条落盘路径）：显示名称 / 水平翻转两个复选 + 三条滑条
+  const IDS = ["sup-flip", "sup-showname", "sup-size", "sup-posx", "sup-posy"];
   for (const id of IDS) {
     const orig = await page.evaluate((sel) => {
       const el = document.getElementById(sel);
@@ -250,6 +251,67 @@ async function verifyGeomControls(page) {
     return el ? el.textContent.trim() : "";
   });
   check(/[0-9]/.test(summary), "高级选项摘要显示 geo 数值", summary);
+
+  // “显示名称”不只是写盘：勾掉之后预览面板上的竖排名牌必须真的消失。
+  // 它和真机（break.js / takeout.js）读的是同一个 geom.showName —— 这里验的是
+  // “控件 → 预览 → 磁盘”这一整条，只验 meta.json 的话界面上牌子还挂着也发现不了。
+  const namePlate = async () =>
+    await page.evaluate(() => {
+      const n = document.getElementById("sup-preview-name");
+      if (!n) return null;
+      return { hidden: n.classList.contains("hidden"), text: (n.textContent || "").trim() };
+    });
+  // 先确保是“显示”态（上一条 poke 已还原，这里再兜一次底）
+  await page.evaluate(() => {
+    const el = document.getElementById("sup-showname");
+    if (el && !el.checked) el.click();
+  });
+  await sleep(700);
+  const plateOn = await namePlate();
+  check(plateOn && !plateOn.hidden && plateOn.text !== "",
+    "supervisor · 勾着“显示名称”时预览里有竖排名牌", JSON.stringify(plateOn));
+  await page.evaluate(() => {
+    const el = document.getElementById("sup-showname");
+    if (el && el.checked) el.click();
+  });
+  await sleep(700);
+  const plateOff = await namePlate();
+  check(plateOff && plateOff.hidden,
+    "supervisor · 取消“显示名称”后预览名字牌消失", JSON.stringify(plateOff));
+
+  // 换个人再换回来：复选框要从 meta.json 读回“关”，牌子也不能自己冒出来。
+  // 走的是 focusRole → refreshSupervisorPreview → Go 读盘这一条，等价于持久化验证。
+  const tiles = await page.evaluate(() =>
+    [...document.querySelectorAll("#sup-gallery .role-item")].map((b) => b.dataset.name).filter(Boolean));
+  const other = tiles.find((n) => n !== roleName);
+  if (other) {
+    const clickTile = async (name) => {
+      await page.evaluate((n) => {
+        const el = [...document.querySelectorAll("#sup-gallery .role-item")]
+          .find((b) => b.dataset.name === n);
+        if (el) el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      }, name);
+      await sleep(700);
+    };
+    await clickTile(other);
+    await clickTile(roleName);
+    const back = await page.evaluate(() => {
+      const b = document.getElementById("sup-showname");
+      const n = document.getElementById("sup-preview-name");
+      return { checked: b ? b.checked : null, hidden: n ? n.classList.contains("hidden") : null };
+    });
+    check(back.checked === false && back.hidden === true,
+      "supervisor · 换人再换回来，“显示名称”仍是关的（读数来自 meta.json）",
+      JSON.stringify(back));
+    // 还原成显示，别把后面的用例带偏
+    await page.evaluate(() => {
+      const el = document.getElementById("sup-showname");
+      if (el && !el.checked) el.click();
+    });
+    await sleep(700);
+  } else {
+    check(false, "supervisor · 立绘库里至少要有两位专员才能验“换人后回填”");
+  }
   void baseObj;
 }
 
@@ -3310,8 +3372,9 @@ async function main() {  const browser = await chromium.launch({ channel: "msedg
         const out = [];
         const seen = new Set();
         // 这几枚不写配置，而是写 supervisor/<专员>/meta.json 的 geom：
-        // 由下面专门的一段用 listSupervisorRoles 验证（口径不同，不能混进来）
-        const GEOM_IDS = new Set(["sup-flip", "sup-size", "sup-posx", "sup-posy"]);
+        // 由下面专门的一段用 listSupervisorRoles 验证（口径不同，不能混进来）。
+        // sup-showname（显示名称）也住在 geom 里，同样归那一段。
+        const GEOM_IDS = new Set(["sup-flip", "sup-showname", "sup-size", "sup-posx", "sup-posy"]);
         for (const el of root.querySelectorAll("input")) {
           const type = el.type;
           if (!["checkbox", "radio", "number", "range", "text"].includes(type)) continue;

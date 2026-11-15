@@ -2239,7 +2239,7 @@
   // 与休息窗口同源，但**没有二阶段**：外卖提醒不玩“凑近命令”——督休专员台词
   // 恒为外卖提醒文字（stage1Text），不显示督休专员自己的劝说/命令台词；
   // 检测到活动只向其他窗口广播升级（supActivity），本窗口不升级。
-  var GEOM_FALLBACK = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false };
+  var GEOM_FALLBACK = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false, showName: true };
   function setupSupervisor(sup, stage1Text) {
     const app = document.getElementById("app");
     const figure = document.getElementById("figure");
@@ -2253,12 +2253,15 @@
     // 督休专员题名：竖排金色宋体，钉在立绘头部左侧的空白区（.dialog-name）。
     // 位置与字号由 layoutRoleTitle() 按 alpha 剖面实测写入；这里只填文本，并清掉
     // 上一轮的 data-rt —— 换专员后旧位置对新立绘是错的，重新定位成功前保持不可见。
+    // 是否出场由 geom.showName 决定（缺字段 = 显示；设置页“立绘调节 → 显示名称”）。
+    const g = sup.geom ?? GEOM_FALLBACK;
+    const showName = g.showName !== false;
     const nameEl = document.getElementById("dialog-name");
     if (nameEl) {
       delete nameEl.dataset.rt;
       // 每次出场换一枚“章”：牌底轮廓/断裂与四周碎点一起换（同一下标）
       pickSealInk(nameEl);
-      if (sup.name) {
+      if (sup.name && showName) {
         nameEl.textContent = sup.name;
         nameEl.classList.remove("hidden");
       } else {
@@ -2266,7 +2269,6 @@
         nameEl.classList.add("hidden");
       }
     }
-    const g = sup.geom ?? GEOM_FALLBACK;
     const flip = g.flip === true;
     document.body.classList.toggle("sup-flip", flip);
     const vars = document.documentElement.style;

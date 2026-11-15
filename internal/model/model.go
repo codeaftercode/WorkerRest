@@ -34,6 +34,11 @@ type SupGeom struct {
 	PosXPct float64 `json:"posXPct"`
 	PosYPct float64 `json:"posYPct"`
 	Flip    bool    `json:"flip"`
+	// ShowName 是否在提醒窗口的立绘旁显示竖排名牌。
+	// 与上面四项同住一个对象：它们都是“这张脸怎么出场”，改一个就整份回写。
+	// 语义上默认**显示**——老 meta.json 没有这个字段，缺省若按 false 走，
+	// 升级后所有专员的牌子会一起消失（见 NormalizeSupGeom）。
+	ShowName bool `json:"showName"`
 }
 
 // SupLines 督休专员两段台词

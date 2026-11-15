@@ -15,8 +15,9 @@
     return s;
   }
   // 历史源码/types.ts。2026-10-28 用户要求：默认高度 80%、距左 5%、贴底，
-  // 与 Go 侧 role_write.go 的 supGeomDefault 必须同值（内置 meta.json 也一律这个值）
-  var SUP_GEOM_DEFAULT = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false };
+  // 与 Go 侧 role_write.go 的 supGeomDefault 必须同值（内置 meta.json 也一律这个值）。
+  // showName 默认 true（与 flip 相反：它缺省是“显示”，见 normalizeSupGeom）。
+  var SUP_GEOM_DEFAULT = { sizePct: 80, posXPct: 5, posYPct: 0, flip: false, showName: true };
   var SUP_GEOM_LIMITS = {
     sizePct: [20, 100],
     // 距左上限 30%：再往右立绘会挤掉右侧台词的位置（右侧内容要摆在“督休专员右边缘 ↔ 窗口右边缘”中间）
@@ -34,7 +35,10 @@
       posXPct: pick("posXPct"),
       posYPct: pick("posYPct"),
       // 只认真正的布尔 true：老配置没有这个字段，一律按"不翻转"
-      flip: raw?.flip === true
+      flip: raw?.flip === true,
+      // 与 flip 反着来：缺字段按"显示"，只有明确写了 false 才关 ——
+      // 否则升级后老专员的名字牌会一起消失（Go 侧 NormalizeSupGeom 同口径）
+      showName: raw?.showName !== false
     };
   }
   var SUPERVISOR_SELECTIONS = [
@@ -2137,14 +2141,13 @@
     // 三种模式在图标上的区别（见 DISPLAY_MODE）：带“1”的循环箭头 = 固定、
     // 交叉箭头 = 随机、循环箭头 = 顺序 —— 与提示音的播放方式图标同一套画法。
     // 切换“固定显示 / 随机 / 顺序”会换掉勾选语义（单选框 ↔ 复选框），
-    // 名单里的勾选框形态与名字牌都要跟着换口径（syncRoleSelUI 由 selectRole 触发，
-    // 这里补一次名字同步，免得“提醒内容（谁）”停在旧名字上）
+    // 名单里的勾选框形态与磁贴高亮都要跟着换口径（syncRoleSelUI 由 selectRole 触发，
+    // 这里补一次磁贴高亮同步）
     fillSupervisorImageName();
   }
+  // “提醒内容”标题不再挂“（当前编辑者）”：名字在预览的竖排名牌上、在左列磁贴的高亮上，
+  // 标题里再写一遍是重复信息（2026-11-15 用户要求去掉）。这里只同步磁贴高亮。
   function fillSupervisorImageName() {
-    const name = currentRoleName();
-    const msgRole = $("sup-msg-role");
-    if (msgRole) msgRole.textContent = name;
     // 舞台画面上不再有 HUD（名字 / 状态徽章都撤了，只剩一枚“预览”）：名字由画面里的
     // 竖排名牌承载，参与状态由左列勾选框承载 —— 画面不重复这两件事。
     for (const btn of document.querySelectorAll("#sup-gallery .role-item")) {
@@ -2643,7 +2646,7 @@
     const custom = g.sizePct !== SUP_GEOM_DEFAULT.sizePct || g.posXPct !== SUP_GEOM_DEFAULT.posXPct || g.posYPct !== SUP_GEOM_DEFAULT.posYPct || g.flip !== SUP_GEOM_DEFAULT.flip;
     el.textContent = `${custom ? "已调整 \xB7 " : ""}高度 ${g.sizePct}% \xB7 距左 ${g.posXPct}% \xB7 距底 ${g.posYPct}%` + (g.flip ? " \xB7 已翻转" : "");
     el.classList.toggle("customized", custom);
-    el.title = "拖动下面的滑条可调整当前立绘的显示尺寸与位置，以及是否水平翻转";
+    el.title = "拖动下面的滑条可调整当前立绘的显示尺寸与位置；左侧的两个开关管是否显示名字牌、是否水平翻转";
   }
   var supRelayout = null;
   function applySupGeometry(g) {
@@ -2664,14 +2667,25 @@
       $("sup-preview-trim")
     );
     supRelayout();
-    // 立绘尺寸/位置一变，名字牌要跟着重新贴边（拖滑条时逐帧走这里）
-    placeSupNamePlate();
+    // 名字牌的开关也住在 geom 里，所以摆位前先按它收放一次。
+    // 文本不在这里写（由 renderSupervisorPreview 填）：拖滑条时这个函数逐帧跑，
+    // 反复重写 textContent 会让牌子每帧重新排版。
+    // supPreview.geom 也要跟着改：autoSave 之后 renderSupervisorPreview 会重画一次名字牌，
+    // 它读的是那份快照 —— 不同步的话刚关掉的牌子会被旧值顶回来。
+    if (supPreview && supPreview.geom) supPreview.geom.showName = g.showName !== false;
+    const nameEl = $("sup-preview-name");
+    const showName = g.showName !== false && !!(nameEl && nameEl.textContent.trim());
+    if (nameEl) nameEl.classList.toggle("hidden", !showName);
+    // 立绘尺寸/位置一变，名字牌要跟着重新贴边（拖滑条时逐帧走这里）；
+    // 收起时不必量 —— 隐藏元素的 rect 是 0，会把牌子摆到面板角上
+    if (showName) placeSupNamePlate();
   }
   function fillGeomControls(g) {
     $("sup-size").value = String(g.sizePct);
     $("sup-posx").value = String(g.posXPct);
     $("sup-posy").value = String(g.posYPct);
     $("sup-flip").checked = g.flip;
+    $("sup-showname").checked = g.showName !== false;
     applySupGeometry(g);
   }
   function clampGeom(el, key) {
@@ -2683,7 +2697,8 @@
       sizePct: clampGeom($("sup-size"), "sizePct"),
       posXPct: clampGeom($("sup-posx"), "posXPct"),
       posYPct: clampGeom($("sup-posy"), "posYPct"),
-      flip: $("sup-flip").checked
+      flip: $("sup-flip").checked,
+      showName: $("sup-showname").checked
     };
   }
   // 预览面板的名字牌与真实提醒窗口同款：每次重绘随机换一枚“章”（牌底 + 碎点同下标），
@@ -2766,10 +2781,11 @@
     badge.classList.toggle("hidden", !off);
     badge.textContent = off ? "功能已关闭 \xB7 提醒窗口不会显示督休专员" : "";
     applySupPreviewLine();
-    // 说话人由对话框左上角的名字牌承载（与休息窗口的 dialog-name 同款），不再挂在台词上
+    // 说话人由对话框左上角的名字牌承载（与休息窗口的 dialog-name 同款），不再挂在台词上。
+    // “显示名称”没勾时这块整块不出现 —— 与真机同一个口径（break.js 读的是同一个字段）。
     const previewName = $("sup-preview-name");
     pickPreviewSeal(previewName);
-    if (supPreview?.name) {
+    if (supPreview?.name && supPreview?.geom?.showName !== false) {
       previewName.textContent = supPreview.name;
       previewName.classList.remove("hidden");
     } else {
@@ -7802,8 +7818,17 @@
       commitGeomToRole(g);
       autoSave();
     });
+    // “显示名称”：与水平翻转同一条落盘路径（geom 存在专员自己的 meta.json 里）。
+    // 它不改画面几何，只决定立绘旁那块竖排名牌出不出现 —— 预览与真机同一个字段。
+    $("sup-showname").addEventListener("change", () => {
+      const g = readGeomFromForm();
+      applySupGeometry(g);
+      commitGeomToRole(g);
+      autoSave();
+    });
     $("sup-geom-reset").addEventListener("click", () => {
-      const g = { ...SUP_GEOM_DEFAULT };
+      // “恢复默认”只管尺寸 / 位置 / 翻转：显示名称是内容开关，不该被它顺手拨回“显示”
+      const g = { ...SUP_GEOM_DEFAULT, showName: $("sup-showname").checked };
       commitGeomToRole(g);
       fillGeomControls(g);
       autoSave();

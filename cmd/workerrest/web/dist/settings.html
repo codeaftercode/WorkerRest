@@ -561,9 +561,10 @@
               <div class="sup-geom" id="sup-geom">
                 <div class="sup-geom-head">
                   <span class="sup-geom-title">立绘调节</span>
-                  <label class="sup-geom-flip"><input type="checkbox" id="sup-flip" /> 水平翻转</label>
+                  <label class="sup-geom-toggle"><input type="checkbox" id="sup-showname" /> 显示名称</label>
+                  <label class="sup-geom-toggle"><input type="checkbox" id="sup-flip" /> 水平翻转</label>
                   <span class="adv-summary" id="sup-geom-summary">—</span>
-                  <button class="btn ghost mini sup-geom-reset" id="sup-geom-reset" title="把当前专员的立绘尺寸与位置还原为默认">恢复默认</button>
+                  <button class="btn ghost mini sup-geom-reset" id="sup-geom-reset" title="把当前专员的立绘尺寸与位置还原为默认" aria-label="恢复默认立绘尺寸与位置"><span class="sup-geom-reset-ico" aria-hidden="true"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1"/><path d="M3 3.5V9h5.5"/></svg></span><span class="sup-geom-reset-txt">恢复默认</span></button>
                 </div>
                 <div class="sup-geom-rows">
                   <div class="sup-geom-cell">
@@ -585,7 +586,7 @@
                    点任意一行，上面舞台的对话框立刻换成那一句 —— 改台词时看得到它落地的样子 -->
               <div class="msg-panel sup-msg open" data-kind="sup">
                 <div class="msg-head">
-                  <span class="sup-head">提醒内容（<span id="sup-msg-role">—</span>）</span>
+                  <span class="sup-head" id="sup-msg-head">提醒内容</span>
                   <div class="snd-music-actions">
                     <button type="button" class="snd-mode-btn" aria-label="提醒内容显示方式" title="固定显示"><span class="snd-mode-ico"></span></button>
                     <button type="button" class="msg-add" title="新增提醒内容（可批量输入，每行一条）"><span class="msg-add-ico">＋</span></button>

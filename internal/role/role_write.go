@@ -36,10 +36,13 @@ var supGeomLimits = map[string][2]float64{
 // SupGeomDefault 软件默认的立绘尺寸与位置（与 types.ts 的 SUP_GEOM_DEFAULT 同值）。
 // 2026-10-28 用户要求：自带专员（含打包 / 恢复默认 / 导入自定义立绘）统一
 // 高度 80%、距窗口左侧 5%、贴底 —— 所以随包 meta.json 的 geom 也一律是这个值。
-var SupGeomDefault = model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
+// ShowName 默认 true：名字牌是这个功能的标识之一，新专员一律先给出来。
+var SupGeomDefault = model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false, ShowName: true}
 
 // NormalizeSupGeom 夹紧并补全一份立绘几何：缺失或越界时回落默认值。
 // flip 只认真正的布尔 true（缺这个字段时一律按“不翻转”）。
+// showName 相反：缺字段按 **显示**（true）—— 它默认开，只有明确写了 false 才关，
+// 否则升级后所有老专员的名字牌会凭空消失。
 func NormalizeSupGeom(raw map[string]any) model.SupGeom {
 	pick := func(k string, def float64) float64 {
 		lim, ok := supGeomLimits[k]
@@ -60,12 +63,16 @@ func NormalizeSupGeom(raw map[string]any) model.SupGeom {
 		return r
 	}
 	out := model.SupGeom{
-		SizePct: pick("sizePct", SupGeomDefault.SizePct),
-		PosXPct: pick("posXPct", SupGeomDefault.PosXPct),
-		PosYPct: pick("posYPct", SupGeomDefault.PosYPct),
+		SizePct:  pick("sizePct", SupGeomDefault.SizePct),
+		PosXPct:  pick("posXPct", SupGeomDefault.PosXPct),
+		PosYPct:  pick("posYPct", SupGeomDefault.PosYPct),
+		ShowName: true, // 缺字段 = 显示（见上面的说明），下面只有明确 false 才改
 	}
 	if b, ok := raw["flip"].(bool); ok && b {
 		out.Flip = true
+	}
+	if b, ok := raw["showName"].(bool); ok {
+		out.ShowName = b
 	}
 	return out
 }

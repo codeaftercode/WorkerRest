@@ -556,7 +556,8 @@ const PROBE_SETTINGS = `(function () {
       document.querySelectorAll('#sup-gallery .role-item'),
       function (b) { return b.dataset.name || ''; }
     ).join(','),
-    supMsgRole: txt('sup-msg-role'),
+    // 2026-11-15 起标题只有“提醒内容”四个字（不再挂“（当前编辑者）”，名字在名字牌上）
+    supMsgHead: txt('sup-msg-head'),
     supMsgItems: cnt('.msg-panel[data-kind="sup"] .msg-list .msg-item'),
     supMsgEmpty: cnt('.msg-panel[data-kind="sup"] .msg-list .msg-empty'),
     // 督休专员预览面板的名字牌：必须与真实提醒窗口同款（竖排金字 + 印泥墨块 + 牌外碎点环）。

@@ -459,17 +459,11 @@ def main():
         check((stg.get("supMsgItems") or 0) >= 1,
               "督休专员台词面板渲染出条目（ListRoles 真的下发了 messages）",
               "items=%s empty=%s" % (stg.get("supMsgItems"), stg.get("supMsgEmpty")))
-        panel_role = stg.get("supMsgRole")
-        # “提醒内容”面板标题 = 设置页当前正在编辑的那位，**不是** fixedRole：
-        # 固定模式下初始编辑对象按 fixedRole 选，两者必然相等；随机/顺序模式下按
-        # “第一个已勾选”选（见 settings.js 的 ensureSupEditKey），fixedRole 只是个
-        # 遗留值（2026-11-02 用户切模式后 fixedRole 停在“神秘黑客”、面板显示“秦始皇”
-        # 曾把这里判红）。所以只有固定模式才卡死等于 fixedRole。
-        if sel_mode == "fixed" and fixed_role_name:
-            check(panel_role == fixed_role_name, "台词面板标题 == 固定模式下的 fixedRole",
-                  "%s vs %s" % (panel_role, fixed_role_name))
-        else:
-            check(panel_role in role_names, "台词面板标题是磁盘上某个督休专员名", panel_role)
+        # 2026-11-15 用户要求：“提醒内容”标题不再挂“（当前编辑者）”—— 名字在预览的
+        # 竖排名牌上、在左列磁贴的高亮上，标题里再来一遍是重复信息。这里钉住
+        # “标题只有四个字”，防止哪天又被拼上名字。
+        msg_head = stg.get("supMsgHead")
+        check(msg_head == "提醒内容", "“提醒内容”标题不带专员名与括号", msg_head)
         # 关于页“软件信息”卡：一行“版本”（版本号 | 发布时间）+ 一行“许可条款 | 开源鸣谢”
         # + 该行行尾的协议标识与运行环境。版本值由 -ldflags 注入（源码里是 dev 占位），所以只断言
         # “形如 v1.2.3 或 dev”，不钉具体版本号 —— 否则每次发版都要改探针。

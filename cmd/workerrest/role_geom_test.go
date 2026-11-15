@@ -21,9 +21,10 @@ import (
 //  3. 前端几处 fallback 常量不能跟 Go 侧劈叉（读不到 geom 时显示成另一套比例）
 //
 // 只比 sizePct / posXPct / posYPct：flip 是每个专员各自的美术设定（温柔学姐、魔法师
-// 本来就翻转），不属于统一项。
+// 本来就翻转），不属于统一项。ShowName 同理不参与逐专员的比较，但默认值必须是 true
+// （名字牌默认显示），所以要一并钉在 want 里。
 func TestBuiltinRoleGeomDefaults(t *testing.T) {
-	want := model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false}
+	want := model.SupGeom{SizePct: 80, PosXPct: 5, PosYPct: 0, Flip: false, ShowName: true}
 	if role.SupGeomDefault != want {
 		t.Fatalf("role.SupGeomDefault 应为 %+v，得到 %+v", want, role.SupGeomDefault)
 	}
@@ -88,6 +89,28 @@ func TestBuiltinRoleGeomDefaults(t *testing.T) {
 			t.Errorf("%s 的 %s 应与 Go 侧同值（sizePct: 80 / posXPct: 5），实际是：%s",
 				c.file, c.decl, strings.TrimSpace(line))
 		}
+	}
+}
+
+// showName 的默认方向与 flip 相反：**缺字段 = 显示**。
+// 老 meta.json 里没有这个字段（随包 16 款全都没有），若按零值 false 处理，
+// 升级后所有人的名字牌会一起消失 —— 这类“默认值方向写反”的错只能靠测试钉住。
+func TestShowNameDefaultsToVisible(t *testing.T) {
+	// 缺字段（老配置）
+	if g := role.NormalizeSupGeom(map[string]any{"sizePct": 80.0}); !g.ShowName {
+		t.Fatal("geom 缺 showName 时应按“显示名称”处理，得到 false")
+	}
+	// geom 整个缺失
+	if g := role.NormalizeSupGeom(nil); !g.ShowName {
+		t.Fatal("geom 为 nil 时应按“显示名称”处理，得到 false")
+	}
+	// 明确关闭
+	if g := role.NormalizeSupGeom(map[string]any{"showName": false}); g.ShowName {
+		t.Fatal("geom 写了 showName:false 时应关闭，得到 true")
+	}
+	// 类型不对（被手改成字符串）当作没写，回落显示
+	if g := role.NormalizeSupGeom(map[string]any{"showName": "false"}); !g.ShowName {
+		t.Fatal("showName 不是布尔时应回落“显示名称”，得到 false")
 	}
 }
 

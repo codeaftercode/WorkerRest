@@ -1469,12 +1469,17 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   border-radius: 0;
   background: var(--panel);
 }
+/* 头部：标题 + 两个开关 + 摘要 + 恢复默认，一行装不下就换行。
+   760 窄窗（右列只有 294px）实测会溢出 1px、按钮被挤出内壁 13px —— 两个 label
+   都是 nowrap 不能压，只能让按钮落到第二行（margin-left:auto 仍然贴右）。 */
 .sup-geom-head {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px;
   padding: 7px 12px 6px;
 }
 .sup-geom-title { flex: none; font-size: 12px; font-weight: 700; letter-spacing: .02em; }
-.sup-geom-flip {
+/* 头部的两个复选项（显示名称 / 水平翻转）：同一套长相，和标题、摘要、恢复默认并成一行。
+   标签两字一顿、都带 white-space:nowrap —— “显示名称”折成两行会把整行撑高。 */
+.sup-geom-toggle {
   display: flex; align-items: center; gap: 5px;
   font-size: 12px; color: var(--text-2); cursor: pointer; white-space: nowrap;
 }
@@ -1482,6 +1487,16 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    窄了直接让位给恢复默认按钮 */
 .sup-geom-head .adv-summary { margin-left: 2px; font-size: 11px; }
 .sup-geom-reset { margin-left: auto; flex: none; }
+/* 窄窗（右列只剩 294px）里“恢复默认”四个字占 66px，把这一行挤到换行。
+   820 以下只留一枚回转箭头（宽度降到 ~26px），标题 + 两个开关 + 按钮重回一行；
+   文案没丢：title 与 aria-label 都还在。宽窗仍是纯文字的按钮，外观与原来一致。 */
+.sup-geom-reset-ico { display: none; }
+.sup-geom-reset-ico svg { display: block; }
+@media (max-width: 819px) {
+  .sup-geom-reset-txt { display: none; }
+  .sup-geom-reset-ico { display: block; }
+  .sup-geom-reset { padding-left: 6px; padding-right: 6px; }
+}
 .sup-geom-rows {
   padding: 2px 12px 10px;
   display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 14px;
