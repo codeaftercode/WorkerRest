@@ -851,7 +851,212 @@ async function main() {
       check(false, "关于页有“恢复默认设置”按钮（#d-reset）");
     }
 
-    // ---------- 六、全程无 JS 错误 ----------
+    // ---------- 六、候选专员重命名：改名真的落盘，而且能反复改 ----------
+    // 回归：renameRole 的 validate 先把 role.name 改成新名、再调 persistRole(key)，
+    // 而 persistRole 内部按 name === key（**旧名**）去 ROLES 里查对象 —— 名字刚被改掉，
+    // 查不到就 return false，于是“改任何名字都提示名称已存在”，而 Go 侧一次都没被调用。
+    // 这条用例专门走“改成全新名字”这条正向路径（原来的 renderer_probe 只测了改成
+    // 别人的名字被拒，那恰恰是唯一不会踩到这个缺陷的分支）。
+    console.log("\n[F6] 候选专员重命名：改名 → 落盘 → 改回");
+    await tab("supervisor");
+    await delay(500);
+    const rolesBefore = await page.evaluate(() => window.api.listSupervisorRoles());
+    if (Array.isArray(rolesBefore) && rolesBefore.length) {
+      const oldName = rolesBefore[0].name;
+      const newName = oldName + "·探针";
+      // 改名对话框拆成三步（打开 / 填值提交 / 取消）：异常用例多，需要单独控制
+      // “只打开不提交”“提交后留在框里再取消”，整段 renameOnce 复用一个流程会互相打架。
+      const promptState = () => page.evaluate(() => {
+        const box = document.getElementById("prompt-modal");
+        const err = document.getElementById("pm-error");
+        const inp = document.getElementById("pm-input");
+        return {
+          open: !!box && !box.classList.contains("hidden"),
+          errText: err && !err.classList.contains("hidden") ? err.textContent.trim() : "",
+          value: inp ? inp.value : ""
+        };
+      });
+      const openRename = async (from) => {
+        await page.evaluate((name) => {
+          const tile = [...document.querySelectorAll("#sup-gallery .role-item")]
+            .find((el) => el.dataset.name === name);
+          if (!tile) return;
+          const r = tile.getBoundingClientRect();
+          tile.dispatchEvent(new MouseEvent("contextmenu", {
+            bubbles: true, cancelable: true, clientX: r.left + 20, clientY: r.top + 20
+          }));
+        }, from);
+        await delay(300);
+        await page.evaluate(() => {
+          const b = document.querySelector('#sup-role-menu .role-menu-item[data-act="rename"]');
+          if (b) b.click();
+        });
+        await delay(400);
+        return (await promptState()).open;
+      };
+      const fillPrompt = (v) => page.evaluate((val) => {
+        const inp = document.getElementById("pm-input");
+        inp.value = val;
+        inp.dispatchEvent(new Event("input", { bubbles: true }));
+      }, v);
+      const submitName = async (to) => {
+        await fillPrompt(to);
+        await page.evaluate(() => document.getElementById("pm-ok").click());
+        await delay(1200); // 等 Go 落盘 + 前端重渲染磁贴
+        return promptState();
+      };
+      const renameOnce = async (from, to) => {
+        if (!(await openRename(from))) return { open: false, errText: "", value: "", opened: false };
+        return { ...(await submitName(to)), opened: true };
+      };
+      const cancelPrompt = async () => {
+        await page.evaluate(() => {
+          const b = document.getElementById("pm-cancel");
+          if (b) b.click();
+        });
+        await delay(250);
+        return promptState();
+      };
+      const diskNames = () => page.evaluate(() => window.api.listSupervisorRoles());
+      const tileExists = (name) => page.evaluate((n) =>
+        [...document.querySelectorAll("#sup-gallery .role-item")].some((el) => el.dataset.name === n), name);
+
+      const first = await renameOnce(oldName, newName);
+      const disk1 = await page.evaluate(() => window.api.listSupervisorRoles());
+      check(!first.open && !first.errText,
+        "重命名成全新名字：对话框关闭、无错误文案", JSON.stringify(first));
+      check(disk1.some((x) => x.name === newName) && !disk1.some((x) => x.name === oldName),
+        "重命名后磁盘上是新名字、旧名字已消失",
+        `${oldName} → ${newName}`);
+
+      // 再改回原名：既验证“能反复改”，也把现场复原（这条用例必须不留残留）
+      const second = await renameOnce(newName, oldName);
+      const disk2 = await page.evaluate(() => window.api.listSupervisorRoles());
+      check(!second.open && !second.errText &&
+        disk2.some((x) => x.name === oldName) && !disk2.some((x) => x.name === newName),
+        "再改回原名同样成功（可反复改名，且不留残留）", JSON.stringify(second));
+
+      // ---------- F6 异常面：重名 / 空名 / 取消 / 长度上限 / 特殊字符 / 前导点 / 保存失败 ----------
+      // 每一条都必须自己收拾现场（不许留下改过的名字），否则后面的用例全部跟着偏。
+
+      // ① 撞上别人的名字：对话框不关、提示“已存在”、磁盘上仍是原名
+      if (rolesBefore.length > 1) {
+        const otherName = rolesBefore[1].name;
+        const dup = await renameOnce(oldName, otherName);
+        const diskDup = await diskNames();
+        check(dup.open && /已存在/.test(dup.errText),
+          "改名撞上别人的名字：对话框不关、提示“已存在”", JSON.stringify(dup));
+        check(diskDup.some((x) => x.name === oldName) && diskDup.some((x) => x.name === otherName),
+          "重名被拒后磁盘上两人都还在、谁都没被改名",
+          diskDup.map((x) => x.name).join(","));
+        await cancelPrompt();
+      }
+
+      // ② 名字只有空格：前端先拦（不惊动 Go），框不关、输入保留
+      const blank = await renameOnce(oldName, "   ");
+      check(blank.open && /不能为空/.test(blank.errText),
+        "名字只有空格：提示“不能为空”、对话框不关", JSON.stringify(blank));
+      await cancelPrompt();
+
+      // ③ 点取消：什么都不该发生
+      const cancelOpened = await openRename(oldName);
+      await fillPrompt(oldName + "·取消");
+      await cancelPrompt();
+      const diskCancel = await diskNames();
+      check(cancelOpened && diskCancel.some((x) => x.name === oldName) &&
+        !diskCancel.some((x) => x.name === oldName + "·取消"),
+        "点取消：不改名、磁盘不变", diskCancel.map((x) => x.name).join(","));
+
+      // ④ 长度上限：30 个字符（英文名“Head of the Department”这种 20 个字母写不下）。
+      //    键盘真打 40 个才作数 —— 直接赋 value 会绕过 maxlength，量不到真实的截断。
+      const maxLen = await page.evaluate(() => document.getElementById("pm-input").maxLength);
+      check(maxLen === 30, "输入框长度上限是 30 个字符", String(maxLen));
+      if (await openRename(oldName)) {
+        await page.locator("#pm-input").fill("");
+        await page.locator("#pm-input").pressSequentially("x".repeat(40));
+        const typedLen = await page.evaluate(() => document.getElementById("pm-input").value.length);
+        check(typedLen === 30, "连打 40 个字符只进 30 个", String(typedLen));
+        await cancelPrompt();
+      }
+
+      // ⑤ 特殊字符：这 9 个字符 **拒收**（2026-11-14 口径）。
+      //    名字要投影成目录名，含它们时 Go 侧会把字符净化掉 —— 目录名与用户起的名对不上，
+      //    去配置目录里按名字找人对不上号。既然要求里写明了不能含，就必须真的拦住。
+      const weird = "a/b:c*?";
+      const weirdRes = await renameOnce(oldName, weird);
+      const diskWeird = await diskNames();
+      check(weirdRes.open && /不能包含/.test(weirdRes.errText),
+        "含 / : * ? 的名字被拒：提示“不能包含”、对话框不关", JSON.stringify(weirdRes));
+      check(diskWeird.some((x) => x.name === oldName) && !diskWeird.some((x) => x.name === weird),
+        "被拒后磁盘上仍是原名", diskWeird.map((x) => x.name).join(","));
+      await cancelPrompt();
+      // 只含合法标点（连字符 / 下划线 / 空格 / 撇号）的名字照常能存
+      const okChars = oldName + " -_ A'B";
+      const okRes = await renameOnce(oldName, okChars);
+      const diskOk = await diskNames();
+      check(!okRes.open && !okRes.errText && diskOk.some((x) => x.name === okChars),
+        "连字符 / 下划线 / 空格 / 撇号照常可用", JSON.stringify(okRes));
+      const okBack = await renameOnce(okChars, oldName);
+      check(!okBack.open && !okBack.errText, "名字能改回去", JSON.stringify(okBack));
+
+      // ⑥ 前导点：**拒收**（2026-11-14 第二轮口径）。点开头的目录会被扫描器当隐藏目录
+      //    跳过，Go 只能给它加 "_" 前缀 —— 名字 ".probe"、目录 "_probe"，又是名与目录
+      //    对不上；POSIX / macOS 上点开头还是隐藏文件，备份与 Finder 默认都不显示。
+      for (const dotName of [".probe", ".", ".."]) {
+        const dotRes = await renameOnce(oldName, dotName);
+        const diskDot = await diskNames();
+        check(dotRes.open && /不能以点开头/.test(dotRes.errText),
+          `以点开头的名字 ${JSON.stringify(dotName)} 被拒（理由说点开头）、对话框不关`,
+          JSON.stringify(dotRes));
+        check(diskDot.some((x) => x.name === oldName),
+          `${JSON.stringify(dotName)} 被拒后磁盘上仍是原名`, diskDot.map((x) => x.name).join(","));
+        await cancelPrompt();
+      }
+      // 结尾的点：Windows 会吞掉（"abc." 与 "abc" 同一个目录），POSIX 不吞 —— 一律收敛掉，
+      // 保证“框里看到的名字 = 磁盘上的名字 = 目录名”。
+      const dotted = oldName + ".";
+      const dotTail = await renameOnce(oldName, dotted);
+      const diskTail = await diskNames();
+      check(!dotTail.open && !dotTail.errText && diskTail.some((x) => x.name === oldName),
+        "结尾的点被收敛掉：改 “原名.” 存回去还是原名",
+        JSON.stringify({ res: dotTail, names: diskTail.map((x) => x.name) }));
+
+      // ⑦ 保存失败（Go 侧返回 false）：框不关、报错、界面把名字退回旧值
+      // 这是“界面不能显示一个没存住的名字”的兜底：role.name 赋值 → 保存 → 失败 → 回滚。
+      const stubbed = await page.evaluate(() => {
+        if (!window.api || typeof window.api.saveSupervisorRole !== "function") return false;
+        window.__wrOrigSaveRole = window.api.saveSupervisorRole;
+        window.api.saveSupervisorRole = () => Promise.resolve(false);
+        return true;
+      });
+      if (stubbed) {
+        const failRes = await renameOnce(oldName, oldName + "·失败");
+        const stillOld = await tileExists(oldName);
+        const leaked = await tileExists(oldName + "·失败");
+        // 文案必须区分“重名”与“写盘失败”：这里不是重名，所以不该报“已存在”
+        check(failRes.open && /保存失败/.test(failRes.errText) && !/已存在/.test(failRes.errText),
+          "保存失败：对话框留在原地，且提示的是“保存失败”而不是“名称已存在”",
+          JSON.stringify(failRes));
+        check(stillOld && !leaked,
+          "保存失败后界面把名字退回旧值（不显示没存住的名字）",
+          JSON.stringify({ stillOld, leaked, value: failRes.value }));
+        await cancelPrompt();
+        await page.evaluate(() => {
+          if (window.__wrOrigSaveRole) window.api.saveSupervisorRole = window.__wrOrigSaveRole;
+          delete window.__wrOrigSaveRole;
+        });
+        const diskAfterFail = await diskNames();
+        check(diskAfterFail.some((x) => x.name === oldName) &&
+          !diskAfterFail.some((x) => x.name === oldName + "·失败"),
+          "保存失败后磁盘上仍是原名字", diskAfterFail.map((x) => x.name).join(","));
+      }
+
+      await delay(SAVE_WAIT);
+    } else {
+      check(false, "督休专员列表可用（重命名用例需要至少一位）");
+    }
+
+    // ---------- 七、全程无 JS 错误 ----------
     check(consoleErrors.length === 0, "全流程没有任何 JS 报错", consoleErrors.slice(0, 3).join(" ; "));
     await page.screenshot({ path: path.join(OUT, "flow_last.png") });
   } finally {

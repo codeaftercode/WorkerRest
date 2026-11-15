@@ -1903,8 +1903,20 @@
   var pmResolve = null;
   var pmValidate = null;
   var pmBusy = false;
+  // 命名框的图标画法：24 视框、currentColor 描边（与页面里其它图标同一套），
+  // 配色交给 .cf-icon.prompt（主色淡底）。默认那枚“＋”是纯文本，留在 settings.html 里。
+  // 尺寸/描边是照 34px 圆定的：铅笔是对角的，占地比“＋”大，17px 刚好留出呼吸边；
+  // 描边 2.2 补上视觉分量（1.5px 的细线缩在这个圆里会发灰）。
+  var PM_ICON_PENCIL =
+    '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M12 20h9"/><path d="M16.6 3.4a2.1 2.1 0 0 1 3 3L8.4 17.6 4 19l1.4-4.4Z"/></svg>';
   function promptDialog(opts) {
     $("pm-title").textContent = opts.title;
+    // 图标按用途换：同一个框既用来“给新立绘起名”（＋），也用来“重命名”（铅笔）。
+    // 不传就回到默认 —— 每次重设，免得铅笔泄漏到下一个用这个框的流程。
+    const icon = $("pm-icon");
+    if (icon) icon.innerHTML = opts.icon === "pencil" ? PM_ICON_PENCIL : "＋";
     const desc = $("pm-desc");
     desc.textContent = opts.desc ?? "";
     desc.classList.toggle("hidden", !opts.desc);
@@ -1999,22 +2011,86 @@
       (r) => r.name !== excludeName && (r.name ?? "").trim().toLowerCase() === lower,
     );
   }
-  // roleNameError 重名检查的错误文案（null = 通过）。
+  // 督休专员的命名要求：重命名框与“导入立绘 → 命名”共用同一段文案。
+  // 换行交给 #pm-desc 的 white-space: pre-line（自动折行会从括号中间断开）。
+  // 一条一行，每条正好对应 roleNameError 里的一道闸与输入框的 maxlength。
+  // 上限 30 与 maxlength 同值 —— Go 侧宽松得多（60 rune / 120 字节），30 是更严的闸；
+  // 放宽到 30 是为了英文名（“Head of the Department” 20 个字母写不下，中文 30 字 =
+  // 90 字节，仍在上限里）。字符要求写成“不能包含哪几个”而不是“允许哪些”：
+  // 允许集在各国文字下永远列不全，禁止集只有 Windows 文件名这 9 个，说清就够。
+  var ROLE_NAME_RULES =
+    "名称要求：1～30 个字符，不能以点开头。\n" +
+    '不能包含 \\ / : * ? " < > | 这 9 个字符。\n' +
+    "不能与其他督休专员重名（不区分大小写）。";
+  // normalizeRoleNameInput 收敛成“最终会落盘的那个名字”：首尾空白去掉，**结尾的点**也去掉。
+  // 与 Go 侧 SanitizeRoleDirName 的 TrimRight(" .") 同口径：Windows 会吞掉结尾的点与空格
+  // （"abc." 与 "abc" 在文件系统里是同一个目录），POSIX 不吞 —— 不收敛就会出现“同一个名字
+  // 两套目录、换到别的系统上又变成两个人”。只动结尾：中间的点照留（"Dr. Who" 是正常名字）。
+  function normalizeRoleNameInput(v) {
+    const t = (v ?? "").trim();
+    const s = t.replace(/[.\s]+$/, "");
+    // 全是点（"."、".."、"..."）收敛后是空串 —— 那就把原样交回去，让下面的
+    // “不能以点开头”给出准确的理由（否则用户输入 "." 会看到“名称不能为空”，莫名其妙）。
+    return s || t;
+  }
+  // roleNameError 命名要求的校验（null = 通过）。
+  // 重命名与“导入立绘 → 命名”共用这一个函数，规则文案也放在这里（ROLE_NAME_RULES），
+  // 两处的 desc 直接引用同一段 —— 用户在哪一处看到的口径都一样。
   // excludeName 同 roleNameTaken：改名时排除自己。
   function roleNameError(name, excludeName) {
     const n = (name ?? "").trim();
     if (!n) return "名称不能为空";
+    // 点开头：目录名是名字的投影，而 ValidRoleDirName 判“.”开头非法（扫描器会把它们
+    // 当隐藏目录跳过），Go 侧只能给目录加 "_" 前缀 —— 名字叫 ".x"、目录叫 "_x"，
+    // 又一次“名与目录对不上”。跨平台更糟：POSIX / macOS 上点开头就是隐藏文件，
+    // Finder 与多数备份 / 同步工具默认不看，用户会找不到自己刚导入的立绘。
+    // 连带把 "." 与 ".." 这两条也挡住 —— 它们净化后会被改成“督休专员”，等于悄悄换名。
+    if (n.startsWith(".")) return "名称不能以点开头";
+    // 这 9 个字符在 Windows 文件名里非法：名字要投影成目录名，含它们的话目录名会被
+    // 悄悄净化掉字符（目录与用户起的名对不上，去配置目录里找人对不上号），
+    // 所以在这里直接拦住、要求换一个，而不是让步接受。
+    const bad = /[\\/:*?"<>|]/.exec(n);
+    if (bad) return `名称不能包含“${bad[0]}”`;
     if (roleNameTaken(n, excludeName)) {
-      return `名称“${n}”已存在，请换一个`;
+      return `名称“${n}”已存在（不区分大小写），请换一个`;
     }
     return null;
+  }
+  // roleNameTakenOnDisk 用**磁盘上的最新名单**判重名，只在“保存已经失败”之后调用。
+  //
+  // 为什么需要它：Go 的 saveSupervisorRole 只回 bool，重名与写盘失败在返回值上
+  // 长得一模一样。而这两件事该给的提示完全不同 —— 重名要“换个名字”，
+  // 写盘失败（meta.json 被杀毒软件 / 预览进程占住、没有写入权限）换一百个名字
+  // 也存不进去。原来的文案一律报“名称已存在（或保存失败）”，把用户往错误方向引。
+  //
+  // 口径是 trim + 小写（近似 Go 的 RoleIdentity）：目录名那套净化规则不必在这重复，
+  // 这里只用来二选一决定文案，判严一点/松一点都不会写坏数据。
+  async function roleNameTakenOnDisk(name, excludeName) {
+    const n = (name ?? "").trim().toLowerCase();
+    if (!n) return false;
+    const ex = (excludeName ?? "").trim().toLowerCase();
+    try {
+      const list = (await window.api.listSupervisorRoles()) || [];
+      return list.some((r) => {
+        const other = (r.name ?? "").trim().toLowerCase();
+        return other === n && other !== ex;
+      });
+    } catch (e) {
+      // 名单都读不出来，就不是“换个名字”能解决的事；按重名报，至少不误导成写盘坏了
+      console.error("[roleNameTakenOnDisk] 读取名单失败", e);
+      return true;
+    }
   }
   // persistRole 把内存里的某个督休专员写回 meta.json。
   // 返回 Promise<boolean>：false = Go 侧拒绝（重名 / 写失败）。
   // 调用方必须能感知这个结果 —— 否则界面显示改了名字、磁盘上却没改，
   // 下次启动又变回去，界面在骗人。
-  function persistRole(key) {
-    const role = ROLES.find((r) => r.name === key);
+  // roleRef：改名时内存里的对象**已经**叫新名了，再按 key（旧名）去 ROLES 里查
+  // 必然查不到 —— 那时必须由调用方把对象直接递进来，否则第一步就 return false，
+  // 表现成“改个名总说名称已存在”，而 Go 侧根本没被调用过。
+  // key 仍然要传：它是**落盘身份**（本次保存前磁盘上的名字），Go 侧靠它反查目录。
+  function persistRole(key, roleRef) {
+    const role = roleRef || ROLES.find((r) => r.name === key);
     if (!role) return Promise.resolve(false);
     try {
       return Promise.resolve(
@@ -2127,9 +2203,12 @@
     if (!role) return;
     const input = await promptDialog({
       title: "重命名",
-      desc: "名称会显示在立绘库磁贴、台词气泡的说话人与提醒内容面板标题。",
+      // 写“要求”而不是“这名字会显示在哪”：用户点重命名时要知道的是**能输什么**，
+      // 这两条正好对应下面 validate 与输入框 maxlength 实际拦下的两件事。
+      desc: ROLE_NAME_RULES,
       value: role.name,
       placeholder: "名称",
+      icon: "pencil",
       okText: "确定",
       // 重名 → 拒绝保存，留在框里要求重新输入（不关对话框、不丢已输入的名字）。
       // excludeName = key：排除自己，否则“不改名直接点确定”会被自己的旧名挡住。
@@ -2138,7 +2217,9 @@
       // 多了一个同名专员，前端内存里的 ROLES 不一定知道），它返回 false 就是被拒 ——
       // 这时对话框不关、错误留在框里，用户改个名再提交，而不是弹个 toast 把名字丢掉。
       validate: async (v) => {
-        const name = (v ?? "").trim();
+        // 先收敛成“最终落盘的名字”（结尾的点与空白去掉），再过下面这套闸：
+        // 校验的串与存进去的串必须是同一个，否则会出现“框里写着 abc.”、磁盘上存 abc。
+        const name = normalizeRoleNameInput(v);
         if (!name) return "名称不能为空";
         const err = roleNameError(name, key);
         if (err) return err;
@@ -2146,10 +2227,18 @@
         // 失败时把内存里的名字退回去 —— 界面不能显示一个没存住的名字。
         const prev = role.name;
         role.name = name;
-        const ok = await persistRole(key);
+        // 第二个参数把对象直接递进去：此刻 role.name 已是新名，persistRole 内部
+        // 按 key 反查会指向一个不存在的人（详见 persistRole 上方注释）。
+        const ok = await persistRole(key, role);
         if (!ok) {
           role.name = prev;
-          return "名称已存在（或保存失败），请换一个";
+          // Go 只回 bool，重名与写盘失败在这里分不开。用磁盘上的最新名单再判一次：
+          // 是重名才让用户“换个名字”；不是重名就只可能是 meta.json 被占用 / 没权限，
+          // 这时候还提示“已存在”会让用户白改十次名字（这是实测出来的误导路径）。
+          const taken = await roleNameTakenOnDisk(name, key);
+          return taken
+            ? `名称“${name}”已存在（不区分大小写），请换一个`
+            : "保存失败：文件被占用或没有写入权限，请稍后重试";
         }
         return null;
       }
@@ -2157,6 +2246,14 @@
     if (input === null) return;
     // 改的是名字本身：当前编辑对象的标识要跟着换，否则后面按旧名找不到人
     supEditName = role.name;
+    // 名字就是身份：配置里指向它的两处必须跟着换。否则固定模式会指向一个不存在
+    // 的名字（休息窗口取不到人，只能兜底成列表第一个），order 里也会留下一个
+    // 永远匹配不上的僵尸 key —— 用户看到的是“改完名，固定显示的那个人换了”。
+    // Go 侧 SaveRole 做同一件事（renameRoleInSettings），两边一致才不会互相覆盖。
+    if (S.supervisor.fixedRole === key) S.supervisor.fixedRole = role.name;
+    if (Array.isArray(S.supervisor.order)) {
+      S.supervisor.order = S.supervisor.order.map((k) => (k === key ? role.name : k));
+    }
     fillSupervisorImageName();
     autoSave();
     await refreshSupervisorPreview();
@@ -2245,7 +2342,9 @@
     let saved = false;
     const input = await promptDialog({
       title: "命名",
-      desc: "给这个立绘起一个名字（显示在立绘库磁贴与提醒内容面板标题），名称不能与其他督休专员重名。",
+      // 与重命名框同一段命名要求（ROLE_NAME_RULES）：新建和改名是同一套约束，
+      // 用户第一次导入时就该知道，而不是等改名时才被告知。
+      desc: ROLE_NAME_RULES,
       value: base,
       placeholder: "例如：我的上司",
       okText: "添加",
@@ -2255,12 +2354,20 @@
       // 有一个同名专员，前端内存里的 ROLES 不一定知道），它返回 false 就是被拒 ——
       // 这时对话框不关、错误留在框里，用户改个名再提交，而不是弹个 toast 把名字丢掉。
       validate: async (v) => {
-        const name = (v ?? "").trim();
+        // 与重命名同一套：先收敛（结尾的点去掉）再校验，校验的串就是落盘的串
+        const name = normalizeRoleNameInput(v);
         if (!name) return "名称不能为空";
         const err = roleNameError(name, picked.saved);
         if (err) return err;
         const ok = await window.api.saveSupervisorRole(picked.saved, { name });
-        if (!ok) return "名称已存在（或保存失败），请换一个";
+        if (!ok) {
+          // 与重命名框同口径：Go 只回 bool，重名与写盘失败分不开。是重名才让用户换个
+          // 名字，否则就是 meta.json 被占住 / 没权限，改一百个名字也存不进去。
+          const taken = await roleNameTakenOnDisk(name, picked.saved);
+          return taken
+            ? `名称“${name}”已存在（不区分大小写），请换一个`
+            : "保存失败：文件被占用或没有写入权限，请稍后重试";
+        }
         saved = true;
         return null;
       }
@@ -2270,7 +2377,9 @@
       if (!saved) await window.api.removeSupervisorRole(picked.saved);
       return;
     }
-    const name = input.trim() || base;
+    // input 是校验前的原串；落盘用的是收敛后的串，这里必须同样收敛，否则预览 / 编辑对象
+    // 会按一个磁盘上不存在的名字去查（尾随的点）
+    const name = normalizeRoleNameInput(input) || base;
     // 建目录时 Go 侧只写了立绘（不复制副本），磁贴缩略图在这里补生成
     await makeRolePreview(name);
     ROLES = await window.api.listSupervisorRoles();
@@ -3546,6 +3655,7 @@
       title: "重命名自定义提醒",
       label: "提醒名称：",
       value: cb.name,
+      icon: "pencil",
       okText: "保存"
     });
     if (input === null) return;

@@ -115,6 +115,16 @@ def main():
     env["WAILS_SERVER_HOST"] = "127.0.0.1"
     env["WR_SETTINGS_PATH"] = iso_settings
     env["WR_LOG_LEVEL"] = "debug"
+    # 督休专员目录也用临时副本：改名 / 导入 / 删除会真的动目录名与文件，
+    # 跑在随包数据上就把用户的内置立绘库改坏了（改名没法“撤销”）。
+    # 与 WR_SETTINGS_PATH 同一套隔离口径。
+    sup_src = os.path.join(ROOT, "supervisors")
+    if not os.path.isdir(sup_src):
+        sup_src = os.path.join(ROOT, "assets", "supervisors")
+    if os.path.isdir(sup_src):
+        iso_sups = os.path.join(iso, "supervisors")
+        shutil.copytree(sup_src, iso_sups)
+        env["WR_SUPERVISORS_DIR"] = iso_sups
     env.pop("ELECTRON_RUN_AS_NODE", None)
     base = "http://127.0.0.1:%d" % port
     logf = open(log_path, "w", encoding="utf-8")

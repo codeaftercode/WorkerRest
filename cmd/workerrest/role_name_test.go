@@ -111,13 +111,22 @@ func TestSanitizeRoleDirName(t *testing.T) {
 			t.Fatalf("role.SanitizeRoleDirName(%q)=%q，期望 %q", c.in, got, c.want)
 		}
 	}
-	// 超长名字截到 60 个字符（目录名上限 255 字节，中文按 3 字节算）
+	// 超长名字：先按 rune 截 60，再按**字节**收到 120（ValidRoleDirName 的上限是 128）。
+	// 只按 rune 截是错的：60 个汉字 = 180 字节 > 128，扫描会把整个目录当成非法跳过，
+	// 专员于是从列表里消失（见 TestSanitizeRoleDirNameAlwaysScannable）。
 	long := ""
 	for i := 0; i < 80; i++ {
 		long += "长"
 	}
-	if n := len([]rune(role.SanitizeRoleDirName(long))); n != 60 {
-		t.Fatalf("超长名字应截到 60 字符，实际 %d", n)
+	got := role.SanitizeRoleDirName(long)
+	if n := len([]rune(got)); n != 40 {
+		t.Fatalf("超长汉字名应截到 40 字符（120 字节），实际 %d", n)
+	}
+	if len(got) > 128 {
+		t.Fatalf("截断后仍超过 ValidRoleDirName 的 128 字节：%d", len(got))
+	}
+	if !role.ValidRoleDirName(got) {
+		t.Fatalf("截断后不是合法目录名（扫描会跳过它）：%q", got)
 	}
 }
 

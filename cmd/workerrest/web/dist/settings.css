@@ -1338,6 +1338,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .pm-label { flex: 0 0 auto; color: var(--text-2); font-size: 14px; }
 /* 命名框的校验错误（重名等）：留在框里提示，用户改完再提交 */
 .pm-error { margin: 8px 0 0; color: var(--danger); font-size: 12px; line-height: 1.5; }
+/* 命名要求分条写：说明里带换行，按行断开。默认的空白折叠会把两句话连成一行，
+   自动折行又会从“（不区分大小写）”中间断开 —— 这种断法读起来最少。 */
+#pm-desc { white-space: pre-line; }
 
 /* ================= 督休专员工作台（2026-11-14 一版 → 二版） =================
    一屏回答三件事：这是谁（左列高亮）、长什么样（舞台 + 立绘调节）、说什么（提醒内容）。

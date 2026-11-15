@@ -216,6 +216,12 @@ func NewApp(app *application.App) *App {
 		activeTab:       "general",
 	}
 	a.rolesRoot = a.assetDir("supervisors")
+	// 与 WR_SETTINGS_PATH 同款的隔离口：探针 / 冒烟里要做「改专员名、导入、删除」
+	// 这类会写盘的动作，就把督休专员目录指到临时副本上跑，绝不碰用户真实的
+	// supervisors/（改名会真的改目录名，随包数据被改了就没法还原）。
+	if v := strings.TrimSpace(os.Getenv("WR_SUPERVISORS_DIR")); v != "" {
+		a.rolesRoot = v
+	}
 	// 配置落盘目标需要“随包数据目录”来推导便携路径（首次运行还没有配置文件时用）
 	settings.SetResourcesRootHint(a.resourcesRoot)
 	// 内置提示音随包目录：打包态 <exe>/sounds，开发态 <模块根>/assets/sounds

@@ -147,8 +147,20 @@ func WriteRoleFile(root, name string, cfg RoleFile) error {
 // 的动作：失败只记日志，不算保存失败 —— meta.json 已经写好，按名字反查照常工作。
 func RenameRoleDir(root, dir, newName string) string {
 	base := SanitizeRoleDirName(newName)
-	if filepath.Base(dir) == base {
+	cur := filepath.Base(dir)
+	if cur == base {
 		return dir
+	}
+	// 只差大小写（doctor → Doctor）：Windows 路径不区分大小写，照常走 UniqueRoleDir
+	// 会把这个目录**自己**当成“已被占用”，退让成 "Doctor (2)" —— 目录名跟名字更对不上了。
+	// 这里直接改成目标大小写；改不动（句柄占用）就维持原名，反查本来也不看目录名。
+	if strings.EqualFold(cur, base) {
+		target := filepath.Join(root, base)
+		if err := os.Rename(dir, target); err != nil {
+			log.Printf("[role] 调整督休专员目录大小写失败 %s→%s: %v", dir, target, err)
+			return dir
+		}
+		return target
 	}
 	target := UniqueRoleDir(root, base, dir)
 	if err := os.Rename(dir, target); err != nil {
@@ -161,21 +173,34 @@ func RenameRoleDir(root, dir, newName string) string {
 // UniqueRoleDir 在 root 下找一个不与现有目录冲突的名称化目录（返回完整路径）：
 // base 已存在（且不是 exclude）就加 (2)/(3) 后缀去重。exclude 是当前督休专员正在用的目录，
 // 改名时跳过自己，避免“同名 → 自指”误判成已占用。
+//
+// ⚠️ 这个循环必须有出口。原来只在 os.Stat 返回“不存在”时才收敛，可一旦候选路径本身
+// 是**非法文件名**（名字里混了控制字符）、没权限、或路径过长，Stat 返回的是第三种错误：
+// 既不是成功也不是 IsNotExist —— 于是 i 一路自增、路径越来越长，改名**永久卡死**
+// （设置窗口整窗无响应，用户只能杀进程）。现在遇到这种错误直接把路径交出去，
+// 让写入层正常失败并回到对话框报错。
 func UniqueRoleDir(root, base, exclude string) string {
 	base = SanitizeRoleDirName(base)
 	cand := base
-	i := 2
-	for {
+	for i := 2; i <= 1000; i++ {
 		p := filepath.Join(root, cand)
-		if p == exclude {
+		// 判“自己”要大小写不敏感：Windows 下 Doctor 与 doctor 是同一个目录
+		if p == exclude || (exclude != "" && strings.EqualFold(p, exclude)) {
 			return p
 		}
-		if _, err := os.Stat(p); os.IsNotExist(err) {
+		_, err := os.Stat(p)
+		if err == nil {
+			cand = fmt.Sprintf("%s (%d)", base, i)
+			continue
+		}
+		if os.IsNotExist(err) {
 			return p
 		}
-		cand = fmt.Sprintf("%s (%d)", base, i)
-		i++
+		log.Printf("[role] 无法判断目录是否可用 %s: %v", p, err)
+		return p
 	}
+	// 1000 个同名前缀的专员：现实中不存在，兜底返回基础名，别把调用方留在死循环里
+	return filepath.Join(root, base)
 }
 
 // ReplaceRoleImage 替换某个已有督休专员的立绘：把新图复制成 figure<ext>，并回写 meta.json

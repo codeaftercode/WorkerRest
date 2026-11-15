@@ -222,8 +222,56 @@ func (a *App) SaveRole(name string, patch map[string]any) bool {
 	}
 	if next.Name != base.Name {
 		role.RenameRoleDir(a.rolesRoot, dir, next.Name)
+		// 名字就是身份：配置里指向它的两处要跟着换（与设置页 renameRole 同口径）。
+		// 目录改名可能失败（句柄占用），但 meta.json 里的 name 已是权威 —— 配置
+		// 必须跟上，否则固定模式会指向一个不存在的名字，休息窗口只能兜底取第一个，
+		// 用户看到的现象是“改完名，固定显示的人换了”。
+		a.renameRoleInSettings(base.Name, next.Name)
 	}
 	return true
+}
+
+// renameRoleInSettings 把配置里指向旧名的 fixedRole / order 换成新名。
+// 与 clearRoleFromSettings（删除时清空）同一处配置、同一套大小写口径：
+// 名字比较一律 TrimSpace + EqualFold，与 RemoveRole 那边保持一致。
+func (a *App) renameRoleInSettings(oldName, newName string) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.cfg == nil {
+		return
+	}
+	raw := a.cfg.Raw()
+	sup, ok := raw["supervisor"].(map[string]any)
+	if !ok {
+		return
+	}
+	same := func(v any) bool {
+		s, _ := v.(string)
+		return strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(oldName))
+	}
+	changed := false
+	if s, _ := sup["fixedRole"].(string); s != "" && same(s) {
+		sup["fixedRole"] = newName
+		changed = true
+	}
+	if order, ok := sup["order"].([]any); ok {
+		for i, v := range order {
+			if same(v) {
+				order[i] = newName
+				changed = true
+			}
+		}
+	}
+	if !changed {
+		return
+	}
+	s := settings.New(raw, a.cfg.Path())
+	settings.NormalizeForSave(raw)
+	if err := s.Save(); err != nil {
+		log.Printf("[settings] 同步改名后的督休专员配置失败：%v", err)
+		return
+	}
+	a.cfg = s
 }
 
 // RemoveRole 删除督休专员 = 整个督休专员子目录一并删除（name 是专员名）
