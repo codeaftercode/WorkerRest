@@ -1362,7 +1362,15 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
      （左列的 border-right）—— 舞台图的左上角因此是直角，直接跟名单连在一起。 */
   gap: 0;
   align-items: stretch;
-  border: 1px solid var(--border);
+  /* 外框用 --border-strong 而不是 --border：这张工作台的底是**白色 card**，
+     --border(#e6e8f0) 在白底上只有 25 级灰度差，左、下两条边几乎看不见 ——
+     四块只有上、右两边（挨着深蓝舞台）有轮廓，看着就是几个模块拼起来的。
+     再混一档 --text-2 的原因：单用 --border-strong(#d5d9e6) 四边能读出来、但偏弱，
+     白底上仍像“没画实”的线。混 16% 后约 #c4c9d6（与白差 58 级），四角也立得住。
+     暗色主题不用另写一份：两个变量都会跟着主题换。
+     内部分隔线用同一个 --sup-frame：它们同样画在白底上，淡一档就等于没有线。 */
+  --sup-frame: color-mix(in srgb, var(--border-strong) 84%, var(--text-2));
+  border: 1px solid var(--sup-frame);
   border-radius: var(--r-md);
   background: var(--panel);
   /* 圆角要靠裁切：舞台图与名单都贴到框边上，自己带不了圆角 */
@@ -1380,8 +1388,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   min-height: 0;
   border: none;
   border-radius: 0;
-  /* 与右列之间那唯一的一条竖线（右列自己不再带左边框） */
-  border-right: 1px solid var(--border);
+  /* 与右列之间那唯一的一条竖线（右列自己不再带左边框）。用 --sup-frame（见 .sup-grid）：
+     这条线画在名单的白色底上，--border 太淡会把左右两列读成一整片。 */
+  border-right: 1px solid var(--sup-frame);
   background: var(--panel);
 }
 /* 列表体吃满左列剩余空间。flex-basis 必须是 0 而不是 auto：写 auto 时这一列的
@@ -1455,7 +1464,8 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .sup-geom {
   margin: 0;
   border: none;
-  border-top: 1px solid var(--border);
+  /* 顶边就是舞台的底边：与 .sup-grid 的外框同色（--sup-frame），白底上才看得见 */
+  border-top: 1px solid var(--sup-frame);
   border-radius: 0;
   background: var(--panel);
 }
@@ -1483,7 +1493,7 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 
 /* ---------- 提醒内容：这张卡的正文 ---------- */
 .sup-msg {
-  border: none; border-top: 1px solid var(--border); border-radius: 0;
+  border: none; border-top: 1px solid var(--sup-frame); border-radius: 0;
   background: var(--panel);
 }
 /* 台词列表在右列里限高滚动：别让一屏台词把整个工作台撑到需要翻页 */
@@ -1556,6 +1566,11 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
     radial-gradient(700px 420px at 12% -10%, color-mix(in srgb, var(--accent) 62%, #00000000), transparent 62%),
     linear-gradient(160deg, color-mix(in srgb, var(--accent) 78%, #10142a), #10142a);
 }
+/* 舞台自己**不带**描边：它上面 / 右边是 .sup-grid 的外框，左边是名单的 border-right，
+   下边是 .sup-geom 的 border-top —— 四条边都由这圈“共同外框 + 内部发丝线”提供。
+   曾经在 .sup-preview::after 上画过一圈 inset 白线来补这里的边界，结果它是白的、
+   外框是浅灰的，叠在一起成了两套颜色两套粗细：舞台看着像一张自带相框的贴图，
+   反而不属于这张工作台。把它删掉、把外框整体做清楚，四块才读成同一个矩形。 */
 .sup-preview-fig {
   /* 与休息窗口同一套摆放规则，只是把 vw/vh 换成占预览面板的百分比：
      数值直接来自"尺寸与位置"滑条，拖动即时生效。 */

@@ -38,6 +38,14 @@ MEASURE = r"""
     gridBorder: {l: parseFloat(cs.borderLeftWidth), r: parseFloat(cs.borderRightWidth), t: parseFloat(cs.borderTopWidth)},
     preMaxH: getComputedStyle(pre).maxHeight,
     ratio: +(pre.getBoundingClientRect().width / pre.getBoundingClientRect().height).toFixed(3),
+    // 共用外框：四条边要同色同粗（--sup-frame），否则浅底上的左边/下边会消失，
+    // 四块就读不成一个矩形。预览面板自己**不该**再带描边（它会把整体框读成框中框）。
+    frame: {
+      color: cs.borderTopColor,
+      right: cs.borderRightColor,
+      bottom: cs.borderBottomColor,
+      preAfter: getComputedStyle(pre, "::after").content,
+    },
   };
 }
 """
@@ -132,11 +140,17 @@ def main():
                 d_right = round(inner_right - pre["right"], 2)
                 d_w = round(stage["w"] - pre["w"], 2)
                 ok = abs(d_left) <= 0.5 and abs(d_right) <= 0.5 and abs(d_w) <= 0.5
-                if not ok:
+                fr = m["frame"]
+                # 四边同色 + 预览不自带描边 = 四块共用一个外框
+                same = fr["color"] == fr["right"] == fr["bottom"]
+                clean = fr["preAfter"] in ("none", "")
+                if not ok or not same or not clean:
                     fails += 1
                 print(f"视口 {w}x{h}: 预览 {pre['w']}x{pre['h']} 比例 {m['ratio']} "
                       f"| 左差 {d_left} 右差 {d_right} 宽差 {d_w} "
-                      f"| max-height={m['preMaxH']} {'OK' if ok else '!! 不齐'}")
+                      f"| max-height={m['preMaxH']} {'OK' if ok else '!! 不齐'} "
+                      f"| 外框 {fr['color'] if same else '!! 四边不同色'} "
+                      f"| 预览自带描边 {'无' if clean else '!! 有'}")
             b.close()
     finally:
         if proc.poll() is None:
