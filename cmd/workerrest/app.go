@@ -99,6 +99,15 @@ type App struct {
 
 	// 提示音（见 sound.go）：顺序播放的游标跨播放持续递增（不是每次从头开始）
 	soundCursor int
+	// relayQuietEnd 这一次收窗把「结束音」让出去（接力换窗，见 schedEndBreak）。
+	// 旧窗关掉、同一瞬间新窗接上来：两声响只隔几百毫秒，单曲循环下是同一条音频连响
+	// 两遍，听感就是“卡了一下”。由 closeBreakWindowsOpt 读完即清 —— 只影响紧随其后的
+	// 那一次收窗，正常到点收窗绝不会被误静音。（a.mu 保护）
+	relayQuietEnd bool
+	// relayQuietStart 这一次建会话不播「开始音」（与 relayQuietEnd 成对）：
+	// 换窗整段静音 —— 旧窗不响结束音，新窗也不响开始音（2026-11-16 用户口径
+	// 「换窗时完全不出声」）。由 ShowBreakSession 读完即清。（a.mu 保护）
+	relayQuietStart bool
 
 	// 外卖提醒（见 takeout.go）：已触发去重键 + 待推迟提醒 + 当前会话 + 在场窗口。
 	// takeoutFired 同时是状态快照的输入（timeline 与 fixedNext.takeout 的口径与上一版 一致）。

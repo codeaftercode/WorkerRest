@@ -32,11 +32,16 @@ import (
 func (s *Scheduler) preemptShortWithLong() bool {
 	now := nowMs()
 	s.mu.Lock()
-	if s.state.Phase != "break" || s.state.NextType == "long" {
+	// 正在弹的是谁，以 BreakType 为准（见 curBreakLocked）：休息期间 replan 会把 NextType
+	// 改写成下一条，拿它判“是不是已经在长休息”会让一次真的长休息抢占被静默放弃。
+	cur := ""
+	if s.state.Phase == "break" {
+		cur = s.curBreakLocked()
+	}
+	if cur == "" || cur == "long" {
 		s.mu.Unlock()
 		return false
 	}
-	cur := s.state.NextType
 	at := int64(0)
 	for _, l := range s.state.Lines {
 		if l.Type != "long" || l.At > now {
@@ -98,7 +103,7 @@ func (s *Scheduler) mergeDueExtras() {
 		s.mu.Unlock()
 		return
 	}
-	cur := s.state.NextType
+	cur := s.curBreakLocked()
 	ends := s.state.BreakEndsAt
 	if ends <= 0 {
 		ends = now

@@ -303,6 +303,11 @@
               <div class="row field"><label for="short-duration">提醒窗口显示时长</label><div class="field-line"><input type="number" id="short-duration" min="5" max="600" /><span class="unit">秒</span></div></div>
               <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="short-notifyOn" />提醒前弹出通知，提前时长</label><div class="field-line"><input type="number" id="short-notify" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
               <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="short-postponeOn" />允许推迟提醒，推迟时长</label><div class="field-line"><input type="number" id="short-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
+              <!-- 允许提前结束（2026-11-15 用户要求）：勾选 = 提醒窗口顶部显示「提前结束」，
+                   且全局快捷键 / 侧栏 / 托盘的提前结束都照常响应；不勾 = 两样都不给。
+                   纯勾选行，没有右侧数字框，所以只有标签列（.row.field 的标签列与上面几行同一条竖线）。
+                   自定义提醒卡是克隆这张卡得来的，这一行会跟着过去，id 由 rewrite 改成 cb-xxx- 前缀。 -->
+              <div class="row field"><label class="switch-row"><input type="checkbox" id="short-allowEarlyEnd" />允许提前结束</label></div>
             </div>
           </div>
           <div class="msg-panel" data-kind="short">
@@ -392,6 +397,8 @@
               <div class="row field"><label for="long-duration">提醒窗口显示时长</label><div class="field-line"><input type="number" id="long-duration" min="5" max="3600" /><span class="unit">秒</span></div></div>
               <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="long-notifyOn" />提醒前弹出通知，提前时长</label><div class="field-line"><input type="number" id="long-notify" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>
               <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="long-postponeOn" />允许推迟提醒，推迟时长</label><div class="field-line"><input type="number" id="long-postpone" min="1" max="120" aria-label="推迟分钟数" /><span class="unit">分钟</span></div></div>
+              <!-- 允许提前结束：与短休息卡同一行、同一口径（见 #short-allowEarlyEnd 的注释）。 -->
+              <div class="row field"><label class="switch-row"><input type="checkbox" id="long-allowEarlyEnd" />允许提前结束</label></div>
             </div>
           </div>
           <div class="msg-panel" data-kind="long">

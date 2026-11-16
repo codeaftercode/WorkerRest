@@ -313,7 +313,9 @@ func breakConfigOf(m map[string]any) model.BreakConfig {
 		PostponeMs:     120_000,
 		// 缺省：暂停休息期间到点按“推迟提醒”处理（推“可推迟”时长，仍暂停就继续推）
 		PauseAction: PauseActionPostpone,
-		Slots:       []model.TimeSlot{},
+		// 缺省允许提前结束：老配置没有这个键，按 false 走会让所有提醒都关不掉
+		AllowEarlyEnd: true,
+		Slots:         []model.TimeSlot{},
 	}
 	if m == nil {
 		return cfg
@@ -355,6 +357,8 @@ func breakConfigOf(m map[string]any) model.BreakConfig {
 	// 的意思了，那种需求该用「暂停休息」表达。
 	cfg.IdleGate = mapFlag(m, "idleGate", false)
 	cfg.IdleGateMs = clampInt64(mapInt(m, "idleGateMs", idleGateDefaultMs), 0, idleGateMaxMs)
+	// 「允许提前结束」：缺键 / 值非法一律按**允许**（老配置升级上来不能变成关不掉）。
+	cfg.AllowEarlyEnd = mapFlag(m, "allowEarlyEnd", true)
 	cfg.Slots = normalizeTimeSlots(m["slots"])
 	return cfg
 }

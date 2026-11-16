@@ -213,6 +213,33 @@ async function main() {
   await page.click("#qa-skip");
   st = await waitState(page, (s) => s && s.phase !== "break");
 
+  // ---------- 5b. 自定义提醒在弹：那一格不叫“提前结束”，而且是灰的 ----------
+  // 口径（2026-11-15）：只有短 / 长休息才配“提前结束”。喝水提醒弹窗时这一格
+  // 既不许写成“提前结束”（它结束不了那条提醒），也不许留着可点 —— 此刻人已经在
+  // 休息里，“跳过本次”也没有目标可跳。
+  await patchSettings(page, {
+    short: Object.assign({}, SHORT_25, { enabled: false }),
+    customBreaks: [{
+      id: "cb-water", name: "喝水提醒",
+      config: Object.assign({}, WATER_45.config, { intervalMs: 3_000, durationMs: 8_000 }),
+    }],
+  });
+  st = await waitState(page, (s) => s && s.phase === "break" && s.breakType === "cb-water", 25_000);
+  check(st && st.breakType === "cb-water",
+    "自定义提醒在弹：快照带出 breakType=cb-water（不是拿 nextType 猜）", st && st.breakType);
+  const foreignSkip = await page.evaluate(() => {
+    const b = document.getElementById("qa-skip");
+    return { text: (b || {}).textContent, disabled: !!(b && b.disabled), title: (b || {}).title || "" };
+  });
+  check(String(foreignSkip.text).trim() === "跳过本次",
+    "自定义提醒在弹：「跳过本次」不写“提前结束”", foreignSkip.text);
+  check(foreignSkip.disabled === true, "自定义提醒在弹：那一格是灰的", JSON.stringify(foreignSkip));
+  check(String(foreignSkip.title).includes("自定义提醒"),
+    "自定义提醒在弹：灰的原因写在 title 上", foreignSkip.title);
+  // 等它自己走完（8 秒），别把它留给后面的时间线场景
+  st = await waitState(page, (s) => s && s.phase !== "break", 30_000);
+  check(st && st.phase !== "break", "自定义提醒：走完自动收窗", st && st.phase);
+
   // ---------- 6. 时间线：行内容与来源 ----------
   await patchSettings(page, {
     short: { enabled: true, mode: "fixed", durationMs: 20_000, notifyBeforeMs: 0, postponeMs: 120_000, pauseAction: "postpone", slots: [{ id: "s-f1", hour: 23, minute: 50, repeat: "daily", days: [], enabled: true }] },

@@ -323,7 +323,8 @@ func (st *StatsStore) OnBreakEnd(name string, early bool) (string, int64) {
 	st.onBreakTickLocked()
 	ms := st.nowFn() - st.breakLogStartedAt
 	last := st.touchTodayLocked()
-	// 提前结束只可能是内置短 / 长休息（自定义提醒没有这个按钮，外卖也不走这里）
+	// 提前结束只对内置短 / 长休息记账：自定义提醒的窗口上也有这个按钮，但它只记一条
+	// “自定义提醒”（不区分坐没坐满），外卖不走这里。
 	if early && kind != "short" && kind != "long" {
 		early = false
 	}
@@ -378,6 +379,33 @@ func (st *StatsStore) OnBreakCounted(kind string) {
 		last.ShortCount++
 	} else {
 		last.LongCount++
+	}
+	st.markDirtyLocked()
+}
+
+// OnCustomMerged 一条自定义提醒并进了休息窗（右上角“同时提醒”），按**显示过一次**记一笔。
+//
+// 它与独立弹窗的区别只在“有没有单独占一扇窗”：用户确实在屏幕上看到了这条提醒，
+// 统计里就该有这一次 —— 否则并入的提醒在报表里凭空消失，只因为当时正好在休息。
+// 所以这里记的口径与 OnBreakEnd 的 default 分支完全一致（CustomCount、按 id 的次数、
+// 名字快照），但不碰 breakLogType / BreakMs —— 那段墙钟时间已经记在当前那次休息头上。
+//
+// 调用方必须保证**同一条提醒只记一次**：被接力成一扇窗的那种由 OnBreakStart/OnBreakEnd
+// 记账，不能再走这里（见 App.finishBreakExtras 与 takeBreakQueue 的分工）。
+func (st *StatsStore) OnCustomMerged(kind, name string) {
+	if kind == "" || kind == "short" || kind == "long" || kind == "takeout" {
+		return
+	}
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	last := st.touchTodayLocked()
+	if last.CustomCounts == nil {
+		last.CustomCounts = map[string]int64{}
+	}
+	last.CustomCount++
+	last.CustomCounts[kind]++
+	if name != "" {
+		st.customNames[kind] = name
 	}
 	st.markDirtyLocked()
 }

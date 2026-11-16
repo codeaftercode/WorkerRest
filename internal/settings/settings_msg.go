@@ -51,7 +51,10 @@ func defaultCustomBreakConfig() map[string]any {
 		// 会由这份出厂配置补齐 —— 设置页拿到的每张卡都有同样的键，不必自己兜底
 		"idleGate":   false,
 		"idleGateMs": float64(idleGateDefaultMs),
-		"slots":      []any{},
+		// 提醒窗口的「提前结束」默认给：与短休息卡的出厂默认同值（缺键在 breakConfigOf
+		// 里也兜成 true，这里补上是让归一化后的配置形状与设置页一致）
+		"allowEarlyEnd": true,
+		"slots":         []any{},
 	}
 }
 

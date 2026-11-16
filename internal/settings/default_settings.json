@@ -10,6 +10,7 @@
     "pauseAction": "postpone",
     "idleGate": false,
     "idleGateMs": 30000,
+    "allowEarlyEnd": true,
     "slots": []
   },
   "long": {
@@ -22,6 +23,7 @@
     "pauseAction": "postpone",
     "idleGate": false,
     "idleGateMs": 30000,
+    "allowEarlyEnd": true,
     "slots": []
   },
   "customBreaks": [],

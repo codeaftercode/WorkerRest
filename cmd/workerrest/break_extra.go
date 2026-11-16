@@ -12,6 +12,7 @@ package main
 
 import (
 	"log"
+	"sort"
 	"strings"
 
 	"workerrest/internal/model"
@@ -161,9 +162,120 @@ func (a *App) finishBreakExtras(info *model.BreakInfo, carry bool) {
 		a.mu.Unlock()
 		return
 	}
+	// 没被接力成一扇窗的自定义提醒：它在这扇休息窗的右上角**显示过**，统计里就该有
+	// 这一次（2026-11-16 用户口径：与正常显示时一样）。必须在丢弃之前记 —— 这些
+	// occurrence 在并入时就已经标成 consumed 了，之后不会再提醒第二次。
+	//
+	// 被接力成新窗的那种不在这里记：它走 OnBreakStart / OnBreakEnd，与独立弹窗同一套
+	// （见 takeBreakQueue —— 它把这些卡从会话里摘走，这里就看不到它们了）。
+	a.countExtras(info.Extras)
 	if hasTakeout {
 		a.handoffTakeoutExtra()
 	}
+}
+
+// countExtras 把一串副条里的自定义提醒按“显示过一次”补记账（外卖不算 —— 它有自己
+// 的次数口径，走 TakeoutAction 那条路）。
+func (a *App) countExtras(list []model.BreakExtra) {
+	for _, e := range list {
+		if e.Kind == "takeout" || e.Kind == "" {
+			continue
+		}
+		a.statsStore().OnCustomMerged(e.Kind, e.Name)
+	}
+}
+
+// takeBreakQueue 提前结束时，把当前会话右上角的卡取下来（按到点时刻升序）。
+//
+// **提前结束只结束当前这一扇窗**（2026-11-16 用户口径）：右上角的卡不该跟着消失。
+// 取下来而不是留在会话里，是为了让收窗路径（finishBreakExtras）看到空清单，从而不按
+// “丢弃 / 补记”处理它们 —— 这些卡由 schedEndBreak 统一分配：队头接替成一扇新窗，
+// 其余继续挂在那扇窗的右上角。
+//
+// 全是外卖（或没有卡）时返回 nil，保持原路径：外卖本来就该交回它自己的独立窗口，
+// 那是它的窗口形态，不是“卡消失”。
+func (a *App) takeBreakQueue() []model.BreakExtra {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.sess == nil || a.sess.Preview || len(a.sess.Extras) == 0 {
+		return nil
+	}
+	hasCustom := false
+	for _, e := range a.sess.Extras {
+		if e.Kind != "takeout" && e.Kind != "" {
+			hasCustom = true
+			break
+		}
+	}
+	if !hasCustom {
+		return nil
+	}
+	q := append([]model.BreakExtra(nil), a.sess.Extras...)
+	// 稳定排序：到点时刻相同时保持并入顺序，别让同一刻的两条每次换个先后
+	sort.SliceStable(q, func(i, j int) bool { return q[i].At < q[j].At })
+	a.sess.Extras = nil
+	return q
+}
+
+// queueLeadsNewWindow 这串队列会不会被队头接替成一扇**休息窗**。
+//
+// false = 队列为空，或队头是外卖（外卖走它自己的独立窗口，不经过 ShowBreakSession）。
+// 判定与 resumeFromQueue 里的分支一一对应 —— 提示音要不要让出去（见 schedEndBreak）
+// 就认这一条，两处口径不能各写一份。
+func queueLeadsNewWindow(queue []model.BreakExtra) bool {
+	return len(queue) > 0 && queue[0].Takeout == nil
+}
+
+// resumeFromQueue 接着显示提前结束时取下来的那串卡：队头开成一扇新窗，其余挂它右上角。
+//
+// 返回是否真的接上了**一扇新的休息窗**（队头被接替）。false 表示没有新窗在场：
+// 队头是外卖（交回它自己的独立窗口），或那条提醒已经开不出窗（刚被删 / 停用）。
+// 调用方据此把让出去的结束音补回来 —— 这一次提前结束总得有一声。
+func (a *App) resumeFromQueue(queue []model.BreakExtra) bool {
+	if len(queue) == 0 {
+		return false
+	}
+	next, rest := queue[0], queue[1:]
+	// 队头是外卖（只有当它比所有自定义卡都更早到点）：外卖有自己的窗口与记账，
+	// 交给既有交接路径；剩下没有窗口承载的卡按“显示过”补记，别静默消失。
+	if next.Takeout != nil {
+		a.countExtras(rest)
+		a.handoffTakeoutExtra()
+		return false
+	}
+	// 其余卡先挂好，再开窗：ShowBreakSession 在**建会话的那一刻**读 carryExtras，
+	// 晚一步设就接不上（新窗首帧会是空的）。
+	if len(rest) > 0 {
+		a.mu.Lock()
+		a.carryExtras = append([]model.BreakExtra(nil), rest...)
+		a.mu.Unlock()
+	}
+	if id := a.sched.StartQueuedBreak(next.Kind); id != "" {
+		log.Printf("[break] 提前结束当前窗：右上角最早的一条接替成一扇新窗 —— %s（%s，其余 %d 条继续挂在右上角）",
+			next.Name, next.Kind, len(rest))
+		return true
+	}
+	// 开不出来（提醒刚被删 / 停用，或调度器不在可开窗状态）：把刚挂上的 carry 撤回，
+	// 否则它们会漂到下一次休息去；这些卡一律按“显示过”记账。
+	a.mu.Lock()
+	a.carryExtras = nil
+	a.mu.Unlock()
+	log.Printf("[break] 提前结束：%s（%s）接不上窗口（配置已删 / 停用？），按已显示记账", next.Name, next.Kind)
+	a.countExtras(queue)
+	if hasTakeoutExtra(queue) {
+		a.handoffTakeoutExtra()
+	}
+	return false
+}
+
+// hasTakeoutExtra 这串副条里有没有外卖（决定接不上窗口时要不要兜底交回独立窗）
+func hasTakeoutExtra(list []model.BreakExtra) bool {
+	for _, e := range list {
+		if e.Kind == "takeout" {
+			return true
+		}
+	}
+	return false
 }
 
 // handoffTakeoutExtra 休息结束时，把“并进来、还没被处理”的外卖重新弹成独立窗口。

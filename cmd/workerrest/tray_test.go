@@ -61,7 +61,7 @@ func TestTrayTexts(t *testing.T) {
 
 	t.Run("休息中：秒级剩余", func(t *testing.T) {
 		tip, status, action, pause := trayTexts(model.SchedulerState{
-			Phase: "break", NextName: plan.ShortBreakName, BreakEndsAt: now + 30_000,
+			Phase: "break", BreakType: "short", NextName: plan.ShortBreakName, BreakEndsAt: now + 30_000,
 		}, false)
 		if want := "休息中，剩余 30 秒"; tip != want {
 			t.Errorf("tooltip = %q，期望 %q", tip, want)

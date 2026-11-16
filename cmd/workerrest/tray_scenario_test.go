@@ -190,7 +190,7 @@ func TestTrayScenarioBreakRemainUsesInjectedNow(t *testing.T) {
 	base := time.Date(2026, 11, 13, 10, 0, 0, 0, time.Local)
 	now := base.UnixMilli()
 	st := model.SchedulerState{
-		Phase: "break", BreakStartedAt: now, BreakEndsAt: now + 90*60_000 + 30_000,
+		Phase: "break", BreakType: "long", BreakStartedAt: now, BreakEndsAt: now + 90*60_000 + 30_000,
 	}
 	tip, status, action, pause := trayOf(st, false, nil, now)
 	if want := "休息中，剩余 1 小时 30 分 30 秒"; tip != want {

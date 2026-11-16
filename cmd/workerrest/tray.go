@@ -161,6 +161,11 @@ type trayLabels struct {
 	action    string
 	pause     string
 	autostart bool
+	// actionOff 「立即休息 / 提前结束休息」这一项要不要置灰。
+	// 目前只有一种情形：正在休息、但这次提醒的「弹窗设置 → 允许提前结束」没勾。
+	// 菜单里明明写着“提前结束休息”却点不动、点了只在日志里留一句“被拒”，
+	// 比可点但没反应更清楚 —— 灰色在点之前就把话说完了。
+	actionOff bool
 	valid     bool // false = 还没写过；首写一律全量落一次
 }
 
@@ -209,6 +214,9 @@ func (a *App) refreshTray() {
 		action:    actionText,
 		pause:     pauseText,
 		autostart: auto != nil && a.CfgSnapshot().Autostart(),
+		// 置灰按**当前这次提醒自己的配置**判，与 schedEndBreak 的拦截同一口径：
+		// 菜单写着“提前结束休息”却点不动，正是配置说的那件事，不必等点了才知道。
+		actionOff: a.trayActionOff(st),
 		valid:     true,
 	}
 	a.applyTrayLabels(tray, status, action, pause, auto, next)
@@ -306,7 +314,14 @@ func trayTextsAt(st model.SchedulerState, pausedCleared bool, hold []string, now
 		// （其余分支都认 now），时序用例没法测“再过 30 秒托盘该写什么”。
 		tip = "休息中，剩余 " + fmtTrayRemain(max0(st.BreakEndsAt-now))
 		statusText = "状态：休息中"
-		actionText = "提前结束休息"
+		// 只有短 / 长休息那一项才叫“提前结束休息”。自定义提醒与外卖提醒在弹的时候，
+		// 它们有自己的窗口与入口，托盘这一项仍叫“立即休息”（此刻也点不动，
+		// 见 trayActionDisabled）—— 写成“提前结束”会让人以为托盘点得掉那个提醒。
+		if model.IsRestKind(st.BreakType) {
+			actionText = "提前结束休息"
+		} else {
+			actionText = "立即休息"
+		}
 		pauseText = "暂停休息"
 	case st.NextAt == 0:
 		// 短/长休息都关闭，或固定时间模式下一刻都没配：没有下一次
@@ -333,6 +348,34 @@ func trayTextsAt(st model.SchedulerState, pausedCleared bool, hold []string, now
 	return tip, statusText, actionText, pauseText
 }
 
+// trayActionDisabled 托盘第一项（“立即休息 / 提前结束休息”）要不要置灰。
+//
+// 三种情形先分清：
+//   - 暂停中、或压根不在休息：不灰（那一项是“立即休息”，点了真能发起一次休息）；
+//   - 正在弹自定义提醒 / 外卖提醒：灰。此时它写的是“立即休息”，可人已经在休息里，
+//     点了不会有下一次休息 —— 而且这一项绝不该在这时候写成“提前结束休息”
+//     （见 trayTextsAt 的 break 分支）；
+//   - 正在弹短 / 长休息：按那张卡勾没勾「允许提前结束」决定，没勾就灰
+//     （点下去会被 schedEndBreak 拒掉，先灰着比点了没反应体面）。
+//
+// 暂停刻意不算第三种：冻结着的那次休息虽然 phase 仍是 break，但那一刻这一项是
+// “立即休息”（见 trayTextsAt 暂停分支），点它是发起新休息，跟提前结束无关。
+func trayActionDisabled(st model.SchedulerState, allowEarlyEnd bool) bool {
+	if st.Paused || st.Phase != "break" {
+		return false
+	}
+	if !model.IsRestKind(st.BreakType) {
+		return true
+	}
+	return !allowEarlyEnd
+}
+
+// trayActionOff refreshTray 用的组合：把“当前会话允不允许提前结束”取出来再判。
+// 拆成方法是为了能脱离原生菜单测 —— refreshTray 本身需要真托盘（tray == nil 直接返回）。
+func (a *App) trayActionOff(st model.SchedulerState) bool {
+	return trayActionDisabled(st, a.curBreakAllowsEndEarly())
+}
+
 // applyTrayLabels 只在文案变化时才写原生托盘/菜单。秒级刷新循环每秒都会走到这，
 // 而“约 X 分钟后”一分钟才变一次、其余状态文案只在状态翻转时变 —— 变化检测让
 // 绝大多数 tick 什么都不做（既省主线程往返，也避免无谓的菜单重绘）。
@@ -346,6 +389,7 @@ func (a *App) applyTrayLabels(tray *application.SystemTray, status, action, paus
 		tray.SetTooltip(next.tip)
 		status.SetLabel(next.status)
 		action.SetLabel(next.action)
+		action.SetEnabled(!next.actionOff)
 		pause.SetLabel(next.pause)
 		if auto != nil {
 			auto.SetChecked(next.autostart)
@@ -360,6 +404,11 @@ func (a *App) applyTrayLabels(tray *application.SystemTray, status, action, paus
 	}
 	if prev.action != next.action {
 		action.SetLabel(next.action)
+	}
+	// 与文案分开判：文案（“立即休息” ↔ “提前结束休息”）按相位变，可用性按配置变，
+	// 两者可以各自独立地变（例如休息中打完勾，文案没动、灰要撤掉）。
+	if prev.actionOff != next.actionOff {
+		action.SetEnabled(!next.actionOff)
 	}
 	if prev.pause != next.pause {
 		pause.SetLabel(next.pause)

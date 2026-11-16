@@ -3947,6 +3947,10 @@
     // 短 / 长休息的那两个下拉在 fillForm 里先挂好（模板自带宿主），自定义卡在
     // buildCustomBreakCard 里挂，这里只负责回填。
     setDropValue($(`${id}-pause`), c.pauseAction);
+    // 允许提前结束：缺键按**勾上**回填（老配置没有这个键，Go 侧 breakConfigOf 也兜成 true；
+    // 这里若按 false 回填，用户会看到“没勾”，下次一存就把 true 写成 false 了）
+    const aee = $(`${id}-allowEarlyEnd`);
+    if (aee) aee.checked = c.allowEarlyEnd !== false;
     renderBreakList(id);
   }
   function applyBreakModeUI() {
@@ -4100,6 +4104,11 @@
       // 宿主不在（理论上不会）就不写键，后端按缺省 postpone 兜底。
       const pauseHost = $(`${id}-pause`);
       if (pauseHost) c.pauseAction = dropValue(pauseHost, "postpone");
+      // 允许提前结束：勾选 = 提醒窗口顶部显示“提前结束”，快捷键 / 侧栏 / 托盘也响应；
+      // 不勾 = 都不给（Go 侧 schedEndBreak 是同一判据）。控件不在（旧 HTML 缓存）就不写键，
+      // 后端按缺省“允许”兜底。
+      const aee = $(`${id}-allowEarlyEnd`);
+      if (aee) c.allowEarlyEnd = aee.checked;
     };
     for (const id of allBreakIds()) readBreak(id);
     const a = S.appearance;
@@ -4853,6 +4862,10 @@
     // 不参与：它们有自己的窗口与入口，被这里推走会把本该准点响的那次提醒吃掉。
     // 判据统一用 st.rest（分组里最近的短 / 长休息），不用全局 nextType —— 那可能是外卖。
     const inBreak = st.phase === "break";
+    // 只有短 / 长休息在弹时才叫“提前结束”。自定义提醒与外卖提醒也会把 phase 顶成
+    // break，但它们不参与侧栏这组按钮（各有自己的窗口与入口）；拿 phase 判会让
+    // 喝水提醒弹窗时这一格也写“提前结束”，点下去却结束不了那条提醒。
+    const inRestBreak = inBreak && (st.breakType === "short" || st.breakType === "long");
     const noRest = !inBreak && !st.rest;
     // 休息中：“立即休息”无从谈起，禁用而不是让点了没反应；
     // “跳过本次”在休息中等价于提前结束（与托盘“提前结束休息”同义，
@@ -4869,10 +4882,22 @@
     }
     const qaSkip = $("qa-skip");
     if (qaSkip) {
-      qaSkip.textContent = inBreak ? "提前结束" : "跳过本次";
-      // 「跳过本次」同样只针对下一条短 / 长休息；休息中则是提前结束当前这次
-      qaSkip.disabled = noRest;
-      qaSkip.title = noRest ? "短休息、长休息都没有安排时，「跳过本次」不适用" : "";
+      qaSkip.textContent = inRestBreak ? "提前结束" : "跳过本次";
+      // 三种灰：
+      //   1) 下一条短 / 长休息都没排上（noRest）—— 没有可跳的目标；
+      //   2) 正在休息、但弹的不是短 / 长休息 —— “跳过本次”与“提前结束”都无从谈起；
+      //   3) 就是短 / 长休息，但那张卡没勾「允许提前结束」—— 点下去会被拒，灰着。
+      // 「跳过本次」同样只针对下一条短 / 长休息；休息中则是提前结束当前这次。
+      const skipForeignBreak = inBreak && !inRestBreak;
+      const skipEarlyOff = inRestBreak && st.allowEarlyEnd === false;
+      qaSkip.disabled = noRest || skipForeignBreak || skipEarlyOff;
+      qaSkip.title = noRest
+        ? "短休息、长休息都没有安排时，「跳过本次」不适用"
+        : skipForeignBreak
+          ? "正在弹的是自定义提醒 / 外卖提醒，这一格只管短休息与长休息"
+          : skipEarlyOff
+            ? "这条提醒没有勾选「允许提前结束」，这次休息要等时间走完"
+            : "";
     }
     const qaPostpone = $("qa-postpone");
     if (qaPostpone) {

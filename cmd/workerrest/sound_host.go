@@ -108,18 +108,74 @@ func (a *App) playSoundFile(file string, volume float64) {
 	a.execPlaySound(url, volume)
 }
 
-// execPlaySound 把播放指令发给承载 <audio> 的窗口。每次新建一个 Audio 元素 —— 允许重叠
-// 播放（休息结束音紧接下一段开始时不该互相打断），与 sound.ts 的 playSound 同口径。
+// playSoundScript 播一段音频的 JS 模板（%s = url 字面量，%s = 音量）。
+//
+// 每次新建一个 Audio 元素 —— 允许重叠播放（休息结束音紧接下一段开始时不该互相打断），
+// 与 sound.ts 的 playSound 同口径。放出去的实例顺手记进 window.__wrSounds（放完即摘），
+// 只为了 stopSounds 能把“还在响的那几首”找出来停掉：Audio 不在 DOM 里，
+// querySelectorAll 是找不到的。
+const playSoundScript = "(()=>{const L=(window.__wrSounds=window.__wrSounds||[]);" +
+	"const a=new Audio(%s);a.volume=%s;" +
+	"a.onended=()=>{const i=L.indexOf(a);if(i>=0)L.splice(i,1)};" +
+	"L.push(a);a.play().catch(()=>{})})()"
+
+// stopSoundsScript 停掉本程序放出去、还在响的所有实例。设置页里的“试听”是页面自己的
+// <audio>，不在这份清单里 —— 试听不会被一次换窗掐断。
+//
+// 不直接 pause：从 0.6 的音量上硬切会“咔”一声（波形在半途被截断）。用 120 ms 线性
+// 淡出（6 × 20 ms）再停，听感就是自然地收掉。清单在同一个 tick 里就清空（淡出独立在
+// 跑）—— 紧接着新放的“开始音”不该被这次停音带走。
+const stopSoundsScript = "(()=>{const L=window.__wrSounds||[];" +
+	"for(const a of L){try{const v=a.volume;let k=0;" +
+	"const t=setInterval(()=>{k++;a.volume=Math.max(0,v*(1-k/6));" +
+	"if(k>=6){clearInterval(t);try{a.pause();a.currentTime=0}catch(e){}}},20)}" +
+	"catch(e){try{a.pause()}catch(e2){}}}" +
+	"L.length=0})()"
+
+// execPlaySound 把播放指令发给承载 <audio> 的窗口。
 func (a *App) execPlaySound(url string, volume float64) {
 	w := a.audioHostWindow()
 	if w == nil {
 		return
 	}
 	// 纯 JS，不带注释；url 用 strconv.Quote 转义（与 JS 字符串字面量兼容）
-	script := fmt.Sprintf(
-		"(()=>{const a=new Audio(%s);a.volume=%s;a.play().catch(()=>{})})()",
-		strconv.Quote(url), strconv.FormatFloat(volume, 'f', -1, 64))
-	w.ExecJS(script)
+	w.ExecJS(fmt.Sprintf(playSoundScript,
+		strconv.Quote(url), strconv.FormatFloat(volume, 'f', -1, 64)))
+}
+
+// stopSounds 掐掉还在响的提示音：接力换窗 / 长休息抢占，紧接着就要放新的一声，
+// 上一首（尤其是导入的几分钟音乐）不掐掉只会和新的那首叠在一起。
+//
+// 无头构建与单测里没有播放宿主，直接返回（与 playSoundFile 同一口径）。
+func (a *App) stopSounds() {
+	if serverMode || a.app == nil {
+		return
+	}
+	w := a.audioHostWindow()
+	if w == nil {
+		return
+	}
+	w.ExecJS(stopSoundsScript)
+}
+
+// setRelayQuiet 置位 / 撤销“换窗整段静音”：这一次收窗不播结束音（relayQuietEnd），
+// 紧接着那一次建会话也不播开始音（relayQuietStart）。只在 schedEndBreak 里一置一撤；
+// 两个标记各由消费方读走即清（closeBreakWindowsOpt / ShowBreakSession），所以即使
+// EndBreak 是空操作（相位已经翻篇），也不会把静音漏给下一次正常到点。
+func (a *App) setRelayQuiet(v bool) {
+	a.mu.Lock()
+	a.relayQuietEnd = v
+	a.relayQuietStart = v
+	a.mu.Unlock()
+}
+
+// takeRelayQuietStart 读走“这次建会话不出声”的标记（读一次就清）
+func (a *App) takeRelayQuietStart() bool {
+	a.mu.Lock()
+	v := a.relayQuietStart
+	a.relayQuietStart = false
+	a.mu.Unlock()
+	return v
 }
 
 // audioHostWindow 挑一个承载 <audio> 的窗口：优先主设置窗口（main.go 里随应用创建、

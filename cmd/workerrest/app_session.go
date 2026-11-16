@@ -260,6 +260,9 @@ func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) strin
 		Messages:         a.pickMessage(kind, name),
 		Supervisor:       a.buildSupervisorSession(preview, forceKey),
 		EndEarlyShortcut: endEarly,
+		// 「弹窗设置 → 允许提前结束」没勾：窗口据此不显示「提前结束」，本地 keydown 也不响应；
+		// 全局快捷键由 schedEndBreak 再拦一道（窗口不在前台时按下去同样不能提前结束）。
+		AllowEarlyEnd: bcfg.AllowEarlyEnd,
 	}
 	// 上一次休息被“长休息抢占”时已经并入的副条，接着挂到这次休息上：
 	// 抢占是立刻换窗，中间没有空隙让它们随旧窗消失（那些提醒已经被消费掉了）。
@@ -289,9 +292,13 @@ func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) strin
 	if len(info.Extras) > 0 {
 		a.emitBreakExtras(info.Extras)
 	}
-	// 提示音：只给真实休息放（预览是“看一眼窗口长什么样”，不该出声）
+	// 提示音：只给真实休息放（预览是“看一眼窗口长什么样”，不该出声）。
+	// 接力换窗时这次建会话也**不出声** —— 换窗整段静音（用户口径 2026-11-16：
+	// 「换窗时完全不出声」）。标记由 schedEndBreak 置位，这里读走即清。
 	if !preview {
-		a.playConfiguredSound()
+		if !a.takeRelayQuietStart() {
+			a.playConfiguredSound()
+		}
 		// 统计：休息开始 —— 从这里起休息时长逐秒实时入账（见 StatsStore.OnBreakTick），
 		// 中途断电最多丢 1 分钟，而不是把整次休息的时长全丢掉
 		a.statsStore().OnBreakStart(kind)

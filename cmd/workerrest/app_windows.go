@@ -45,6 +45,9 @@ func (a *App) closeBreakWindowsOpt(silent, countEnd, asComplete, carry bool) {
 	}
 	info := a.sess
 	a.sess = nil
+	// 接力换窗的“让音”标记只管这一次收窗：读走就清，绝不漏到下一次正常到点
+	quiet := a.relayQuietEnd
+	a.relayQuietEnd = false
 	a.mu.Unlock()
 	for _, w := range ws {
 		w.Close()
@@ -55,7 +58,16 @@ func (a *App) closeBreakWindowsOpt(silent, countEnd, asComplete, carry bool) {
 	// 休息窗全没了：外卖抬升循环不该再抢窗口层级与焦点（每次抬升都会 Focus 外卖窗，
 	// 没有休息窗在场时反复抢焦点等于打断用户）
 	a.raise.setBreaksActive(false)
-	if !silent {
+	switch {
+	case quiet, asComplete:
+		// 马上有一扇新窗顶上来（接力换窗 / 长休息抢占短休息）：结束音不响。
+		// 接力换窗是**整段静音**（新窗的开始音由 ShowBreakSession 按 relayQuietStart 同样跳过，
+		// 见 schedEndBreak）；抢占那次新休息的开始音照响 —— 那是自动发生的“新一次休息开始”。
+		// 两种情况都要把上一段还没放完的那首停掉，否则两首会叠在一起（导入的音乐动辄几分钟，
+		// 盖住新窗的声音还分不清是哪一条在响）。
+		log.Printf("[sound] 换窗：结束音不响（整段静音=%v 抢占=%v）", quiet, asComplete)
+		a.stopSounds()
+	case !silent:
 		a.playConfiguredSound()
 	}
 	// 统计：休息结束（唯一调用点是调度器的 finishBreak，所以这里就是 break-end）。
@@ -68,7 +80,8 @@ func (a *App) closeBreakWindowsOpt(silent, countEnd, asComplete, carry bool) {
 		}
 		// 提前结束：结束时刻明显早于计划结束。留 1.5 秒容差 —— 自然到点由定时器驱动，
 		// 正常不会早于 EndsAt，但别让抖动被记成“提前结束”。
-		// 口径只含短休息 / 长休息：自定义提醒与外卖不算（它们也不在这个窗口里结束）。
+		// 口径只含短休息 / 长休息：自定义提醒的窗口上虽然也挂着“提前结束”，但它只记
+		// 一条“自定义提醒”（不区分坐没坐满），外卖不走这里。
 		// asComplete（长休息抢占短休息）明确要求按完成记，不看时刻。
 		early := !asComplete && (info.Type == "short" || info.Type == "long") &&
 			nowMs()+endEarlyToleranceMs < info.EndsAt

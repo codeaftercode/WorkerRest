@@ -25,8 +25,13 @@ type BreakConfig struct {
 	// 语义：用户只想在自己已经离开工位的那一刻被叫去休息，而不是干到一半被打断。
 	IdleGate bool `json:"idleGate"`
 	// IdleGateMs 空闲门时长（毫秒，默认 30 秒）。勾了但填 0 分 0 秒 = 没启用，见 IdleGateWaitMs。
-	IdleGateMs int64      `json:"idleGateMs"`
-	Slots      []TimeSlot `json:"slots"`
+	IdleGateMs int64 `json:"idleGateMs"`
+	// AllowEarlyEnd 提醒窗口给不给「提前结束」：true = 窗口顶部显示「提前结束（快捷键）」，
+	// 全局快捷键 / 侧栏 / 托盘的提前结束也照常响应；false = 都不给（见 schedEndBreak）。
+	// 语义上默认**允许** —— 老配置没有这个键，缺省若按 false 走，升级后所有提醒会突然
+	// 变得「关不掉」，只能干坐到时间走完。归一化口径见 breakConfigOf 的 mapFlag(..., true)。
+	AllowEarlyEnd bool       `json:"allowEarlyEnd"`
+	Slots         []TimeSlot `json:"slots"`
 }
 
 // IdleGateWaitMs 生效的空闲门时长：没勾、或时长 <= 0 一律返回 0（= 不设门）。
@@ -180,6 +185,20 @@ type SchedulerState struct {
 	// RestKind 下一条短 / 长休息的身份（short | long；两者都没排上时为空串）。
 	// 侧栏那组按钮（立即休息 / 推迟休息 / 跳过本次 / 重置周期）的目标就是它。
 	RestKind string `json:"restKind"`
+	// BreakType 正在进行的这次休息的身份（short | long | 自定义 id | 外卖）；
+	// phase 不是 break 时为空串。
+	//
+	// **不能拿 NextType 代替**：休息期间只要发生一次 replan（保存设置、时间跳变），
+	// NextType 就被改写成“下一条”，用它判“当前这次是不是短 / 长休息”会错位。
+	// 侧栏的“跳过本次 / 提前结束”文案与托盘第一项的可点性都认这个字段
+	// （2026-11-15 用户口径：只有长 / 短休息才叫“提前结束”，自定义提醒、外卖提醒在弹时
+	// 那两处既不许写“提前结束”，也不许留着可点）。
+	BreakType string `json:"breakType"`
+	// AllowEarlyEnd 本次休息（BreakType）允不允许提前结束 —— 那张卡勾没勾
+	// 「弹窗设置 → 允许提前结束」。只在 phase == break 时有意义，其余时候恒为 true
+	// （缺省允许，免得前端把“不在休息”误判成“不让结束”）。侧栏「提前结束」据此置灰，
+	// 与宿主 schedEndBreak 的拦截同一处口径。
+	AllowEarlyEnd bool `json:"allowEarlyEnd"`
 	// Rest 短/长休息线里最近的一条（状态卡“下次休息提醒”格）；null = 两者都没安排
 	Rest *PlanRef `json:"rest"`
 	// Other 外卖提醒与所有自定义提醒里最近的一条（状态卡“下次XX提醒”格）；null = 都没启用
@@ -211,6 +230,13 @@ type SchedulerState struct {
 	// 前端据此逐格判断，不必自己比对名字）。
 	IdleWait bool `json:"idleWait"`
 }
+
+// IsRestKind 这个身份是不是内置的短 / 长休息（short | long）。
+//
+// 只有它们才配“提前结束”：自定义提醒与外卖提醒各有自己的窗口和入口，
+// 侧栏与托盘那两处对它们一律不认（见 SchedulerState.BreakType 的注释）。
+// 调度器包内的 isBuiltinBreakID 与它同一口径。
+func IsRestKind(id string) bool { return id == "short" || id == "long" }
 
 // AppPauseItem 指定应用运行时暂停的一条规则
 type AppPauseItem struct {

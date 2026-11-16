@@ -1303,7 +1303,11 @@
     const skip = document.getElementById("skip-link");
     // 顶部那个位置留给“预览模式 · 点击任意处关闭”：预览本来就点任意处关闭，再挂一个
     // “提前结束”既重复、又会和 badge 叠在同一处。
-    if (!data.preview) skip.classList.remove("hidden");
+    // 另一条不显示的理由是「弹窗设置 → 允许提前结束」没勾（allowEarlyEnd === false）：
+    // 连按钮带快捷键一起停用。字段缺失按**允许**算 —— 老会话 / 预览快照不带这个键时，
+    // 行为与以前完全一致。
+    const allowEndEarly = data.allowEarlyEnd !== false;
+    if (!data.preview && allowEndEarly) skip.classList.remove("hidden");
     // 文案随“设置 → 快捷键”的 endEarly 走：配置了就显示“提前结束（Ctrl+Alt+X）”，
     // 没配置（禁用）就只显示“提前结束”。
     skip.textContent = data.endEarlyShortcut
@@ -1315,7 +1319,9 @@
       else api.action("endBreak");
     });
     window.addEventListener("keydown", (e) => {
-      if (matchAccelerator(e, data.endEarlyShortcut)) {
+      // 按钮没显示时快捷键同样不响应（用户口径：「不勾则不显示，也不响应提前结束快捷键」）。
+      // 全局快捷键那一层由 Go 的 schedEndBreak 再拦一次 —— 窗口不在前台时也得管住。
+      if (allowEndEarly && matchAccelerator(e, data.endEarlyShortcut)) {
         e.preventDefault();
         if (data.preview) api.closeWindow();
         else api.action("endBreak");

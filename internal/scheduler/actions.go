@@ -144,6 +144,28 @@ func (s *Scheduler) BreakNowOf(kind string) string {
 	return s.startBreak()
 }
 
+// StartQueuedBreak 把“已经消费过、现在轮到显示”的那一班直接弹成窗口。
+//
+// 场景是「提前结束只结束当前这扇窗」：右上角还有卡时，最早到点的那张接替成一扇新窗
+// （2026-11-16 用户口径）。这一班在并入时就记进了 consumed，所以**不能再消费一次** ——
+// 因此走 startBreakAtWith(..., markConsumed=false)：它带进来的 at 只是日志用，
+// 若拿去记 OccurrenceKey(kind, at)，可能把这个身份真正的下一班误标成已处理。
+//
+// 当前已经在休息（刚换窗的时序里不该发生）时返回空串，调用方据此补记并收尾。
+func (s *Scheduler) StartQueuedBreak(kind string) string {
+	if kind == "" {
+		return ""
+	}
+	s.mu.Lock()
+	if s.state.Phase == "break" {
+		s.mu.Unlock()
+		return ""
+	}
+	at := s.state.NextAt
+	s.mu.Unlock()
+	return s.startBreakAtWith(kind, at, false)
+}
+
 // Postpone 推迟「当前这一跳」= 计划里的下一次提醒（可能是自定义提醒）。
 // 提前提示窗上的“推迟”走这条路（窗上提示哪条就推哪条，见 PostponeOf）。
 //

@@ -248,6 +248,15 @@ func (s *Scheduler) startBreak() string {
 // startBreakAt 按指定身份与 occurrence 弹一次休息。at 是这次安排的时刻（去重键用），
 // 传 0 表示沿用当前计划的 NextAt；暂停期间到点的自定义提醒也走这里（见 pausedFire）。
 func (s *Scheduler) startBreakAt(kind string, at int64) string {
+	return s.startBreakAtWith(kind, at, true)
+}
+
+// startBreakAtWith 是 startBreakAt 的本体，多一个“要不要把这一班记成已消费”的开关。
+//
+// markConsumed=false 只给 startQueuedBreak 用：接力弹出的那一班在**并入时**就已经
+// 消费过了，而它带进来的 at 是别的提醒的计划时刻 —— 拿它去记 OccurrenceKey(kind, at)，
+// 万一撞上这个身份真正的下一班，就会把人家凭空标成已处理（这一班从此消失）。
+func (s *Scheduler) startBreakAtWith(kind string, at int64, markConsumed bool) string {
 	cfg := s.host.CfgSnapshot()
 	s.mu.Lock()
 	st := &s.state
@@ -265,13 +274,17 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	// 开始休息了，就没人在等空闲了
 	s.clearIdleWaitLocked()
 	st.NextType = kind
+	// 当前这次的“身份”单独记一份：NextType 会在休息中被 replan 改写成下一条，
+	// 而这半分钟里“正在休息的是哪条提醒”必须钉住（侧栏“提前结束”文案、托盘那一项
+	// 的可点性都认它）。暂停冻结着的那次休息同样保留，见 StateCopy 的出口兜底。
+	st.BreakType = kind
 	st.Phase = "break"
 	st.BreakStartedAt = now
 	st.BreakEndsAt = now + bcfg.DurationMs
 	// 暂停态下主动发起的休息：不参与暂停的时间冻结（见 pauseFreezesClockLocked）
 	st.BreakWhilePaused = st.Paused
 	// 这次安排已消费：无论到点触发还是“立即休息”，replan 都不再排它
-	if at > 0 {
+	if markConsumed && at > 0 {
 		s.consumed[plan.OccurrenceKey(kind, at)] = true
 	}
 	// 新的一次休息：并入记录清零（同一条提醒在下一次休息里可以再并一次）
@@ -290,13 +303,34 @@ func (s *Scheduler) startBreakAt(kind string, at int64) string {
 	return id
 }
 
+// curBreakLocked 当前这次休息的身份 —— 一律以 BreakType 为准，只有它为空时才退回 NextType。
+//
+// 为什么不能拿 NextType 顶替：休息期间只要 replan 一次（保存设置、重置周期、时间跳变），
+// NextType 就会被改写成“下一条要弹的”，而正在弹的还是原来那条。用它去推进计数，
+// 本来是自定义提醒休息结束会把短休息计数 +1（下一班长休息被凭空推远）；长休息到点抢占时
+// 又会因为 NextType 已经写着 "long" 而误判成“已经在长休息”，直接放弃抢占。
+// 调用方必须已持有 s.mu。
+func (s *Scheduler) curBreakLocked() string {
+	if s.state.BreakType != "" {
+		return s.state.BreakType
+	}
+	return s.state.NextType
+}
+
 // finishBreak 结束进行中的休息（自然到点与提前结束共用）
 func (s *Scheduler) finishBreak() {
 	s.mu.Lock()
-	kind := s.state.NextType
+	kind := s.curBreakLocked()
 	s.state.BreakWhilePaused = false
 	s.advanceCounter(kind)
 	s.extraMerged = nil
+	// 这次休息的时间字段在收尾这一处清干净。原先只清了 BreakWhilePaused，
+	// BreakEndsAt / BreakStartedAt / BreakType 会留在快照里（实测：phase 已经回到 idle，
+	// breakEndsAt 还写着“还剩 84 秒”）。眼下每个消费方都先判 phase 才读，所以没出过错，
+	// 但那是靠约定撑着 —— 以后谁漏判一次，就会拿到一个已经过去的结束时刻。
+	s.state.BreakStartedAt = 0
+	s.state.BreakEndsAt = 0
+	s.state.BreakType = ""
 	s.mu.Unlock()
 
 	// break-end 的副作用：关休息窗口、空闲基准清零（空闲计时属下一步的“系统能力”）
@@ -346,6 +380,11 @@ func (s *Scheduler) StateCopy() model.SchedulerState {
 		} else if out.Rest != nil {
 			out.Rest.IdleWait = true
 		}
+	}
+	// 休息身份只在 break 相位有效：出相位后一律清空，免得清相位的那七八处漏一个
+	// 就留下“已经回到工作中、侧栏却还写着提前结束”的残影。
+	if out.Phase != "break" {
+		out.BreakType = ""
 	}
 	return out
 }
@@ -415,6 +454,16 @@ func (s *Scheduler) StateForRenderer() model.SchedulerState {
 			st.PostponeAllowed = c.CanPostpone()
 		} else {
 			st.PostponeAllowed = true
+		}
+	}
+	// 这次休息允不允许提前结束：侧栏「提前结束」按钮据此置灰（勾掉时灰着，而不是
+	// 点了才被拒；休息中途把勾补上，下一秒的快照就恢复可点）。每次快照现算、不存进
+	// 内部 state，所以配置一变就跟上。身份查不到按允许 —— 与 breakConfigOf 的缺键
+	// 兜底、与宿主 schedEndBreak 的拦截同一口径。
+	st.AllowEarlyEnd = true
+	if st.Phase == "break" && st.BreakType != "" {
+		if c, ok := cfg.BreakByID(st.BreakType); ok {
+			st.AllowEarlyEnd = c.AllowEarlyEnd
 		}
 	}
 	st.Timeline = plan.TodayTimeline(cfg, nowMs(), plan.TimelineOptions{

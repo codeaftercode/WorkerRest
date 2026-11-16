@@ -315,7 +315,44 @@ func (a *App) schedEndBreak() {
 	if a.sched == nil {
 		return
 	}
+	// 「弹窗设置 → 允许提前结束」没勾：窗口上不画这个按钮，但全局快捷键（启动时按配置
+	// 注册，不能按会话动态注销）、侧栏 / 托盘的「提前结束休息」仍在，所以在这里统一拦一道。
+	// 拦下就直接返回 —— 不能落到下面的兜底收窗，那会把提醒窗口一起收掉，等于换了种方式
+	// 提前结束。
+	if !a.curBreakAllowsEndEarly() {
+		log.Printf("[action] endBreak 被拒：当前提醒的「允许提前结束」没勾")
+		return
+	}
+	// 提前结束 = 只结束**当前这一扇窗**（2026-11-16 用户口径）：先把右上角的卡取下来，
+	// 关窗之后接着显示队头那条，其余继续挂在那扇新窗的右上角。取下来放在 EndBreak 之前 ——
+	// 会话还活着才拿得到；拿空之后收窗路径也不会再按“丢弃”处理它们。
+	//
+	// 先判相位再摘卡：自然到点那一瞬（调度器已经回到 idle、窗口还没来得及收）按下提前结束，
+	// 若先把卡摘走、EndBreak 又是空操作，这些卡就会被“接力”成一扇本不该存在的新窗。
+	var queue []model.BreakExtra
+	if a.sched.StateCopy().Phase == "break" {
+		queue = a.takeBreakQueue()
+	}
+	// 提示音：队头要接替成一扇新窗时，换窗**整段静音**（2026-11-16 用户口径「换窗时完全
+	// 不出声」）：旧窗不播结束音、新窗也不播开始音，正在放的那首一并淡出停掉。两声响只隔
+	// 几百毫秒，单曲循环下就是同一条音频连响两遍；而换窗是用户自己点出来的，不需要声音确认。
+	// 队头是外卖、或没有卡可接（结束就是结束）时照常响一声结束音。
+	relay := queueLeadsNewWindow(queue)
+	a.setRelayQuiet(relay)
 	a.sched.EndBreak()
+	if len(queue) > 0 {
+		// 标记必须留到新窗建会话那一刻：ShowBreakSession 在里面读走 relayQuietStart。
+		// 撤在后（也当兜底）—— 新窗没开成时标记不能留在身上，否则下一次正常休息没声音。
+		ok := a.resumeFromQueue(queue)
+		a.setRelayQuiet(false)
+		if !ok && relay {
+			// 新窗没开出来（那条提醒刚被删 / 停用）：这不是换窗、休息确实结束了，
+			// 把结束音补回来 —— 否则这次提前结束一声都不响，用户会以为程序卡住了。
+			a.playConfiguredSound()
+		}
+		return
+	}
+	a.setRelayQuiet(false)
 	// 兜底：调度器已经不在休息阶段时 endBreak 直接返回（自然到点 / 状态已翻篇），
 	// 屏幕上的窗口就成了“点了没反应”的窗 —— 用户只能 Alt+F4。这里直接收掉，
 	// 绝不把无主窗口留给用户。正常路径上 finishBreak 已经关过窗，这步是空操作。
@@ -323,6 +360,27 @@ func (a *App) schedEndBreak() {
 		log.Printf("[action] endBreak 无效（调度器不在休息阶段），直接收掉残留的休息窗口")
 		a.closeBreakWindowsOpt(true, false, false, false)
 	}
+}
+
+// curBreakAllowsEndEarly 当前这次提醒允不允许提前结束（「弹窗设置 → 允许提前结束」）。
+//
+// 判据只认**当前会话自己的身份**（a.sess.Type）：短休息查短休息卡、自定义提醒查它那张卡。
+// 没有会话（不在休息阶段）或那条提醒刚被删掉查不到配置时按**允许**办 —— 与
+// breakConfigOf 缺键兜底 true 同一口径：宁可让按钮按得动，也不要出现「窗口明明写着
+// 提前结束、按了却没反应」这种说不清的状态。
+func (a *App) curBreakAllowsEndEarly() bool {
+	a.mu.Lock()
+	sess := a.sess
+	cfg := a.cfg
+	a.mu.Unlock()
+	if sess == nil || cfg == nil {
+		return true
+	}
+	c, ok := cfg.BreakByID(sess.Type)
+	if !ok {
+		return true
+	}
+	return c.AllowEarlyEnd
 }
 
 // SupActivity 页内捕获到键鼠操作 → 广播给其余窗口（多屏同步）。

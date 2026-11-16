@@ -74,6 +74,9 @@ type BreakInfo struct {
 	// EndEarlyShortcut 提前结束休息的全局快捷键（与“设置 → 快捷键”的 endEarly 一致）。
 	// 窗口据此显示“提前结束（Ctrl+Alt+X）”提示；空串 = 未配置（只显示“提前结束”）。
 	EndEarlyShortcut string `json:"endEarlyShortcut"`
+	// AllowEarlyEnd 这张卡的「弹窗设置 → 允许提前结束」：false 时窗口不显示“提前结束”，
+	// 本地 keydown 与全局快捷键也都不响应（Go 侧 schedEndBreak 同一判据）。
+	AllowEarlyEnd bool `json:"allowEarlyEnd"`
 	// Extras 本次休息期间并入的**其他提醒**（单窗多条）：休息进行中到点的自定义提醒、
 	// 外卖提醒都挂在这里，不再另开窗口。渲染层在提醒内容下方逐条列出；
 	// 为 nil 时是普通的一窗一条休息（绝大多数场景）。
