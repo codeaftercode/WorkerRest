@@ -174,6 +174,28 @@ def _rel_lum_hex(hexs):
     return 0.2126 * ch(c[0]) + 0.7152 * ch(c[1]) + 0.0722 * ch(c[2])
 
 
+def _aa_min_ratio(font):
+    """WCAG 1.4.3 AA：正文 4.5:1；大字（≥24px，或 ≥18.66px 且字重 ≥700）3:1。
+
+    font 形如 {"size": "13.5px", "weight": "400"}（renderer_probe.js 采集的计算样式）。
+    拿不到字号时按正文 4.5 —— 宁严勿松：断言不该因为采集失败而放松。
+
+    为什么必须按实际字号取阈值：旧断言把主按钮（13px/600）写成 3.5、两行说明
+    （13.5px/400）写成 4.0 —— 两个都是**正文**，AA 要求 4.5。阈值低于标准时，
+    实测 3.71 的不合格配色照样判绿（2026-11-16 测试报告 §5.7 第 14 条）。"""
+    try:
+        size = float(str((font or {}).get("size") or "").replace("px", "").strip())
+    except ValueError:
+        return 4.5
+    weight = str((font or {}).get("weight") or "").strip()
+    try:
+        w = int(float(weight))
+    except ValueError:
+        w = 400
+    large = size >= 24 or (size >= 18.66 and w >= 700)
+    return 3.0 if large else 4.5
+
+
 def free_port(preferred):
     for cand in (preferred, 0):
         with socket.socket() as s:
@@ -1267,16 +1289,26 @@ def main():
         check(pb_lum is not None and pb.get("lumMode") == ("light" if pb_lum >= 0.45 else "dark"),
               "提前提示窗：深浅档位与底色亮度自洽", [pb.get("lumMode"), pb_lum])
         pb_ct = pb.get("contrast") or {}
+        pb_font = pb.get("font") or {}
         check((pb_ct.get("text") or 0) >= 4.5, "提前提示窗：标题文字对底色对比度 ≥4.5", pb_ct.get("text"))
         check((pb_ct.get("textTop") or 0) >= 4.5, "提前提示窗：渐变上端文字同样看得清", pb_ct.get("textTop"))
+        # 倒计时数字 20px/700 是大字（AA 3:1）；这里仍取 3.5 —— 比标准严半档，
+        # 是 applyPalette 里 ensureContrast(..., 4, ...) 兜出来的既有余量，别放松
         check((pb_ct.get("num") or 0) >= 3.5, "提前提示窗：倒计时数字对底色对比度 ≥3.5", pb_ct.get("num"))
-        # 两行说明是固定的红 / 绿语义色，只在深浅两档之间换 —— 深底上糊成一片就等于没有
-        check((pb_ct.get("tipBad") or 0) >= 4.0, "提前提示窗：红字说明对底色对比度 ≥4", pb_ct.get("tipBad"))
-        check((pb_ct.get("tipGood") or 0) >= 4.0, "提前提示窗：绿字说明对底色对比度 ≥4", pb_ct.get("tipGood"))
+        # 两行说明是固定的红 / 绿语义色，只在深浅两档之间换 —— 深底上糊成一片就等于没有。
+        # 13.5px 正文：阈值按实际字号取（_aa_min_ratio），不再写死 4.0
+        _tip_min = _aa_min_ratio(pb_font.get("tipBad"))
+        check((pb_ct.get("tipBad") or 0) >= _tip_min, "提前提示窗：红字说明对底色对比度 ≥%.1f" % _tip_min,
+              [pb_ct.get("tipBad"), pb_font.get("tipBad")])
+        check((pb_ct.get("tipGood") or 0) >= _tip_min, "提前提示窗：绿字说明对底色对比度 ≥%.1f" % _tip_min,
+              [pb_ct.get("tipGood"), pb_font.get("tipGood")])
         # 主按钮是主色当底、文字按底色亮度反选：按钮自己必须“从面板里跳出来”，
-        # 上面的字也得读得清（浅色配置下这条最容易翻车）
-        check((pb_ct.get("primaryBtn") or 0) >= 3.5,
-              "提前提示窗：主按钮文字对按钮底对比度 ≥3.5", pb_ct.get("primaryBtn"))
+        # 上面的字也得读得清（浅色配置下这条最容易翻车）。13px/600 是正文 → 4.5，
+        # 旧阈值 3.5 低于标准，实测 3.71 的经典蓝白字曾经照样判绿
+        _btn_min = _aa_min_ratio(pb_font.get("primaryBtn"))
+        check((pb_ct.get("primaryBtn") or 0) >= _btn_min,
+              "提前提示窗：主按钮文字对按钮底对比度 ≥%.1f" % _btn_min,
+              [pb_ct.get("primaryBtn"), pb_font.get("primaryBtn")])
 
         # 亮色配置（亮黄）：必须整窗换成浅底 + 深字，而不是继续沿用深底那套浅色文字
         pbl = m.get("preBreakLightBg") or {}
@@ -1288,12 +1320,18 @@ def main():
               "浅色背景色：文字色跟着反转（与深底那一档不同）",
               [pbl.get("textColor"), pb.get("textColor")])
         pbl_ct = pbl.get("contrast") or {}
+        pbl_font = pbl.get("font") or {}
         check((pbl_ct.get("text") or 0) >= 4.5, "浅色背景色：标题文字对浅底对比度 ≥4.5", pbl_ct.get("text"))
         check((pbl_ct.get("num") or 0) >= 3.5, "浅色背景色：倒计时数字对浅底对比度 ≥3.5", pbl_ct.get("num"))
-        check((pbl_ct.get("tipBad") or 0) >= 4.0, "浅色背景色：红字说明对浅底对比度 ≥4", pbl_ct.get("tipBad"))
-        check((pbl_ct.get("tipGood") or 0) >= 4.0, "浅色背景色：绿字说明对浅底对比度 ≥4", pbl_ct.get("tipGood"))
-        check((pbl_ct.get("primaryBtn") or 0) >= 3.5,
-              "浅色背景色：主按钮文字对按钮底对比度 ≥3.5", pbl_ct.get("primaryBtn"))
+        _tip_min_l = _aa_min_ratio(pbl_font.get("tipBad"))
+        check((pbl_ct.get("tipBad") or 0) >= _tip_min_l, "浅色背景色：红字说明对浅底对比度 ≥%.1f" % _tip_min_l,
+              [pbl_ct.get("tipBad"), pbl_font.get("tipBad")])
+        check((pbl_ct.get("tipGood") or 0) >= _tip_min_l, "浅色背景色：绿字说明对浅底对比度 ≥%.1f" % _tip_min_l,
+              [pbl_ct.get("tipGood"), pbl_font.get("tipGood")])
+        _btn_min_l = _aa_min_ratio(pbl_font.get("primaryBtn"))
+        check((pbl_ct.get("primaryBtn") or 0) >= _btn_min_l,
+              "浅色背景色：主按钮文字对按钮底对比度 ≥%.1f" % _btn_min_l,
+              [pbl_ct.get("primaryBtn"), pbl_font.get("primaryBtn")])
         check(not (pbl.get("consoleErrors") or []), "浅色背景色：页面无控制台错误",
               (pbl.get("consoleErrors") or [])[:2])
 

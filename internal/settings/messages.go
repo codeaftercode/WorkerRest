@@ -58,8 +58,10 @@ var builtinKindMessages = map[string][]string{
 	"takeout": builtinTakeoutMessages,
 }
 
-// builtinKindItems 某类提醒的预置提醒内容条目（id 固定、默认启用）
-func builtinKindItems(kind string) []model.ReminderMessageItem {
+// BuiltinKindItems 某类提醒的预置提醒内容条目（id 固定、默认启用）。
+// 跨包导出：cmd 的绑定层也用它回填预置条目 —— 全仓只有这一份实现，
+// 2026-11-16 之前 cmd/workerrest/messages.go 是这里的逐字节副本（改一处漏一处的典型）
+func BuiltinKindItems(kind string) []model.ReminderMessageItem {
 	texts := builtinKindMessages[kind]
 	out := make([]model.ReminderMessageItem, 0, len(texts))
 	for i, text := range texts {

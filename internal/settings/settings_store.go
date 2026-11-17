@@ -123,7 +123,7 @@ func seedPresetEntries(raw map[string]any) bool {
 		}
 		cfg["seeded"] = true
 		if items, ok := cfg["items"].([]any); !ok || len(items) == 0 {
-			seeds := builtinKindItems(kind)
+			seeds := BuiltinKindItems(kind)
 			arr := make([]any, 0, len(seeds))
 			for _, it := range seeds {
 				arr = append(arr, map[string]any{"id": it.ID, "text": it.Text, "enabled": it.Enabled})

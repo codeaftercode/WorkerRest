@@ -193,8 +193,12 @@ func (a *App) enabledRoles(all []role.Role, force bool) []role.Role {
 // 返回的切片至少 1 条——渲染层把它整块渲染，同时把第 0 条当督休专员第一段台词。
 //
 // kind 可以是 'short' / 'long' / 'takeout'，也可以是自定义提醒的 id（各有一套自己的池）。
-func (a *App) pickMessage(kind, fallbackName string) []string {
-	rm := a.cfg.RemindersByID(kind)
+//
+// cfg 是调用方取的配置快照（CfgSnapshot() 或锁内拿到的 a.cfg）：提醒内容池从这份快照读，
+// 不再内部直读 live 配置 —— 配置写入是「整体替换指针」，读快照与并发保存互不影响。
+// **调用方必须持有 a.mu**：下面的顺序游标 a.cursor 与随机源 a.rng 都不是线程安全的。
+func (a *App) pickMessage(cfg *settings.Settings, kind, fallbackName string) []string {
+	rm := cfg.RemindersByID(kind)
 	if rm.Order == "fixed" {
 		for _, it := range rm.Items {
 			if it.ID == rm.FixedID && it.Text != "" {
@@ -257,7 +261,7 @@ func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) strin
 		DurationMs:       dur,
 		Preview:          preview,
 		Appearance:       cfg.AppearanceView(),
-		Messages:         a.pickMessage(kind, name),
+		Messages:         a.pickMessage(cfg, kind, name),
 		Supervisor:       a.buildSupervisorSession(preview, forceKey),
 		EndEarlyShortcut: endEarly,
 		// 「弹窗设置 → 允许提前结束」没勾：窗口据此不显示「提前结束」，本地 keydown 也不响应；

@@ -10,6 +10,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"workerrest/internal/logx"
 	"workerrest/internal/model"
@@ -132,11 +133,30 @@ type Scheduler struct {
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
+	// done 由 Loop 退出时关闭。Stop 等到它关闭才返回 —— 只发停止信号不等退出，调用方
+	//（ServiceShutdown、测试的 t.Cleanup）会以为已经收干净，实际后台还在每半秒跳一次：
+	// -race 下必然撞上“测试已结束、goroutine 还在跑”，TempDir 刚删又被那一跳写回来。
+	done     chan struct{}
+	doneOnce sync.Once
+	// runMu 保护下面两个生命周期标志。单独一把锁而不是复用 s.mu：Loop 每一跳都要拿
+	// s.mu，生命周期判定跟在某一跳后面排队会让 Stop 的语义变得依赖 tick 的运气。
+	runMu   sync.Mutex
+	running bool // Loop 已经真正进入循环体（goroutine 起来了）
+	stopped bool // Stop 已经调过：这之后才起的 Loop 应当立刻返回
 
 	// lastTickAt 上一次 onTick 的墙钟时刻：用来发现“两次 tick 之间过了很久”——
 	// 睡眠 / 休眠 / 系统时间被大幅调整时，倒计时会在醒来第一刻全部到点，
 	// 不处理就会立刻弹一个休息窗口（用户刚开机就被要求休息）。
 	lastTickAt int64
+
+	// heartbeat 最近一次 onTick 开始时的墙钟时刻（nowMs()）。只读原子变量，不参与状态机：
+	// 它存在的唯一目的是让外部（托盘每秒循环）能看出“调度循环还活着”。
+	//
+	// 为什么需要它：GuardRun 只 recover panic，熔断也只数 panic；若某一跳在锁段中间 panic
+	// 后状态写坏、或宿主回调永久阻塞（窗口线程被别的窗占住），ticker 仍在转、onTick 却再也
+	// 回不来 —— 进程活着、日志干净、一整天不提醒。有了心跳，这种“静默停摆”至少能看见。
+	// 这里只做检测，不做自动重建（重建涉及会话 / 窗口 / 统计的成对清理，另立任务）。
+	heartbeat atomic.Int64
 }
 
 // postponedBreak 暂停期间被“推迟提醒”推后的一次自定义提醒。
@@ -149,6 +169,26 @@ type postponedBreak struct {
 
 // nowMs 当前时刻（毫秒时间戳，与 JS 的 Date.now() 同基准）
 func nowMs() int64 { return time.Now().UnixMilli() }
+
+// HeartbeatStaleMs 心跳超过这么久没更新，就认为调度循环停摆了（托盘据此报警）。
+//
+// 为什么是 5 秒：正常节奏是 500ms 一跳，5 秒 = 连续丢 10 拍。GC、磁盘、系统卡顿
+// 这类正常抖动连丢 2~3 拍都少见，10 拍足够挡掉误报；反过来，对“一整天不提醒”这种
+// 事故来说，晚 5 秒发现完全无所谓 —— 这个数取的是“不误报”这一侧。
+const HeartbeatStaleMs int64 = 5_000
+
+// LastHeartbeatAt 最近一次调度心跳的墙钟时刻（0 = 启动后还没跑过任何一跳）
+func (s *Scheduler) LastHeartbeatAt() int64 { return s.heartbeat.Load() }
+
+// HeartbeatStaleFor 距最近一次心跳过了多少毫秒（≤0 = 还没跑过任何一跳，不算停摆）。
+// 只读，不加 s.mu：托盘每秒都会问一次，不该排在某一跳后面。
+func (s *Scheduler) HeartbeatStaleFor() int64 {
+	last := s.heartbeat.Load()
+	if last <= 0 {
+		return 0
+	}
+	return nowMs() - last
+}
 
 // PauseReasonIdle 空闲暂停的原因键。它唯一不参与“用户仍在用电脑”的 busy 判定
 // （见 pausedForBusyReason）：手动 / 勿扰 / 指定应用占用都会让空闲判定失效，
@@ -200,6 +240,7 @@ func New(host Host) *Scheduler {
 		pauseFired:   map[string]bool{},
 		postponed:    map[string]*postponedBreak{},
 		stopCh:       make(chan struct{}),
+		done:         make(chan struct{}),
 	}
 	s.state = model.SchedulerState{
 		Phase:        "idle",
@@ -213,9 +254,22 @@ func New(host Host) *Scheduler {
 	return s
 }
 
-// Stop 停止调度循环（退出 / 测试收尾）
+// Stop 停止调度循环（退出 / 测试收尾），**等循环真的退出**才返回。
+//
+// 两个边界必须照顾：
+//   - Stop 在 Loop 起来之前就被调：那时没人会关 done，不能干等 —— 直接返回，
+//     之后才起的 Loop 由 stopped 标志让它立刻退出（见 Loop 开头）；
+//   - Stop 被调两次：close(stopCh) 由 stopOnce 保证只做一次，第二次 running 已是
+//     false（或仍为 true 但 done 已关），不会 panic，也不会多等一轮。
 func (s *Scheduler) Stop() {
+	s.runMu.Lock()
+	s.stopped = true
+	running := s.running
+	s.runMu.Unlock()
 	s.stopOnce.Do(func() { close(s.stopCh) })
+	if running {
+		<-s.done
+	}
 }
 
 // Start 启动调度循环：重置周期后跑后台循环（生产启动时调一次）。循环体在 Loop 内，
@@ -228,6 +282,22 @@ func (s *Scheduler) Start() {
 // Loop 半秒一跳。上一版 里是两个各 500ms 的定时器（主 tick + 休息窗口到点收窗），
 // 这里合成一跳：休息进行中只看向“该收窗了没”，其余情况走主 tick。
 func (s *Scheduler) Loop() {
+	// 先登记“我在跑”，再进循环：Stop 靠这个标志决定要不要等 done。
+	// 若 Stop 先到（stopped 已置位），这里直接返回 —— 不能进循环，否则那一跳就落在
+	// 调用方以为“已经停干净”之后（测试正在删临时目录）。
+	s.runMu.Lock()
+	if s.stopped {
+		s.runMu.Unlock()
+		return
+	}
+	s.running = true
+	s.runMu.Unlock()
+	defer func() {
+		s.runMu.Lock()
+		s.running = false
+		s.runMu.Unlock()
+		s.doneOnce.Do(func() { close(s.done) })
+	}()
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
 	for {
@@ -257,13 +327,21 @@ func (s *Scheduler) onTick() {
 	// 统一重排（内置 / 自定义倒计时从头计时，固定线顺延到下一个时刻）。
 	// 暂停中也重排：暂停不冻钟，重排按真实墙钟重新起算，正好是“醒来不再欠着几次休息”。
 	tickNow := nowMs()
+	// 心跳：一进 onTick 就更新（见 Scheduler.heartbeat 的说明）。
+	// 放在最前面是有意的 —— 若这一跳卡在后面的锁段或宿主回调里再也回不来，
+	// 心跳就停在“卡住的那一刻”，外部 5 秒后即可看出停摆。
+	s.heartbeat.Store(tickNow)
 	s.mu.Lock()
 	last := s.lastTickAt
 	s.lastTickAt = tickNow
 	s.mu.Unlock()
-	if last > 0 && tickNow-last > tickJumpThresholdMs {
-		log.Printf("[scheduler] 两次 tick 间隔 %d ms（睡眠 / 休眠 / 系统时间调整）：重排，不补弹过期提醒",
-			tickNow-last)
+	// 墙钟要**双向**判：睡眠 / 休眠是正向大跳，用户改系统时间、NTP 回退是负向大跳。
+	// 只判正向时，回拨后 `now >= 到点时刻` 一律为假 —— 该弹的不弹，而且正在进行的
+	// 休息会永远收不了窗（phase 卡在 break），直到墙钟自己追回来。
+	// 这里刻意不写 abs()：int64 的 -MinInt64 取绝对值会溢出，两侧各比一次没有这个坑。
+	if jump := tickNow - last; last > 0 && (jump > tickJumpThresholdMs || jump < -tickJumpThresholdMs) {
+		log.Printf("[scheduler] 两次 tick 墙钟差 %d ms（睡眠 / 休眠 / 系统时间调整）：重排，不补弹过期提醒",
+			jump)
 		// 挂起线要一起清掉：倒计时锚点的沿用规则会把“已经到点的那一跳”原样留着
 		//（见 prevCountdownAnchorsLocked），不清的话醒来第一拍就会拿一条几小时前
 		// 到点的线去弹窗 —— 正是这个分支要避免的事。

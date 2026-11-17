@@ -414,12 +414,29 @@ def main():
         state2 = call_ok(base, "GetState", [])
         check(isinstance(state2, dict) and state2.get("phase") == "break",
               "开始休息后 GetState.phase == break", state2.get("phase") if isinstance(state2, dict) else "")
+        # ---- 非法入参 / 非法动作：三条入口的语义**目前不统一**，下面如实钉住现状 ----
+        #   1) Action(未知名)        app_bindings.go:162  → 只打日志，返回 nil   → 200 + {}
+        #   2) PreBreakAction(未知名) prebreak.go:407 的 default → 返回 error  → HTTP 非 200
+        #   3) TakeoutAction(未知动作) takeout_watch.go:195 → 不校验动作，且会
+        #      RecordTakeoutAction(action) **把未知动作当真实决定记账**
+        # 第 3 条是真正值得改的（未知动作不该进统计），但它在外卖侧、
+        # 本轮不改产品；把差异记在这里，别让下一个人以为是同一个语义。
+        # 这几条断言是在描述“当前实际行为”，不是理想语义 —— 一旦有人统一了语义，
+        # 它们会 FAIL，逼着同步更新契约与这里。
         bad_kind = call_ok(base, "StartBreak", ["no-such-kind"])
-        check(bad_kind == "" or isinstance(bad_kind, str),
-              "StartBreak(非法 kind) 不崩溃、返回空串或字符串", repr(bad_kind)[:40])
-        err_bad_action = call_ok(base, "Action", ["break", "绝对不存在的动作"])
-        check(err_bad_action is not None or True, "Action(非法动作) 返回错误而非崩溃",
-              str(err_bad_action)[:80])
+        # 走到这里时 phase 已经是 break（上一段刚 StartBreak("short")），scheduler 的
+        # BreakNowOf 在休息中直接返回空串，压根不去校验 kind 合法性 —— 所以“非法 kind”
+        # 与“正在休息”两种原因都落到 ""，本探针无法区分。可失败的判据：返回的必须是
+        # 空串（而不是一个新建的会话 id）。
+        check(bad_kind == "",
+              "StartBreak(非法 kind) 返回空串（当前行为：kind 不校验，休息中直接短路）",
+              repr(bad_kind)[:40])
+        st_act, res_act, txt_act, unknown_act = invoke(base, "Action", ["break", "绝对不存在的动作"])
+        # 200 + {} 是 Wails 对“方法只返回 error 且 error 为 nil”的固定序列化
+        # （pkg/application/transport_http.go 的 json()：data == nil 时写 "{}"）。
+        check(st_act == 200 and not unknown_act and res_act == {},
+              "Action(非法动作) 返回 200 + {}（当前行为：静默忽略，不报错）",
+              "status=%s %s" % (st_act, txt_act[:80]))
 
         # ---------- 专员写操作（负路径为主，避免改动真实素材）----------
         print("\n[专员] 写操作的拒绝路径")
@@ -465,10 +482,11 @@ def main():
         # ---------- 外卖动作负路径 ----------
         print("\n[外卖] 动作负路径")
         t1 = call_ok(base, "TakeoutAction", ["takeout", "postpone"])
-        # 没有进行中的外卖提醒时，Go 侧走错误返回（响应体为空对象），前端 `void api.takeoutAction()`
-        # 不看返回值 —— 判据是“不炸、不改状态”。
-        check(t1 is None or isinstance(t1, (str, dict)), "TakeoutAction(postpone) 无提醒时安全返回",
-              str(t1)[:80])
+        # 没有进行中的外卖提醒时 Go 侧 `cur == nil` 直接 return nil，Wails 对这种
+        # “只返回 error 且为 nil”的方法固定回 200 + {}（transport_http.go 的 json()）。
+        # 前端 `void api.takeoutAction()` 不看返回值，判据是“不炸、不改状态”——
+        # 所以这里断言空对象，而不是“任意返回值都算过”。
+        check(t1 == {}, "TakeoutAction(postpone) 无提醒时返回 {}（空操作）", str(t1)[:80])
         state_after_takeout = call_ok(base, "GetState", [])
         check(isinstance(state_after_takeout, dict),
               "TakeoutAction 空转后 GetState 仍可读（状态没被带坏）",

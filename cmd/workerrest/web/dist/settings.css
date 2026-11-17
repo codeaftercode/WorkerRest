@@ -10,12 +10,16 @@
   --text: #1f2430;
   --text-2: #6b7280;
   --text-3: #98a0af;
-  /* 唯一强调色（蓝相不动）：本体 / 悬停 / 弱底 / 实底上的文字 / 焦点外圈 */
-  --accent: #4f7cff;
-  --accent-hover: #3d6bf0;
+  /* 唯一强调色（蓝相不动）：本体 / 悬停 / 弱底 / 实底上的文字 / 焦点外圈
+     2026-11 亮度整体下移一档（#4f7cff → #3d6bf0）：白字对旧值只有 3.71:1，
+     13px 按钮文字按 WCAG AA 正文要求 4.5 —— #3d6bf0 实测 4.61。深色主题一直
+     用「浅 accent + 深字」的写法（见 [data-theme='dark'] 的 --on-accent），浅色
+     主题沿用白字就得把底压深一档 */
+  --accent: #3d6bf0;
+  --accent-hover: #2f5cd8;
   --accent-weak: #eef2ff;
   --on-accent: #ffffff;
-  --ring: rgba(79, 124, 255, 0.18);
+  --ring: rgba(61, 107, 240, 0.18);
   /* 语义三件套 ×3（色相锚定图表色板：success=#34a46f 系、warn=#e0a23f 系） */
   --success: #34a46f;   --success-fg: #1e7a4d;  --success-weak: #e6f5ed;
   --warn: #c77d1a;      --warn-fg: #96600b;     --warn-weak: #faf1de;
@@ -1220,7 +1224,9 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .msg-item.editing { cursor: default; }
 /* 非编辑态：文本框只读，去边框/背景，像普通文本一样可点 */
 .msg-item input.msg-text[readonly] { border-color: transparent; background: transparent; cursor: pointer; padding-left: 0; }
-.msg-item input.msg-text[readonly]:focus { outline: none; }
+/* 摘掉原生 outline 的地方必须有替代焦点环（WCAG 2.4.7 键盘焦点可见）：
+   与 .color-chip:focus-visible 同一套 box-shadow 画法 */
+.msg-item input.msg-text[readonly]:focus { outline: none; box-shadow: 0 0 0 2px var(--accent-weak); border-radius: var(--r-sm); }
 /* 编辑态：文本框可编辑、高亮边框 */
 .msg-item.editing input.msg-text { cursor: text; border-color: var(--accent); background: var(--bg); }
 .msg-empty { color: var(--text-2); font-size: 14px; padding: 12px 0; text-align: center; }
@@ -2055,7 +2061,10 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 平均休息参考线：虚线 + 右侧小字标注（用主文本色，弱色看不清） */
 .rest-chart .rc-avgline { stroke: var(--text-2); stroke-opacity: 0.6; stroke-dasharray: 5 4; pointer-events: none; }
 .rest-chart .rc-avglabel { fill: var(--text); font-size: 11px; font-weight: 600; }
-.rest-chart svg:focus { outline: none; }
+/* svg 不是 CSS 盒，box-shadow / outline 都画不出贴合的焦点环（作者当初因此摘掉
+   outline）。键盘可达性由 tabindex=0 保证（settings.js 渲染时写入），焦点可见性
+   用 drop-shadow 投在图表内容上（WCAG 2.4.7）：聚焦图表时一圈强调色柔光 */
+.rest-chart svg:focus { outline: none; filter: drop-shadow(0 0 3px var(--accent)); }
 /* 入场动画（仅换粒度 / 换范围时播，svg.anim 才生效）：柱子自下而上长出来，
    折线沿路径描出来（pathLength=1 配 dashoffset），面积与圆点随后淡入 */
 @keyframes rcBarIn { from { transform: scaleY(0); } }

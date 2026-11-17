@@ -5,6 +5,7 @@ import (
 	"math/rand"
 	"time"
 	"workerrest/internal/logx"
+	"workerrest/internal/settings"
 	"workerrest/internal/update"
 )
 
@@ -111,14 +112,13 @@ func (a *App) runAutoUpdateCheck(today string) {
 	a.publishUpdateStatus(st)
 	// 当天去重：只有真正判定出结果（已是最新 / 有更新）才记今天查过了；
 	// error（如网络抖动）不记，当天后面还会按规则再排一次。
-	// 写 cfg 必须持 a.mu（本函数跑在 autoUpdateLoop 后台 goroutine 里），
-	// 网络请求 checkForUpdate 已在上方锁外完成。
+	// 写 cfg 走 mutateConfigCopy：本函数在 autoUpdateLoop 后台 goroutine 里跑，
+	// 而读端（CfgSnapshot 后不持锁）遍布全仓 —— 必须「新对象 + 换指针」，只加锁不够。
 	if st.Status != "error" {
-		a.mu.Lock()
-		a.cfg.SetLastUpdateCheck(today)
-		err := a.cfg.Save()
-		a.mu.Unlock()
-		if err != nil {
+		if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+			s.SetLastUpdateCheck(today)
+			return true
+		}); err != nil {
 			log.Printf("[update] 写入上次检查日期失败: %v", err)
 		}
 	}

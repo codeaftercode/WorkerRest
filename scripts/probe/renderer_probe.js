@@ -1058,6 +1058,14 @@ const PROBE_PREBREAK = `(function () {
   var goodEl = document.querySelector('.tip.good');
   var numEl = document.getElementById('pb-seconds');
   var pBtn = document.getElementById('pb-now');
+  // 字号 / 字重：给 Python 侧按 WCAG「大字 / 正文」取阈值用（大字 3:1、正文 4.5:1；
+  // 大字 = ≥24px，或 ≥18.66px 且 ≥700 粗）。阈值不看实际字号就会把正文的 4.5
+  // 错写成 3.5/4.0，不合格的配色照样判绿（2026-11-16 报告 §5.7 第 14 条）。
+  var fontOf = function (el) {
+    if (!el) return null;
+    var s = getComputedStyle(el);
+    return { size: s.fontSize, weight: s.fontWeight };
+  };
   return {
     shim: window.__WR_SHIM || null,
     title: txt('pb-title'),
@@ -1077,7 +1085,8 @@ const PROBE_PREBREAK = `(function () {
     numColor: numEl ? getComputedStyle(numEl).color : null,
     tipBadColor: badEl ? getComputedStyle(badEl).color : null,
     tipGoodColor: goodEl ? getComputedStyle(goodEl).color : null,
-    // 文字 / 数字 / 红绿说明对底色的对比度（WCAG，正文要 ≥4.5，大字 ≥3）
+    // 文字 / 数字 / 红绿说明对底色的对比度（WCAG，正文要 ≥4.5，大字 ≥3；
+    // 具体按哪个判见 font 采集与 Python 侧的 _aa_min_ratio）
     contrast: {
       text: ratio(textRGB, bg2),
       textTop: ratio(textRGB, bg1),
@@ -1088,6 +1097,12 @@ const PROBE_PREBREAK = `(function () {
         parseRgb(pBtn ? getComputedStyle(pBtn).color : ''),
         parseRgb(pBtn ? getComputedStyle(pBtn).backgroundColor : '')
       ),
+    },
+    font: {
+      num: fontOf(numEl),
+      tipBad: fontOf(badEl),
+      tipGood: fontOf(goodEl),
+      primaryBtn: fontOf(pBtn),
     },
   };
 })()`;

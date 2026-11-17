@@ -7,7 +7,6 @@ package main
 //	③ 接力成窗的那种由 OnBreakStart / OnBreakEnd 记账，不能再被补记一次。
 
 import (
-	"bytes"
 	"log"
 	"path/filepath"
 	"strings"
@@ -339,9 +338,9 @@ func injectRelaySound(t *testing.T) {
 // countSoundPlays 跑一次动作并数它放了几声（顺带把日志带回去断言走了哪条路径）
 func countSoundPlays(t *testing.T, fn func()) (int, string) {
 	t.Helper()
-	var buf bytes.Buffer
+	buf := &lockedBuffer{}
 	old := log.Writer()
-	log.SetOutput(&buf)
+	log.SetOutput(buf)
 	defer log.SetOutput(old)
 	fn()
 	out := buf.String()

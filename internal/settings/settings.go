@@ -452,7 +452,7 @@ func (s *Settings) normSelection(v string) string {
 // 两处漂移时，老配置（缺键走兜底）与恢复默认后的表现就不一样，界面上看不出来。
 func (s *Settings) AppearanceCfg() model.AppearanceConfig {
 	return model.AppearanceConfig{
-		Color:        s.Str("#4f7cff", "appearance", "color"),
+		Color:        s.Str("#3d6bf0", "appearance", "color"),
 		Transparency: math.Min(0.5, math.Max(0, s.Num(0.05, "appearance", "transparency"))),
 		Blur:         s.Flag(true, "appearance", "blur"),
 		Fullscreen:   s.Flag(false, "appearance", "fullscreen"),

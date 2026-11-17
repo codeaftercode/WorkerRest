@@ -407,6 +407,9 @@ func (a *App) ShowBreakWindow(kind string) {
 			// 共享屏幕时隐藏：Wails 在窗口显示后调 SetWindowDisplayAffinity。
 			// 生效前提是 main.go 的 --disable-direct-composition —— 少了它，像素不在
 			// 窗口重绘表面里，标记照样回读成功而捕获照旧可见（那里有实测记录）。
+			// Win10 < 2004（build 19041）不支持 WDA_EXCLUDEFROMCAPTURE，窗口会退化成
+			// 一块黑色矩形。**产品决策（2026-11-17 用户拍板）：不做运行时版本检测、
+			// 不弹提示** —— 操作手册已写明该限制与 winver 自查方法；别“好心”补提示。
 			ContentProtectionEnabled: ap.HideOnShare,
 			// 窗口身份经 URL 的 ?win=break 下发；JS 字段对 URL 页面不生效（仅占位）
 			JS: `window.__WR_WIN = "break";`,

@@ -4,11 +4,36 @@ package scheduler
 // 当场跑不通、随后修掉的场景。修完后留在这里防回归（不再是临时证据）。
 
 import (
+	"bytes"
+	"log"
+	"os"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"workerrest/internal/model"
 )
+
+// lockedLogBuf 日志断言用：写日志的可能不止当前测试的 goroutine（别的用例留下的
+// Loop / 定时器还活着），裸 bytes.Buffer 会构成数据竞争 —— 与 cmd 包的
+// logsink_test.go 同一个教训，这里放一份包内的最小实现。
+type lockedLogBuf struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedLogBuf) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedLogBuf) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
 
 // plannedAt 造一条挂起线（测试里手工摆“某一跳已经到点”的现场用）
 func plannedAt(typ, name string, at int64, src string) model.PlannedBreak {
@@ -198,16 +223,32 @@ func TestSameMomentLongBeatsShort(t *testing.T) {
 func TestSkipDeadWhilePaused(t *testing.T) {
 	s, host := newTestSched(t, shortCountdown)
 	s.replan()
+	at := s.StateCopy().NextAt
 	s.Pause(PauseReasonManual)
+	before := nowMs()
 	s.Skip()
 	if len(host.skips) == 0 {
 		st := s.StateCopy()
 		t.Fatalf("暂停中「跳过本次」是空操作：没有记跳过，下一次仍是 %s（暂停前那一刻）",
 			time.UnixMilli(st.NextAt).Format("15:04:05"))
 	}
+	// 跳过 = 消费这一跳并重排：下一次要从「现在」重新起算一个满间隔，
+	// 而不是停在原定时刻 —— 只记统计不挪线，提醒照样来，跳过就成了空话。
+	// （这条断言还钉着一个曾经的窄窗缺陷：跳过落在锚点刚生成的同一毫秒时，
+	// filterConsumed 会把新锚点误当已消费、整条线删空 → NextAt 归 0，见
+	// plan.filterConsumed 的注释。单测里 replan→pause→skip 常在同一毫秒内
+	// 完成，正好稳定踩中它。）
+	got := s.StateCopy().NextAt
+	want := before + 600_000
+	if diff := got - want; diff < -2_000 || diff > 2_000 {
+		t.Fatalf("跳过后应重排成 现在+间隔：want≈%d got=%d（差 %d ms，原定 %d）", want, got, diff, at)
+	}
 }
 
 // 暂停中侧栏的「推迟休息」同样要真的把这一跳往后挪（曾经与 Skip 一样在暂停态直接 return）。
+// 挪多少也要钉：推迟口径 = max(now, 原定) + postponeMs（原定在 10 分钟外 → 取原定），
+// 新时刻必须正好是 at+120000 —— 今日时间线 / 提前提示区间全跟着这个数走，
+// 「往后挪了但挪错了量」与没挪一样是缺陷。
 func TestPostponeDeadWhilePaused(t *testing.T) {
 	s, host := newTestSched(t, shortCountdown)
 	s.replan()
@@ -215,10 +256,46 @@ func TestPostponeDeadWhilePaused(t *testing.T) {
 	s.Pause(PauseReasonManual)
 	s.Postpone()
 	if len(host.postpones) == 0 {
-		if got := s.StateCopy().NextAt; got == at {
-			t.Fatalf("暂停中「推迟休息」是空操作：时刻没变（%s）", time.UnixMilli(got).Format("15:04:05"))
-		}
+		t.Fatalf("暂停中「推迟休息」是空操作：OnBreakPostponed 未被调用")
 	}
+	got := s.StateCopy().NextAt
+	if got != at+120_000 {
+		t.Fatalf("推迟后应为 原定+postponeMs：want=%d got=%d（原定 %d，差 %d ms）",
+			at+120_000, got, at, got-(at+120_000))
+	}
+}
+
+// postpone 的挂起线失配分支（actions.go 的「挂起线里没有 %d 这一刻」）：
+// NextAt 与 Lines 失配只可能来自异常状态，该分支的全部产出就是那条日志 ——
+// 没有它，点了推迟、界面无声无变化。这里构造失配状态，钉住日志真的打出来。
+func TestPostponeLineMismatchIsAudible(t *testing.T) {
+	buf := &lockedLogBuf{}
+	log.SetOutput(buf)
+	defer log.SetOutput(os.Stderr)
+
+	s, host := newTestSched(t, shortCountdown)
+	s.replan()
+	s.mu.Lock()
+	s.state.NextAt += 7_777 // 与挂起线失配（线里记的还是旧时刻）
+	s.mu.Unlock()
+	s.Postpone()
+
+	if !strings.Contains(buf.String(), "挂起线里没有") {
+		t.Fatalf("失配分支应打「挂起线里没有…」日志（否则推迟变成无声空操作），实际日志尾部：%q",
+			tailOf(buf.String(), 300))
+	}
+	// 回调照常发生：统计口径的过滤在 App 侧（只认短 / 长），调度层不该擅自吞掉。
+	if len(host.postpones) == 0 {
+		t.Fatalf("线失配时 OnBreakPostponed 仍应被调用")
+	}
+}
+
+// tailOf 取日志尾部 n 个字符（失败信息里塞全文会把别的用例的日志也带进来）
+func tailOf(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[len(s)-n:]
 }
 
 // 长短交替的既定口径（设置页“?”提示与手册都这么写）：计数到 N 之后换成**长休息**，

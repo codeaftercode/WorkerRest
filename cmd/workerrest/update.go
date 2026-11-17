@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"workerrest/internal/jsonx"
+	"workerrest/internal/settings"
 	"workerrest/internal/update"
 )
 
@@ -19,11 +21,33 @@ const (
 	// packageName 更新包文件名：version.json 的 url 数组补全后指向的文件，
 	// 下载到 update 目录下也用这个名字
 	packageName = "rest.zip"
-	// stageExeName 自更新子进程副本名（与旧 exe 是不同的文件，避免锁住自身）
-	stageExeName = "rest.stage.exe"
+	// stageSuffix 自更新子进程副本名的后缀（与旧 exe 是不同的文件，避免锁住自身）。
+	// 前缀用「被替换的那个 exe 的名字」派生，见 stageNameForExe —— 否则用户把便携包里的
+	// rest.exe 改个名字，自更新就认不回「要替换的是哪一个」（校验见 validatePendingUpdate）。
+	stageSuffix = ".stage.exe"
 	// newExeName 包内新 exe 的名字（解压出来后用于复制到位）
 	newExeName = "rest.exe"
 )
+
+// stageNameForExe 由被替换的 exe 名派生自更新副本名：rest.exe → rest.stage.exe。
+func stageNameForExe(exePath string) string {
+	base := filepath.Base(exePath)
+	if ext := filepath.Ext(base); strings.EqualFold(ext, ".exe") {
+		base = base[:len(base)-len(ext)]
+	}
+	return base + stageSuffix
+}
+
+// installedExeName 反向：rest.stage.exe → rest.exe。不是自更新副本时 ok=false。
+// 这是 `--self-update` 分支唯一可信的「目标程序名」来源 —— 它由本进程自己的路径
+// （即 stage 副本的真实位置与名字）推导，不受 pending.json 内容影响。
+func installedExeName(stageExe string) (string, bool) {
+	base := filepath.Base(stageExe)
+	if len(base) <= len(stageSuffix) || !strings.HasSuffix(strings.ToLower(base), stageSuffix) {
+		return "", false
+	}
+	return base[:len(base)-len(stageSuffix)] + ".exe", true
+}
 
 // 出厂兜底更新源 / 兜底更新包地址：打包进程序里的最后一道保险。
 //
@@ -141,6 +165,114 @@ func (r updateCheckResult) toMap() map[string]any {
 // 留下的 pending.json，供前端拉取更新摘要并清理临时目录。
 var pendingUpdatePath string
 
+// currentExePath 当前可执行文件路径。做成变量是为了单测能把「安装目录」指到临时目录：
+// 校验逻辑（validatePendingUpdate）全部围绕它推导，没必要为了测试往构建目录里写文件。
+var currentExePath = os.Executable
+
+// pathInside 判断 target 是否落在 dir **之内**（dir 自身不算，且不允许 .. 越界）。
+func pathInside(dir, target string) bool {
+	if dir == "" || target == "" {
+		return false
+	}
+	rel, err := filepath.Rel(filepath.Clean(dir), filepath.Clean(target))
+	if err != nil || filepath.IsAbs(rel) {
+		return false
+	}
+	return rel != "." && rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
+}
+
+// validatePendingUpdate 校验一次自更新的输入是否落在合法范围内，返回解析好的元数据。
+// 任何一项不满足都返回 error —— 调用方据此「什么都不删、什么都不覆盖」。
+//
+// 为什么需要这层：`--updated` / `--self-update` 的参数是**本机可写的输入**（快捷方式
+// 参数、其它进程伪造的启动命令行），而后续动作是 os.RemoveAll(目录) 与覆盖并执行 exe。
+// 参数一旦被引到别处，就是「任意目录递归删除」+「任意文件覆盖」。
+//
+// 合法形状只有一种（StartUpdate 写出来的那一种）：
+//
+//	· pending.json 在 <安装目录>/update 之内；
+//	· OldExe 就是会被替换的那个程序：
+//	  --updated 时本进程就是它，要求逐字相等；
+//	  --self-update 时本进程是 update 目录里的 <名字>.stage.exe，要求 OldExe 是
+//	  **由这个 stage 副本名反推出来的那个 exe**（rest.stage.exe → rest.exe），
+//	  否则「安装目录里任意 .exe」都能被指定覆盖。
+//
+// 这里**不**检查 NewExe 是否存在：摘要是只读展示、清理只动 update 目录，两者都不需要
+// 新程序还在（被 AV 隔离时也该照常收尾）。覆盖前的专项检查见 checkPendingNewExe。
+//
+// runExe 传当前进程的 exe 路径（currentExePath()）。
+func validatePendingUpdate(pendingPath, runExe string) (updatePending, error) {
+	var p updatePending
+	if pendingPath == "" {
+		return p, fmt.Errorf("缺少 pending 路径")
+	}
+	if runExe == "" {
+		return p, fmt.Errorf("无法确定当前程序位置")
+	}
+	runDir := filepath.Dir(filepath.Clean(runExe))
+	// self-update 判据看**进程自己的文件名**（<x>.stage.exe），不能只看目录叫不叫
+	// update —— 用户把便携目录解到 D:\update\ 时，--updated 会被误判成自更新分支，
+	// 于是 .bak 的删除范围从安装目录放宽到盘根。
+	selfExeName, selfUpdate := installedExeName(runExe)
+	if selfUpdate {
+		selfUpdate = strings.EqualFold(filepath.Base(runDir), updateDirName)
+	}
+	installDir := runDir
+	if selfUpdate {
+		// stage 副本住在 <安装目录>/update 里，往上退一级才是安装目录
+		installDir = filepath.Dir(runDir)
+	}
+	updateDir := filepath.Join(installDir, updateDirName)
+	if !pathInside(updateDir, pendingPath) {
+		return p, fmt.Errorf("pending 路径不在 %s 之内：%s", updateDir, pendingPath)
+	}
+	data, err := os.ReadFile(pendingPath)
+	if err != nil {
+		return p, fmt.Errorf("读取 pending 失败: %w", err)
+	}
+	if err := json.Unmarshal(data, &p); err != nil {
+		return p, fmt.Errorf("解析 pending 失败: %w", err)
+	}
+	// OldExe：--updated 时本进程就是被替换的那个程序，要求逐字一致（忽略大小写）；
+	// --self-update 时要求它是 stage 副本名反推出的那一个（且就在安装目录下）。
+	oldExeOK := strings.EqualFold(filepath.Clean(p.OldExe), filepath.Clean(runExe))
+	if !oldExeOK && selfUpdate {
+		oldExeOK = strings.EqualFold(filepath.Base(p.OldExe), selfExeName) &&
+			strings.EqualFold(filepath.Dir(filepath.Clean(p.OldExe)), installDir)
+	}
+	if !oldExeOK {
+		return p, fmt.Errorf("pending 里的旧程序路径不是当前程序：%q", p.OldExe)
+	}
+	return p, nil
+}
+
+// checkPendingNewExe 覆盖前的专项检查：NewExe 必须在同一个 update 目录内、且是常规文件。
+// 单独拎出来是因为它只挡「拿什么覆盖」，不参与「摘要能不能展示 / 临时目录能不能清」——
+// 新程序被 AV 隔离时，更新早已生效，摘要与清理都不该跟着一起失败。
+func checkPendingNewExe(updateDir, newExe string) error {
+	if !pathInside(updateDir, newExe) {
+		return fmt.Errorf("pending 里的新程序不在 %s 之内：%q", updateDir, newExe)
+	}
+	st, err := os.Stat(newExe)
+	if err != nil {
+		return fmt.Errorf("pending 里的新程序不可读: %w", err)
+	}
+	if !st.Mode().IsRegular() {
+		return fmt.Errorf("pending 里的新程序不是常规文件：%q", newExe)
+	}
+	return nil
+}
+
+// updateDirFor 由当前进程路径推导 <安装目录>/update（判据与 validatePendingUpdate 同一套）：
+// 跑在 stage 副本里时它自己就在 update 目录内，否则就是 <exe 所在目录>/update。
+func updateDirFor(runExe string) string {
+	runDir := filepath.Dir(filepath.Clean(runExe))
+	if _, stage := installedExeName(runExe); stage && strings.EqualFold(filepath.Base(runDir), updateDirName) {
+		return runDir
+	}
+	return filepath.Join(runDir, updateDirName)
+}
+
 // CheckUpdate 手动检查更新（设置页“检查更新”按钮）。失败也如实返回 error 状态，
 // 页面会显示“检查更新失败：…”。
 //
@@ -163,33 +295,44 @@ func (a *App) CheckUpdate() map[string]any {
 
 // PendingUpdate 前端启动后拉取“本次启动刚完成更新”的摘要（version/date/changes）。
 // 返回 nil 表示没有待展示的更新；展示后即清理 update 临时目录与旧 exe 备份。
+//
+// 清理动作只对「校验通过的 pending」执行：路径必须落在 <安装目录>/update 之内、
+// 里面记的旧程序必须就是本进程（见 validatePendingUpdate）。不合规就只记一行日志、
+// 什么都不删 —— 否则一个被人改过的 --updated 参数就能让程序递归删掉任意目录。
+//
+// 校验**不**要求 NewExe 还在（见 checkPendingNewExe 的说明）：新程序被 AV 顺手隔离时，
+// 更新早已生效，摘要仍要展示、临时目录仍要清 —— 否则十几 MB 的 update/ 与 .bak 会永久残留。
 func (a *App) PendingUpdate() map[string]any {
 	if pendingUpdatePath == "" {
 		return nil
 	}
-	data, err := os.ReadFile(pendingUpdatePath)
+	exePath, err := currentExePath()
 	if err != nil {
 		pendingUpdatePath = ""
 		return nil
 	}
-	var p updatePending
-	if err := json.Unmarshal(data, &p); err != nil {
+	p, err := validatePendingUpdate(pendingUpdatePath, exePath)
+	if err != nil {
+		log.Printf("[update] 忽略本次更新的摘要与清理（pending 不可信）：%v", err)
 		pendingUpdatePath = ""
 		return nil
 	}
-	// 清理 update 临时目录（含 stage 副本 / 新 exe 副本 / pending 自身）
+	// 清理 update 临时目录（含 stage 副本 / 新 exe 副本 / pending 自身）——
+	// 目录已由校验限定在 <安装目录>/update，删除范围不会越界。
 	if dir := filepath.Dir(pendingUpdatePath); dir != "" {
 		_ = os.RemoveAll(dir)
 	}
-	// 清理旧程序备份
+	// 清理旧程序备份（OldExe 上一行已确认就是本进程）
 	if p.OldExe != "" {
 		_ = os.Remove(p.OldExe + ".bak")
 	}
 	pendingUpdatePath = ""
 	// 更新已生效（当前已在新版本上运行）：清除“有更新”的持久化状态，
 	// 避免重启后旧版本号仍挂在关于页。
-	a.cfg.SetLastUpdateResult(nil)
-	if err := a.cfg.Save(); err != nil {
+	if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+		s.SetLastUpdateResult(nil)
+		return true
+	}); err != nil {
 		log.Printf("[update] 清除更新状态失败: %v", err)
 	}
 	return map[string]any{
@@ -207,8 +350,10 @@ func (a *App) IgnoreVersion(version string) map[string]any {
 	if version == "" {
 		return map[string]any{"status": "error", "message": "缺少版本号"}
 	}
-	a.cfg.SetIgnoredVersion(version)
-	if err := a.cfg.Save(); err != nil {
+	if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+		s.SetIgnoredVersion(version)
+		return true
+	}); err != nil {
 		log.Printf("[update] 写入忽略版本失败: %v", err)
 		return map[string]any{"status": "error", "message": "保存失败：" + err.Error()}
 	}
@@ -253,13 +398,13 @@ func (a *App) publishUpdateStatus(st updateCheckResult) {
 }
 
 // persistUpdateResult 把当前检查结果写入配置并落盘（nil 表示清除）。
-// cfg 的读写必须持 a.mu（autoUpdateLoop 是后台 goroutine，主线程也会同时访问 cfg，
-// 见 race 检测），这里与其它 cfg 写入点一致：锁内做 SetLastUpdateResult + Save。
+// 走 mutateConfigCopy：后台 autoUpdateLoop 与设置页都会同时读写配置，写必须持锁，
+// 且必须是「新对象 + 换指针」—— 读端（CfgSnapshot 的 40+ 处）拿指针后不持锁。
 func (a *App) persistUpdateResult(m map[string]any) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	a.cfg.SetLastUpdateResult(m)
-	if err := a.cfg.Save(); err != nil {
+	if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+		s.SetLastUpdateResult(m)
+		return true
+	}); err != nil {
 		log.Printf("[update] 写入更新状态失败: %v", err)
 	}
 }
@@ -294,8 +439,11 @@ func (a *App) clearUpdateResult() {
 	a.mu.Lock()
 	a.updateStatus = nil
 	a.mu.Unlock()
-	a.cfg.SetLastUpdateResult(nil)
-	if err := a.cfg.Save(); err != nil {
+	// 配置同样走「新对象 + 换指针」：这里原先是锁外原地写，与任何快照读都是数据竞争。
+	if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+		s.SetLastUpdateResult(nil)
+		return true
+	}); err != nil {
 		log.Printf("[update] 清除更新状态失败: %v", err)
 	}
 }

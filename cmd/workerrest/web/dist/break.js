@@ -1291,7 +1291,7 @@
       if (pcanvas) {
         try {
           const accent = (getComputedStyle(document.documentElement)
-            .getPropertyValue("--accent") || "").trim() || "#4f7cff";
+            .getPropertyValue("--accent") || "").trim() || "#3d6bf0";
           startParticles(pcanvas, accent);
         } catch (e) { /* 装饰层异常不影响主体 */ }
       }

@@ -282,6 +282,69 @@ func TestTickJumpResetsInsteadOfFiring(t *testing.T) {
 	}
 }
 
+// TestTickBackwardJumpDoesNotHangBreak 墙钟**回拨**（用户改系统时间 / NTP 回退）要走
+// 与正向大跳同一套处置：重排、不补弹。
+//
+// 修复前的判据只比正向（`tickNow-last > 60s`），回拨被当成普通一跳：到点判定为假、
+// 休息收窗判定 `now >= BreakEndsAt+1s` 也为假 —— 已经弹出来的休息窗会一直挂着，
+// phase 永久停在 break，直到墙钟自己追回被回拨的那段时间（可能几小时）。
+func TestTickBackwardJumpDoesNotHangBreak(t *testing.T) {
+	s, _ := newTestSched(t, shortCountdown)
+	s.replan()
+	if id := s.BreakNowOf("short"); id == "" {
+		t.Fatal("应能开始一次休息")
+	}
+	if got := s.StateCopy().Phase; got != "break" {
+		t.Fatalf("前置条件：应处在休息态，实际 %q", got)
+	}
+	// 模拟墙钟回拨：上一次 tick 被记在了 8 小时之后
+	s.mu.Lock()
+	s.lastTickAt = nowMs() + 8*3600_000
+	s.mu.Unlock()
+	// 让重排的 fresh 锚点与“已消费的那一班”错开毫秒：同一毫秒内重排会让新键与
+	// 刚消费的键相撞，那样测的就是另一个（既有的）边界，不是本条要钉的回拨。
+	time.Sleep(2 * time.Millisecond)
+
+	s.onTick()
+	st := s.StateCopy()
+	if st.Phase == "break" {
+		t.Fatalf("墙钟回拨后不应一直挂在休息态（会永久收不了窗），实际 phase=%q", st.Phase)
+	}
+	// 回拨也要重排：锚点不能沿用回拨前那个“未来时刻”
+	if st.NextAt <= nowMs() {
+		t.Fatalf("回拨后应重排到未来，实际 nextAt=%d now=%d", st.NextAt, nowMs())
+	}
+}
+
+// TestSchedulerHeartbeatStale 心跳：每跳刷新、超过阈值可被外部看出停摆。
+//
+// 静默停摆是这一版最危险的失效形态 —— ticker 还在转、GuardRun 没东西可 recover，
+// 表现却是“一整天不提醒”。托盘就是靠这个读数报警的，所以判定必须可测。
+func TestSchedulerHeartbeatStale(t *testing.T) {
+	s, _ := newTestSched(t, shortCountdown)
+	// 启动后还没跑过任何一跳：不做停摆判定（<=0）
+	if got := s.HeartbeatStaleFor(); got != 0 {
+		t.Fatalf("尚未跑过任何一跳时不应判停摆，实际 %d ms", got)
+	}
+	s.onTick()
+	if s.LastHeartbeatAt() <= 0 {
+		t.Fatal("一跳之后必须留下心跳时间戳")
+	}
+	if got := s.HeartbeatStaleFor(); got > 1000 {
+		t.Fatalf("刚落过一跳的心跳应是新鲜的，实际滞后 %d ms", got)
+	}
+	// 把心跳做旧 6 秒（> 5 秒阈值）
+	s.heartbeat.Store(nowMs() - 6_000)
+	if got := s.HeartbeatStaleFor(); got < HeartbeatStaleMs {
+		t.Fatalf("心跳滞后 %d ms 应已超阈值 %d ms", got, HeartbeatStaleMs)
+	}
+	// 下一跳必须把心跳顶回“刚刚”（停摆恢复后不该留下假警报）
+	s.onTick()
+	if got := s.HeartbeatStaleFor(); got > 1000 {
+		t.Fatalf("恢复跳动后心跳应刷新，实际仍滞后 %d ms", got)
+	}
+}
+
 // TestTickNormalGapStillFires 正常节奏（500ms 一跳）不受大跳处理影响：到点照常开始休息。
 func TestTickNormalGapStillFires(t *testing.T) {
 	s, _ := newTestSched(t, shortCountdown)

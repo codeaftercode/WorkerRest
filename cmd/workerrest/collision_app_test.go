@@ -14,7 +14,6 @@ package main
 //	⑥ 提前提示窗：它在场不算休息会话；窗上按钮打的是“窗自己提示的那条提醒”。
 
 import (
-	"bytes"
 	"log"
 	"path/filepath"
 	"strings"
@@ -387,9 +386,9 @@ func TestCollisionExtrasCarriedToPreemptingBreak(t *testing.T) {
 	a.mu.Lock()
 	a.sess.EndsAt = nowMs() - 10
 	a.mu.Unlock()
-	var buf bytes.Buffer
+	buf := &lockedBuffer{}
 	old := log.Writer()
-	log.SetOutput(&buf)
+	log.SetOutput(buf)
 	a.closeBreakWindowsOpt(false, true, false, false)
 	log.SetOutput(old)
 	out := buf.String()
@@ -657,9 +656,9 @@ func TestCollisionMergeOrderPermutations(t *testing.T) {
 				a.mu.Lock()
 				a.sess.EndsAt = nowMs() - 10
 				a.mu.Unlock()
-				var buf bytes.Buffer
+				buf := &lockedBuffer{}
 				old := log.Writer()
-				log.SetOutput(&buf)
+				log.SetOutput(buf)
 				a.closeBreakWindowsOpt(false, true, false, false)
 				log.SetOutput(old)
 
@@ -745,9 +744,9 @@ func TestCollisionEndToEndRealTicks(t *testing.T) {
 	// 留下同一份 stats.json，绝对值断言必须先有一份干净的基线。
 	a.statsStore().Clear()
 
-	var buf bytes.Buffer
+	buf := &lockedBuffer{}
 	old := log.Writer()
-	log.SetOutput(&buf)
+	log.SetOutput(buf)
 	defer log.SetOutput(old)
 	defer func() {
 		if t.Failed() {

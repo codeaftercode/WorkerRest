@@ -1,5 +1,5 @@
 :root {
-  --accent: #4f7cff;
+  --accent: #3d6bf0;
   --text: #ffffff;
   /* 非全屏时的窗口圆角（休息窗口本身是透明窗口，圆角处会真的透出下层桌面） */
   --app-radius: 16px;

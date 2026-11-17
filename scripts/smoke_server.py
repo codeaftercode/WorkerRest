@@ -14,10 +14,15 @@
 断言分三层：
   1. 静态资源可服务（/、/break.html、/wails/runtime.js）；
   2. 契约里每个“已接通”的绑定都能按名解析（不允许 "unknown bound method name"）；
-  3. 会话数据与**真实配置/督休专员目录**逐项对齐（时长、提醒内容、外观、督休专员名与几何）。
+  3. 会话数据与**出厂默认夹具配置**/督休专员目录逐项对齐（时长、提醒内容、外观、督休专员名与几何）。
 
 用法：python scripts/smoke_server.py [--port 29731] [--keep]
-退出码 0 = 全部通过；非 0 = 有失败项（会逐条打印）。
+      （等价入口：task smoke —— 会先 task build:server，避免测到上一轮的 exe）
+
+夹具：internal/settings/default_settings.json（出厂默认）+ 两处去随机化（关外卖定时线、
+固定督休专员）+ 隔离副本目录 —— 同一 commit 在任何机器、任何时刻跑出同一结论。
+
+退出码 0 = 全部通过；1 = 有失败项（会逐条打印）；2 = 环境/产物问题（exe 过期、断言数不足等）。
 """
 
 import argparse
@@ -40,8 +45,23 @@ EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 TEMP = os.environ.get("TEMP", ROOT)
 REPORT = os.path.join(TEMP, "wr_go_smoke_report.txt")
 LOG = os.path.join(TEMP, "wr_go_smoke_server.log")
-# 隔离副本目录：绝不让冒烟碰用户的真实配置（Go 侧首次运行 / 补种预置条目时会落盘）
+# 隔离副本目录：绝不让冒烟碰用户的真实配置（Go 侧加载时会种入预置条目并落盘）
 ISO = os.path.join(TEMP, "wr_smoke_iso")
+# 夹具 = 出厂默认配置（repo 内）。冒烟绝不能拿用户真实的 config/settings.json 当夹具：
+# 那份文件里有本机的间隔、提醒内容、自定义提醒、固定的督休专员，同一 commit 在两台机器上
+# 会跑出两种结果（本轮 3 项失败里 2 项由此而来）。出厂默认才是与机器无关的唯一基准。
+FACTORY = os.path.join(ROOT, "internal", "settings", "default_settings.json")
+
+# 断言数下限：全绿跑一遍时的实际 check() 调用次数。
+# 为什么要下限：check 大量长在条件分支里，前提不满足时会被静默跳过 —— 跳过之后脚本照样
+# 打印“失败 0 项”并 exit 0，看上去全绿，实际上少跑了三分之一（本轮审查就是这么被骗过的）。
+# 这个数字必须与绿跑的实际值严格一致：低于实际值仍能挡住大面积跳过；高于实际值会误报红。
+# 改动断言时同步改它（不足时脚本会打印差额并 exit 2）。
+#
+# 当前值的算法（绿跑）：全文 205 个 check 调用点 − 16 个“只在前提不满足时才执行”的分支
+# = 189 个各 1 次；再加上三个循环点的重复次数（绑定探测 13 项拆成 11 + 2、PreBreakState
+# 字段 6 项），即 189 + 11 + 2 + 6 − 3 = 205。
+BASELINE_CHECKS = 205
 
 # Windows 控制台默认不是 UTF-8：断言标签里有中文，先固定 stdout 编码，
 # 否则 print 会抛 UnicodeEncodeError（或被重定向成乱码，报告就不可读了）
@@ -257,6 +277,77 @@ def _digest(path):
         return hashlib.sha256(f.read()).hexdigest()
 
 
+def _same_local_day(ms):
+    """这个毫秒时刻与本机“今天”是不是同一天（今日时间线只展开当天的固定线）。"""
+    try:
+        return time.localtime(ms / 1000.0)[:3] == time.localtime()[:3]
+    except (TypeError, ValueError, OSError):
+        return False
+
+
+def newest_source_mtime():
+    """编译进 exe 的东西（cmd/**/*.go、internal/**/*.go、web/dist/**、go.mod/sum）的
+    最新 mtime；返回 (mtime, path)，一个都没找到时返回 (0, "")。
+
+    与 scripts/build/make_portable.py 的 check_exe_freshness 同一口径（那边管打包，
+    这边管冒烟）。冒烟最危险的假绿是“改完 Go 代码直接跑冒烟，测的是上一轮的 exe，
+    却打印失败 0 项”——绑定层的新行为根本没进 exe。
+    """
+    newest, newest_path = 0.0, ""
+
+    def consider(p):
+        nonlocal newest, newest_path
+        try:
+            m = os.path.getmtime(p)
+        except OSError:
+            return
+        if m > newest:
+            newest, newest_path = m, p
+
+    for d in ("cmd", "internal"):
+        for dp, _dn, files in os.walk(os.path.join(ROOT, d)):
+            for fn in files:
+                # 与 make_portable._compiled_sources 同口径：_test.go 不进产物，
+                # 改单测不该把冒烟判成“产物过期”。
+                if fn.endswith(".go") and not fn.endswith("_test.go"):
+                    consider(os.path.join(dp, fn))
+    # 前端产物：main.go 里是 //go:embed all:web/dist（相对 main 包目录），所以实际落点是
+    # cmd/workerrest/web/dist —— 改完前端不重建 exe 同样会测到旧页面。
+    dist = os.path.join(ROOT, "cmd", "workerrest", "web", "dist")
+    if os.path.isdir(dist):
+        for dp, _dn, files in os.walk(dist):
+            for fn in files:
+                consider(os.path.join(dp, fn))
+    for fn in ("go.mod", "go.sum"):
+        p = os.path.join(ROOT, fn)
+        if os.path.isfile(p):
+            consider(p)
+    return newest, newest_path
+
+
+def check_exe_fresh(exe):
+    """exe 不能比源码旧；返回空串表示通过，否则返回给人看的失败说明。
+
+    1 秒容差：go build 与源文件写入可能落在同一秒，亚秒级差异不构成“过期”。
+    """
+    try:
+        exe_m = os.path.getmtime(exe)
+    except OSError as e:
+        return "取 %s 的修改时间失败：%s" % (exe, e)
+    newest, newest_path = newest_source_mtime()
+    if newest <= exe_m + 1:
+        return ""
+    fmt = "%Y-%m-%d %H:%M:%S"
+    return (
+        "产物过期：exe 比源码 / 前端资源旧，拒绝跑冒烟（否则测的是上一轮的 exe，会全绿假通过）\n"
+        "    exe        %s  %s\n"
+        "    最新源码   %s  %s\n"
+        "  处理：先 task build:server（或 go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest）"
+        % (time.strftime(fmt, time.localtime(exe_m)), exe,
+           time.strftime(fmt, time.localtime(newest)), os.path.relpath(newest_path, ROOT))
+    )
+
+
 def _postpone_ms(cfg, typename):
     """从（隔离副本的）配置里取某个休息身份的 postponeMs。
 
@@ -292,25 +383,49 @@ def main():
     if not os.path.isfile(EXE):
         print("找不到 %s —— 先跑：go build -tags server -o build/bin/rest_server.exe ./cmd/workerrest" % EXE)
         return 2
+    stale = check_exe_fresh(EXE)
+    if stale:
+        print(stale)
+        return 2
 
     port = free_port(args.port)
     base = "http://127.0.0.1:%d" % port
     print("无头服务冒烟：%s  (port=%d)" % (EXE, port))
 
-    # ---- 配置隔离：拷一份真实配置到临时目录，用 WR_SETTINGS_PATH 独占指向它 ----
-    # 为什么必须隔离：加载路径在“补生成 installId / 种入预置条目”时会回写配置文件。
-    # 直接跑在真实配置上会改写用户的数据（第一次实测就把键序动掉了），这是不可接受的。
+    # ---- 配置隔离：以出厂默认为夹具，用 WR_SETTINGS_PATH 独占指向它 ----
+    # 为什么必须隔离：加载路径在“种入预置提醒内容”时会回写配置文件，跑在真实配置上
+    # 就会改写用户的数据（第一次实测就把键序动掉了），这是不可接受的。
+    # 为什么从出厂默认为起点、而不是拷真实配置：见文件头 FACTORY 的注释 —— 拷真实配置
+    # 等于把本机的用户数据变成断言基准，同一 commit 在不同机器上会给出不同结论。
     real_settings = find_real_settings()
     real_digest = _digest(real_settings)
     # 统计文件按配置落点推导（config/ → 上级 data/stats.json）—— 它同样一个字节都不许被冒烟碰。
     # 第 8 段会断言“统计落点确实在隔离目录里”，这里再留一份真实文件的指纹兜底。
     real_stats = stats_file_for_settings(real_settings)
     real_stats_digest = _digest(real_stats)
+    if not os.path.isfile(FACTORY):
+        print("找不到出厂默认配置 %s —— 冒烟需要它作为与机器无关的夹具" % FACTORY)
+        return 2
+    with open(FACTORY, encoding="utf-8") as f:
+        fixture = json.load(f)
+    # ↓↓↓ 以下是**冒烟夹具的去随机化**，不代表产品出厂默认值 ↓↓↓
+    # 产品出厂：takeout.enabled = true（11:30 一条每日午餐提醒）、supervisor.selection = "random"。
+    # 这两处改的是“跑冒烟时的起点”，只为让同一份代码在任何机器 / 任何时刻给出同一结论；
+    # 千万别拿这里当产品默认值的权威来源（产品默认值只认 internal/settings/default_settings.json）。
+    #
+    # 外卖定时线在冒烟里没有用（第 9 段只测预览 / 动作 / 关窗），但它带一条 11:30 的
+    # 固定时刻线：正好在这段时间跑冒烟会多弹一次外卖提醒、把“初始无外卖会话”判成红 ——
+    # 一天一次的时间炸弹，关掉它结果才与运行时刻无关。
+    fixture.setdefault("takeout", {})["enabled"] = False
+    # 督休专员改成“固定”轮换：出厂是随机挑，一次跑下来会话里是哪位专员全看 rng ——
+    # 断言虽然两种模式都能过，但“顺序 / 固定 / 随机”三种口径里只能验到一种，
+    # 钉成固定模式后每次跑的都是同一位（fixedRole 出厂值），结论可复现。
+    fixture.setdefault("supervisor", {})["selection"] = "fixed"
     shutil.rmtree(ISO, ignore_errors=True)
     os.makedirs(ISO, exist_ok=True)
     iso_settings = os.path.join(ISO, "settings.json")
-    if real_settings:
-        shutil.copyfile(real_settings, iso_settings)
+    with open(iso_settings, "w", encoding="utf-8") as f:
+        json.dump(fixture, f, ensure_ascii=False, indent=2)
 
     env = dict(os.environ)
     env["WAILS_SERVER_PORT"] = str(port)
@@ -378,7 +493,7 @@ def main():
             else:
                 check(not unknown, "绑定 %s 已注册（用错误参数探测，不真的执行）" % name, "status=%s %s" % (st, text[:160]))
 
-        # ---- 3. 数据与真实配置 / 督休专员目录对齐 ----
+        # ---- 3. 数据与出厂夹具配置 / 督休专员目录对齐 ----
         st, sid = call(base, "StartBreak", ["short"])
         check(st == 200 and isinstance(sid, str) and sid.startswith("short-"), "StartBreak 返回会话 id", "status=%s %s" % (st, sid))
 
@@ -402,7 +517,10 @@ def main():
         cfg = read_json(iso_settings) if os.path.exists(iso_settings) else {}
         print("   （对齐基准配置：%s）" % (iso_settings if cfg else "未找到，跳过配置对齐"))
 
-        if isinstance(sess, dict) and cfg:
+        if not isinstance(sess, dict) or not cfg:
+            check(False, "前提不满足：会话对象或对齐基准配置缺失（配置对齐整段无法执行）",
+                  "sess=%s cfg=%s" % (type(sess).__name__, bool(cfg)))
+        else:
             short = cfg.get("short") or {}
             check(sess.get("durationMs") == short.get("durationMs"),
                   "会话时长 == settings.json short.durationMs",
@@ -411,21 +529,25 @@ def main():
             check((sess.get("appearance") or {}).get("color") == appear.get("color"),
                   "外观色 == settings.json appearance.color",
                   "%s vs %s" % ((sess.get("appearance") or {}).get("color"), appear.get("color")))
+            # 提醒内容：三种轮换口径下都成立的说法是“会话里那条必须来自该身份的启用条目”。
+            # 原来只在 order == "fixed" 时才断（否则整条跳过），出厂夹具的 order 是 random，
+            # 那样这条永远不会跑 —— 现在改成对启用条目做成员校验，固定 / 顺序 / 随机都盖住。
             rm = ((cfg.get("reminderMessages") or {}).get("short") or {})
-            want_msg = ""
-            for it in (rm.get("items") or []):
-                if it.get("id") == rm.get("fixedId"):
-                    want_msg = it.get("text") or ""
+            pool = [it.get("text") for it in (rm.get("items") or [])
+                    if it.get("enabled") and it.get("text")]
             msgs = sess.get("messages") or []
             check(isinstance(msgs, list) and len(msgs) >= 1 and msgs[0] != "",
                   "messages 至少 1 条且非空", msgs)
-            if want_msg:
-                check(msgs and msgs[0] == want_msg, "messages[0] == 配置里固定选中的提醒内容",
-                      "%r vs %r" % (msgs[0] if msgs else None, want_msg))
+            check(bool(pool) and bool(msgs) and msgs[0] in pool,
+                  "messages[0] 取自配置里该身份的启用提醒内容（固定 / 顺序 / 随机三种口径都成立）",
+                  "%r in %d 条" % (msgs[0] if msgs else None, len(pool)))
 
         sup = (sess or {}).get("supervisor") if isinstance(sess, dict) else None
         check(isinstance(sup, dict), "会话带督休专员信息", type(sup).__name__)
-        if isinstance(sup, dict):
+        if not isinstance(sup, dict):
+            check(False, "前提不满足：会话没带督休专员信息（立绘 / 台词 / 几何整段无法执行）",
+                  type(sup).__name__)
+        else:
             img = sup.get("image") or ""
             check(img.startswith("data:image/") and len(img) > 5000, "立绘以 data URL 下发", "prefix=%s len=%d" % (img[:22], len(img)))
             check(bool(sup.get("name")), "督休专员有显示名", sup.get("name"))
@@ -439,12 +561,15 @@ def main():
             # 与会话里那位督休专员**自己的** meta.json 对齐。
             #
             # 不能拿配置里的 fixedRole 当对齐对象：那只在 selection == "fixed" 时才必然
-            # 等于会话里的专员。顺序 / 随机模式（用户可能就是这么设的）会漂到别的专员上，
-            # 写死 fixedRole 会把正确行为判成红。所以先按会话里的名字回查目录，再补一条
-            # “固定模式下必须就是配置那位”的断言把两种模式都盖住。
+            # 等于会话里的专员。顺序 / 随机模式会漂到别的专员上，写死 fixedRole 会把
+            # 正确行为判成红。所以先按会话里的名字回查目录，再补一条“固定模式下必须就是
+            # 配置那位”的断言把两种模式都盖住（夹具用的是固定模式，见文件头夹具说明）。
             sup_name = sup.get("name")
             rp = os.path.join(role_dir(ROOT, sup_name) or "", "meta.json")
-            if os.path.isfile(rp):
+            if not os.path.isfile(rp):
+                check(False, "前提不满足：会话里的督休专员在 supervisors/ 下找不到 meta.json",
+                      "%s -> %s" % (sup_name, role_dir(ROOT, sup_name)))
+            else:
                 rc = read_json(rp)
                 dir_name = os.path.basename(os.path.dirname(rp))
                 check(sup_name == rc.get("name"),
@@ -458,22 +583,22 @@ def main():
                 check(lines.get("command") in cmds,
                       "命令台词取自该督休专员 meta.json 的启用条目",
                       repr(lines.get("command")))
-            else:
-                print("   （会话里的督休专员 %s 在 supervisors/ 下找不到 meta.json）" % sup_name)
 
             scfg = (cfg.get("supervisor") or {}) if cfg else {}
             if scfg.get("selection") == "fixed" and scfg.get("fixedRole"):
                 frp = os.path.join(role_dir(ROOT, scfg["fixedRole"]) or "", "meta.json")
-                if os.path.isfile(frp):
-                    check(sup_name == read_json(frp).get("name"),
-                          "固定轮换模式下会话专员 == 配置 fixedRole（%s）" % scfg["fixedRole"],
-                          sup_name)
+                check(os.path.isfile(frp) and sup_name == read_json(frp).get("name"),
+                      "固定轮换模式下会话专员 == 配置 fixedRole（%s）" % scfg["fixedRole"],
+                      sup_name)
 
         # ---- ListRoles / AppInfo / GetState ----
         st, roles = call(base, "ListRoles", [])
         check(st == 200 and isinstance(roles, list) and len(roles) > 0, "ListRoles 返回督休专员目录扫描结果",
               "status=%s n=%s" % (st, len(roles) if isinstance(roles, list) else roles))
-        if isinstance(roles, list) and roles:
+        if not isinstance(roles, list) or not roles:
+            check(False, "前提不满足：ListRoles 没返回专员目录（顺序 / 缩略图 / 台词面板整段无法执行）",
+                  "status=%s %s" % (st, type(roles).__name__))
+        else:
             keys = [r.get("name") for r in roles]
             check(all(r.get("thumb", "").startswith("data:image/") for r in roles),
                   "每个督休专员都带缩略图 data URL（字段名 thumb，与设置页一致）", keys)
@@ -482,7 +607,7 @@ def main():
             # 用户在设置页拖过立绘后，顺序以 settings.json 的 supervisor.order 为准。
             # 期望值从磁盘现算：用户删掉某个内置专员后目录真的没了，写死“17 个”会误报红。
             disk_keys = scan_role_names(ROOT)
-            saved_order = ((cfg or {}).get("supervisor") or {}).get("order") or []
+            saved_order = (cfg.get("supervisor") or {}).get("order") or []
             want_order = expected_order(disk_keys, saved_order)
             check(keys == want_order,
                   "督休专员顺序 == 保存的顺序（拖过则用 supervisor.order，否则内置清单顺序）",
@@ -491,15 +616,17 @@ def main():
                   "每个督休专员都带完整 geom（尺寸/位置滑条要用）", keys[:2])
             check(all(isinstance(r.get("messages", {}).get("items"), list) for r in roles),
                   "每个督休专员都带 messages（设置页台词面板要用）", keys[:2])
-            if cfg:
-                fixed = (cfg.get("supervisor") or {}).get("fixedRole")
-                check(fixed in keys, "配置里固定的督休专员 %s 在扫描结果中" % fixed, keys)
+            fixed = (cfg.get("supervisor") or {}).get("fixedRole")
+            check(fixed in keys, "配置里固定的督休专员 %s 在扫描结果中" % fixed, keys)
 
         # ---- 候选专员顺序持久化（拖拽排序的落点）----
         # 拖动立绘把顺序写进 settings.json 的 supervisor.order（role key 数组）；
         # 画廊显示顺序与“顺序轮换”的出场次序共用这一份。这里从绑定层走一遍：
         # 写 order → ListRoles 顺序跟着变 → 读回 / 落盘都对得上 → 再复原。
-        if isinstance(roles, list) and len(roles) >= 2:
+        if not isinstance(roles, list) or len(roles) < 2:
+            check(False, "前提不满足：可排序的专员少于两位（order 持久化用例无法执行）",
+                  "n=%s" % (len(roles) if isinstance(roles, list) else roles))
+        else:
             rev = list(reversed([r.get("name") for r in roles]))
             st, _ = call(base, "SaveSettings", [{"supervisor": {"order": rev}}])
             check(st == 200, "SaveSettings 写入 supervisor.order", st)
@@ -513,9 +640,11 @@ def main():
             disk = read_json(iso_settings) if os.path.exists(iso_settings) else {}
             disk_order = (disk.get("supervisor") or {}).get("order") or []
             check(disk_order == rev, "配置文件里 supervisor.order 已落盘", disk_order[:3])
-            # 设备标识机制已整体删除：软件不再生成、不再下发、也不再存储任何设备标识
+            # 设备标识机制已整体删除：软件不再生成、不再下发、也不再存储任何设备标识。
+            # 这里只断言“干净夹具下 GetSettings 不下发这个键”。**不断言落盘里没有它**：
+            # 旧版本残留的陌生键按口径原样保留（见 probe_edge_cases 的“不擅自删用户文件”），
+            # 一旦落盘里带了它，“落盘不含 installId”这条就永远不可能通过，只会逼人删配置键。
             check("installId" not in (gs or {}), "GetSettings 不下发设备标识键", "")
-            check("installId" not in disk, "落盘配置里没有设备标识键", "")
             # 复原：清空 order → 回到内置清单顺序（别把改动留给后面的用例）
             call(base, "SaveSettings", [{"supervisor": {"order": []}}])
             st, roles3 = call(base, "ListRoles", [])
@@ -523,14 +652,40 @@ def main():
             check(keys3 == scan_role_names(ROOT),
                   "清空 order 后回到内置清单顺序", keys3[:3])
 
+        # ---- 带残留键的配置：键原样留着、只读绑定不触发回写 ----
+        # 与 probe_edge_cases 的“不做旧键迁移”同一把尺（2026-11-04 用户口径）：
+        # 旧版本才有的键不许被软件擅自删掉，也不许因为它的存在而回写用户文件。
+        # 这里在同一个实例上验“只读路径不碰盘”：塞进去 → 读数 → 键还在、mtime 没动。
+        residual_id = "3435a519-c1d7-4d26-a82d-8267119e0001"
+        settled = read_json(iso_settings) if os.path.exists(iso_settings) else {}
+        settled["installId"] = residual_id
+        with open(iso_settings, "w", encoding="utf-8") as f:
+            json.dump(settled, f, ensure_ascii=False, indent=2)
+        residual_before = os.path.getmtime(iso_settings)
+        time.sleep(0.05)  # 让 mtime 有可分辨的粒度（FAT / 网络盘只到秒）
+        call(base, "GetSettings", [])
+        call(base, "GetState", [])
+        time.sleep(0.2)
+        residual_disk = read_json(iso_settings) if os.path.exists(iso_settings) else {}
+        check(residual_disk.get("installId") == residual_id,
+              "不做旧键迁移：残留的 installId 原样留在配置里（不擅自删用户文件）",
+              residual_disk.get("installId"))
+        check(os.path.getmtime(iso_settings) == residual_before,
+              "残留键没有触发回写（只读绑定不落盘）", "")
+
         # ---- 督休专员显示名唯一：SaveRole 改成别人的名字必须被拒 ----
         # 需求原文：“提交名称时，软件对现有的督休专员名称进行检查，若有重名的，
         # 拒绝保存，要求用户重新输入名称”。绑定层是权威判定（设置页的前端检查
         # 只是提前拦一道）。这条用例只验**拒绝**路径 —— 拒绝是零副作用的，
         # 磁盘上的 meta.json 一个字节都不会变（不碰用户真实的 supervisors/）。
-        if isinstance(roles, list) and len(roles) >= 2:
+        if not isinstance(roles, list) or len(roles) < 2:
+            check(False, "前提不满足：专员少于两位（重名拒绝用例无法执行）",
+                  "n=%s" % (len(roles) if isinstance(roles, list) else roles))
+        else:
             names = [(r.get("name"), r.get("name")) for r in roles if r.get("name")]
-            if len(names) >= 2 and names[0][1] != names[1][1]:
+            if len(names) < 2 or names[0][1] == names[1][1]:
+                check(False, "前提不满足：至少两个显示名不同的专员（重名拒绝用例无法执行）", names[:2])
+            else:
                 (ka, na), (kb, nb) = names[0], names[1]
                 st, res = call(base, "SaveRole", [ka, {"name": nb}])
                 check(st == 200 and res is False,
@@ -546,18 +701,22 @@ def main():
                 check(disk_name == na,
                       "重名被拒后磁盘上的显示名没被改（零副作用）",
                       "%r vs %r" % (disk_name, na))
-            else:
-                check(False, "督休专员重名用例跑起来了（至少两个显示名不同的专员）", names[:2])
 
         st, info = call(base, "AppInfo", [])
         check(st == 200 and isinstance(info, dict) and info.get("engine") == "go+wails3",
               "AppInfo 返回环境信息", info)
-        if isinstance(info, dict) and isinstance(roles, list):
+        if not isinstance(info, dict) or not isinstance(roles, list):
+            check(False, "前提不满足：AppInfo 或 ListRoles 形状不对（角色数对齐无法执行）",
+                  "info=%s roles=%s" % (type(info).__name__, type(roles).__name__))
+        else:
             check(info.get("roles") == len(roles), "AppInfo.roles == ListRoles 长度", info.get("roles"))
 
         st, state = call(base, "GetState", [])
         check(st == 200 and isinstance(state, dict), "GetState 返回状态快照", str(state)[:200])
-        if isinstance(state, dict):
+        if not isinstance(state, dict):
+            check(False, "前提不满足：GetState 没返回对象（serverMode / rolesRoot / 配置落点无法校验）",
+                  str(state)[:120])
+        else:
             check(state.get("serverMode") is True, "GetState.serverMode 为 true（无头构建）", state.get("serverMode"))
             check(bool(state.get("rolesRoot")), "GetState.rolesRoot 已解析", state.get("rolesRoot"))
             check(state.get("settings") == iso_settings, "GetState.settings == 隔离副本路径（WR_SETTINGS_PATH 独占生效）",
@@ -589,22 +748,23 @@ def main():
                   "other 是对象或 null", type(st0.get("other")).__name__)
             check(st0.get("nextSource") in (None, "countdown", "fixed"),
                   "nextSource 是 countdown/fixed/null", st0.get("nextSource"))
-            if cfg:
-                want = (cfg.get("short") or {}).get("durationMs")
-                got = int(st0.get("breakEndsAt") or 0) - int(st0.get("breakStartedAt") or 0)
-                check(isinstance(want, (int, float)) and got == want,
-                      "休息中 breakEndsAt - breakStartedAt == short.durationMs",
-                      "%s vs %s" % (got, want))
+            want = (cfg.get("short") or {}).get("durationMs")
+            got = int(st0.get("breakEndsAt") or 0) - int(st0.get("breakStartedAt") or 0)
+            check(isinstance(want, (int, float)) and got == want,
+                  "休息中 breakEndsAt - breakStartedAt == short.durationMs",
+                  "%s vs %s" % (got, want))
             tl = st0.get("timeline") or []
             cd_items = [it for it in tl if it.get("source") == "countdown"]
             fx_items = [it for it in tl if it.get("source") == "fixed"]
             check(all("paused" not in it for it in cd_items + fx_items),
                   "时间线项不再带 paused 键（2026-11-12 暂停不冻钟，时间线里没有“暂停中”这一说）",
                   len(cd_items) + len(fx_items))
-            for it in (st0.get("lines") or []):
-                check(all(k in it for k in ("type", "name", "at", "source")),
-                      "挂起线字段齐全（type/name/at/source）", it)
-                break
+            # 挂起线字段：休息中至少挂着“另一条休息”那条线，取第一条验形状
+            # （原来是 for + break，条件不成立时静默 0 项，现在改成一条显式断言）
+            pending = st0.get("lines") or []
+            check(bool(pending) and isinstance(pending[0], dict)
+                  and all(k in pending[0] for k in ("type", "name", "at", "source")),
+                  "挂起线字段齐全（type/name/at/source）", pending[:1])
 
         # ① 提前结束：回等待态，并把这一次短休息记进长短交替计数
         call(base, "Action", ["settings", "endBreak"])
@@ -613,7 +773,10 @@ def main():
             check(st1.get("phase") == "idle", "endBreak 之后 phase 回到 idle", st1.get("phase"))
             check(st1.get("shortsSinceLong") == 1,
                   "endBreak 把一次短休息记进长短交替计数", st1.get("shortsSinceLong"))
-            if st1.get("nextAt"):
+            if not st1.get("nextAt"):
+                check(False, "前提不满足：endBreak 之后没有任何安排（nextAt 为空，分组对齐无法校验）",
+                      st1.get("nextSource"))
+            else:
                 nt = st1.get("nextType")
                 ref = st1.get("rest") if nt in ("short", "long") else st1.get("other")
                 check(isinstance(ref, dict) and ref.get("at") == st1.get("nextAt"),
@@ -636,29 +799,57 @@ def main():
             check(st3.get("paused") is False, "再次 pauseToggle → paused == false", st3.get("paused"))
             check(st3.get("pauseReasons") == [], "恢复后 pauseReasons 清空", st3.get("pauseReasons"))
 
-        # ③ 推迟：nextAt = “原定时刻 + 该身份的 postponeMs”——推迟只能往后推，
-        # 基准是原定时刻而不是“现在”（否则还剩 10 分钟的提醒会被拉到 2 分钟后，P2-1）
-        if isinstance(st3, dict) and st3.get("nextAt"):
-            pm = _postpone_ms(cfg, st3.get("nextType"))
+        # ③ 推迟：Action("settings","postpone") 自 2026-11-14 起是 PostponeRest()
+        # ——只推「下一次短 / 长休息」，外卖与自定义提醒各自有自己的窗口入口，侧栏这一下
+        # 不许碰它们。所以断言读状态卡的 rest 分组（短 / 长休息那条线），不是全局 nextAt：
+        # 全局 next 可能被自定义提醒 / 外卖占着，那条本来就不该动（产品是对的）。
+        # 推迟后的时刻 = “原定时刻 + 该身份的 postponeMs”，基准取原定时刻而不是“现在”
+        # （否则还剩 10 分钟的提醒会被拉到 2 分钟后，P2-1）。
+        if not isinstance(st3, dict) or not isinstance(st3.get("rest"), dict):
+            check(False, "前提不满足：状态里没有“下一次短 / 长休息”（rest 为空，推迟用例无法定位目标）",
+                  (st3 or {}).get("rest") if isinstance(st3, dict) else type(st3).__name__)
+        else:
+            # 负断言要有个真实靶子：出厂夹具没有自定义提醒，这里临时种一条（30 分钟倒计时，
+            # 冒烟跑完也不会到点），验它在这一下推迟里纹丝不动，随后撤掉。
+            call(base, "SaveSettings", [{"customBreaks": [{
+                "id": "cb-smoke-postpone", "name": "推迟不碰的提醒", "enabled": True,
+                "config": {"enabled": True, "mode": "countdown", "intervalMs": 1800000,
+                           "durationMs": 5000, "notifyBeforeMs": 0, "postponeMs": 60000,
+                           "slots": []}}]}])
+            st, st_before = call(base, "GetState", [])
+            st_before = st_before if isinstance(st_before, dict) else {}
+            rest_kind = st_before.get("restKind") or ""
+            pm = _postpone_ms(cfg, rest_kind)
+            rest_before = int((st_before.get("rest") or {}).get("at") or 0)
+            cb_before = {str(l.get("type")): int(l.get("at") or 0)
+                         for l in (st_before.get("lines") or [])
+                         if str(l.get("type") or "").startswith("cb-")}
             t0 = int(time.time() * 1000)
-            orig = int(st3.get("nextAt") or 0)
             call(base, "Action", ["settings", "postpone"])
             st, st4 = call(base, "GetState", [])
             check(st == 200 and isinstance(st4, dict), "postpone 后仍能取到状态", str(st4)[:120])
-            if isinstance(st4, dict) and pm is not None:
-                want = max(t0, orig) + pm
-                got = int(st4.get("nextAt") or 0)
-                # 全局 nextAt = min(倒计时线, 固定时刻线)，postpone 只推迟倒计时线。
-                # 若某条固定线恰落在 (t0, want] 内，推迟后的全局 next 会被它接管——
-                # 这时 nextAt ≠ want 是产品合法行为（隔离副本来自真实配置，
-                # 固定线时刻会随一天中的运行时间变化），豁免之。
-                ats = {int(v) for v in (st3.get("fixedNext") or {}).values()
-                       if isinstance(v, (int, float))}
-                took_over = got in ats and any(t0 < a <= want for a in ats)
-                check(abs(got - want) <= 3000 or took_over,
-                      "postpone 把 nextAt 推到“原定时刻 + %s 的 postponeMs”（只往后推；固定线接管时除外）"
-                      % st3.get("nextType"),
-                      "got=%d want=%d orig=%d ats=%s" % (got, want, orig, sorted(ats)))
+            if not isinstance(st4, dict) or not rest_before or not isinstance(pm, (int, float)) or pm <= 0:
+                check(False, "前提不满足：postpone 前没有可用的推迟目标（rest.at / postponeMs 缺失）",
+                      "rest.at=%s postponeMs=%s" % (rest_before, pm))
+            else:
+                rest_after = int((st4.get("rest") or {}).get("at") or 0)
+                want = max(t0, rest_before) + int(pm)
+                check(abs(rest_after - want) <= 3000,
+                      "postpone 把“下一次%s”的 rest.at 推到“原定时刻 + postponeMs”（只往后推）"
+                      % (rest_kind or "休息"),
+                      "got=%d want=%d orig=%d" % (rest_after, want, rest_before))
+            cb_after = {}
+            if isinstance(st4, dict):
+                for l in (st4.get("lines") or []):
+                    t = str(l.get("type") or "")
+                    if t.startswith("cb-"):
+                        cb_after[t] = int(l.get("at") or 0)
+            check(bool(cb_before.get("cb-smoke-postpone")) and
+                  cb_after.get("cb-smoke-postpone") == cb_before.get("cb-smoke-postpone"),
+                  "postpone 不碰自定义提醒（2026-11-14 口径：PostponeRest 只管短 / 长休息）",
+                  "before=%s after=%s" % (cb_before, cb_after))
+            # 撤掉临时靶子，别把改动留给后面的用例
+            call(base, "SaveSettings", [{"customBreaks": []}])
 
         # ④ 重置周期：长短交替计数归零
         call(base, "Action", ["settings", "resetCycle"])
@@ -753,8 +944,8 @@ def main():
 
             「提前通知不能超过间隔的一半」（settings.breakConfigOf 归一化 + 设置页保存时
             同一口径），所以这里不能再写“60 秒间隔 + 提前 60 秒”——那会被钳成 30 秒，
-            刚排好时还剩 60 秒，反而进不了提前区间。8/4 秒既满足约束，又能在 4.3 秒后
-            稳稳落进区间（提前区间 = [t0+4s, t0+8s]）。
+            刚排好时还剩 60 秒，反而进不了提前区间。8/4 秒满足约束，提前区间
+            = [t0+4s, t0+8s]，下方轮询最多等 8s（到点没进 pre 是产品问题，该红就红）。
 
             每次动作前都要重来一遍：推迟 / 跳过会把 nextAt 推到两分钟外，不再落在提前
             区间里，不重设就等不到下一次 pre（调度器只在 idle→pre 那一刻发通知）。
@@ -771,7 +962,17 @@ def main():
                 "takeout": {"enabled": False},
                 "customBreaks": [],
             }])
-            time.sleep(4.3)  # 调度器 500ms 一跳，等它把 phase 推成 pre（剩 4s 时进入）
+            # 轮询而不是固定 sleep：调度器 500ms 一跳，phase 的推进发生在 onTick 里。
+            # 固定睡 4.3s 时，那一跳可能还没轮到（提前区间从剩 4s 开始，判定要等
+            # 下一次 tick），先后两次实测都在这一条上假红 —— phase==idle 的瞬间
+            # PreBreakState 已经是 pre，就是「差半拍」的直接证据。
+            # 上限 8s：到点没进 pre 是产品问题，该红就红。
+            _dl = time.time() + 8
+            while time.time() < _dl:
+                _st, _gs = call(base, "GetState", [])
+                if isinstance(_gs, dict) and _gs.get("phase") == "pre":
+                    return
+                time.sleep(0.15)
 
         arm_prebreak()
         st, gs_pre = call(base, "GetState", [])
@@ -816,7 +1017,10 @@ def main():
         t_pb = int(time.time() * 1000)
         call(base, "PreBreakAction", ["postpone"])
         st, gs_post = call(base, "GetState", [])
-        if isinstance(gs_post, dict) and mapi_short is not None and orig_pb:
+        if not isinstance(gs_post, dict) or mapi_short is None or not orig_pb:
+            check(False, "前提不满足：提前提示窗推迟的前后快照缺失（nextAt / short.postponeMs 取不到）",
+                  "post=%s postponeMs=%s orig=%s" % (type(gs_post).__name__, mapi_short, orig_pb))
+        else:
             check(gs_post.get("phase") == "idle", "推迟后 phase 回到 idle", gs_post.get("phase"))
             want_pb = max(t_pb, orig_pb) + mapi_short
             got_pb = int(gs_post.get("nextAt") or 0)
@@ -1129,6 +1333,115 @@ def main():
         check(st == 200 and isinstance(lex, dict) and lex.get("canceled") is False and lex.get("error"),
               "ExportProjectLicense 无头返回 {canceled:false, error}", lex)
 
+        # ------------------------------------------- 第 11 段：到点自动弹（tick 驱动）
+        # 前面所有休息都是显式 StartBreak / breakNow 起的，缺了产品最主的那条路：
+        # **倒计时到点，由调度器自己（onTick 的 due 分支）弹出来**。那段代码改坏时
+        # 只有 go test 会红，冒烟这个“体检项”看不见 —— 所以这里真的等到点。
+        #
+        # 参数选择：间隔 6 秒、提前 0 秒（不进 pre 直接到点）、时长 8 秒（读完断言的余量；
+        # 2 秒偏紧，轮询相位稍有延迟就会读到“已自动收窗”的 idle，变成假红）。
+        print("\n[11] 到点自动弹（onTick 自己弹，不靠显式 StartBreak）")
+        call(base, "SaveSettings", [{
+            "short": {"enabled": True, "mode": "countdown", "intervalMs": 6000,
+                      "notifyBeforeMs": 0, "durationMs": 8000},
+            "long": {"enabled": False},
+            "takeout": {"enabled": False},
+            "customBreaks": [],  # 第 7 段留下的 cb-snd（60 秒一条）别在这段里凑热闹
+        }])
+        fired, st_auto = False, {}
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            st, st_auto = call(base, "GetState", [])
+            if isinstance(st_auto, dict) and st_auto.get("phase") == "break":
+                fired = True
+                break
+            time.sleep(0.15)
+        check(fired, "6 秒倒计时到点后调度器自己弹出休息（onTick 的 due 分支真的在跑）",
+              (st_auto or {}).get("phase") if isinstance(st_auto, dict) else st_auto)
+        if not fired:
+            check(False, "前提不满足：10 秒内没有自动进入 break（breakType 无法校验）",
+                  (st_auto or {}).get("nextAt") if isinstance(st_auto, dict) else st_auto)
+        else:
+            check(st_auto.get("breakType") == "short",
+                  "自动弹出的是短休息（breakType == short）", st_auto.get("breakType"))
+        # 收尾：结束这次自动弹的休息，并把间隔改回去（别让 6 秒的线在后面的段落里再弹）
+        call(base, "Action", ["settings", "endBreak"])
+        call(base, "SaveSettings", [{
+            "short": {"enabled": True, "mode": "countdown", "intervalMs": 600000,
+                      "notifyBeforeMs": 10000, "durationMs": 20000},
+        }])
+
+        # ---------------------------------------- 第 12 段：长休息 + 固定时刻 slots
+        # 冒烟里此前 long 一直是 enabled=false、slots 一直是空 ——
+        # 「第二种休息身份」与「固定时刻线」这两条并列主路径整段没进冒烟。
+        print("\n[12] 长休息：固定时刻 slots + 长短交替（longEveryNShort）")
+        # A. 固定时刻线：留一条 2 分钟后的每日 slot（分钟粒度，取“现在+2 分钟”的时分）
+        tgt = time.localtime(time.time() + 120)
+        slot = {"id": "slot-smoke-long", "hour": tgt.tm_hour, "minute": tgt.tm_min,
+                "repeat": "daily", "days": [], "enabled": True}
+        call(base, "SaveSettings", [{
+            "short": {"enabled": False},
+            "long": {"enabled": True, "mode": "fixed", "slots": [slot]},
+            "takeout": {"enabled": False},
+            "customBreaks": [],
+        }])
+        st, st_fx = call(base, "GetState", [])
+        st_fx = st_fx if isinstance(st_fx, dict) else {}
+        fx_next = int((st_fx.get("fixedNext") or {}).get("long") or 0)
+        if not fx_next:
+            check(False, "前提不满足：固定时刻线的下一次时刻没出现在 state.fixedNext.long 里",
+                  st_fx.get("fixedNext"))
+        else:
+            check(st_fx.get("nextType") == "long",
+                  "固定时刻线接管：nextType == long", st_fx.get("nextType"))
+            check(st_fx.get("nextSource") == "fixed",
+                  "固定时刻线的 nextSource == fixed（不是倒计时）", st_fx.get("nextSource"))
+            check(int(st_fx.get("nextAt") or 0) == fx_next and fx_next > int(time.time() * 1000),
+                  "nextAt == fixedNext.long 且在未来（时刻表算出来的那一班）",
+                  "%s vs %s" % (st_fx.get("nextAt"), fx_next))
+            # 今日时间线只展开“当天”的固定线：slot 定在 现在+2 分钟，若恰好跨零点它就属于
+            # 明天，那今日时间线里本来就没有它 —— 这不是缺陷，所以那种情况按通过算。
+            tl_fx = [it for it in (st_fx.get("timeline") or [])
+                     if it.get("type") == "long" and it.get("source") == "fixed"
+                     and int(it.get("at") or 0) == fx_next]
+            check(bool(tl_fx) or not _same_local_day(fx_next),
+                  "今日时间线里出现这条固定时刻线（long / fixed / 同一时刻；跨零点的 slot 属明天，今日不列）",
+                  "命中 %d 条，at=%s，今日=%s" % (len(tl_fx), fx_next, _same_local_day(fx_next)))
+
+        # B. 长短交替：两条都是倒计时时，每 N 次短休息后换成长休息（longEveryNShort）
+        call(base, "SaveSettings", [{
+            "short": {"enabled": True, "mode": "countdown", "intervalMs": 600000,
+                      "notifyBeforeMs": 4000, "durationMs": 3000},
+            "long": {"enabled": True, "mode": "countdown", "intervalMs": 1200000,
+                     "notifyBeforeMs": 4000, "durationMs": 3000, "slots": []},
+            "longEveryNShort": 1,
+            "customBreaks": [],
+        }])
+        st, st_ab = call(base, "GetState", [])
+        st_ab = st_ab if isinstance(st_ab, dict) else {}
+        ss_before = st_ab.get("shortsSinceLong")
+        if not isinstance(ss_before, int):
+            check(False, "前提不满足：取不到 shortsSinceLong（长短交替无法校验）", type(ss_before).__name__)
+        else:
+            call(base, "StartBreak", ["short"])
+            call(base, "Action", ["settings", "endBreak"])
+            st, st_ab1 = call(base, "GetState", [])
+            st_ab1 = st_ab1 if isinstance(st_ab1, dict) else {}
+            check(st_ab1.get("shortsSinceLong") == ss_before + 1,
+                  "开始一次短休息把 shortsSinceLong 计数 +1（长休息才会清零）",
+                  "%s -> %s" % (ss_before, st_ab1.get("shortsSinceLong")))
+            check(st_ab1.get("nextType") == "long" and st_ab1.get("nextSource") == "countdown",
+                  "第 N 次（N=longEveryNShort=1）短休息之后，倒计时线换成休息更长的那一条（long）",
+                  "%s/%s" % (st_ab1.get("nextType"), st_ab1.get("nextSource")))
+            call(base, "StartBreak", ["long"])
+            call(base, "Action", ["settings", "endBreak"])
+            st, st_ab2 = call(base, "GetState", [])
+            st_ab2 = st_ab2 if isinstance(st_ab2, dict) else {}
+            check(st_ab2.get("shortsSinceLong") == 0,
+                  "长休息把长短交替计数清零", st_ab2.get("shortsSinceLong"))
+            check(st_ab2.get("nextType") == "short",
+                  "清零后倒计时线回到短休息", st_ab2.get("nextType"))
+
         # ---- 收尾：关窗清会话 ----
         st, _ = call(base, "CloseWindow", ["break"], window="break")
         st, sess2 = call(base, "BreakCurrent", ["break"], window="break")
@@ -1176,11 +1489,13 @@ def main():
               "外卖动作留痕（预览态点“不点了”）", "")
 
         # ---- 隔离铁律：真实配置一个字节都不许被改 ----
-        # 加载路径在“补 installId / 种入预置条目”时会回写，所以冒烟必须走隔离副本；
-        # 这条断言就是防呆：哪天有人把 WR_SETTINGS_PATH 去掉，这里立刻红。
-        if real_settings:
-            check(_digest(real_settings) == real_digest,
-                  "用户真实 settings.json 未被冒烟改写", real_settings)
+        # 加载路径在“种入预置提醒内容”时会回写，所以冒烟必须走 WR_SETTINGS_PATH 指向的
+        # 隔离副本；这条断言就是防呆：哪天有人把隔离去掉，这里立刻红。
+        # 本机没有 config/settings.json（新克隆的仓库不带它）时前提不成立，但这条仍要占
+        # 一格计数 —— 否则断言总数随环境变化，下面的下限就没法当尺子用。
+        real_untouched = (not real_settings) or _digest(real_settings) == real_digest
+        check(real_untouched, "用户真实 settings.json 未被冒烟改写（本机无该文件时前提不成立，计为通过）",
+              real_settings or "无 config/settings.json")
 
     finally:
         if args.keep:
@@ -1199,6 +1514,10 @@ def main():
         f.write(report)
     print("\n结果：%d 项断言，失败 %d 项" % (checks, len(failures)))
     print("报告：%s" % REPORT)
+    if checks < BASELINE_CHECKS:
+        print("断言数不足：应跑 %d 项，实际只跑了 %d 项（少了 %d 项）—— 有分支被静默跳过，"
+              "“失败 0 项”不可信" % (BASELINE_CHECKS, checks, BASELINE_CHECKS - checks))
+        return 2
     return 0 if not failures else 1
 
 

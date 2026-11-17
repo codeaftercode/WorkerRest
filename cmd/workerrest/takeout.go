@@ -125,7 +125,12 @@ func (a *App) buildTakeoutInfo(slot model.TimeSlot, preview bool, postponedCount
 	}
 	// 外卖提醒自己的提醒内容：每次弹窗选 1 条；一条启用的都没有时用提醒名“外卖提醒”
 	// 兜底（窗口里“本该显示提醒内容的位置”不空着）。pickMessage 返回的切片第 0 条即内容。
-	if msgs := a.pickMessage("takeout", plan.TAKEOUT_NAME); len(msgs) > 0 {
+	// 提醒内容池从上面那份快照读（不直读 live 配置）；pickMessage 会推进顺序游标 / 用 rng，
+	// 这两样不是线程安全的，所以调用本身仍要持 a.mu（与 ShowBreakSession 同口径）。
+	a.mu.Lock()
+	msgs := a.pickMessage(cfg, "takeout", plan.TAKEOUT_NAME)
+	a.mu.Unlock()
+	if len(msgs) > 0 {
 		info.Message = msgs[0]
 	}
 	// 督休专员：与休息窗口同一条构建路径；外卖窗口的督休专员第一段台词 = 本提醒的提醒内容。

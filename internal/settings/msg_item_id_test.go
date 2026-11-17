@@ -200,7 +200,7 @@ func TestNormalizeLoadRenumbersItemIDs(t *testing.T) {
 // 预置种子与导入模板的 id 也是序号（不再带 builtin- / 类型前缀）。
 func TestSeedItemIDsAreSequence(t *testing.T) {
 	for _, kind := range []string{"short", "long", "takeout"} {
-		items := builtinKindItems(kind)
+		items := BuiltinKindItems(kind)
 		if len(items) == 0 {
 			t.Fatalf("%s 的预置条目是空的", kind)
 		}

@@ -62,7 +62,7 @@ func (a *App) StartUpdate() map[string]any {
 	date, _ := st["date"].(string)
 	changes := jsonx.AnySliceToStrings(st["changes"])
 
-	exePath, err := os.Executable()
+	exePath, err := currentExePath()
 	if err != nil {
 		return map[string]any{"status": "error", "message": "无法确定程序位置"}
 	}
@@ -92,12 +92,7 @@ func (a *App) StartUpdate() map[string]any {
 	}
 
 	// 增量合并配置（顶层键：本地已有不覆盖，本地无则新增），随后落盘
-	if err := settings.MergeConfigFromDir(updateDir, a.cfg.Raw()); err != nil {
-		log.Printf("[update] 合并配置跳过（%v），仅替换程序", err)
-	}
-	if err := a.cfg.Save(); err != nil {
-		log.Printf("[update] 更新前配置落盘失败（%v），继续替换程序", err)
-	}
+	a.mergeUpdateConfig(updateDir)
 
 	// 写 pending + 暂存 stage 副本
 	pendingPath := filepath.Join(updateDir, "pending.json")
@@ -121,7 +116,10 @@ func (a *App) StartUpdate() map[string]any {
 	if data, err := json.MarshalIndent(pending, "", "  "); err == nil {
 		_ = os.WriteFile(pendingPath, append(data, '\n'), 0o644)
 	}
-	stagePath := filepath.Join(updateDir, stageExeName)
+	// stage 副本名由**被替换的 exe 名**派生（rest.exe → rest.stage.exe）：
+	// 校验侧要能从 stage 副本名反推出「允许覆盖的是哪个 exe」，写死 rest 会把
+	// 改过名的便携版挡在更新之外（见 installedExeName / validatePendingUpdate）。
+	stagePath := filepath.Join(updateDir, stageNameForExe(exePath))
 	if err := copyFile(newExe, stagePath); err != nil {
 		return map[string]any{"status": "error", "message": "暂存更新程序失败：" + err.Error()}
 	}
@@ -359,17 +357,48 @@ func findNewExe(dir string) string {
 	return fallback
 }
 
+// mergeUpdateConfig 增量合并更新包里的配置（顶层键：本地已有不覆盖，本地无则新增）。
+//
+// 必须走 mutateConfigCopy 在**副本**上合并、落盘成功后换指针：本函数跑在下载流程里，
+// 与设置页 SaveSettings / 托盘开关并发。直接把 a.cfg.Raw() 递给 MergeConfigFromDir
+// 是在**发布对象**上原地写（顶层 map 本体被改、且无锁）—— 读端拿 CfgSnapshot()
+// 指针后不持锁，撞上就是 "concurrent map read and map write"，fatal，recover 兜不住，
+// 进程直接消失。
+//
+// 合并失败按既有口径只记日志、不阻断更新：新键丢一版无碍，下次更新还会带来。
+func (a *App) mergeUpdateConfig(updateDir string) {
+	if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+		if err := settings.MergeConfigFromDir(updateDir, s.Raw()); err != nil {
+			log.Printf("[update] 读取更新包配置失败: %v", err)
+			return false
+		}
+		return true
+	}); err != nil {
+		log.Printf("[update] 合并更新包配置失败: %v", err)
+	}
+}
+
 // runSelfUpdate 由 `--self-update <pending>` 触发：等旧 exe 解锁 → 改名备份 →
 // 复制新 exe 到位 → 启动 rest.exe --updated <pending> → 退出。
 // 不在本函数里调用 app.Run，因此不会触发 Wails 单例互斥，旧进程退出后即可接管。
+//
+// 参数与 pending.json 都先过 validatePendingUpdate：本进程接下来要「覆盖并执行」那里
+// 记的路径，输入不合法就什么都不做（不删目录、不覆盖文件），只记一行日志退出。
 func runSelfUpdate(pendingPath string) {
-	data, err := os.ReadFile(pendingPath)
+	exePath, err := currentExePath()
 	if err != nil {
-		log.Fatalf("[self-update] 读取 pending 失败: %v", err)
+		log.Printf("[self-update] 无法确定程序位置，放弃更新: %v", err)
+		return
 	}
-	var p updatePending
-	if err := json.Unmarshal(data, &p); err != nil {
-		log.Fatalf("[self-update] 解析 pending 失败: %v", err)
+	p, err := validatePendingUpdate(pendingPath, exePath)
+	if err != nil {
+		log.Printf("[self-update] 拒绝执行（输入不可信，未改动任何文件）: %v", err)
+		return
+	}
+	// 覆盖前的专项检查（新程序还在、在 update 目录内、是常规文件）
+	if err := checkPendingNewExe(updateDirFor(exePath), p.NewExe); err != nil {
+		log.Printf("[self-update] 拒绝执行（新程序不可用，未改动任何文件）: %v", err)
+		return
 	}
 	if err := replaceExe(p.OldExe, p.NewExe); err != nil {
 		log.Fatalf("[self-update] 替换程序失败: %v", err)

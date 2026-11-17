@@ -113,6 +113,147 @@ var wiredCalls = []string{
 // 但 shim.js 里仍是 stub。迁移完成时把它挪进 wiredCalls，contract_test 会顺手校验 shim 是否真的接上了。
 var pendingCalls = []string{}
 
+// wiredArity 每个已接通绑定的**形参个数**（不含接收者）。
+//
+// 为什么需要它：契约原先只校验“方法名存在”，而 shim.js 是逐个手写实参数组的。
+// Go 侧给某个方法加一个参数 → 名字没变 → go test 全绿 → shim.js 仍传旧参数 →
+// Wails 返 422 → shim.js 的 catch 把错误吞成 null → 界面静默降级（最坏的失败形态）。
+// 把个数也钉住之后，arity 漂移在 `go test` 阶段就炸，而不是等用户发现功能没了。
+//
+// 三处必须同时一致（contract_test.go 的 TestShimArityMatchesCallSites 做三方比对）：
+//  1. 本表的条目；2. *App 上方法的 reflect 形参个数；3. shim.js 里 ARITY 表与真实实参数组。
+//
+// 新增/修改绑定签名时，本表、shim.js 的 ARITY、以及 shim.js 的调用处要一起改。
+//
+// 条数必须与 wiredCalls 完全相同（TestContractArityMatchesApp 双向校验，漏登记即 fail）——
+// 这里不采用“没登记就不校验”的宽松口径：Go 侧是权威且可反射得到的，没有理由留空。
+var wiredArity = map[string]int{
+	// ---- 休息窗口 ----
+	"BreakCurrent": 1, // (win)
+	"Action":       2, // (win, name)
+	"PreviewBreak": 2, // (type, forceKey)
+	"StartBreak":   1, // (kind)
+
+	// ---- 通用 / 窗口 ----
+	"CloseWindow":     1, // (win)
+	"SupActivity":     1, // (win)
+	"GetState":        0,
+	"WindowMaximized": 0,
+	"QuitApp":         0,
+	"ListDisplays":    0,
+	"KnownDisplays":   0,
+
+	// ---- 设置读写 ----
+	"GetSettings":        0,
+	"SaveSettings":       1, // (cfg)
+	"ResetSettings":      0,
+	"BuiltinMsgDefaults": 0,
+
+	// ---- 督休专员目录 ----
+	"ListRoles":           0,
+	"SaveRole":            2, // (key, cfg)
+	"RemoveRole":          1, // (key)
+	"PickSupervisorImage": 0,
+	"ReplaceRoleImage":    1, // (key)
+	"RoleFigureDataURL":   1, // (key)
+	"SaveRolePreview":     2, // (key, dataURL)
+	"SupervisorPreview":   2, // (sup, key)
+
+	// ---- 关于页 / 更新 / 外链 ----
+	"AppInfo":                 0,
+	"UpdateStatus":            0,
+	"CheckUpdate":             0,
+	"StartUpdate":             0,
+	"PendingUpdate":           0,
+	"IgnoreVersion":           1, // (version)
+	"OpenExternal":            1, // (url)
+	"ExportReport":            2, // (name, b64)
+	"GetThirdPartyNotices":    0,
+	"ExportThirdPartyNotices": 0,
+	"GetProjectLicense":       0,
+	"ExportProjectLicense":    0,
+
+	// ---- 窗口 / 自更新重启恢复 ----
+	"ShowSettingsWindow": 0,
+	"SetActiveTab":       1, // (tab)
+
+	// ---- 统计 ----
+	"GetStats":           0,
+	"GetHistory":         2, // (start, end)
+	"ClearStats":         0,
+	"GetStatsFileNotice": 0,
+	"AckStatsFileNotice": 0,
+
+	// ---- 声音 ----
+	"SoundFileURL":        1, // (file)
+	"AddMusicSound":       0,
+	"DeleteMusicSound":    1, // (file)
+	"GetSoundScanNotice":  0,
+	"ImportScannedSounds": 1, // (files []string)
+	"DropMissingSounds":   1, // (ids []string)
+	"DismissSoundScan":    0,
+
+	// ---- 指定应用运行时暂停 ----
+	"ListRunningApps": 0,
+	"PickAppExe":      0,
+
+	// ---- 提前提示窗口 ----
+	"PreBreakState":  0,
+	"PreBreakAction": 1, // (action)
+
+	// ---- 自动暂停期间的“已暂停多久”提示 ----
+	"PauseNoticeResume":  0,
+	"PauseNoticeDismiss": 0,
+
+	// ---- 外卖窗口 ----
+	"TakeoutCurrent": 1, // (win)
+	"PreviewTakeout": 1, // (win)
+	"TakeoutAction":  2, // (win, action)
+}
+
+// diagnosticCalls 前端契约之外、但被 Wails 注册成绑定的导出方法（诊断 / 内部通道）。
+//
+// 为什么单列：Wails 的 NewService 会把结构体上**全部**导出方法反射成 main.App.<名>，
+// 所以 `-tags server` 构建（无头 HTTP 服务）下这些方法同样对任何能访问本机端口的
+// 进程开放。它们不在前端契约里（shim.js 不调），但删不得（探针、托盘、内部事件用），
+// 于是显式登记为“诊断用”，让合同测试能对“新增导出方法”强制走一次登记：
+// 不登记 → contract_test 直接 fail，逼你回答“这个方法该不该被注册成绑定”。
+//
+// 若将来要收窄注册面（例如用白名单服务包装层只暴露 wiredCalls），这一份就是
+// “不在白名单里”的清单本身。本轮只做断言，不改注册面。
+var diagnosticCalls = []string{
+	// 内部事件钩子：Go 侧向窗口广播状态时调用的方法，不是前端入口
+	"OnAutoPause",
+	"OnBreakCounted",
+	"OnBreakExtra",
+	"OnBreakPostponed",
+	"OnBreakSkipped",
+	"OnPaused",
+	"OnPreNotify",
+	"OnSchedulerState",
+	// 窗口 / 会话的内部开关（由 Go 侧或托盘触发）
+	"CloseBreakWindows",
+	"ClosePreBreak",
+	"CompleteBreakWindows",
+	"ShowBreakSession",
+	"ShowBreakWindow",
+	"ShowPreBreakWindow",
+	// 自启动与配置快照（托盘 / 设置页内部的读接口）
+	"ApplyAutostart",
+	"CfgSnapshot",
+	"IdleMs",
+	// 诊断探针：scripts/probe/*.py 与本机排查用
+	"SysProbe",
+	"StatsProbe",
+	"TakeoutFiredSnapshot",
+	"TakeoutIdleWaitSnapshot",
+	"TakeoutPostponedSnapshot",
+}
+
+// serviceLifecycleCalls Wails 服务生命周期接口的方法：**不**注册成绑定，
+// 因此既不在 wiredCalls/diagnosticCalls 里，也不该出现在绑定的注册日志里。
+var serviceLifecycleCalls = []string{"ServiceStartup", "ServiceShutdown"}
+
 // allCalls 契约全集（自检与文档用）
 func allCalls() []string {
 	out := make([]string, 0, len(wiredCalls)+len(pendingCalls))

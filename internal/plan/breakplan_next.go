@@ -143,16 +143,25 @@ func sortPlans(pool []model.PlannedBreak) {
 	})
 }
 
-// filterConsumed 剔除已消费的 occurrence：提前结束 / 立即休息 / 跳过过的安排不得再弹第二次
+// filterConsumed 剔除已消费的 occurrence：提前结束 / 立即休息 / 跳过过的安排不得再弹第二次。
+//
+// **倒计时线不在这里剔**：它的「消费」已经体现在 countdownAnchor 的锚点沿用判定里
+//（跳过 / 弹过会把旧锚点记进 skip，逼下一轮换用新锚点 now+interval）。这里再按
+// occurrence 剔一次，会在一个窄窗口把新线误删：跳过落在锚点刚生成的同一毫秒时，
+// fresh = now+interval 恰好等于刚被消费的旧锚点，整条线消失、NextAt 归 0 ——
+// 调度循环跑着时下一拍会自愈，但那 500ms 的空档本身就是错的；循环还没起
+//（启动最初一拍 / 单测）就停在 0 上。固定时刻线的 At 是离散班次，与 consumed
+// 键天然一一对应，不受影响。
 func filterConsumed(pool []model.PlannedBreak, skip map[string]bool) []model.PlannedBreak {
 	if len(skip) == 0 {
 		return pool
 	}
 	out := make([]model.PlannedBreak, 0, len(pool))
 	for _, p := range pool {
-		if !skip[occurrenceKey(p.Type, p.At)] {
-			out = append(out, p)
+		if p.Source != "countdown" && skip[occurrenceKey(p.Type, p.At)] {
+			continue
 		}
+		out = append(out, p)
 	}
 	return out
 }

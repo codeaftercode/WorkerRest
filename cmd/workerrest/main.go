@@ -85,7 +85,17 @@ func main() {
 			}
 		case "--updated":
 			if i+1 < len(os.Args) {
-				pendingUpdatePath = os.Args[i+1]
+				// 命令行是**本机可写的输入**（快捷方式参数、别的进程伪造的启动行），而这个
+				// 参数稍后会驱动「清理 update 目录」：先确认 pending 就在 <exe 所在目录>/update
+				// 之内、里面记的旧程序就是自己。不合法的参数直接丢弃（连目录都不会删），
+				// PendingUpdate 那边还会用同一个校验再兜一道。
+				if exePath, err := currentExePath(); err != nil {
+					log.Printf("[update] 无法确定程序位置，忽略 --updated 参数: %v", err)
+				} else if _, err := validatePendingUpdate(os.Args[i+1], exePath); err != nil {
+					log.Printf("[update] 忽略 --updated 参数（不清理、不展示）: %v", err)
+				} else {
+					pendingUpdatePath = os.Args[i+1]
+				}
 			}
 		case "--dump-default-settings":
 			// 打包脚本用：把内嵌的出厂默认原样写到文件后立刻退出（不建窗口、不进单例）。

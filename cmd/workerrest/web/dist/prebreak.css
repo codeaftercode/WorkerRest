@@ -7,7 +7,7 @@
  * ⚠️ 本文件里的颜色一律走变量，不要再写死 rgba(255,255,255,…) 这类“只适合深色底”的字面量——
  * 底色浅的时候用户就看不见了。 */
 :root {
-  --accent: #4f7cff;
+  --accent: #3d6bf0;
   --pb-bg-1: #262c40;
   --pb-bg-2: #141824;
   --text: #eef1f8;
@@ -15,7 +15,7 @@
   --border: rgba(255, 255, 255, 0.14);
   --btn-bg: rgba(255, 255, 255, 0.08);
   --btn-bg-hover: rgba(255, 255, 255, 0.14);
-  --btn-primary-bg: #4f7cff;
+  --btn-primary-bg: #3d6bf0;
   --btn-primary-text: #ffffff;
   --num: #7fa2ff;
   --tip-bad: #ff9a9a;

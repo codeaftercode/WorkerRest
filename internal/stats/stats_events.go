@@ -14,6 +14,10 @@ import (
 // 为什么要 fsync：只靠 rename 的原子性，保证的是“不会读到写了一半的 JSON”，但数据可能还
 // 躺在操作系统的写缓冲里 —— 突然断电就会丢掉最后一次写。本软件的落盘本来就是为“直接关
 // 电脑 / 突然断电”准备的，所以数据先刷到盘片、再改名。
+//
+// 这个方法是**显式落盘**，不受稳态下限（statsFlushFloorMs）约束：退出收尾
+// （App.stopStats）、清空统计这些路径必须立即写。下限只作用在防抖定时器上（见
+// markDirtyLocked），所以“进程退出时最后一次同步 flush”照旧。
 func (st *StatsStore) Flush() {
 	st.mu.Lock()
 	st.dirty = false
@@ -29,7 +33,12 @@ func (st *StatsStore) Flush() {
 	}
 	if err := jsonx.WriteFileAtomic(path, text); err != nil {
 		log.Printf("[stats] 保存失败: %v", err)
+		return
 	}
+	st.mu.Lock()
+	st.lastFlushAt = st.nowFn()
+	st.flushCount++
+	st.mu.Unlock()
 }
 
 // marshalLocked 组装落盘 JSON：`{_customNames: {...}, "YYYY-MM-DD": {...}}`（缩进 2 空格）
@@ -69,29 +78,88 @@ func (st *StatsStore) Clear() {
 		st.saveTimer.Stop()
 		st.saveTimer = nil
 	}
+	st.flushDueAt = 0
 	// 清空也是“数据变了”：渲染层的“今天”卡要立刻归零
 	st.notifyLocked()
 	st.mu.Unlock()
 	st.Flush()
 }
 
-// markDirtyLocked 标脏 + 2 秒防抖落盘（调用方需持锁）。
-// 频繁的秒级累加不必每次落盘：合并 2 秒写一次。
+// statsFlushDebounceMs 有改动后的防抖等待：连续改动合并成一次写盘。
+const statsFlushDebounceMs int64 = 2_000
+
+// statsFlushFloorMs 两次“成功落盘”之间的最小间隔（稳态降频）。
+//
+// 为什么需要下限：工作时长 / 休息时长都是每秒一跳、每跳都 markDirty，而旧实现是
+// “2 秒防抖 + 回调先清 dirty 再 Flush”——稳态下每 3 秒就全量 MarshalIndent 整份历史
+// 并 fsync 一次（8 小时工作日约 9600 次/天）。历史越攒越长，单次写盘就越贵，
+// 而其中 99% 的写盘只差一两秒的工作时长。
+//
+// 为什么取 10 秒：把稳态压到每分钟 6 次（约 1/2000 的写盘量），同时把
+// **异常关机 / 断电最多丢多少统计**控制在 10 秒这个量级（原实现理论值 2 秒）。
+// 这是刻意的取舍：统计是趋势数据，丢 10 秒无感；但“每秒全量重写 + fsync”会持续
+// 磨损磁盘、拖慢退出，且在机械盘上能被用户感知为周期性卡顿。
+// 注意这只是**防抖路径**的下限：显式 Flush（退出收尾 / 清空统计 / 文件损坏重建）
+// 不受它约束，照旧立即写 —— 正常退出不会丢任何一个字节。
+const statsFlushFloorMs int64 = 10_000
+
+// markDirtyLocked 标脏 + 防抖落盘（调用方需持锁）。
+// 频繁的秒级累加不必每次落盘：合并成一次写盘，且距上次成功落盘不足
+// statsFlushFloorMs 时继续往后推（见 flushRemainLocked）。
 // 顺手投一个“已变”通知（非阻塞、容量 1，连着的改动自动合并成一次）。
 func (st *StatsStore) markDirtyLocked() {
 	st.dirty = true
 	st.notifyLocked()
-	if st.saveTimer == nil {
-		st.saveTimer = time.AfterFunc(2*time.Second, func() {
-			st.mu.Lock()
-			st.saveTimer = nil
-			dirty := st.dirty
-			st.mu.Unlock()
-			if dirty {
-				st.Flush()
-			}
-		})
+	if st.saveTimer != nil {
+		return
 	}
+	wait := st.flushRemainLocked()
+	if wait < statsFlushDebounceMs {
+		wait = statsFlushDebounceMs
+	}
+	st.flushDueAt = st.nowFn() + wait
+	st.saveTimer = time.AfterFunc(time.Duration(wait)*time.Millisecond, st.flushDebounced)
+}
+
+// flushRemainLocked 距“允许下一次落盘”还有多少毫秒（0 = 现在就可以写）。
+// 只看上一次**成功**落盘的时刻：写失败时 lastFlushAt 不动，于是重试仍按防抖节奏来，
+// 不会被下限压成“失败一次就等 10 秒”。
+func (st *StatsStore) flushRemainLocked() int64 {
+	if st.lastFlushAt <= 0 {
+		return 0
+	}
+	return max(0, st.lastFlushAt+statsFlushFloorMs-st.nowFn())
+}
+
+// flushDebounced 防抖定时器到点（在定时器自己的 goroutine 里跑，不持锁）。
+//
+// 除了“脏了就写”，还要再核一次下限：定时器排定之后可能有人显式 Flush 过
+// （退出收尾 / 清空统计 / 1 分钟兜底），那次已经把下限推后了 —— 这里直接写就等于
+// 紧贴着它再全量写一遍，正是要消除的那类抖动。剩余时间还有就重新排一次。
+func (st *StatsStore) flushDebounced() {
+	st.mu.Lock()
+	st.saveTimer = nil
+	st.flushDueAt = 0
+	if !st.dirty {
+		st.mu.Unlock()
+		return
+	}
+	if wait := st.flushRemainLocked(); wait > 0 {
+		// Stop 已经调过就别再排下一次：这一跳之后没有任何人会等它，晚 10 秒的写盘
+		// 正好落在“测试删临时目录 / 进程退出”之后（Stop 的注释里就是那个坑）。
+		select {
+		case <-st.stopCh:
+			st.mu.Unlock()
+			return
+		default:
+		}
+		st.flushDueAt = st.nowFn() + wait
+		st.saveTimer = time.AfterFunc(time.Duration(wait)*time.Millisecond, st.flushDebounced)
+		st.mu.Unlock()
+		return
+	}
+	st.mu.Unlock()
+	st.Flush()
 }
 
 // notifyLocked 投一个“统计数据已变”通知（调用方需持锁）。
@@ -139,7 +207,9 @@ func (st *StatsStore) StartNotify() {
 // StartAutoFlush 周期性落盘（默认 1 分钟一次）：防止直接关电脑 / 突然断电把工作时长、
 // 休息时长丢掉。落盘有两层，一起保证“最多丢多少”：
 //
-//	① 有改动时 2 秒防抖写一次 —— 正常情况下最多丢 2 秒；
+//	① 有改动时防抖写一次 —— 距上次成功落盘 ≥ 10 秒才写（见 statsFlushFloorMs）。
+//	   正常情况下最多丢 10 秒；这是 2026-11 从“2 秒防抖、稳态 3 秒一写”降频来的，
+//	   换来的是不再每秒全量重写 + fsync 整份历史（tradeoff 写在 statsFlushFloorMs 上）；
 //	② 这一层是**上界保证**：即使防抖定时器因为任何原因没跑，最多也只丢 1 分钟。
 //	   没有改动时不写盘，不做无谓的磁盘写入。
 func (st *StatsStore) StartAutoFlush(intervalMs int) {
@@ -176,13 +246,31 @@ type StatsAutoFlushInfo struct {
 	Ticks      int  `json:"ticks"`
 	IntervalMs int  `json:"intervalMs"`
 	Dirty      bool `json:"dirty"`
+	// Flushes 本进程实际落盘次数（含显式 Flush 与异常路径）：稳态降频的可观测项 ——
+	// 改动每秒都在发生，它却该涨得慢得多。
+	Flushes int64 `json:"flushes"`
+	// FloorMs 稳态落盘的最小间隔（ms）：让自检能说明“现在为什么这么久才写一次”。
+	FloorMs int64 `json:"floorMs"`
+	// DueInMs 挂着的防抖定时器还有多久落盘（-1 = 没挂着）。用于验证下限真的把写盘推后。
+	DueInMs int64 `json:"dueInMs"`
 }
 
 // AutoFlushInfo 读周期落盘自检信息
 func (st *StatsStore) AutoFlushInfo() StatsAutoFlushInfo {
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	return StatsAutoFlushInfo{Ticks: st.autoFlushTicks, IntervalMs: st.autoFlushIntervalMs, Dirty: st.dirty}
+	due := int64(-1)
+	if st.flushDueAt > 0 {
+		due = st.flushDueAt - st.nowFn()
+	}
+	return StatsAutoFlushInfo{
+		Ticks:      st.autoFlushTicks,
+		IntervalMs: st.autoFlushIntervalMs,
+		Dirty:      st.dirty,
+		Flushes:    st.flushCount,
+		FloorMs:    statsFlushFloorMs,
+		DueInMs:    due,
+	}
 }
 
 // Stop 停止后台 goroutine（退出清理）。
@@ -198,6 +286,7 @@ func (st *StatsStore) Stop() {
 		st.saveTimer.Stop()
 		st.saveTimer = nil
 	}
+	st.flushDueAt = 0
 	done := st.autoFlushDone
 	st.mu.Unlock()
 	if done != nil {

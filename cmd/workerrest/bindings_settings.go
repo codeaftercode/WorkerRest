@@ -33,6 +33,12 @@ import (
 func (a *App) GetSettings() map[string]any {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	// 交出去的是深拷贝：绑定层是 JS 可调用的 API，直接递 a.cfg.Raw() 等于把发布对象
+	// 的引用递到界外。设置页只在首帧拉一次，JSON 往返的成本可以忽略。
+	// 深拷失败时退回原件：缺字段会让 fillForm 抛错、整页停摆，宁可共享也不能拿不到。
+	if cloned := jsonCloneMap(a.cfg.Raw()); cloned != nil {
+		return cloned
+	}
 	return a.cfg.Raw()
 }
 
@@ -50,6 +56,15 @@ func (a *App) SaveSettings(next map[string]any) bool {
 		a.mu.Unlock()
 		log.Printf("[settings] 保存被忽略：入参不是对象")
 		return false
+	}
+	// merged 与旧配置共享「next 没覆盖到的子树」：deepMerge（settings.go）对只在
+	// base 里有的键是 out[k] = v **直接搬引用**。设置页整份回传时每个对象键都会被
+	// 递归、侥幸不共享；但任何**局部** next（未来哪个调用方只送一两个键）一进来，
+	// merged 里没被覆盖的嵌套 map 就是发布对象本尊 —— 下面 keepWindowLastSize /
+	// NormalizeForSave 会在它上面原地写，正是 CfgSnapshot 无锁读要撞的那块内存。
+	// 这里无条件深拷一份，把「调用方传了哪些键」从安全条件里拿掉。
+	if cloned := jsonCloneMap(merged); cloned != nil {
+		merged = cloned
 	}
 	s := settings.New(merged, a.cfg.Path())
 	// window.lastWidth / lastHeight 是 **Go 独占写**的运行时状态（窗口 resize 时记的），
@@ -169,9 +184,9 @@ func (a *App) OpenExternal(url string) bool {
 func (a *App) BuiltinMsgDefaults() map[string]any {
 	return map[string]any{
 		"kinds": map[string]any{
-			"short":   builtinKindItems("short"),
-			"long":    builtinKindItems("long"),
-			"takeout": builtinKindItems("takeout"),
+			"short":   settings.BuiltinKindItems("short"),
+			"long":    settings.BuiltinKindItems("long"),
+			"takeout": settings.BuiltinKindItems("takeout"),
 		},
 	}
 }
@@ -234,44 +249,45 @@ func (a *App) SaveRole(name string, patch map[string]any) bool {
 // renameRoleInSettings 把配置里指向旧名的 fixedRole / order 换成新名。
 // 与 clearRoleFromSettings（删除时清空）同一处配置、同一套大小写口径：
 // 名字比较一律 TrimSpace + EqualFold，与 RemoveRole 那边保持一致。
+//
+// 走 mutateConfigCopy（深拷贝 + 换指针）：这里改的是 raw["supervisor"] **嵌套层**，
+// 旧写法「拿 a.cfg.Raw() 原地改、再 settings.New 换顶层指针」换的只是壳 ——
+// 嵌套 map 仍是发布对象那块内存，休息窗 / 托盘的无锁读（CfgSnapshot() 拿指针后
+// 不持锁）撞上就是 concurrent map read and map write，fatal 兜不住。
 func (a *App) renameRoleInSettings(oldName, newName string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg == nil {
-		return
-	}
-	raw := a.cfg.Raw()
-	sup, ok := raw["supervisor"].(map[string]any)
-	if !ok {
-		return
-	}
-	same := func(v any) bool {
-		s, _ := v.(string)
-		return strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(oldName))
-	}
-	changed := false
-	if s, _ := sup["fixedRole"].(string); s != "" && same(s) {
-		sup["fixedRole"] = newName
-		changed = true
-	}
-	if order, ok := sup["order"].([]any); ok {
-		for i, v := range order {
-			if same(v) {
-				order[i] = newName
-				changed = true
+	if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+		raw := s.Raw()
+		sup, ok := raw["supervisor"].(map[string]any)
+		if !ok {
+			return false
+		}
+		same := func(v any) bool {
+			s, _ := v.(string)
+			return strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(oldName))
+		}
+		changed := false
+		if s, _ := sup["fixedRole"].(string); s != "" && same(s) {
+			sup["fixedRole"] = newName
+			changed = true
+		}
+		if order, ok := sup["order"].([]any); ok {
+			for i, v := range order {
+				if same(v) {
+					order[i] = newName
+					changed = true
+				}
 			}
 		}
-	}
-	if !changed {
-		return
-	}
-	s := settings.New(raw, a.cfg.Path())
-	settings.NormalizeForSave(raw)
-	if err := s.Save(); err != nil {
+		if !changed {
+			return false
+		}
+		// NormalizeForSave 本身就是嵌套原地写（settings_norm.go）：只有在深拷贝上
+		// 跑才安全 —— 旧写法把它递给 a.cfg.Raw()，等于在发布对象上再写一遍。
+		settings.NormalizeForSave(raw)
+		return true
+	}); err != nil {
 		log.Printf("[settings] 同步改名后的督休专员配置失败：%v", err)
-		return
 	}
-	a.cfg = s
 }
 
 // RemoveRole 删除督休专员 = 整个督休专员子目录一并删除（name 是专员名）
@@ -291,43 +307,39 @@ func (a *App) RemoveRole(name string) bool {
 
 // clearRoleFromSettings 把已删除的督休专员从配置里摘干净（fixedRole / order）。
 // 拿不到配置就什么都不做（配置还没加载时删目录本来也删不成）。
+// 走 mutateConfigCopy（深拷贝 + 换指针），理由与 renameRoleInSettings 相同：
+// sup["fixedRole"] / sup["order"] 是嵌套层，原地改 = 写发布对象。
 func (a *App) clearRoleFromSettings(name string) {
-	a.mu.Lock()
-	defer a.mu.Unlock()
-	if a.cfg == nil {
-		return
-	}
-	raw := a.cfg.Raw()
-	sup, ok := raw["supervisor"].(map[string]any)
-	if !ok {
-		return
-	}
-	changed := false
-	if s, _ := sup["fixedRole"].(string); s != "" && strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(name)) {
-		sup["fixedRole"] = ""
-		changed = true
-	}
-	if order, ok := sup["order"].([]any); ok {
-		kept := make([]any, 0, len(order))
-		for _, v := range order {
-			if s, _ := v.(string); strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(name)) {
-				changed = true
-				continue
-			}
-			kept = append(kept, v)
+	if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+		raw := s.Raw()
+		sup, ok := raw["supervisor"].(map[string]any)
+		if !ok {
+			return false
 		}
-		sup["order"] = kept
-	}
-	if !changed {
-		return
-	}
-	s := settings.New(raw, a.cfg.Path())
-	settings.NormalizeForSave(raw)
-	if err := s.Save(); err != nil {
+		changed := false
+		if s, _ := sup["fixedRole"].(string); s != "" && strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(name)) {
+			sup["fixedRole"] = ""
+			changed = true
+		}
+		if order, ok := sup["order"].([]any); ok {
+			kept := make([]any, 0, len(order))
+			for _, v := range order {
+				if s, _ := v.(string); strings.EqualFold(strings.TrimSpace(s), strings.TrimSpace(name)) {
+					changed = true
+					continue
+				}
+				kept = append(kept, v)
+			}
+			sup["order"] = kept
+		}
+		if !changed {
+			return false
+		}
+		settings.NormalizeForSave(raw)
+		return true
+	}); err != nil {
 		log.Printf("[settings] 清理已删除督休专员的配置失败：%v", err)
-		return
 	}
-	a.cfg = s
 }
 
 // PickSupervisorImage 新建自定义督休专员（选图 → 建督休专员目录）。

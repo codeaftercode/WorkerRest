@@ -36,7 +36,7 @@
   //（亮色配置 → 浅底，暗色配置 → 深底），再按底色算出对比度够用的文字 / 边框 / 按钮 /
   // 红绿两行说明。判定用 WCAG 相对亮度，不用 HSL 的 l —— 后者对饱和度敏感，
   // 中灰和纯黄的 l 差别很小，但眼睛看到的明暗差很多。
-  var DEFAULT_BG = "#4f7cff";
+  var DEFAULT_BG = "#3d6bf0";
   // 把配置色当“亮色”的门槛（相对亮度）。0.45 约等于 #b9b9b9：比它亮走浅底，否则深底。
   var LIGHT_ENOUGH = 0.45;
 
@@ -144,10 +144,19 @@
     // 倒计时数字：主色本身当字用，深到糊进底色时（如深蓝配深蓝底）往文字方向提亮
     root.setProperty("--num", rgbStr(ensureContrast(src, bot, 4, away)));
     // 主按钮：主色当底，文字颜色按按钮底的实际亮度反选；主色与面板贴太近时
-    // 把按钮底推离面板（否则按钮会“消失”在背景里）
+    // 把按钮底推离面板（否则按钮会“消失”在背景里）。
+    // 文字反选门槛 0.183 = 白字 4.5:1 的亮度上限（1.05/4.5 - 0.05）：按钮文字是
+    // 13px / 600 半粗，按 WCAG AA **正文**对待（不是大字），旧门槛 0.3 只保证白字
+    // 3:1 —— 经典蓝 #4f7cff（亮度 0.233）落在 0.183~0.3 之间，白字实测 3.71 不达标。
+    // 0.183~0.205 之间还有条窄带：白字与深字 #12151e 都到不了 4.5 —— 把按钮底
+    // 明度压进门槛（色相不动；按钮底本来就允许与主色有出入，见上面的 ensureContrast）。
     var pBg = ensureContrast(src, bot, 3, away);
+    var WHITE_TEXT_LUM = 0.183;
+    if (relLum(pBg) > WHITE_TEXT_LUM && contrast(pBg, [18, 21, 30]) < 4.5) {
+      for (var i = 0; i < 24 && relLum(pBg) > WHITE_TEXT_LUM; i++) pBg = mix(pBg, [16, 19, 27], 0.12);
+    }
     root.setProperty("--btn-primary-bg", rgbStr(pBg));
-    root.setProperty("--btn-primary-text", relLum(pBg) > 0.3 ? "#12151e" : "#ffffff");
+    root.setProperty("--btn-primary-text", relLum(pBg) > WHITE_TEXT_LUM ? "#12151e" : "#ffffff");
     // 给探针 / 排查用的标记（不参与渲染）
     document.documentElement.dataset.pbLum = light ? "light" : "dark";
     document.documentElement.dataset.pbBg = toHex(src);

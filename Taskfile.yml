@@ -83,7 +83,8 @@ tasks:
   # ---------- 验证 ----------
 
   smoke:
-    desc: 无头冒烟：前端 → Go 绑定链路
+    desc: 无头冒烟：前端 → Go 绑定链路（先重建无头产物，避免测到上一轮的 exe）
+    deps: [build:server]
     cmds:
       - python scripts/smoke_server.py
 

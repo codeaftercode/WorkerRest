@@ -58,6 +58,61 @@ func TestAutoFlushDoesNotWriteWhenClean(t *testing.T) {
 	}
 }
 
+// TestStatsFlushIntervalFloor 稳态降频：每秒一跳的工作记账不得每 2~3 秒就全量重写
+// 整份历史 + fsync 一次。
+//
+// 修复前的链路是“accountWorkTick → markDirty → 2 秒 AfterFunc → 回调先清 dirty 再
+// Flush”，而每秒又有新的改动把 dirty 立起来 —— 稳态实测约每 3 秒一次全量写盘
+// （8 小时工作日 ≈ 9600 次）。这里钉两件事：
+//   - 距上一次**成功**落盘不足 10 秒时，防抖定时器被推到下限之后（不是 2 秒）；
+//   - 10 秒窗口内实际 Flush 次数 ≤ 1（本用例里是 0：窗口起点刚落过一次盘）；
+//   - 显式 Flush（退出收尾 / 清空统计走的路径）不受下限约束，立即生效。
+func TestStatsFlushIntervalFloor(t *testing.T) {
+	path := t.TempDir() + "/stats.json"
+	st := NewStatsStore(func() string { return path })
+	st.Load()
+	defer st.Stop()
+
+	st.Flush() // 基准：把“上次成功落盘”钉在现在
+	base := st.AutoFlushInfo()
+	if base.Flushes != 1 {
+		t.Fatalf("基准落盘应计 1 次，实际 %d", base.Flushes)
+	}
+	if base.FloorMs != statsFlushFloorMs {
+		t.Fatalf("自检信息应交代下限，实际 %d ms", base.FloorMs)
+	}
+
+	// 模拟稳态的 10 秒：每秒一跳工作记账（循环本身只花几毫秒，时间用手工区间表达）
+	now := st.nowFn()
+	for i := int64(1); i <= 10; i++ {
+		st.accountWorkTick(now+(i-1)*1000, now+i*1000)
+	}
+	info := st.AutoFlushInfo()
+	if n := info.Flushes - base.Flushes; n > 1 {
+		t.Fatalf("10 秒窗口内落盘 %d 次（应 ≤1：稳态降频失效）", n)
+	}
+	if info.Flushes != base.Flushes {
+		t.Fatalf("10 秒窗口内不该因每秒一跳而落盘，实际多了 %d 次", info.Flushes-base.Flushes)
+	}
+	// 定时器必须被推到下限之后 —— 这是“稳态从 3 秒拉到 ~10 秒”的直接证据
+	if info.DueInMs < statsFlushFloorMs-1500 {
+		t.Fatalf("下一次落盘应被推到 ≈%d ms 之后，实际 %d ms（仍按 2 秒防抖在跑）",
+			statsFlushFloorMs, info.DueInMs)
+	}
+
+	// 真等 2.5 秒：旧实现的 2 秒防抖此时必然已经写盘
+	time.Sleep(2500 * time.Millisecond)
+	if got := st.AutoFlushInfo().Flushes; got != base.Flushes {
+		t.Fatalf("距上次落盘不足 10 秒就写了盘（稳态仍是 2~3 秒一次），实际 %d 次", got-base.Flushes)
+	}
+
+	// 收尾路径不受下限约束：进程退出时必须能立即落盘
+	st.Flush()
+	if got := st.AutoFlushInfo().Flushes; got != base.Flushes+1 {
+		t.Fatalf("显式 Flush 应立即生效（退出收尾依赖它），实际 %d 次", got-base.Flushes)
+	}
+}
+
 // 睡眠 / 唤醒：睡眠整段算“离开”，醒来后工作段从零起算。
 func TestNotifySuspendAndResumeCountAway(t *testing.T) {
 	path := t.TempDir() + "/stats.json"

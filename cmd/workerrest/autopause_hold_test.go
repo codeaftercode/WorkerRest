@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"log"
 	"strings"
 	"testing"
@@ -113,9 +112,9 @@ func TestHoldPausedReasonNotDuplicated(t *testing.T) {
 func TestHoldPausedExitLogsOnce(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
 
-	var buf bytes.Buffer
+	buf := &lockedBuffer{}
 	old := log.Writer()
-	log.SetOutput(&buf)
+	log.SetOutput(buf)
 	defer log.SetOutput(old)
 
 	const enter, exit = "进入：勿扰", "退出：勿扰"

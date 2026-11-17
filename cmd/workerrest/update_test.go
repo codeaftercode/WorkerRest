@@ -14,6 +14,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"workerrest/internal/jsonx"
 	"workerrest/internal/settings"
 	"workerrest/internal/update"
 )
@@ -259,7 +260,9 @@ func TestUpdateResultPersistence(t *testing.T) {
 	if a.updateStatus["status"] != "update-available" {
 		t.Fatalf("内存态未更新：%v", a.updateStatus)
 	}
-	if got := cfg.LastUpdateResult(); got == nil || got["latest"] != "9999.0.0" {
+	// 读 a.cfg（而不是构造时的局部 cfg）：persistUpdateResult 走 mutateConfigCopy
+	// 「深拷 + 换指针」，旧对象从此冻结 —— 局部引用看到的是改写前的快照。
+	if got := a.cfg.LastUpdateResult(); got == nil || got["latest"] != "9999.0.0" {
 		t.Fatalf("配置未持久化更新结果：%v", got)
 	}
 	// 落盘文件里应当含 lastUpdateResult
@@ -287,10 +290,10 @@ func TestUpdateResultPersistence(t *testing.T) {
 		t.Fatalf("重启后未恢复“有更新”：%v", a2.updateStatus)
 	}
 
-	// 4) 更新成功后清除
+	// 4) 更新成功后清除（同样读 a2.cfg：clearUpdateResult 是换指针，cfg2 是冻结的旧对象）
 	a2.clearUpdateResult()
-	if cfg2.LastUpdateResult() != nil {
-		t.Fatalf("清除后配置仍残留更新结果：%v", cfg2.LastUpdateResult())
+	if got := a2.cfg.LastUpdateResult(); got != nil {
+		t.Fatalf("清除后配置仍残留更新结果：%v", got)
 	}
 	if a2.updateStatus != nil {
 		t.Fatalf("清除后内存态未清空：%v", a2.updateStatus)
@@ -304,33 +307,28 @@ func TestUpdateResultPersistence(t *testing.T) {
 	if a3.updateStatus != nil {
 		t.Fatalf("失效版本应被清理，却恢复了：%v", a3.updateStatus)
 	}
-	if cfg3.LastUpdateResult() != nil {
-		t.Fatalf("失效版本应在恢复时被清除：%v", cfg3.LastUpdateResult())
+	if got := a3.cfg.LastUpdateResult(); got != nil {
+		t.Fatalf("失效版本应在恢复时被清除：%v", got)
 	}
 }
 
 // TestPendingUpdateReturnsSettingsState 验证自更新重启后，PendingUpdate 会把
 // “更新前设置窗口可见 / 所在 tab”回传给前端，供其恢复页面。
 func TestPendingUpdateReturnsSettingsState(t *testing.T) {
-	dir := t.TempDir()
-	pendingPath := filepath.Join(dir, "pending.json")
-	pending := updatePending{
+	root, exePath, updateDir, _, pendingPath := writePendingLayout(t, updatePending{
 		Version:         "2.0.0",
 		Date:            "2026-10-19",
 		Changes:         []string{"新功能"},
 		SettingsVisible: true,
 		ActiveTab:       "about",
-	}
-	data, _ := json.MarshalIndent(pending, "", "  ")
-	if err := os.WriteFile(pendingPath, data, 0o644); err != nil {
-		t.Fatal(err)
-	}
+	})
+	withCurrentExe(t, exePath)
 	// pendingUpdatePath 是包级变量；还原以免影响其它测试
 	old := pendingUpdatePath
 	defer func() { pendingUpdatePath = old }()
 	pendingUpdatePath = pendingPath
 
-	cfg := settings.New(map[string]any{}, filepath.Join(dir, "settings.json"))
+	cfg := settings.New(map[string]any{}, filepath.Join(root, "settings.json"))
 	a := &App{cfg: cfg, mu: sync.Mutex{}}
 
 	info := a.PendingUpdate()
@@ -345,6 +343,380 @@ func TestPendingUpdateReturnsSettingsState(t *testing.T) {
 	}
 	if info["version"] != "2.0.0" {
 		t.Fatalf("version 应为 2.0.0，实得 %v", info["version"])
+	}
+	// 摘要展示后 update 临时目录被清理（合法路径才清）
+	if _, err := os.Stat(updateDir); !os.IsNotExist(err) {
+		t.Fatalf("展示摘要后应清理 update 临时目录（err=%v）", err)
+	}
+}
+
+// writePendingLayout 造一套「安装目录 + update 暂存目录」的真实形状：
+// <root>/rest.exe（当前程序）、<root>/update/rest.exe（新程序）、<root>/update/pending.json。
+// 返回 root、当前 exe、update 目录、新 exe、pending 路径。
+func writePendingLayout(t *testing.T, p updatePending) (root, exePath, updateDir, newExe, pendingPath string) {
+	t.Helper()
+	root = t.TempDir()
+	exePath = filepath.Join(root, "rest.exe")
+	if err := os.WriteFile(exePath, []byte("OLD"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	updateDir = filepath.Join(root, updateDirName)
+	if err := os.MkdirAll(updateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newExe = filepath.Join(updateDir, newExeName)
+	if err := os.WriteFile(newExe, []byte("NEW"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if p.OldExe == "" {
+		p.OldExe = exePath
+	}
+	if p.NewExe == "" {
+		p.NewExe = newExe
+	}
+	pendingPath = filepath.Join(updateDir, "pending.json")
+	data, err := json.MarshalIndent(p, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(pendingPath, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root, exePath, updateDir, newExe, pendingPath
+}
+
+// withCurrentExe 把「当前程序路径」指到临时目录里的假 exe（校验只认它推导出的安装目录）。
+func withCurrentExe(t *testing.T, exePath string) {
+	t.Helper()
+	old := currentExePath
+	currentExePath = func() (string, error) { return exePath, nil }
+	t.Cleanup(func() { currentExePath = old })
+}
+
+// TestValidatePendingUpdate 钉住自更新的输入校验口径：合法形状只有 StartUpdate 写出来的
+// 那一种；任何一项越界都必须报错（调用方据此不删目录、不覆盖文件）。
+func TestValidatePendingUpdate(t *testing.T) {
+	// 正常 --updated：本进程就是被替换的那个 exe
+	root, exePath, updateDir, newExe, pendingPath := writePendingLayout(t, updatePending{Version: "1.0.1"})
+	if _, err := validatePendingUpdate(pendingPath, exePath); err != nil {
+		t.Fatalf("正常形状应通过校验: %v", err)
+	}
+	// 正常 --self-update：本进程是 update 目录里的 stage 副本，OldExe 是它反推出的那个 exe
+	stageExe := filepath.Join(updateDir, stageNameForExe(exePath))
+	if err := os.WriteFile(stageExe, []byte("STAGE"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validatePendingUpdate(pendingPath, stageExe); err != nil {
+		t.Fatalf("stage 副本形态应通过校验（否则真机自更新会被自己拦下）: %v", err)
+	}
+
+	// ① pending 不在 <安装目录>/update 内：平级目录 / ../ 越界都算
+	sibling := filepath.Join(root, "sibling")
+	if err := os.MkdirAll(sibling, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	siblingPending := filepath.Join(sibling, "pending.json")
+	if err := os.WriteFile(siblingPending, []byte(`{}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validatePendingUpdate(siblingPending, exePath); err == nil {
+		t.Fatalf("update 目录之外的 pending 应被拒绝")
+	}
+	if _, err := validatePendingUpdate(filepath.Join(updateDir, "..", "sibling", "pending.json"), exePath); err == nil {
+		t.Fatalf("用 .. 绕出去的待办路径应被拒绝")
+	}
+
+	// ② OldExe 不是当前程序（指向同目录另一个 exe 也算）
+	victim := filepath.Join(root, "victim.exe")
+	if err := os.WriteFile(victim, []byte("VICTIM"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	badOld := `{"version":"1.0.1","oldExe":"` + jsonEscape(victim) + `","newExe":"` + jsonEscape(newExe) + `"}`
+	if err := os.WriteFile(pendingPath, []byte(badOld), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validatePendingUpdate(pendingPath, exePath); err == nil {
+		t.Fatalf("OldExe 不是当前程序时应被拒绝")
+	}
+	// ②b 同一份 pending 在 self-update 分支里也必须被拒：安装目录内**任意** .exe
+	// 都不能被指定成覆盖目标（否则「rest.stage.exe + oldExe=victim.exe」就能覆盖并执行它）
+	if _, err := validatePendingUpdate(pendingPath, stageExe); err == nil {
+		t.Fatalf("self-update 分支只认由 stage 副本名反推出的那个 exe，victim.exe 应被拒绝")
+	}
+}
+
+// TestValidatePendingUpdateRenamedInstall 用户把便携包里的 rest.exe 改成别的名字后，
+// 自更新仍要能认回「被替换的就是那个 exe」：stage 副本名由安装名派生，不是写死 rest。
+func TestValidatePendingUpdateRenamedInstall(t *testing.T) {
+	root := t.TempDir()
+	exePath := filepath.Join(root, "休息提醒.exe")
+	if err := os.WriteFile(exePath, []byte("OLD"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	updateDir := filepath.Join(root, updateDirName)
+	if err := os.MkdirAll(updateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newExe := filepath.Join(updateDir, newExeName)
+	if err := os.WriteFile(newExe, []byte("NEW"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stageExe := filepath.Join(updateDir, stageNameForExe(exePath))
+	if err := os.WriteFile(stageExe, []byte("STAGE"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pendingPath := filepath.Join(updateDir, "pending.json")
+	body := `{"version":"1.0.1","oldExe":"` + jsonEscape(exePath) + `","newExe":"` + jsonEscape(newExe) + `"}`
+	if err := os.WriteFile(pendingPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validatePendingUpdate(pendingPath, stageExe); err != nil {
+		t.Fatalf("改过名的安装目录也要能自更新（否则相当于堵死一条正常流程）: %v", err)
+	}
+	// 反过来：拿安装目录里的另一个 exe 去冒充 stage 副本，仍要被拒
+	if _, err := validatePendingUpdate(pendingPath, exePath); err != nil {
+		// --updated 形态（本进程就是目标）本来就该通过
+		t.Fatalf("--updated 形态应通过: %v", err)
+	}
+}
+
+// TestValidatePendingUpdateInstallDirNamedUpdate 安装目录本身就叫 update（D:\update\）时，
+// --updated 不能被误判成自更新分支（否则 .bak 的删除范围会跟着抬一级）。
+func TestValidatePendingUpdateInstallDirNamedUpdate(t *testing.T) {
+	root := t.TempDir()
+	installDir := filepath.Join(root, updateDirName) // 安装目录 = .../update
+	if err := os.MkdirAll(installDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exePath := filepath.Join(installDir, "rest.exe")
+	if err := os.WriteFile(exePath, []byte("OLD"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	updateDir := filepath.Join(installDir, updateDirName)
+	if err := os.MkdirAll(updateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	newExe := filepath.Join(updateDir, newExeName)
+	if err := os.WriteFile(newExe, []byte("NEW"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pendingPath := filepath.Join(updateDir, "pending.json")
+	body := `{"version":"1.0.1","oldExe":"` + jsonEscape(exePath) + `","newExe":"` + jsonEscape(newExe) + `"}`
+	if err := os.WriteFile(pendingPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := validatePendingUpdate(pendingPath, exePath); err != nil {
+		t.Fatalf("安装目录叫 update 时 --updated 也应通过: %v", err)
+	}
+}
+
+// TestCheckPendingNewExe 覆盖前的专项检查：新程序必须就在 update 目录内、且是常规文件。
+func TestCheckPendingNewExe(t *testing.T) {
+	root := t.TempDir()
+	updateDir := filepath.Join(root, updateDirName)
+	if err := os.MkdirAll(updateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	good := filepath.Join(updateDir, newExeName)
+	if err := os.WriteFile(good, []byte("NEW"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPendingNewExe(updateDir, good); err != nil {
+		t.Fatalf("正常新程序应通过: %v", err)
+	}
+	outside := filepath.Join(root, "outside.exe")
+	if err := os.WriteFile(outside, []byte("X"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := checkPendingNewExe(updateDir, outside); err == nil {
+		t.Fatalf("update 目录之外的新程序应被拒绝")
+	}
+	if err := checkPendingNewExe(updateDir, filepath.Join(updateDir, "missing.exe")); err == nil {
+		t.Fatalf("不存在的新程序应被拒绝")
+	}
+	if err := checkPendingNewExe(updateDir, updateDir); err == nil {
+		t.Fatalf("目录不是常规文件，应被拒绝")
+	}
+}
+
+// TestPendingUpdateRejectsPendingOutsideUpdateDir ①：`--updated` 指向 update 目录之外的
+// 目录时，一次都不能删 —— 否则一个被改过的快捷方式参数就是「任意目录递归删除」。
+func TestPendingUpdateRejectsPendingOutsideUpdateDir(t *testing.T) {
+	root := t.TempDir()
+	exePath := filepath.Join(root, "rest.exe")
+	if err := os.WriteFile(exePath, []byte("OLD"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	withCurrentExe(t, exePath)
+	// 与安装目录平级的「受害目录」：里面放 pending.json，删它就会丢用户数据
+	victim := filepath.Join(root, "victim")
+	if err := os.MkdirAll(victim, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	victimNew := filepath.Join(victim, "rest.exe")
+	if err := os.WriteFile(victimNew, []byte("NEW"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	pendingPath := filepath.Join(victim, "pending.json")
+	body := `{"version":"9.9.9","oldExe":"` + jsonEscape(exePath) + `","newExe":"` + jsonEscape(victimNew) + `"}`
+	if err := os.WriteFile(pendingPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	old := pendingUpdatePath
+	defer func() { pendingUpdatePath = old }()
+	pendingUpdatePath = pendingPath
+
+	a := &App{cfg: settings.New(map[string]any{}, filepath.Join(root, "settings.json")), mu: sync.Mutex{}}
+	if info := a.PendingUpdate(); info != nil {
+		t.Fatalf("越界的 pending 不该展示摘要：%v", info)
+	}
+	if pendingUpdatePath != "" {
+		t.Fatalf("越界的 pending 应被清空，实得 %q", pendingUpdatePath)
+	}
+	// 删除数为 0：目录和里面两个文件都还在
+	entries, err := os.ReadDir(victim)
+	if err != nil {
+		t.Fatalf("受害目录被删了：%v", err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("受害目录里应仍有 2 个文件，实得 %d", len(entries))
+	}
+	if b, err := os.ReadFile(victimNew); err != nil || string(b) != "NEW" {
+		t.Fatalf("受害目录里的文件被改动：%q %v", b, err)
+	}
+}
+
+// TestRunSelfUpdateRejectsForeignOldExe ②：pending 里的 OldExe 不是当前 exe 时，
+// runSelfUpdate 必须什么都不做 —— 既不改名备份，也不把 NewExe 覆盖上去。
+// 同时覆盖「安装目录里任意 .exe 都能被指定覆盖」这条窄口（self-update 分支）：
+// 复现路径是造 <root>/update/{pending.json, rest.stage.exe} 再让 OldExe 指向 <root>/victim.exe。
+func TestRunSelfUpdateRejectsForeignOldExe(t *testing.T) {
+	root, exePath, updateDir, newExe, _ := writePendingLayout(t, updatePending{Version: "1.0.1"})
+	if err := os.WriteFile(exePath, []byte("CURRENT"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(root, "victim.exe")
+	if err := os.WriteFile(victim, []byte("VICTIM"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stageExe := filepath.Join(updateDir, stageNameForExe(exePath))
+	if err := os.WriteFile(stageExe, []byte("STAGE"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	// pending 指向同目录里的另一个 exe：两种入口都必须拒绝
+	pendingPath := filepath.Join(updateDir, "pending.json")
+	body := `{"version":"1.0.1","oldExe":"` + jsonEscape(victim) + `","newExe":"` + jsonEscape(newExe) + `"}`
+	if err := os.WriteFile(pendingPath, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	// ① --self-update 形态（本进程是 stage 副本）
+	withCurrentExe(t, stageExe)
+	runSelfUpdate(pendingPath)
+	// ② --updated 形态（本进程就是安装目录里的 exe）
+	withCurrentExe(t, exePath)
+	runSelfUpdate(pendingPath)
+
+	if b, err := os.ReadFile(victim); err != nil || string(b) != "VICTIM" {
+		t.Fatalf("外来的 OldExe 被覆盖了：%q %v", b, err)
+	}
+	if b, err := os.ReadFile(exePath); err != nil || string(b) != "CURRENT" {
+		t.Fatalf("当前 exe 不该被动：%q %v", b, err)
+	}
+	if _, err := os.Stat(victim + ".bak"); !os.IsNotExist(err) {
+		t.Fatalf("被拒绝的路径不该留下 .bak（err=%v）", err)
+	}
+	if b, err := os.ReadFile(newExe); err != nil || string(b) != "NEW" {
+		t.Fatalf("新 exe 不该被动：%q %v", b, err)
+	}
+}
+
+// jsonEscape 把路径转成 JSON 字符串字面量（Windows 路径带反斜杠，手拼会坏）。
+func jsonEscape(s string) string {
+	b, err := json.Marshal(s)
+	if err != nil {
+		return ""
+	}
+	return string(b[1 : len(b)-1])
+}
+
+// TestCheckForUpdateWritesSitesUnderLock 配置写入路径：并发跑 checkForUpdate 的同时
+// 反复「拿快照读配置」（设置页 / 调度器 / 外卖窗口都是这种读法），必须不 panic。
+// 修复前这里是「无锁原地改 raw」，配合下面的读法就是 Go 运行时的
+// "concurrent map read and map write" —— fatal，recover 兜不住（用 -race 跑更直接）。
+func TestCheckForUpdateWritesSitesUnderLock(t *testing.T) {
+	t.Setenv("WR_SETTINGS_PATH", filepath.Join(t.TempDir(), "settings.json"))
+	const sum = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+	wantSites := []string{"https://a.example/version.json", "https://b.example/version.json"}
+	body := `{"version":"v999.0.0","url":["https://a.example/rest.zip"],` +
+		`"sites":["https://a.example/version.json","https://b.example/version.json"],` +
+		`"sha256":"` + sum + `"}`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(body))
+	}))
+	defer srv.Close()
+
+	cfg := settings.New(settings.DefaultSettingsMap(), "")
+	cfg.SetSites([]string{srv.URL + "/version.json"}) // 回环 http 源，单测专用
+	a := &App{cfg: cfg, mu: sync.Mutex{}}
+	// 修复前的原地改会把这份「旧对象」也写脏，这里留个句柄好断言
+	before := a.CfgSnapshot()
+
+	// 并发读：模拟设置页 / 外卖窗口「拿快照后不再持锁」的读法
+	stop := make(chan struct{})
+	var readers sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		readers.Add(1)
+		go func() {
+			defer readers.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				s := a.CfgSnapshot()
+				_ = s.UpdateSites()
+				_ = s.AppearanceCfg()
+				_ = s.Flag(true, "checkUpdateOnStart")
+			}
+		}()
+	}
+
+	var checkers sync.WaitGroup
+	for i := 0; i < 8; i++ {
+		checkers.Add(1)
+		go func() {
+			defer checkers.Done()
+			if st := a.checkForUpdate(); st.Status == "" {
+				t.Errorf("checkForUpdate 返回了空状态")
+			}
+		}()
+	}
+	checkers.Wait()
+	close(stop)
+	readers.Wait()
+
+	// 远程下发的 sites 落到了当前配置（并已落盘）
+	if got := a.CfgSnapshot().UpdateSites(); !reflect.DeepEqual(got, wantSites) {
+		t.Fatalf("远程下发的 sites 未写入：%v", got)
+	}
+	// 但**不能原地改**：替换前的对象必须保持原样，否则快照读仍会与写并发
+	if got := before.UpdateSites(); !reflect.DeepEqual(got, []string{srv.URL + "/version.json"}) {
+		t.Fatalf("旧配置对象被原地改写了：%v", got)
+	}
+	data, err := os.ReadFile(os.Getenv("WR_SETTINGS_PATH"))
+	if err != nil {
+		t.Fatalf("配置未落盘: %v", err)
+	}
+	var onDisk map[string]any
+	if err := json.Unmarshal(data, &onDisk); err != nil {
+		t.Fatalf("落盘 JSON 解析失败: %v", err)
+	}
+	if got := jsonx.AnySliceToStrings(onDisk["sites"]); !reflect.DeepEqual(got, wantSites) {
+		t.Fatalf("落盘里的 sites 不符：%v", got)
 	}
 }
 

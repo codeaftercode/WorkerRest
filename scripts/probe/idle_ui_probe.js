@@ -56,12 +56,33 @@ async function textLeft(page, sel) {
   return await page.evaluate((s) => {
     const el = document.querySelector(s);
     if (!el) return null;
-    const tn = [...el.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+    let tn = [...el.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim());
+    if (!tn) {
+      // 2026-11 起 settings.js 的 qTipHostOf 会把「?」左侧的文字包进 span.q-tip-host
+      //（提示语改自绘浮层，见 setQTip），直接子文本节点可能已不存在 —— 退化为
+      // 深度第一个非空文本节点，两种 DOM 形态都取得到“文字那一段”。
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, null);
+      let n;
+      while ((n = walker.nextNode())) {
+        if (n.textContent.trim()) { tn = n; break; }
+      }
+    }
     if (!tn) return null;
     const r = document.createRange();
     r.selectNodeContents(tn);
     const b = r.getBoundingClientRect();
     return { x: Math.round(b.x), y: Math.round(b.y), w: Math.round(b.width) };
+  }, sel);
+}
+
+// 「?」提示语统一读取口径（readTip 的 Node 侧文档）：文案存 dataset.tip
+//（setQTip 会摘掉 title —— 只留自绘浮层，否则冒出两个提示），title / aria-label
+// 只作旧形态与读屏兜底。谁直接读 getAttribute("title") 谁腐化 —— 2026-11-16 曾因此 8 项假红。
+async function readTip(page, sel) {
+  return await page.evaluate((s) => {
+    const el = document.querySelector(s);
+    if (!el) return "";
+    return (el.dataset && el.dataset.tip) || el.getAttribute("title") || el.getAttribute("aria-label") || "";
   }, sel);
 }
 
@@ -151,7 +172,9 @@ async function main() {
       const afterLabel = document.querySelector('label:has(#idlePause) .q-mark');
       return {
         tailText: row.querySelector(".tail").textContent.trim(),
-        tailTitle: q ? q.getAttribute("title") : "",
+        tailTitle: q
+          ? (q.dataset.tip || q.getAttribute("title") || q.getAttribute("aria-label") || "")
+          : "",
         qInTail: !!q,
         qAfterLabel: !!afterLabel,
       };
@@ -221,21 +244,18 @@ async function main() {
     const c5 = await setNumber(page, "#idlePauseMin", "45");
     check(c5.idlePauseMin === 45, "填 45 原样保存", `cfg=${c5.idlePauseMin}`);
     // 「暂停休息时」的“?”说明里带着当前分钟数：改完必须同步，不能还停在旧数字。
-    const hint45 = await page.evaluate(() =>
-      document.querySelector(".pause-scope-help")?.getAttribute("title") || "");
+    const hint45 = await readTip(page, ".pause-scope-help");
     check(/系统空闲\s*45\s*分钟/.test(hint45), "改分钟数后「暂停休息时」提示语同步成 45", hint45);
     const c6 = await setNumber(page, "#idlePauseMin", "");
     check(c6.idlePauseMin === 5, "清空回落默认 5", `cfg=${c6.idlePauseMin}`);
-    const hint5 = await page.evaluate(() =>
-      document.querySelector(".pause-scope-help")?.getAttribute("title") || "");
+    const hint5 = await readTip(page, ".pause-scope-help");
     check(/系统空闲\s*5\s*分钟/.test(hint5), "回落 5 后提示语也跟着回退", hint5);
 
     // 口径现状（不是缺陷判定）：取消勾选后这条提示语仍列「系统空闲 N 分钟自动暂停」，
     // 因为原设计列的是**所有可能**导致暂停的情况（勿扰 / 应用占用那条也照列，
     // 不管开关勾没勾）。这里钉住行为，是否要按开关状态改写由产品口径决定。
     await setCheckbox(page, "#idlePause", false);
-    const hintOff = await page.evaluate(() =>
-      document.querySelector(".pause-scope-help")?.getAttribute("title") || "");
+    const hintOff = await readTip(page, ".pause-scope-help");
     check(/系统空闲/.test(hintOff), "取消勾选后提示语仍列空闲（既有口径：列全部可能情况）", hintOff);
     await setCheckbox(page, "#idlePause", true);
 

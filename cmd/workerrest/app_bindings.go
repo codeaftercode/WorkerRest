@@ -46,18 +46,17 @@ func (a *App) ListDisplays() []display.Info {
 }
 
 // rememberDisplays 把枚举结果记进历史目录（调用方已确认 list 非空）。
+//
+// 走 mutateConfigCopy（新对象 + 换指针）：takeout_windows.go 的后台读点会拿
+// CfgSnapshot() 的指针后不持锁读 DisplayIDs()，原地改 raw 就是数据竞争。
+// 另外只有目录真的变了才落盘 —— 否则每打开一次设置页都要重写一遍配置。
 func (a *App) rememberDisplays(list []display.Info) {
 	if len(list) == 0 {
 		return
 	}
-	a.mu.Lock()
-	if a.cfg == nil || !a.cfg.RememberDisplays(list, time.Now()) {
-		a.mu.Unlock()
-		return
-	}
-	err := a.cfg.Save()
-	a.mu.Unlock()
-	if err != nil {
+	if err := a.mutateConfigCopy(func(s *settings.Settings) bool {
+		return s.RememberDisplays(list, time.Now())
+	}); err != nil {
 		log.Printf("[display] 历史显示器目录落盘失败: %v", err)
 	}
 }

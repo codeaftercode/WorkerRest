@@ -291,6 +291,16 @@ type StatsStore struct {
 	saveTimer           *time.Timer
 	autoFlushTicks      int
 	autoFlushIntervalMs int
+	// lastFlushAt 上一次**成功**落盘的墙钟时刻（0 = 本进程还没写过盘）。
+	// 稳态降频的唯一依据：距它不足 statsFlushFloorMs 时，防抖定时器把落盘往后推
+	//（见 flushWaitLocked）。只由 Flush 在写成功后更新，所以写失败不会把下限算错。
+	lastFlushAt int64
+	// flushDueAt 当前挂着的防抖定时器“按墙钟算”该在什么时候落盘（0 = 没有挂着的定时器）。
+	// 只用于自检 / 单测观测“下一次落盘被推到了多久之后”，不参与落盘判定。
+	flushDueAt int64
+	// flushCount 本进程实际落盘次数（含显式 Flush 与异常路径的立即写）。
+	// 自检项：稳态降频之后，它涨得比改动次数慢得多，才能证明下限真的生效。
+	flushCount int64
 
 	// 进行中休息的记账上下文：
 	//   breakLogType 为空 = 当前没有休息在计时；

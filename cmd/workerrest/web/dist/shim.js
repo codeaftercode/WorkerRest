@@ -51,16 +51,123 @@
     return Array.isArray(v) ? v : [];
   }
 
+  // --- 绑定调用的实参个数表 ---
+  // 为什么要有：Wails 会校验 Go 方法的形参个数，多传/少传直接 422，而 call() 的 catch
+  // 会把错误吞成 null —— 界面静默降级、控制台只有一行日志。原先这张“名字契约”只看
+  // 方法在不在，Go 侧给方法加一个参数时 **go test 全绿、前端却挂**。
+  //
+  // 三处必须一致（Go 侧 contract_test.go 的 TestShimMatchesContract 会做三方比对，
+  // 不一致直接 fail，所以正常构建下这里不可能漂移）：
+  //   1. 本表；2. 下面每个调用点的实参数组；3. Go 侧 contract.go 的 wiredArity
+  //      （= 方法签名里反射出来的形参个数）。
+  // 改 Go 方法签名 → 同步本表 + 调用处；改这里忘了改 Go 会当场被 go test 拦住。
+  //
+  // >>> arity-begin（以下区块被 contract_test.go 逐条解析，别删标记）
+  var ARITY = {
+    // ---- 休息窗口 ----
+    BreakCurrent: 1, // (win)
+    Action: 2, // (win, name)
+    PreviewBreak: 2, // (type, forceKey)
+    StartBreak: 1, // (kind)
+
+    // ---- 通用 / 窗口 ----
+    CloseWindow: 1, // (win)
+    SupActivity: 1, // (win)
+    GetState: 0,
+    WindowMaximized: 0,
+    QuitApp: 0,
+    ListDisplays: 0,
+    KnownDisplays: 0,
+
+    // ---- 设置读写 ----
+    GetSettings: 0,
+    SaveSettings: 1, // (settings)
+    ResetSettings: 0,
+    BuiltinMsgDefaults: 0,
+
+    // ---- 督休专员目录 ----
+    ListRoles: 0,
+    SaveRole: 2, // (key, cfg)
+    RemoveRole: 1, // (key)
+    PickSupervisorImage: 0,
+    ReplaceRoleImage: 1, // (key)
+    RoleFigureDataURL: 1, // (key)
+    SaveRolePreview: 2, // (key, dataURL)
+    SupervisorPreview: 2, // (sup, key)
+
+    // ---- 关于页 / 更新 / 外链 ----
+    AppInfo: 0,
+    UpdateStatus: 0,
+    CheckUpdate: 0,
+    StartUpdate: 0,
+    PendingUpdate: 0,
+    IgnoreVersion: 1, // (version)
+    OpenExternal: 1, // (url)
+    ExportReport: 2, // (name, b64)
+    GetThirdPartyNotices: 0,
+    ExportThirdPartyNotices: 0,
+    GetProjectLicense: 0,
+    ExportProjectLicense: 0,
+
+    // ---- 窗口 / 自更新重启恢复 ----
+    ShowSettingsWindow: 0,
+    SetActiveTab: 1, // (tab)
+
+    // ---- 统计 ----
+    GetStats: 0,
+    GetHistory: 2, // (start, end)
+    ClearStats: 0,
+    GetStatsFileNotice: 0,
+    AckStatsFileNotice: 0,
+
+    // ---- 声音 ----
+    SoundFileURL: 1, // (file)
+    AddMusicSound: 0,
+    DeleteMusicSound: 1, // (file)
+    GetSoundScanNotice: 0,
+    ImportScannedSounds: 1, // (files)
+    DropMissingSounds: 1, // (ids)
+    DismissSoundScan: 0,
+
+    // ---- 指定应用运行时暂停 ----
+    ListRunningApps: 0,
+    PickAppExe: 0,
+
+    // ---- 提前提示窗口 ----
+    PreBreakState: 0,
+    PreBreakAction: 1, // (action)
+
+    // ---- 自动暂停期间的“已暂停多久”提示 ----
+    PauseNoticeResume: 0,
+    PauseNoticeDismiss: 0,
+
+    // ---- 外卖窗口 ----
+    TakeoutCurrent: 1, // (win)
+    PreviewTakeout: 1, // (win)
+    TakeoutAction: 2, // (win, action)
+  };
+  // <<< arity-end
+
   /**
    * 调一个 Go 绑定。args 是传给 Go 方法的参数（不含窗口名——窗口名由调用处补）。
    * 失败时 resolve 成 null 并打日志：渲染层对 null 都已有兜底分支。
    */
   function call(method, args) {
     var full = "main.App." + method;
+    var argv = args || [];
+    // 个数校验前置。ARITY 里没登记的方法不校验（向后兼容：万一漏登记，宁可不查
+    // 也不要炸掉现有调用）。真不一致时**同步抛错**，不走下面的 catch —— 这条链路
+    // 的整个病灶就是“422 被吞成 null、界面静默降级”，再吞一次等于没校验。
+    // 正常情况下到不了这里：Go 侧 contract_test 已把表、调用处、Go 签名三方对齐。
+    if (ARITY[method] !== undefined && argv.length !== ARITY[method]) {
+      throw new Error(
+        "[shim] " + full + " 期望 " + ARITY[method] + " 个参数，实际 " + argv.length + " 个"
+      );
+    }
     return runtime()
       .then(function (rt) {
         if (!rt) return null;
-        return rt.Call.ByName.apply(rt.Call, [full].concat(args || []));
+        return rt.Call.ByName.apply(rt.Call, [full].concat(argv));
       })
       .catch(function (err) {
         console.error("[shim] 绑定调用失败 " + full + ":", err);

@@ -7604,7 +7604,7 @@
     });
   }
   var ACCENT_PRESETS = [
-    { hex: "#4f7cff", name: "经典蓝" },
+    { hex: "#3d6bf0", name: "经典蓝" },
     { hex: "#2d9cdb", name: "天青" },
     { hex: "#12a594", name: "松石绿" },
     { hex: "#2e9e5b", name: "森林绿" },
@@ -7617,7 +7617,7 @@
     { hex: "#9a6a4f", name: "摩卡棕" },
     { hex: "#5a6474", name: "石墨灰" }
   ];
-  var DEFAULT_ACCENT = "#4f7cff";
+  var DEFAULT_ACCENT = "#3d6bf0";
   function normalizeHex(raw) {
     const s = String(raw ?? "").trim().replace(/^#/, "");
     if (/^[0-9a-f]{3}$/i.test(s)) return `#${s[0]}${s[0]}${s[1]}${s[1]}${s[2]}${s[2]}`.toLowerCase();

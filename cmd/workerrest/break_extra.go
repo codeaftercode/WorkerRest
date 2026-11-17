@@ -31,8 +31,9 @@ func (a *App) OnBreakExtra(kind string, at int64) bool {
 		return false
 	}
 	name := a.cfg.BreakNameByID(kind)
-	// pickMessage 会推进顺序游标 / 用 rng，必须在锁内调（与 ShowBreakSession 同口径）
-	text := strings.Join(a.pickMessage(kind, name), " ")
+	// pickMessage 会推进顺序游标 / 用 rng，必须在锁内调（与 ShowBreakSession 同口径）；
+	// 顺手把锁内这份配置当快照传进去，提醒内容就只从这一份读。
+	text := strings.Join(a.pickMessage(a.cfg, kind, name), " ")
 	a.mu.Unlock()
 	a.addBreakExtra(model.BreakExtra{Kind: kind, Name: name, Text: text, At: at})
 	return true

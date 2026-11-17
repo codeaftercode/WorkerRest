@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -18,6 +19,31 @@ import (
 // 背景（2026-11-05 真机）：一份 11.2 MB 的 app.log 里有 6.78 MB 是
 // Wails debug 绑定日志带出的立绘 base64，最长单行 266 KB；而滚动始终没生效，
 // 目录里只有 app.log 一份。这组用例把两条根因都钉死。
+
+// lockedBuffer 是 log.SetOutput 的测试接收器：日志是全局的，后台 goroutine（调度循环、
+// 滚动 / 清理）随时可能写，裸 bytes.Buffer 一边被写一边被读就是 DATA RACE。
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+
+func (l *lockedBuffer) String() string {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.String()
+}
+
+func (l *lockedBuffer) Len() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Len()
+}
 
 func TestGuardWriterPassesShortLines(t *testing.T) {
 	var buf bytes.Buffer
@@ -190,9 +216,9 @@ func TestMediaContentNeverLandsInLog(t *testing.T) {
 
 // Debugf 默认静默，只有 WR_LOG_LEVEL=debug 才输出 —— 未开启时连格式化都不做。
 func TestDebugfGatedByLogLevel(t *testing.T) {
-	var buf bytes.Buffer
+	buf := &lockedBuffer{}
 	old := log.Writer()
-	log.SetOutput(&buf)
+	log.SetOutput(buf)
 	defer log.SetOutput(old)
 
 	t.Setenv("WR_LOG_LEVEL", "")

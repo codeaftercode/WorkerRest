@@ -108,6 +108,39 @@ func TestTakeoutPostponeFloor(t *testing.T) {
 	}
 }
 
+// TestPickMessageUsesSnapshot 提醒内容只从调用方给的配置快照读：
+// 即使 live 配置里是另一套内容，也必须按快照取（配置写入是「整体替换指针」，
+// 快照读才不会与并发保存撞上）。同时覆盖顺序游标仍被推进（游标/随机源要锁，不能省）。
+func TestPickMessageUsesSnapshot(t *testing.T) {
+	live := testSettings(t, `{"reminderMessages":{"takeout":{"order":"fixed","fixedId":"l1",
+		"items":[{"id":"l1","text":"live 内容","enabled":true}]}}}`)
+	snap := testSettings(t, `{"reminderMessages":{"takeout":{"order":"fixed","fixedId":"s1",
+		"items":[{"id":"s1","text":"快照内容","enabled":true}]}}}`)
+	a := &App{cfg: live, rng: rand.New(rand.NewSource(1)), cursor: make(map[string]int)}
+
+	a.mu.Lock()
+	got := a.pickMessage(snap, "takeout", "外卖提醒")
+	a.mu.Unlock()
+	if len(got) != 1 || got[0] != "快照内容" {
+		t.Fatalf("应从传入的快照取内容，实得 %v（live 配置里是“live 内容”）", got)
+	}
+
+	// 顺序模式：游标仍然按“类别”推进（这部分状态仍由 a.mu 保护，与配置读分开）
+	seq := testSettings(t, `{"reminderMessages":{"short":{"order":"sequence",
+		"items":[{"id":"a","text":"甲","enabled":true},{"id":"b","text":"乙","enabled":true}]}}}`)
+	a.mu.Lock()
+	first := a.pickMessage(seq, "short", "短休息")
+	cursorAfterFirst := a.cursor["msg-short"]
+	second := a.pickMessage(seq, "short", "短休息")
+	a.mu.Unlock()
+	if len(first) != 1 || len(second) != 1 || first[0] == second[0] {
+		t.Fatalf("顺序模式应按游标轮换，实得 %v / %v", first, second)
+	}
+	if cursorAfterFirst != 1 {
+		t.Fatalf("顺序游标未被推进：%v", a.cursor)
+	}
+}
+
 // TakeoutPostponeMin 的取值域 0–120：0 = 不允许推迟；负值夹到 0；越界夹到 120；
 // 缺键（未归一化的裸配置）按 0（关）兜底 —— 生产配置都经过 normalizeLoad，缺键落出厂默认 2
 func TestTakeoutPostponeMinClamp(t *testing.T) {

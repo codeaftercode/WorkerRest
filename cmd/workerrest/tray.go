@@ -7,6 +7,7 @@ import (
 	"time"
 	"workerrest/internal/logx"
 	"workerrest/internal/model"
+	"workerrest/internal/scheduler"
 	"workerrest/internal/settings"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -166,7 +167,10 @@ type trayLabels struct {
 	// 菜单里明明写着“提前结束休息”却点不动、点了只在日志里留一句“被拒”，
 	// 比可点但没反应更清楚 —— 灰色在点之前就把话说完了。
 	actionOff bool
-	valid     bool // false = 还没写过；首写一律全量落一次
+	// stale 上一次刷新时调度器心跳是否已判定停摆。只用来把“进入停摆 / 恢复”各记一条
+	// 日志 —— 托盘每秒刷新，不按翻转记的话日志会被刷成每秒一条。
+	stale bool
+	valid bool // false = 还没写过；首写一律全量落一次
 }
 
 // toggleAutostart 托盘勾选框：翻转 settings.autostart → 落盘 → 同步注册表 → 通知设置页。
@@ -206,6 +210,13 @@ func (a *App) refreshTray() {
 	st := a.sched.StateForRenderer()
 	tip, statusText, actionText, pauseText := trayTextsAt(st, a.allAutoReasonsCleared(),
 		a.pauseHoldSnapshot(), nowMs())
+	// 调度器心跳：超过阈值没更新就说明调度循环卡住了（卡在锁段 / 宿主回调里，ticker
+	// 还在转但 onTick 再也回不来）。这种情况下进程活着、日志干净，用户只会觉得
+	// “今天怎么一次都没提醒”—— 这里把它变成看得见的：日志一条 + 托盘文案改成异常提示。
+	// 只做检测，不自动重建调度器（重建要成对清理会话 / 窗口 / 统计，另立任务）。
+	staleMs := a.sched.HeartbeatStaleFor()
+	var stale bool
+	tip, statusText, stale = trayHeartbeatTexts(tip, statusText, staleMs)
 	// 开机自启动的勾以**配置**为准（不是以“刚才点了什么”为准）：设置页里改、导入配置改、
 	// 恢复默认改，都会走到这里把托盘那一项对齐。
 	next := trayLabels{
@@ -217,10 +228,36 @@ func (a *App) refreshTray() {
 		// 置灰按**当前这次提醒自己的配置**判，与 schedEndBreak 的拦截同一口径：
 		// 菜单写着“提前结束休息”却点不动，正是配置说的那件事，不必等点了才知道。
 		actionOff: a.trayActionOff(st),
+		stale:     stale,
 		valid:     true,
+	}
+	a.mu.Lock()
+	wasStale := a.trayLast.stale
+	a.mu.Unlock()
+	if stale != wasStale {
+		if stale {
+			log.Printf("[tray] 调度器心跳停滞 %d 秒（阈值 %d 秒）：休息提醒可能已失效，托盘已标注异常",
+				staleMs/1000, scheduler.HeartbeatStaleMs/1000)
+		} else {
+			log.Printf("[tray] 调度器心跳恢复（最近一次心跳 %d 毫秒前）", staleMs)
+		}
 	}
 	a.applyTrayLabels(tray, status, action, pause, auto, next)
 	a.syncTimedPauseMenu(st)
+}
+
+// trayHeartbeatTexts 按心跳滞后时长改写托盘提示与状态行（纯函数，便于单测）。
+//
+// 停摆时**只换文字、不换其它菜单项**：动作项 / 暂停项照旧可用 —— 用户看到异常提示后
+// 第一件想做的事往往是“手动点一次立即休息”，把菜单也冻住只会更糟。
+// 返回的 stale 供调用方做“进入 / 恢复”各记一条日志（每秒刷新不能每秒都写日志）。
+func trayHeartbeatTexts(tip, status string, staleMs int64) (string, string, bool) {
+	if staleMs <= scheduler.HeartbeatStaleMs {
+		return tip, status, false
+	}
+	sec := staleMs / 1000
+	return fmt.Sprintf("调度器已停摆 %d 秒，休息提醒可能失效", sec),
+		fmt.Sprintf("状态：调度器停摆 %d 秒", sec), true
 }
 
 // timedPauseLabels 子菜单四项的标签，按暂停状态切换。

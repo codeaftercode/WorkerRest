@@ -17,7 +17,7 @@ import (
 func newExtraApp(t *testing.T, cfgJSON string) *App {
 	t.Helper()
 	t.Setenv("WR_STATS_PATH", filepath.Join(t.TempDir(), "stats.json"))
-	return &App{
+	a := &App{
 		cfg:             testSettings(t, cfgJSON),
 		rolesRoot:       t.TempDir(),
 		rng:             rand.New(rand.NewSource(1)),
@@ -26,6 +26,13 @@ func newExtraApp(t *testing.T, cfgJSON string) *App {
 		takeoutPreFired: map[string]bool{},
 		idle:            idle.NewIdleState(),
 	}
+	// 统计必须在测试收尾时停掉（与生产 ServiceShutdown 里的 a.stopStats() 同一份契约）：
+	// Stop 之后 2 秒的那个 Flush AfterFunc 还会跑，它写盘前会 MkdirAll —— 那时
+	// t.TempDir 已经被清掉，目录被重新建出来，RemoveAll 只会失败在 "directory is not empty"。
+	// 先建好再注册：statsStore() 是懒建的，晚建出来的那一份不会落进这个 Cleanup。
+	a.statsStore()
+	t.Cleanup(func() { a.statsStore().Stop() })
+	return a
 }
 
 const extraCfg = `{
