@@ -30,9 +30,47 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))  # 项目根（原 rewrite-go，现已提升为顶层）
 EXE = os.path.join(ROOT, "build", "bin", "rest_server.exe")
 DIST = os.path.join(ROOT, "cmd", "workerrest", "web", "dist")
-# 印泥变体档数：与 scripts/make_seal_ink.py 的 VARIANTS、两份 JS 的 SEAL_VARIANTS 一致。
-# 这里只断言“挑中的那一档在 1~N 之间且文件存在”——不断言具体是几号（那是随机的）。
-SEAL_VARIANTS = 6
+# 题名牌与立绘允许的最大重叠面积占比。必须与 web/dist 的 break.js / takeout.js 里
+# RT_OVERLAP_RATIO 同值 —— 2026-11-17 起“零遮挡”不再是承诺，改成“允许少许重叠、
+# 立绘在上层把牌的一条边压住”。探针比产品严会误报，比产品宽会假绿。
+OVERLAP_MAX = 0.20
+
+
+def _seal_pair(ink, spk, key=None, lay=None, ink_box=None):
+    """牌底是否现场生成、尺寸自洽，且牌外**没有**碎印泥层。
+
+    2026-11-17 起牌子改为按**实际像素尺寸**现场生成（seal.js），--rt-ink 是 data: URI，
+    renderer_probe.js 归一化成 'data:seal'。同日删掉了全部预制 SVG：牌子的可见性由
+    data-rt 门控（applySealInk 与 data-rt 在同一个同步块里），正常路径下预制件连一帧都
+    渲染不出来，兜底只剩 CSS 里的纯色墨块。所以 'css-fallback' 不再是"另一条合法路径"，
+    而是 seal.js 没生效的故障信号。
+
+    2026-11-18：牌外那圈碎印泥（--rt-specks + ::after）整层删除（用户决定）。spk 不再
+    要求是 data: URI，反而**必须为空** —— 有人把它加回来这条当场红。
+    key 形如 "宽x高#种子"，用来核对"墨块 viewBox = 盒子实际像素"，这是不拉伸的核心。
+    """
+    ink, spk = str(ink or ""), str(spk or "")
+    if spk:
+        return False, "牌外仍有碎点层（specks=%r，2026-11-18 已删除）" % (spk,)
+    if ink == "data:seal":
+        if not key or not re.fullmatch(r"\d+x\d+#\d+", str(key)):
+            return False, "key=%r（现场生成缺尺寸/种子标记）" % (key,)
+        if isinstance(lay, dict):
+            want = "%dx%d" % (int(lay.get("w") or 0), int(lay.get("h") or 0))
+            if str(key).split("#")[0] != want:
+                return False, "key=%s 与布局尺寸 %s 不一致（墨块会被拉伸）" % (key, want)
+            wid, hei = int(lay.get("w") or 0), int(lay.get("h") or 0)
+            if ink_box is not None:
+                if not (isinstance(ink_box, list) and len(ink_box) == 2):
+                    return False, "inkBox=%r（解不出墨块 viewBox）" % (ink_box,)
+                if [int(ink_box[0]), int(ink_box[1])] != [wid, hei]:
+                    return False, "墨块 viewBox=%sx%s ≠ 牌子 %dx%d（会被缩放）" % (
+                        ink_box[0], ink_box[1], wid, hei)
+        return True, "data key=%s" % (key,)
+    # 预制件已删：走到这里说明牌子压根没被生成过，只剩 CSS 兜底的纯色墨块。
+    if ink == "css-fallback":
+        return False, "牌子停在 CSS 兜底墨块：seal.js 没生效（ink=%r）" % (ink,)
+    return False, "ink=%r（应为 data:seal，现场生成）" % (ink,)
 
 
 def role_dir(root, name):
@@ -154,6 +192,29 @@ def check(ok, label, detail=""):
     if not ok:
         failures.append(label + (("  | " + str(detail)) if detail else ""))
     return ok
+
+
+def _name_matches(full, shown):
+    """牌面文字是否与专员名一致：等于原名，或是“首段 + … + 尾段”的中间省略。
+
+    2026-11-17 起长名只允许两种降级：缩字号、中间省略（落盘名不变），不再折列。
+    这里只校验形状（首尾都在、前半比后半多留一个字），不校验字数 —— 字数由几何
+    反解，探针不复刻那套算术。
+    """
+    if not shown:
+        return False
+    if shown == full:
+        return True
+    if "…" not in shown:
+        return False
+    head, _, tail = shown.partition("…")
+    if not head or not tail:
+        return False
+    if not (full.startswith(head) and full.endswith(tail)):
+        return False
+    if len(head) + len(tail) >= len(full):
+        return False
+    return len(head) == (len(head) + len(tail) + 1) // 2
 
 
 def _rel_lum_hex(hexs):
@@ -396,9 +457,9 @@ def main():
               stg.get("supGallery"))
         check((stg.get("supGalleryAdd") or 0) == 1, "画廊末尾恰好 1 个“新建督休专员”磁贴",
               stg.get("supGalleryAdd"))
-        # 预览面板的名字牌：必须与真实提醒窗口同款“竖排金字 + 红印泥墨块 + 牌外碎点环”。
-        # 旧版是圆角胶囊小徽标（纯 --accent 底），预览与真机对不上 —— 这几条钉住四个特征：
-        # 竖排、双层 clip、牌底是墨块图、碎点挂在负 inset 的伪元素上。
+        # 预览面板的名字牌：必须与真实提醒窗口同款“竖排金字 + 红印泥墨块”。
+        # 旧版是圆角胶囊小徽标（纯 --accent 底），预览与真机对不上 —— 这几条钉住三个特征：
+        # 竖排、双层 clip、牌底是墨块图（牌外碎点 2026-11-18 已整层删除，另有一条负向断言）。
         _pn = stg.get("supPreviewName") or {}
         check(bool(_pn.get("text")),
               "督休专员预览：名字牌承载说话人名（不再是台词里手写）", _pn.get("text"))
@@ -409,36 +470,60 @@ def main():
               _pn.get("clip"))
         check(_pn.get("serif") is True,
               "督休专员预览：名字牌用宋体栈（与真机一致）", _pn.get("serif"))
-        _pink = str(_pn.get("ink") or "")
-        _pspk = str(_pn.get("specks") or "")
-        _m1 = re.search(r"seal-ink-(\d+)\.svg", _pink)
-        _m2 = re.search(r"seal-specks-(\d+)\.svg", _pspk)
-        check(bool(_m1) and 1 <= int(_m1.group(1)) <= SEAL_VARIANTS,
-              "督休专员预览：牌底用的是 1~%d 号印泥变体" % SEAL_VARIANTS, _pink)
-        check(bool(_m1) and bool(_m2) and _m1.group(1) == _m2.group(1)
-              and os.path.isfile(os.path.join(DIST, _pink))
-              and os.path.isfile(os.path.join(DIST, _pspk)),
-              "督休专员预览：碎点与牌底同下标且文件都在包里",
-              "ink=%s specks=%s" % (_pink, _pspk))
-        _pai = _pn.get("afterInset")
-        check(isinstance(_pai, (int, float)) and _pai < -1,
-              "督休专员预览：碎点层是比盒子大一圈的伪元素（负 inset）",
-              "inset=%s content=%s" % (_pai, _pn.get("afterContent")))
-        # 位置：真机里牌面钉在立绘头部左侧的空白区（贴左、中上部、永在对话条之上），
-        # 预览按面板百分比锚。这里必须用“切到督休专员页签之后”量到的那份几何 ——
-        # 首屏其余页签是 display:none，rect 全是 0（越界会误报成 dx=0/dy=0）。
+        # 墨块必须真的按牌子实际像素生成。**只能在切到督休专员页签之后量**：
+        # 首屏那一帧 #tab-supervisor 还是 display:none，fitPreviewName 量不到尺寸就不会
+        # 生成（那时 background-image 只剩 CSS 的纯色兜底）。2026-11-17 之前这条断言是
+        # 靠“预置 seal-ink-N.svg 被写进 --rt-ink”才通过的 —— 面板藏在 display:none 里也
+        # 读得到一个存在的文件名，于是永远绿，而生成链其实从没在这个位置跑起来过。
+        # 预制件删掉之后假绿立刻暴露，所以改到 m.supPreviewGeom（切页签后的采集）。
         _pg = m.get("supPreviewGeom") or {}
+        _pok, _pwhy = _seal_pair(str(_pg.get("ink") or ""), str(_pg.get("specks") or ""),
+                                 _pg.get("key"), _pg.get("lay"), _pg.get("inkBox"))
+        check(_pok,
+              "督休专员预览：墨块按牌子实际像素生成（不拉伸），且牌外没有碎点层", _pwhy)
+        # 2026-11-18 用户要求去掉牌外碎印泥：::after 整条规则已删，伪元素不该再存在。
+        check(_pg.get("afterContent") == "none",
+              "督休专员预览：牌外没有碎点伪元素（::after 已删）",
+              "content=%s" % (_pg.get("afterContent"),))
+        # 位置：真机里牌的**中心**钉在“头顶到肩膀的中点”（2026-11-18 第二次改，可见高度的
+        # 17%），预览由 settings.js 的 placeSupNamePlate() 按同一口径反推。两个要点：
+        # ① 判据用牌心（dy + 半牌高）而不是牌顶 —— 牌顶随字号变，牌心才是不动的那一个；
+        # ② 分母必须是**立绘可见区**（figTop~figBottom），不是面板高 —— 面板顶部有一段
+        #    内边距，拿面板高算会把 0.17 读成 0.34。
+        # 这里必须用“切到督休专员页签之后”量到的那份几何 —— 首屏其余页签是 display:none，
+        # rect 全是 0（越界会误报成 dx=0/dy=0）。
         _gdx, _gdy = _pg.get("dx"), _pg.get("dy")
         _gbw, _gbh = _pg.get("boxW"), _pg.get("boxH")
+        _gph = _pg.get("plateH") or 0
+        _gft, _gfb = _pg.get("figTop"), _pg.get("figBottom")
+        _gmid = (_gdy + _gph / 2.0) if isinstance(_gdy, (int, float)) else None
+        _visH = (_gfb - _gft) if isinstance(_gft, (int, float)) and isinstance(_gfb, (int, float)) else 0
+        _rel = ((_gmid - _gft) / _visH) if (_visH > 0 and isinstance(_gmid, (int, float))) else None
         check(_pg.get("shown") is True and _pg.get("text"),
               "督休专员预览：名字牌已显示且有文本", _pg.get("text"))
         check(all(isinstance(v, (int, float)) for v in (_gdx, _gdy, _gbw, _gbh))
-              and 0 <= _gdx <= 40 and 0 <= _gdy < _gbh * 0.55,
-              "督休专员预览：名字牌在面板左上（立绘头部左侧的空白区）",
-              "dx=%s dy=%s box=%sx%s" % (_gdx, _gdy, _gbw, _gbh))
+              and 0 <= _gdx <= 40 and isinstance(_rel, (int, float))
+              and 0.10 <= _rel <= 0.24,
+              "督休专员预览：名字牌在面板左侧、牌心落在头肩中点（可见高度 10%~24%）",
+              "dx=%s dy=%s 牌心=%s rel=%s vis=%s~%s box=%sx%s plateH=%s"
+              % (_gdx, _gdy, _gmid, _rel, _gft, _gfb, _gbw, _gbh, _gph))
         check(_pg.get("aboveContent") is True,
               "督休专员预览：名字牌不压台词框（真机里它在头部左侧，不在对话条上）",
               "aboveContent=%s plateH=%s" % (_pg.get("aboveContent"), _pg.get("plateH")))
+        # 层序：与真机 break.css 同口径（.stage 8 / .dialog-name 9 / .content 9）。
+        # 2026-11-18 牌从 7 提到 9（“立绘在上层”随之反转）：牌顶下沉到颈线后右缘常压
+        # 在袖口上，立绘在上会切掉最后一列字形。只比两个数，比截图目检可靠。
+        _fz, _nz, _cz = _pg.get("figZ"), _pg.get("nameZ"), _pg.get("contentZ")
+        ok_z = all(str(v).isdigit() for v in (_fz, _nz, _cz))
+        check(ok_z and int(_nz) > int(_fz) and int(_cz) >= int(_nz),
+              "督休专员预览：名字牌在立绘之上、对话框不低于它（重叠处压住袖口）",
+              "figZ=%s nameZ=%s contentZ=%s" % (_fz, _nz, _cz))
+        # 上屏位图必须是降采样后的那张（STAGE_IMG_H=640）：1024×1536 的原图首次上屏
+        # 会在软件呈现通道上现解码，解码中间态就是用户看到的“长方块”。
+        _nat = _pg.get("imgNat") or []
+        check(len(_nat) == 2 and _pg.get("imgComplete") is True and 0 < _nat[1] <= 640,
+              "督休专员预览：上屏的是降采样小图且已解码完成（不现解码 1024×1536）",
+              "nat=%s complete=%s" % (_nat, _pg.get("imgComplete")))
         # 磁贴的 key 集合 == 磁盘上的专员集合（不多不少）：只比个数会漏掉“渲染出
         # 另一个专员”这类错位，比集合才抓得住。个数本身从磁盘现算 —— 用户在应用里
         # 删掉一个内置专员后目录真的没了，写死“17 个”会必然误报红。
@@ -985,24 +1070,29 @@ def main():
                   "%s提醒窗口：倒计时环的水平锚点已算出（cdX）" % label, sm.get("cdX"))
             ref_role = want_role or spk
             if ref_role:
-                check(b.get("dialogName") == ref_role and b.get("dialogNameShown") is True,
+                # 牌面允许“中间省略”（2026-11-17：长名只准缩字号或省略，不准折列），
+                # 所以比对口径是“等于原名，或以 … 掐掉中间一段”。
+                check(_name_matches(ref_role, b.get("dialogName")) and b.get("dialogNameShown") is True,
                       "%s提醒窗口：名字标签亮在对话框左上角" % label,
                       "%r / %s（基准 %r）" % (b.get("dialogName"), b.get("dialogNameShown"), ref_role))
             # 督休专员题名（2026-10-30 改版）：竖排金色宋体，钉在立绘头部左侧的
             # 空白区，位置与字号都由渲染层按立绘 alpha 剖面实测，不再有固定 left，
             # 所以不能锁像素值。改锁三条语义约束：
-            #   ① 已定位 + 竖排   ② 零遮挡（不压立绘）   ③ 字号不低于可读下限
-            # “零遮挡”是这一版的核心承诺：渲染层把覆盖区内的不透明像素列数写进
-            # data-rt-hit，探针只断言它为 0，不管题名具体落在哪个像素上。
+            #   ① 已定位 + 竖排   ② 与立绘重叠不超阈值   ③ 字号不低于可读下限
+            # 2026-11-17 起“零遮挡”改成“允许少许重叠”：立绘在上层（z-index 更高），
+            # 可以把牌的一条边压住 —— 墨泥缺个角比“长名缩成一根针/整块不显示”好。
+            # 渲染层把牌面被覆盖的面积占比写进 data-rt-ov，这里只断言它不超上限。
             check(b.get("dialogNamePositioned") is True,
                   "%s提醒窗口：题名已完成按立绘的实测定位" % label,
                   "positioned=%s hit=%s" % (b.get("dialogNamePositioned"), b.get("dialogNameHit")))
             check(b.get("dialogNameVertical") is True,
                   "%s提醒窗口：题名是竖排（writing-mode: vertical-rl）" % label,
                   "%s" % b.get("dialogNameVertical"))
-            check(b.get("dialogNameHit") == 0,
-                  "%s提醒窗口：题名零遮挡（一个不透明像素都不压立绘）" % label,
-                  "hit=%s fs=%s" % (b.get("dialogNameHit"), b.get("dialogNameFs")))
+            _bov = b.get("dialogNameOv")
+            check(isinstance(_bov, (int, float)) and _bov <= OVERLAP_MAX + 1e-6,
+                  "%s提醒窗口：题名与立绘重叠 <= %.0f%%（立绘在上层，可挡住牌的一条边）"
+                  % (label, OVERLAP_MAX * 100),
+                  "ov=%s hit=%s fs=%s" % (_bov, b.get("dialogNameHit"), b.get("dialogNameFs")))
             _dfs = b.get("dialogNameFs")
             check(isinstance(_dfs, (int, float)) and _dfs >= 15,
                   "%s提醒窗口：题名字号 >= 15px（再小宋体在 1x 屏就发虚）" % label,
@@ -1025,41 +1115,19 @@ def main():
             check(b.get("dialogNameInk") is True,
                   "%s提醒窗口：牌底是墨块图（印泥不规则轮廓）" % label,
                   "ink=%s" % b.get("dialogNameInk"))
-            # 每次出场随机换一枚“章”：两个变量必须指向同一档，且该档文件真的在包里。
-            # 只认“写死的 url”的旧实现永远报第 1 档，这条会红。
+            # 每次出场换一枚“章”。2026-11-17 起牌底改为按牌子的**实际像素尺寸**现场
+            # 生成（seal.js），是 data: URI。同日撤掉全部预制 SVG（正常路径下它们一帧都
+            # 渲染不出来），所以这里只认 'data:seal'；停在 CSS 兜底就说明生成器没跑起来。
             _seal = b.get("dialogNameSeal") or {}
             _ink, _spk = str(_seal.get("ink") or ""), str(_seal.get("specks") or "")
-            _mi = re.search(r"seal-ink-(\d+)\.svg", _ink)
-            _ms = re.search(r"seal-specks-(\d+)\.svg", _spk)
-            check(bool(_mi) and 1 <= int(_mi.group(1)) <= SEAL_VARIANTS,
-                  "%s提醒窗口：牌底挑的是 1~%d 号印泥变体" % (label, SEAL_VARIANTS),
-                  "ink=%s" % _ink)
-            check(bool(_ms) and bool(_mi) and _ms.group(1) == _mi.group(1),
-                  "%s提醒窗口：碎点与牌底是同一枚章（同一下标）" % label,
-                  "ink=%s specks=%s" % (_ink, _spk))
-            check(all(os.path.isfile(os.path.join(DIST, f)) for f in (_ink, _spk) if f),
-                  "%s提醒窗口：选中的印泥/碎点文件在包里" % label,
-                  "ink=%s specks=%s" % (_ink, _spk))
-            # 碎点必须在 1x 下看得见 —— 这条只能量源文件的半径，因为“看不见”在截图里
-            # 是 1px 的浅色点，任何像素断言都会抖。换算：牌子最窄 35px（2 字名），
-            # ::after 画布 = 1.18 倍盒子 → 1 单位 = 0.413px，r=2.6 才够 2.1px 直径。
-            # 上一版 r≤2.1（直径 1.7px）实测要放大 8 倍才看得出，等于没有。
-            _spk_max = 0.0
-            _spk_path = os.path.join(DIST, _spk) if _spk else ""
-            if _spk_path and os.path.isfile(_spk_path):
-                with open(_spk_path, encoding="utf-8") as _sf:
-                    _svg = _sf.read()
-                for _mm in re.finditer(r'<circle[^>]*\sr="([\d.]+)"', _svg):
-                    _spk_max = max(_spk_max, float(_mm.group(1)))
-                for _mm in re.finditer(r'<ellipse[^>]*\srx="([\d.]+)"', _svg):
-                    _spk_max = max(_spk_max, float(_mm.group(1)))
-            check(_spk_max >= 2.6,
-                  "%s提醒窗口：碎点粒度够大（最窄 35px 牌子上 ≥2.1px 直径）" % label,
-                  "max_r=%.2f in %s" % (_spk_max, _spk))
-            _ai = _seal.get("afterInset")
-            check(isinstance(_ai, (int, float)) and _ai < -1,
-                  "%s提醒窗口：碎点层是比盒子大一圈的伪元素（负 inset）" % label,
-                  "inset=%s content=%s" % (_ai, _seal.get("afterContent")))
+            _sok, _swhy = _seal_pair(_ink, _spk, _seal.get("key"), _seal.get("lay"),
+                                     _seal.get("inkBox"))
+            check(_sok, "%s提醒窗口：墨块按牌子实际像素生成，且牌外没有碎点层" % label, _swhy)
+            # 牌外不许再有碎印泥（2026-11-18 用户决定整层删除）：::after 规则已删，
+            # 伪元素不该存在。用 content 而不是截图判，是因为“没有伪元素”是可读事实。
+            check(_seal.get("afterContent") == "none",
+                  "%s提醒窗口：牌外没有碎点伪元素（::after 已删）" % label,
+                  "content=%s" % (_seal.get("afterContent"),))
             # 字外侧必须还有红：padding 要大于墨块的边界余量（横向 9% 盒宽、纵向 3.5% 盒高）。
             # 竖排 10 字（盒高 227）曾经是负的 —— 字头字脚压在背景上，肉眼看不出但像素能抓到。
             _rp = b.get("dialogNameRedPad") or {}
@@ -1424,16 +1492,18 @@ def main():
                 check(tk.get("dialogName") == tk_role and tk.get("dialogNameShown") is True,
                       "外卖窗口：题名已显示（钉在立绘头部左侧，不再挂在对话框沿上）",
                       "%r / %s（基准 %r）" % (tk.get("dialogName"), tk.get("dialogNameShown"), tk_role))
-                # 与休息窗口同一套约束：竖排 + 已定位 + 零遮挡 + 字号达标
+                # 与休息窗口同一套约束：竖排 + 已定位 + 重叠不超阈值 + 字号达标
                 check(tk.get("dialogNameVertical") is True,
                       "外卖窗口：题名是竖排（writing-mode: vertical-rl）",
                       tk.get("dialogNameVertical"))
                 check(tk.get("dialogNamePositioned") is True,
                       "外卖窗口：题名已完成按立绘的实测定位",
                       "positioned=%s hit=%s" % (tk.get("dialogNamePositioned"), tk.get("dialogNameHit")))
-                check(tk.get("dialogNameHit") == 0,
-                      "外卖窗口：题名零遮挡（一个不透明像素都不压立绘）",
-                      "hit=%s fs=%s" % (tk.get("dialogNameHit"), tk.get("dialogNameFs")))
+                _tkov = tk.get("dialogNameOv")
+                check(isinstance(_tkov, (int, float)) and _tkov <= OVERLAP_MAX + 1e-6,
+                      "外卖窗口：题名与立绘重叠 <= %.0f%%（立绘在上层，可挡住牌的一条边）"
+                      % (OVERLAP_MAX * 100),
+                      "ov=%s hit=%s fs=%s" % (_tkov, tk.get("dialogNameHit"), tk.get("dialogNameFs")))
                 _tkfs = tk.get("dialogNameFs")
                 check(isinstance(_tkfs, (int, float)) and _tkfs >= 15,
                       "外卖窗口：题名字号 >= 15px（再小宋体在 1x 屏就发虚）", "%s" % _tkfs)
@@ -1453,15 +1523,12 @@ def main():
                       "ink=%s" % tk.get("dialogNameInk"))
                 _tseal = tk.get("dialogNameSeal") or {}
                 _tink, _tspk = str(_tseal.get("ink") or ""), str(_tseal.get("specks") or "")
-                _ti = re.search(r"seal-ink-(\d+)\.svg", _tink)
-                _ts = re.search(r"seal-specks-(\d+)\.svg", _tspk)
-                check(bool(_ti) and 1 <= int(_ti.group(1)) <= SEAL_VARIANTS
-                      and bool(_ts) and _ts.group(1) == _ti.group(1),
-                      "外卖窗口：牌底与碎点是同一枚随机印章",
-                      "ink=%s specks=%s" % (_tink, _tspk))
-                check(all(os.path.isfile(os.path.join(DIST, f)) for f in (_tink, _tspk) if f),
-                      "外卖窗口：选中的印泥/碎点文件在包里",
-                      "ink=%s specks=%s" % (_tink, _tspk))
+                _tok, _twhy = _seal_pair(_tink, _tspk, _tseal.get("key"), _tseal.get("lay"),
+                                         _tseal.get("inkBox"))
+                check(_tok, "外卖窗口：墨块按牌子实际像素生成，且牌外没有碎点层", _twhy)
+                check(_tseal.get("afterContent") == "none",
+                      "外卖窗口：牌外没有碎点伪元素（::after 已删）",
+                      "content=%s" % (_tseal.get("afterContent"),))
                 _trp = tk.get("dialogNameRedPad") or {}
                 check(isinstance(_trp.get("x"), (int, float)) and _trp.get("x") >= 0.5
                       and isinstance(_trp.get("y"), (int, float)) and _trp.get("y") >= 2.0,

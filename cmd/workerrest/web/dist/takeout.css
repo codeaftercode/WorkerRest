@@ -215,7 +215,9 @@ html, body {
 
 .figure {
   position: relative;
-  z-index: 7;
+  /* 8 > 牌(7)：立绘必须能盖住题名牌的一小条边（见 .dialog-name 的层序说明）。
+     仍 < .content（8/9，且 DOM 在后），所以对话框照旧压住立绘下半身。 */
+  z-index: 8;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -288,8 +290,10 @@ body.has-supervisor .figure {
   min-height: 0;
   max-height: none;
   justify-content: flex-start;
-  /* 压在对话框之下：立绘贴底时下半身被对话框遮住（游戏对话画面的站位） */
-  z-index: 7;
+  /* 压在对话框之下：立绘贴底时下半身被对话框遮住（游戏对话画面的站位）。
+     8 与普通状态的 .content 同层，靠 DOM 顺序（figure 在前）仍被对话框盖住；
+     有督休专员时 .content 是 9，稳定压住。 */
+  z-index: 8;
 }
 body.has-supervisor .gaze { justify-content: flex-start; }
 body.has-supervisor .figure img { max-width: 60vw; }
@@ -334,23 +338,30 @@ body.has-supervisor .content {
   border-radius: 0 0 var(--app-radius) var(--app-radius);
 }
 
-/* 督休专员题名：竖排金色宋体，写在“朱红墨块”上，钉在立绘头部左侧的空白区。
-   位置（left/top/width/max-height）与字号（--rt-fs）都由 break.js 的
-   layoutRoleTitle() 实测写入：先按立绘的 alpha 剖面找“头部段最左不透明列”，
-   右缘退 12px 起排，再逐 0.5px 缩字号直到覆盖区一个不透明像素都不碰（零遮挡）。
+/* 督休专员题名：竖排金色宋体，写在“朱红墨块”上，落在立绘**头肩之间、人物左侧**的空白区
+   （2026-11-18 第二次改：牌**中心** = 可见高度 17%，即“头顶到肩膀的中点”；旧版锚的是
+   牌顶 28%，牌心因此掉到 37% ≈ 胸口，看着离头太远）。
+   位置（left/top）与字号（--rt-fs）都由 takeout.js 的 layoutRoleTitle() 实测写入：
+   按立绘的 alpha 剖面取**牌子自身跨度内**人物最左的一列，右缘退 12px 起排，再逐
+   0.5px 缩字号；先求“零遮挡”的最大字号，零遮挡全档不成立才允许少量重叠
+   （≤20%，牌在立绘之上，重叠处压住的是袖口/肩线，见下面的 z-index 说明）。
 
    为什么要有牌子（2026-10-30 用户提议）：窗口背景是用户可改的 --accent 渐变，
    主题设成金色时，无底金字几乎看不见（实测浅色主题只有 3.21:1、金色主题 4.47:1，
    而渐变两端的暗青铜在亮底上直接溶掉）。给字加一层自己的衬底，就把“字 vs 未知背景”
    变成“字 vs 固定红牌”，等于把可读性从“取决于主题”变成“常数”。
-   牌底不是 CSS 画出来的矩形，而是 seal-ink-*.svg 这组矢量“墨块”：不规则轮廓、
-   撕毛的边、浓淡不匀、内部细断裂、轮廓外几点溢出的碎墨 —— 纯 CSS 只能给出
+   牌底不是 CSS 画出来的矩形，而是 seal.js 现画的矢量“墨块”（data URI）：不规则轮廓、
+   撕毛的边、浓淡不匀、内部细断裂 —— 纯 CSS 只能给出
    圆角矩形/椭圆，一眼假。
-   它按 background-size: 100% 100% 拉伸（preserveAspectRatio=none）：牌子只有 1~3 列，
-   长宽比在 0.35~0.55 之间，拉伸看不出变形，所以不需要 9 宫格。
-   一组 6 个变体（scripts/make_seal_ink.py 生成），每次出现由 JS 随机挑一张写进
-   --rt-ink：同一枚章连盖两次也不该一模一样，轮廓胖瘦/咬口位置/撕裂走向/断裂/碎点
-   全都不同。这里只留第 1 张当兜底（JS 没跑或取不到值时仍有印泥，不是裸字）。
+   viewBox 就等于**牌子的实际像素宽高**，所以 background-size: 100% 100% 是 1:1 铺满，
+   不是拉伸（2026-11-17 之前是预制 100×200 硬拉：短名 50×88 时缩放 0.50/0.44 还看不出，
+   30 字 37×418 时却是 0.37/2.09 —— 毛边噪声被纵向拉成 ~50px 波长的“橡皮筋”）。
+   牌子恒为**一列**，所以依然不需要 9 宫格。
+   每次出场换一枚章（随机 32 位种子）：轮廓胖瘦/咬口位置/撕裂走向/断裂全都不同。
+   第 2 层兜底（2026-11-17 改）：--rt-ink 没被写上时由 CSS 铺一块纯色暗朱墨块，
+   不再指向预制 SVG —— 牌子的可见性由 data-rt 门控，正常路径下预制件一帧都渲染不出来
+   （applySealInk 与 data-rt 在同一个同步块里），它只保 seal.js 整个缺失这一种情况。
+   纯色兜底零字节、不依赖 IO，也不会因为某个 .svg 被漏拷而变成 404 → 裸字。
    配色实测（金字取 P10、墨块取本体中位数，5 种主题同值）：
      · 墨块 #a5261a + 金字端点 #c19434 → 4.03:1  ✅ 朱红饱满，与金色背景靠色相分开
      · 更鲜 #b02a1c                    → 3.14:1  ❌ 15~17px 的小名牌就糊
@@ -367,7 +378,11 @@ body.has-supervisor .content {
   position: absolute;
   left: 0;
   top: 0;
-  /* 高于 .stage(z-index:8) 与 #vignette(z-index:6)：二阶段暗角不压字 */
+  /* 层序：**高于立绘**（.figure 这里是 8）、与对话框同级（有督休专员时 .content 是 9，
+     且 DOM 在后 —— figure → 牌 → content —— 对话框照旧压住牌）。
+     2026-11-18 从 7 提到 9，理由与 break.css 同一处：牌心钉在头肩中点之后，牌右缘常常
+     要压进肩膀/手臂十来个像素，若立绘在上层就会把最后一列字形切掉；牌在上层只是压住
+     袖口的一条边。 */
   z-index: 9;
   /* 缩放原点 = 立绘盒底边中点（双脚）。二阶段的“凑近 + 脉动”用 CSS 的 scale 属性
      同时施加在 img 和本元素上；原点必须重合，牌面才会跟着立绘一起刚性放大、与头部
@@ -392,8 +407,12 @@ body.has-supervisor .content {
   font-weight: 400;
   letter-spacing: 0.10em;
   line-height: 1.26;
-  /* normal（不是 nowrap）：长名要靠 max-height 折出第二列，见 layoutRoleTitle */
-  white-space: normal;
+  /* nowrap：题名**永远单列**（2026-11-17 用户定的硬规则）。长名不再靠 max-height
+     折出第二列 —— 折列会把牌子横拉成扁饼并压住兜帽；现在改为“先缩字号，15px 仍
+     放不下就中间省略”（显示名省略，落盘名不动），见 layoutRoleTitle。
+     nowrap 在 vertical-rl 下禁止换到下一列，等于把单列钉死，JS 也就不必再写
+     max-height/width 去算列数了。 */
+  white-space: nowrap;
   color: transparent;
   /* 红印泥牌底 + 金字 = 两层 background-image：
      第一层给字形上金属渐变（裁进字形），第二层是一整块纯红（裁进 border-box）。
@@ -410,17 +429,30 @@ body.has-supervisor .content {
     linear-gradient(102deg,
       #c19434 0%, #dcb96f 12%, #f7e7bc 27%, #fffcf2 43%,
       #eed69a 58%, #d3a24c 76%, #c19434 100%),
-    var(--rt-ink, url("seal-ink-1.svg"));
-  /* 墨块按 border-box 铺满（9 宫格都不用，块本身就是不规则的，拉伸看不出） */
+    var(--rt-ink, linear-gradient(180deg, #a5261a 0%, #8f1f14 100%));
+  /* 墨块按 border-box 铺满：viewBox 已等于盒子实际像素，100% 100% 是 1:1 不是拉伸 */
   background-size: auto, 100% 100%;
   background-repeat: no-repeat, no-repeat;
   background-position: 0 0, 0 0;
   background-clip: text, border-box;
   -webkit-background-clip: text, border-box;
   -webkit-text-stroke: 0.35px #e8c069;
-  /* 影子只能走 drop-shadow：它跟随“墨块的真实 alpha”；box-shadow 画的是盒子矩形，
-     一圈 inset 高光/内阴影挂在透明元素上会露出直角边，把墨块打回“圆角矩形”。 */
-  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+  /* 投影**不挂在这里**（2026-11-17 改）：CSS filter 的绘制区域恒为盒子各外扩 10%，
+     37px 宽的牌子上只有 3.7px —— 3px 模糊的影子还没散开就被裁成一条硬边。现在投影
+     由 seal.js 画进墨块 SVG（套在撕毛后的轮廓上，等效 drop-shadow(0 2px 3px
+     rgba(0,0,0,.55))），毛边外凸处不会露红块、内凹处也不会在牌面留暗描边。
+     别为了“省一层 SVG”把它加回来。 */
+  /* 整体透明度（2026-11-18 用户：「名称和墨块整体加一点透明度」）：金字与墨块一起降，
+     不给墨块单独降 —— 墨块是 background-image 的第二层，只降它会让金字“浮”在红底之上，
+     看着像两层贴纸；整块一起降才是一枚盖上去的章，也让牌子在深色背景上退半步，不跟
+     人物的脸抢注意力。
+     ⚠️ opacity < 1 会创建层叠上下文，但 z-index 9 仍按父级参与排序（阶段 8 的立绘还在
+     下面），probe_role_title 的层序断言不受影响。
+     ⚠️ probe_seal_ink 量的是 seal.js **离屏渲染**的 alpha（铺满 / 孔洞 / 断裂），不经过
+     这条 CSS 规则 —— 调这个数不必跟它对齐。
+     0.85 是“看得出一点、不显脏”的一档：0.72 时深蓝背景透上来，朱红会发暗紫（实测对比
+     截图 op_072），再低就丢了印泥的厚实感；1.0 又完全看不出这层意图。 */
+  opacity: 0.85;
   pointer-events: none;
   /* 没算好位置前不显示：left/top 的初始 0,0 在窗口左上角，若立绘尚未解码完
      （量不到 alpha 剖面）就先挂出来，会看到名字在错位置闪一下。
@@ -429,21 +461,6 @@ body.has-supervisor .content {
 }
 .dialog-name[data-rt] { visibility: visible; }
 
-/* 牌外那圈细碎印泥。为什么单独一层：墨块的画布就是牌子盒子，毛边位移 6 个单位
-   （≈3px），盒子里 9% 的余量被它吃干净 —— 碎点画在同一张图上会和边糊成一片
-   （实测六个变体一个点都看不见）。这里用一个比盒子大一圈的伪元素专门铺碎点：
-   它不参与 background-clip:text，所以既不碰字形、也不受盒边界限制。
-   inset 用百分比而不是 -12px：.dialog-name 挂着 filter: drop-shadow，滤镜区域
-   默认只画到“盒子各外扩 10%”，固定像素在窄牌子上会超出 10% 被裁掉。 */
-.dialog-name::after {
-  content: "";
-  position: absolute;
-  inset: -9%;
-  background-image: var(--rt-specks, url("seal-specks-1.svg"));
-  background-size: 100% 100%;
-  background-repeat: no-repeat;
-  pointer-events: none;
-}
 /* 第二阶段（命令）不再改题名样式：牌子是常驻衬底，背景变化与它无关 —— 这正是
    加牌子的目的。只把描边提亮一档，抵消暗角红光压下来的那点亮度。 */
 #app[data-stage='2'] .dialog-name {

@@ -6,6 +6,8 @@ build/a11y_audit.json
 build/verify_trim.txt
 # 截图 / 审计临时报告（scripted 探针跑一回就变一次，不入库）
 build/shots/
+# 一次性验证脚手架（原型 demo / 对比截图），用完即删
+build/tmp/
 release/
 *.exe
 

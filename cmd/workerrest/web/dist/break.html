@@ -27,7 +27,7 @@
          由 break.js 的 renderExtras() 填充，主进程新增/移除时通过事件推送。 -->
     <div class="extra-notes hidden" id="extra-notes" aria-live="polite"></div>
     <!-- 督休专员题名：竖排金色宋体，钉在立绘头部左侧的空白区（不再进对话条）。
-         位置与字号由 break.js 的 layoutRoleTitle() 按“零遮挡”实测后写进 inline style，
+         位置与字号由 break.js 的 layoutRoleTitle() 按立绘 alpha 剖面实测后写进 inline style，
          所以它必须和 #figure 处在同一定位上下文（#app），不能留在 .content 里——
          留在框内会被框的 overflow 与 22vh 高度一起约束住。 -->
     <div class="dialog-name hidden" id="dialog-name"></div>
@@ -127,6 +127,7 @@
     </div>
   </div>
   <script src="./shim.js"></script>
+  <script src="./seal.js"></script>
   <script src="./break.js"></script>
 </body>
 </html>

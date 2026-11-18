@@ -34,6 +34,10 @@
 | 脚本 | 作用 |
 |---|---|
 | `probe_renderer.py` + `renderer_probe.js` | 渲染层探针：真实页面指向无头服务，跑 DOM 断言 |
+| `probe_role_title.py` + `probe_role_title.js` | 题名牌零遮挡：逐位专员 × 三版式，验定位/字号/单列/不压立绘（真实名） |
+| `probe_role_title_stress.py` + `role_title_stress.js` | 题名牌**极端用例**：26 组名字（1 字 / 30 字上限 / 200 字 / emoji / ZWJ / 泰文 / RTL / HTML / 空名…）× 3 版式 × 全部专员，外加改名风暴、墨块缓存、窗口扫掠、立绘极端、DPI=2（约 3 分钟） |
+| `probe_name_extremes.py` + `name_extremes.js` | 题名牌**极端立绘**：现场生成 14 张立绘（全透明 / 坏图 / 1×1 / 1600×2200 / 1600×240 / 280×1600 / 贴左 / 靠右 / 仅下半身 / 6×900 / 翻转 / 隐藏名 / 满铺）经 `WR_SUPERVISORS_DIR` 走生产导入路径，× 16 组名字 × 5 种窗口（含 760×600 与超小 420×300）× DPI 1.25/2/3，外加二阶段缩放、40 次 resize 风暴、SealGen 缺失、墨块复用；隐藏用例必须「不可见 + 文本回原名 + 无 JS 错误」（约 8 分钟） |
+| `probe_seal_ink.py` + `seal_ink_probe.js` | 印泥墨块：10 组牌面尺寸 × 20 种子，逐块量铺满率 / 中央针孔 / 断裂 / 边缘撕口，外加生成器纯函数契约（同种子同结果、viewBox 等于实像素、同尺寸复用、尺寸变化重生成、极小牌拒绝） |
 | `probe_settings_ui.py` + `settings_ui_probe.js` / `settings_modals_probe.js` / `settings_flow_probe.js` / `settings_options_probe.js` | 设置页四层覆盖：① 全扫描——六个 tab 的全部可见控件（数量基线 / 可访问名 / 横向溢出）+ 十个弹窗的语义契约 + 关键控件与 settings 的绑定一致性；② 弹窗交互——真点击打开、焦点进框、Esc 关闭、焦点归位、Tab 陷阱、点遮罩关闭；③ 写入链路——快捷键录入（合法/裸键/重复键）、音量与播放方式、主题切换、外卖数值归一、恢复默认的取消不改配置；④ **控件接线矩阵**——逐个控件“操作 → 配置必须有变化 → 操作回去 → 逐字还原”，抓死控件与接错键（36 个控件，接线表逐条打印） |
 | `probe_bindings_full.py` | 绑定级全覆盖：契约表里 52 个绑定逐个真调，断言返回结构、落盘效果、拒绝分支与“探针能发现绑定丢失”的元测试 |
 | `probe_config_matrix.py` | 配置矩阵：每个多值配置项（mode / selection / order / pauseAction / 音量为 0 与越界 / 时刻表越界 / sites 过滤 …）逐个取值，再验启动态（nextAt / nextSource / nextType / timeline 类型序列） |
@@ -74,7 +78,6 @@
 | `probe_preload.js` | 探针专用 preload：模拟 Go 侧注入的 `window.__WR_WIN`（被上面几个 JS 复用） |
 | `manual_shots.py` + `manual_shots.js` | 操作手册截图：无头服务 + 隔离配置 + Playwright |
 | `build_manual.py` | 生成 `docs/manual/操作手册.html`（截图 base64 内嵌） |
-| `make_seal_ink.py` | 生成印泥墨块 SVG（`seal-ink-N` / `seal-specks-N`） |
 | `rebuild_role_previews.js` | 批量重做督休专员磁贴预览图 `assets/supervisors/<专员>/preview.webp` |
 
 ## oneoff/

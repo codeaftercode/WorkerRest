@@ -1290,7 +1290,12 @@
   var IGNORE = 8e-3;
   var MIN_CONTENT = 0.25;
   var MAX_SCALE = 4;
-  var NONE = { left: 0, right: 0, top: 0, bottom: 0, content: 1, scale: 1, transform: "none" };
+  // 兜底值必须**字段齐全**：applyFigureTrim 会无条件读 rawLeft/rawRight/rawTop/rawBottom
+  // 写 dataset.trim。2026-11-18 实测：用户导入一张全透明 PNG（或 alpha 全低于
+  // ALPHA_MIN）时 measureFigureTrim 走 bottom<0 的早退分支返回这里，缺字段会在
+  // `t.rawLeft.toFixed(4)` 抛 TypeError，立绘 trim 永远写不进去、题名也不再定位。
+  var NONE = { left: 0, right: 0, top: 0, bottom: 0, rawLeft: 0, rawRight: 0,
+               rawTop: 0, rawBottom: 0, content: 1, scale: 1, transform: "none" };
   function norm(v) {
     return v < IGNORE ? 0 : v;
   }
@@ -2658,7 +2663,13 @@
     box.style.setProperty("--fig-y", String(g.posYPct));
     box.classList.toggle("sup-flip", g.flip);
     const pImg = $("sup-preview-img");
-    if (pImg && pImg.src) applyFigureTrim($("sup-preview-trim"), pImg, g.flip);
+    const pTrim = $("sup-preview-trim");
+    // 换图那一拍 trim 是 hidden（等 decode，见 setPreviewFigure）：此时别抢先把它改成
+    // visible —— applyFigureTrim 的缓存分支会直接置 visible，方块就又漏出来了。
+    // 等 reveal 里那次 applyFigureTrim 落地即可，它读的是同一份 geom。
+    if (pImg && pImg.src && pTrim && pTrim.style.visibility !== "hidden") {
+      applyFigureTrim(pTrim, pImg, g.flip);
+    }
     $("sup-size-val").textContent = `${g.sizePct}%`;
     $("sup-posx-val").textContent = `${g.posXPct}%`;
     $("sup-posy-val").textContent = `${g.posYPct}%`;
@@ -2703,9 +2714,6 @@
       showName: $("sup-showname").checked
     };
   }
-  // 预览面板的名字牌与真实提醒窗口同款：每次重绘随机换一枚“章”（牌底 + 碎点同下标），
-  // 并避开上一次。档数与 web/dist 里的 seal-ink-1..6.svg、两份提醒页 JS 的
-  // SEAL_VARIANTS 一致 —— 改档数要一起改（探针会红）。
   // 舞台对话框正在“试说”哪一条台词：null = 用 Go 侧挑的那条（固定项 / 随机一条）。
   // 点台词行的文本框（或在里面改字）把它钉到那一行上 —— 改台词时立刻看得到它落地的样子。
   // 切专员时清空：上一个人的句子不能留在下一个人的脸上。
@@ -2738,20 +2746,117 @@
     applySupPreviewLine();
   }
 
-  var PREVIEW_SEAL_VARIANTS = 6;
-  var previewLastSeal = 0;
-  function pickPreviewSeal(el) {
+  // 与 break.js / takeout.js 同一套：牌子按**实际像素尺寸**现场生成（seal.js），
+  // 只定种子、不挂任何预制图。预览牌尺寸更小（pv 12→9px），预制 100×200 的 viewBox
+  // 在这里会被压扁 —— 用同一套生成器，三种窗口观感才一致。兜底与提醒窗同源：
+  // CSS 里 --rt-ink 的 fallback（纯色暗朱墨块），见 settings.css。
+  function rollSealSeed(el) {
     if (!el) return;
-    var i = 1 + Math.floor(Math.random() * PREVIEW_SEAL_VARIANTS);
-    if (i === previewLastSeal) i = (i % PREVIEW_SEAL_VARIANTS) + 1;
-    previewLastSeal = i;
-    el.style.setProperty("--rt-ink", 'url("seal-ink-' + i + '.svg")');
-    el.style.setProperty("--rt-specks", 'url("seal-specks-' + i + '.svg")');
+    el.dataset.sealSeed = String(1 + Math.floor(Math.random() * 4294967000));
+    delete el.dataset.sealKey;
+  }
+  function applySealInk(el, w, h) {
+    if (!el) return;
+    var G = window.SealGen;
+    if (!G || !G.applyTo) return;                      // 没加载就停在 CSS 兜底墨块上
+    G.applyTo(el, w, h, Number(el.dataset.sealSeed || 0) >>> 0);
   }
   // 名字牌的摆位：真机里这块固定在“立绘头部左侧的空白窄缝”，位置是 layoutRoleTitle()
   // 按立绘 alpha 剖面量出来的，不是写死的百分比 —— 预览必须同样按实测摆，否则立绘一靠左
   // 牌子就压到人物脸上（面板比真机窗口窄，差几个像素就是压不压脸的区别）。
   // 量的是 figureVisibleRect()（去掉透明边距后的可见边），与对话框摆位同源。
+  // 预览牌的字号/省略：与真机同一套降级规则（2026-11-17 用户定：**绝不折列**，
+  // 先缩字号，仍放不下就中间省略、落盘名不变）。预览是等比缩一档的舞台，所以
+  // 真机的 26→15 对应这里的 12→9，观感与提醒窗口对得上。
+  var PV_MAX_FS = 12, PV_MIN_FS = 9, PV_STEP = 0.5;
+  // 字素簇切分（预览与真机同一口径）：按码点切会把家庭 emoji / 国旗 / 组合音标
+  // 劈成残片，省略后牌面就是乱码。Intl.Segmenter 不可用时退回码点（至少不劈代理对）。
+  var pvGraphemeSeg = null;
+  function pvGraphemes(s) {
+    if (!pvGraphemeSeg && typeof Intl !== "undefined" && Intl.Segmenter) {
+      try { pvGraphemeSeg = new Intl.Segmenter(undefined, { granularity: "grapheme" }); }
+      catch (e) { pvGraphemeSeg = null; }
+    }
+    if (pvGraphemeSeg) {
+      try { return Array.from(pvGraphemeSeg.segment(s), (x) => x.segment); } catch (e) {}
+    }
+    return Array.from(s);
+  }
+  function fitPreviewName(n, availH, availW) {
+    const full = n.dataset.fullName || n.textContent || "";
+    if (!full) return;
+    n.dataset.fullName = full;
+    const chars = pvGraphemes(full);
+    const elide = function (keep) {
+      if (keep >= chars.length) return full;
+      if (keep <= 1) return "…";
+      const head = Math.ceil((keep - 1) / 2);
+      const tail = Math.max(0, keep - 1 - head);
+      return chars.slice(0, head).join("") + "…" +
+        (tail > 0 ? chars.slice(chars.length - tail).join("") : "");
+    };
+    // 量一次：写文本 + 字号，返回是否装得下（高度禁超、宽度禁超面板左半）
+    function measure(fs, text) {
+      if (n.textContent !== text) n.textContent = text;
+      n.style.fontSize = fs + "px";
+      return { ok: n.offsetHeight <= availH && n.offsetWidth <= availW, h: n.offsetHeight, w: n.offsetWidth };
+    }
+    let sol = null;
+    for (let f = PV_MAX_FS; f >= PV_MIN_FS - 1e-6 && !sol; f -= PV_STEP) {
+      const m = measure(f, full);
+      if (m.ok) sol = { fs: f, text: full };
+    }
+    if (!sol) {
+      let keepMax = 0;
+      for (let keep = chars.length - 1; keep >= 3; keep--) {
+        if (measure(PV_MIN_FS, elide(keep)).ok) { keepMax = keep; break; }
+      }
+      if (keepMax > 0) {
+        for (let f = PV_MAX_FS; f >= PV_MIN_FS - 1e-6; f -= PV_STEP) {
+          if (measure(f, elide(keepMax)).ok) { sol = { fs: f, text: elide(keepMax) }; break; }
+        }
+      }
+    }
+    // 连“首…尾”都放不下（面板极窄）：退到最小号 + 最短省略，仍然显示 ——
+    // 这里**不用 hidden 兜底**：hidden 在这个类上表示“显示名称关闭”，混用会让
+    // 长名试一次就永久不显示。
+    if (!sol) sol = { fs: PV_MIN_FS, text: elide(3) };
+    n.textContent = sol.text;
+    n.style.fontSize = sol.fs.toFixed(1) + "px";
+    if (sol.text !== full) n.dataset.rtElided = "1";
+    else delete n.dataset.rtElided;
+    // 字号落盘之后再画墨块：牌子的宽高 = padding + 字号，早一帧量到的是旧尺寸。
+    applySealInk(n, n.offsetWidth, n.offsetHeight);
+  }
+  // 预览牌的字号/省略排一帧再算：从别的页签切过来时 #sup-preview 还是 display:none，
+  // 那一帧的 rect 全是 0，直接算预算会把牌子压成 24px；rAF 重试几帧等布局起来。
+  //
+  // 预算按**每次外部触发**给（2026-11-17 修）：以前计数器只在“量到尺寸”那一刻才清零，
+  // 而首屏 init 就会调一次 —— 那时面板 display:none，20 帧预算在首屏被吃光，之后用户
+  // 真切到督休专员页签时第一次检查 rect 仍是 0，`previewFitTries++ < 20` 直接判假，
+  // 于是既不重试也不摆位，牌子永远停在未生成状态（墨块只剩 CSS 纯色兜底）。
+  // 之前这条被“预置 seal-ink-N.svg 写进 --rt-ink”掩盖着：面板藏着也读得到一个存在的
+  // 文件名，探针一直绿。撤掉预制件才暴露出来。现在入口重置预算，rAF 续帧才用它。
+  var previewFitTries = 0;
+  function fitPreviewNameSoon() {
+    previewFitTries = 0;              // 外部入口：一次新的布局机会，预算重新给满
+    fitPreviewNameRetry();
+  }
+  function fitPreviewNameRetry() {
+    const n = $("sup-preview-name");
+    const box = $("sup-preview");
+    if (!n || !box || n.classList.contains("hidden")) return;
+    const pr = box.getBoundingClientRect();
+    if (pr.width <= 0 || pr.height <= 0) {
+      if (previewFitTries++ < 20) requestAnimationFrame(fitPreviewNameRetry);
+      return;
+    }
+    previewFitTries = 0;
+    // 高度预算与 placeSupNamePlate 里那次保持一致（它紧接着会再调一次并量高度，
+    // 这里只负责把牌子从“未生成”状态推出来）。两处数字不一致会出现一帧抖动。
+    fitPreviewName(n, Math.max(24, pr.height * 0.56), Math.max(40, pr.width * 0.4));
+    placeSupNamePlate();
+  }
   function placeSupNamePlate() {
     const box = $("sup-preview");
     const fig = document.querySelector(".sup-preview-fig");
@@ -2761,12 +2866,24 @@
     if (br.width <= 0) return;                     // 页签没切过来，量不到（保持 CSS 默认值）
     const fb = fig.getBoundingClientRect();
     const vis = figureVisibleRect(fig, fb.top);
+    // 牌**中心**落在“头顶到肩膀的中点”（2026-11-18，与真机 layoutRoleTitle 的
+    // RT_MID_RATIO 同值）：可见高度的 17%。所以要**先**定牌面尺寸、量出高度，再反推
+    // 牌顶（wantMid − 半牌高）—— 顺序反了就变成“锚牌顶”，短牌会被整体压到胸口去。
+    // 高度预算按面板高的 56% 给：牌心之上只剩 17% 的可见高度，再长就会顶出面板上沿，
+    // 由下面那步 clamp 兜住。
+    const visH = Math.max(1, fb.bottom - vis.top);
+    fitPreviewName(n, Math.max(24, br.height * 0.56), Math.max(40, br.width * 0.4));
     const w = n.offsetWidth || 27;
     const h = n.offsetHeight || 60;
-    // 横向：牌子右缘贴住立绘可见左缘（留 6px 缝），缝不够就贴面板左缘 2px
-    const left = Math.round(Math.max(2, Math.min(10, vis.left - br.left - w - 6)));
-    // 纵向：牌顶与头顶齐平（真机就是钉在头部那一行），再夹进面板
-    const top = Math.round(Math.min(Math.max(vis.top - br.top + 4, 8), Math.max(8, br.height - h - 8)));
+    const wantMid = vis.top - br.top + visH * 0.17;
+    // 横向：与真机（layoutRoleTitle 的 RT_GAP / RT_GAP_COMFORT）同一套“缝”——
+    // 左侧放得下就先拉开 32px，不贴脸；放不下退回 6px 最小缝。面板比提醒窗窄得多，
+    // 绝大多数情况走回退分支，再被 10px 的位置上限夹住（预览里贴着面板左缘最自然）。
+    const room = vis.left - br.left;
+    const wideLeft = room - w - 32;
+    const left = Math.round(Math.max(2, wideLeft >= 2 ? wideLeft : Math.min(10, room - w - 6)));
+    // 纵向：目标牌心反推的牌顶，再夹进面板（上沿 8px、牌底至少留 8px）
+    const top = Math.round(Math.min(Math.max(wantMid - h / 2, 8), Math.max(8, br.height - h - 8)));
     n.style.left = `${left}px`;
     n.style.top = `${top}px`;
   }
@@ -2786,16 +2903,25 @@
     // 说话人由对话框左上角的名字牌承载（与休息窗口的 dialog-name 同款），不再挂在台词上。
     // “显示名称”没勾时这块整块不出现 —— 与真机同一个口径（break.js 读的是同一个字段）。
     const previewName = $("sup-preview-name");
-    pickPreviewSeal(previewName);
+    rollSealSeed(previewName);
     if (supPreview?.name && supPreview?.geom?.showName !== false) {
+      // 换人/改名先清掉缓存的原名，否则 fitPreviewName 会拿上一位的名字去比字数
+      delete previewName.dataset.fullName;
       previewName.textContent = supPreview.name;
       previewName.classList.remove("hidden");
+      // 文本一落就定字号/省略，不等 placeSupNamePlate 的 rect：切页那一帧面板
+      // 可能还没布局（display:none → rect 全 0），预览就会一直停在 CSS 默认的
+      // 12px —— 实测 30 字名当场拖着红牌冲出面板底 100px。所以先排一帧等尺寸。
+      fitPreviewNameSoon();
     } else {
+      delete previewName.dataset.fullName;
       previewName.textContent = "";
+      previewName.style.fontSize = "";
       previewName.classList.add("hidden");
     }
     if (supPreview) {
       const img = $("sup-preview-img");
+      const trim = $("sup-preview-trim");
       // 同一个 data URL 不重复赋值。这段每 5 秒被调一次（轮换台词），原来每次都
       // `img.src = …`：给 src 赋值等于重新发起一次图片加载，刚解码好的位图被打回
       // “未解码”，于是切到本页时又得重来一遍。只在真换图（换人 / 导入）时赋值，
@@ -2803,15 +2929,55 @@
       // 另外走 stageSmallOf：真正上屏的是**按舞台尺寸缩过的**小图，见 prepareStageImage。
       const shown = stageSmallOf(supPreview.image);
       if (img.getAttribute("src") !== shown) {
-        img.src = shown;
-        // 立绘解码完才会量到真实的可见左缘，落位要等这一刻（applyFigureTrim 内部
-        // 也是等 load 再量，这里跟它同一条时机）
-        img.addEventListener("load", () => {
-          placeSupNamePlate();
-        }, { once: true });
+        // 换人：藏到解码完再露（否则大图会先画出一整块矩形，见 setPreviewFigure）
+        setPreviewFigure(img, trim, shown, supPreview.geom.flip === true);
+      } else {
+        applyFigureTrim(trim, img, supPreview.geom.flip === true);
+        placeSupNamePlate();
       }
-      applyFigureTrim($("sup-preview-trim"), img, supPreview.geom.flip === true);
-      placeSupNamePlate();
+    }
+  }
+  // 给舞台换一张立绘：先藏、解码完再显示。
+  //
+  // 为什么非要藏：内置立绘是 1024×1536 的 webp（data URL 约 200KB），首次上屏要在
+  // 软件呈现通道上现解码 —— main.go 为了「共享屏幕时隐藏提醒窗口」加了
+  // --disable-direct-composition，最终呈现少一次 GPU 合成。位图没就绪时 <img> 的
+  // 盒子已经撑开，Chromium 会先画一层空图层；这张图还带 filter（drop-shadow），
+  // 滤镜层一旦被建出来，整块矩形就会透出来 —— 用户 2026-11-17 报的「切换专员时
+  // 立绘透明度没处理好、看得见明显的长方块」就是这个中间态。而「进二阶段就好了」
+  // 是假象：二阶段那次渲染（stage 每 5 秒翻转一次）只是恰好落在解码之后。
+  //
+  // decode() 在「位图可直接绘制」之后才 resolve，正好卡住这一个时间窗；它比 load
+  // 更贴近需求（load 只代表资源可解析，不代表解码完成）。
+  var previewFigSeq = 0;
+  function setPreviewFigure(img, trim, src, flip) {
+    const seq = ++previewFigSeq;
+    trim.style.visibility = "hidden";     // 整棵子树不参与绘制
+    img.src = src;
+    const reveal = (() => {
+      let done = false;                    // decode / 超时兜底谁先到就用谁，别跑两遍
+      return () => {
+        if (done) return;
+        done = true;
+        if (seq !== previewFigSeq) return; // 期间又换人了：这一轮作废，别再动 DOM
+        // 读不到位图（图坏了 / decode 失败）时直接露出来：宁可看到一块坏图，
+        // 也不要让预览永远空着 —— applyFigureTrim 的 error 分支会同口径兜底。
+        if (!img.naturalWidth) {
+          trim.style.visibility = "visible";
+          placeSupNamePlate();
+          return;
+        }
+        applyFigureTrim(trim, img, flip);  // 量透明边距（内部把 visibility 改回 visible）
+        placeSupNamePlate();
+      };
+    })();
+    if (typeof img.decode === "function") {
+      // 兜底：decode 万一不 resolve（图既不加也不失败），也不能让预览永远空着
+      setTimeout(reveal, 1200);
+      img.decode().then(reveal, reveal);
+    } else {
+      img.addEventListener("load", reveal, { once: true });
+      img.addEventListener("error", reveal, { once: true });
     }
   }
   async function refreshSupervisorPreview(keepUrge = false) {
@@ -2822,6 +2988,10 @@
       fillGeomControls(supPreview.geom);
     }
     renderMsgList("sup");
+    // 换人后先把新人降采样好再上屏：prepareStageImage 只动离屏位图，台上那张旧图
+    // 在这几十~几百毫秒里继续显示（比如方块好），随后一次性换成已解码的小图 ——
+    // 与切页走同一条快路径，换人不再需要现解码 1024×1536。
+    await prepareStageImage();
     renderSupervisorPreview(curSupStage);
   }
   // ---------- 切页卡顿：让舞台上屏的位图变小 ----------
@@ -2841,27 +3011,30 @@
   function stageSmallOf(src) {
     return stageSmall.get(src) || src;
   }
-  // 切页前调用：把当前立绘降采样好，之后 renderSupervisorPreview 就会拿小图去上屏。
+  // 切页 / 换人前调用：把当前立绘降采样好，之后 renderSupervisorPreview 就会拿小图去上屏。
   // createImageBitmap(el, {resizeHeight}) 的解码与缩放都在工作线程上，主线程只做
   // 一次 427×640 的 drawImage + webp 编码（十几毫秒，一张图一次）。
+  //
+  // ⚠️ 不要拿台上那张 <img> 来当解码源：旧版就是 `img.src = full` 先换成全尺寸图再
+  // createImageBitmap，等于把 1024×1536 直接推上屏 —— 用户报的「长方块」有一半出在
+  // 这一步（另一半是换人时未等 decode，见 setPreviewFigure）。现在用一张离屏 Image，
+  // 面板上那张图在整个降采样过程中一动不动。
   async function prepareStageImage() {
     if (!supPreview || !supPreview.image) return;
     const full = supPreview.image;
     if (stageSmall.has(full)) return;
-    const img = $("sup-preview-img");
-    if (!img || typeof createImageBitmap !== "function") return;
-    if (img.getAttribute("src") !== full) img.src = full;
-    if (!img.complete || !img.naturalWidth) {
-      // 图还没加载完（换人那一下）：等 load，最多等 1.5s 免得卡住切页
-      await new Promise((resolve) => {
-        img.addEventListener("load", resolve, { once: true });
-        img.addEventListener("error", resolve, { once: true });
-        setTimeout(resolve, 1500);
-      });
-    }
-    if (!img.naturalWidth || img.naturalHeight <= STAGE_IMG_H) return; // 本来就不大，别多此一举
+    if (typeof createImageBitmap !== "function") return;
+    const off = new Image();
+    off.decoding = "async";
+    off.src = full;
+    // 图还没加载完（换人那一下）：等 decode，最多等 1.5s 免得卡住切页
+    await Promise.race([
+      off.decode().catch(() => {}),
+      new Promise((resolve) => setTimeout(resolve, 1500))
+    ]);
+    if (!off.naturalWidth || off.naturalHeight <= STAGE_IMG_H) return; // 本来就不大，别多此一举
     try {
-      const bmp = await createImageBitmap(img, { resizeHeight: STAGE_IMG_H, resizeQuality: "high" });
+      const bmp = await createImageBitmap(off, { resizeHeight: STAGE_IMG_H, resizeQuality: "high" });
       const c = document.createElement("canvas");
       c.width = bmp.width;
       c.height = bmp.height;
@@ -7910,6 +8083,10 @@
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     const tab = $(`tab-${name}`);
     if (tab) tab.classList.add("active");
+    // 面板真正拿到布局之后再补一次：上面 renderSupervisorPreview 里那次调用发生在
+    // #tab-supervisor 还是 display:none 的时候，量到的 rect 全是 0，只能靠 rAF 重试。
+    // 在这里显式再来一次，切页签这一步就不再依赖重试预算够不够。
+    if (name === "supervisor") fitPreviewNameSoon();
     if (name === "stats") void renderStats();
     void window.api.setActiveTab(name);
   }

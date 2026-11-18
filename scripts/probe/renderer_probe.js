@@ -563,30 +563,18 @@ const PROBE_SETTINGS = `(function () {
     // 督休专员预览面板的名字牌：必须与真实提醒窗口同款（竖排金字 + 印泥墨块 + 牌外碎点环）。
     // 旧版是“圆角胶囊小徽标”（纯 --accent 底 + 边框）—— 预览与真机对不上。
     // 取数照 PROBE_BREAK 的 dialogNameSeal 那一套，另加竖排/字体/位置三项。
+    // 只取**不依赖布局**的四项：首屏这一帧 #tab-supervisor 还是 display:none，
+    // rect / offset 全是 0，墨块也还没生成（fitPreviewName 要等面板量得到尺寸）。
+    // 凡是“显示了没、摆在哪、墨块画成什么样”一律在切到该页签后的 supPreviewGeom 里量。
     supPreviewName: (function () {
       var n = document.getElementById('sup-preview-name');
       if (!n) return null;
       var cs = getComputedStyle(n);
-      var af = getComputedStyle(n, '::after');
-      var ink = (cs.backgroundImage.match(/seal-ink-\\d+\\.svg/) || [])[0] || null;
-      var sp = (af.backgroundImage || '').match(/seal-specks-\\d+\\.svg/);
-      var r = n.getBoundingClientRect();
-      var box = document.getElementById('sup-preview');
-      var br = box ? box.getBoundingClientRect() : null;
       return {
         text: (n.textContent || '').trim(),
-        shown: !!(r.width > 0 && r.height > 0),
-        ink: ink, specks: sp ? sp[0] : null,
-        // 碎点层必须是“比盒子大一圈”的伪元素：负 inset 才装得下牌外的碎点
-        afterInset: parseFloat(af.top), afterContent: af.content,
         clip: cs.backgroundClip,
         writing: cs.writingMode,
         serif: /serif/i.test(cs.fontFamily),
-        w: Math.round(r.width), h: Math.round(r.height),
-        // 相对预览面板的偏移：真机里这块恒是立绘头部左侧的空白区（贴左、中上部）
-        dx: br ? Math.round(r.left - br.left) : null,
-        dy: br ? Math.round(r.top - br.top) : null,
-        boxH: br ? Math.round(br.height) : null
       };
     })(),
     scPostpone: val('sc-postpone'),
@@ -855,6 +843,9 @@ const PROBE_BREAK = `(function () {
     dialogNameVertical: nameEl ? getComputedStyle(nameEl).writingMode === 'vertical-rl' : null,
     dialogNamePositioned: nameEl ? nameEl.dataset.rt === '1' : null,
     dialogNameHit: nameEl && nameEl.dataset.rtHit != null ? Number(nameEl.dataset.rtHit) : null,
+    // 牌面被立绘覆盖的面积占比（0~1）。2026-11-17 起判据从“零遮挡”改成“允许少许
+    // 重叠、立绘在上层挡住牌的一条边”，阈值见 probe_renderer.py 的 OVERLAP_MAX。
+    dialogNameOv: nameEl && nameEl.dataset.rtOv != null ? Number(nameEl.dataset.rtOv) : null,
     dialogNameFs: nameEl && nameEl.dataset.rtFs != null ? Number(nameEl.dataset.rtFs) : null,
     // 牌面必须包住所有字：竖排折列时 Chromium 的 shrink-to-fit 只按一列算宽，
     // 溢出列会整列漏到红底外面（实测漏过一整列 21px）。这里量“文字 Range 是否
@@ -876,7 +867,8 @@ const PROBE_BREAK = `(function () {
     })() : null,
     // 墨块只有盒子的 82%×93%，毛边位移再吃掉约 2.25%×1.5%；文字到盒边只有 padding。
     // 两者相减就是“字外侧还剩多少红”—— 竖排 10 字（盒高 227）曾是负的，字从墨块上下
-    // 探出去压在背景上。0.09/0.035 镜像 scripts/make_seal_ink.py 的 a=41/50、b=93/100。
+    // 探出去压在背景上。0.09/0.035 沿用旧预制件 viewBox 100×200 的几何（半宽 41/50、
+    // 半高 93/100），现场生成器保持同一比例，断言才能跨版本比。
     dialogNameRedPad: nameEl ? (function () {
       var n2 = document.getElementById('dialog-name');
       if (!n2) return null;
@@ -895,18 +887,25 @@ const PROBE_BREAK = `(function () {
     dialogNameLayers: nameEl ? (getComputedStyle(nameEl).backgroundImage.match(/url\\(|(?:linear|radial|conic)-gradient\\(/g) || []).length : null,
     // 牌底必须是“墨块图”：纯色填充画不出印泥的不规则轮廓
     dialogNameInk: nameEl ? /url\\(/.test(getComputedStyle(nameEl).backgroundImage) : null,
-    // 每次出场随机换一枚“章”：JS 把选中的那一档写进 --rt-ink / --rt-specks，
-    // 这里把解析出来的文件名报回去，Python 侧核对“确实是 N 选 1 里的一档、
-    // 两个变量指向同一档、且文件真的存在”（只写死 url 的旧实现会一直报 1）。
+    // 每次出场换一枚“章”（随机 32 位种子，按牌子实际像素现场生成）：这里把结果报回
+    // 'data:seal'，Python 侧核对“墨块与碎点同源、画布等于盒子”。若报回 'css-fallback'
+    // 说明 seal.js 没生效（牌子只剩纯色兜底墨块），必须判失败 —— 2026-11-17 起不再有
+    // 预制 SVG 兜着，兜底态就是真故障。
     dialogNameSeal: nameEl ? (function () {
       var cs = getComputedStyle(nameEl);
-      var ink = (cs.backgroundImage.match(/seal-ink-\\d+\\.svg/) || [])[0] || null;
+      var ink = (function () { var bg = cs.backgroundImage || ''; return /data:image\\/svg\\+xml/.test(bg) ? 'data:seal' : (/linear-gradient/.test(bg) ? 'css-fallback' : null); })();
       var af = getComputedStyle(nameEl, '::after');
-      var sp = (af.backgroundImage || '').match(/seal-specks-\\d+\\.svg/);
+      var sp = /data:image\\/svg\\+xml/.test(af.backgroundImage || '') ? 'data:seal' : null;
       return {
-        ink: ink, specks: sp ? sp[0] : null,
-        // 碎点层必须是“比盒子大一圈”的伪元素：负 inset 才装得下牌外的碎点
-        afterInset: parseFloat(af.top),
+        ink: ink, specks: sp,
+        // ink 是现场生成的 data: URI，JS 侧归一化成 'data:seal'；specks 现在恒为 null
+        // （2026-11-18 牌外碎点整层删除），Python 侧据此断言“没有碎点层”。
+        // key 是 "宽x高#种子"，用来核对“墨块 viewBox = 牌子实际像素”（核心改动）。
+        key: nameEl.dataset.sealKey || null,
+        lay: { w: nameEl.offsetWidth, h: nameEl.offsetHeight },
+        // 现场生成：把墨块 SVG 从 data URI 反解出 viewBox，Python 侧据此断言
+        // “画布 == 盒子（没被缩放）”，比看文件名可靠。
+        inkBox: (function (bg) { var i = (bg || '').indexOf('base64,'); if (i < 0) return null; try { var s = atob(bg.slice(i + 7).split('"')[0].split(')')[0]); var m = s.match(/viewBox="0 0 ([0-9.]+) ([0-9.]+)"/); return m ? [+m[1], +m[2]] : null; } catch (e) { return null; } })(cs.backgroundImage),
         afterContent: af.content
       };
     })() : null,
@@ -1288,6 +1287,7 @@ const PROBE_TAKEOUT = `(async function () {
     dialogNameVertical: (function () { var n = document.getElementById('dialog-name'); return n ? getComputedStyle(n).writingMode === 'vertical-rl' : null; })(),
     dialogNamePositioned: (function () { var n = document.getElementById('dialog-name'); return n ? n.dataset.rt === '1' : null; })(),
     dialogNameHit: (function () { var n = document.getElementById('dialog-name'); return n && n.dataset.rtHit != null ? Number(n.dataset.rtHit) : null; })(),
+    dialogNameOv: (function () { var n = document.getElementById('dialog-name'); return n && n.dataset.rtOv != null ? Number(n.dataset.rtOv) : null; })(),
     dialogNameFs: (function () { var n = document.getElementById('dialog-name'); return n && n.dataset.rtFs != null ? Number(n.dataset.rtFs) : null; })(),
     dialogNameOverflow: (function () {
       // 文字必须落在自己的 content box 内。不能再用 scrollWidth/scrollHeight：
@@ -1320,11 +1320,16 @@ const PROBE_TAKEOUT = `(async function () {
       var n = document.getElementById('dialog-name');
       if (!n) return null;
       var cs = getComputedStyle(n);
-      var ink = (cs.backgroundImage.match(/seal-ink-\\d+\\.svg/) || [])[0] || null;
+      var ink = (function () { var bg = cs.backgroundImage || ''; return /data:image\\/svg\\+xml/.test(bg) ? 'data:seal' : (/linear-gradient/.test(bg) ? 'css-fallback' : null); })();
       var af = getComputedStyle(n, '::after');
-      var sp = (af.backgroundImage || '').match(/seal-specks-\\d+\\.svg/);
-      return { ink: ink, specks: sp ? sp[0] : null,
-               afterInset: parseFloat(af.top), afterContent: af.content };
+      var sp = /data:image\\/svg\\+xml/.test(af.backgroundImage || '') ? 'data:seal' : null;
+      return { ink: ink, specks: sp,
+               key: n.dataset.sealKey || null,
+               lay: { w: n.offsetWidth, h: n.offsetHeight },
+        // 现场生成：把墨块 SVG 从 data URI 反解出 viewBox，Python 侧据此断言
+        // “画布 == 盒子（没被缩放）”，比看文件名可靠。
+        inkBox: (function (bg) { var i = (bg || '').indexOf('base64,'); if (i < 0) return null; try { var s = atob(bg.slice(i + 7).split('"')[0].split(')')[0]); var m = s.match(/viewBox="0 0 ([0-9.]+) ([0-9.]+)"/); return m ? [+m[1], +m[2]] : null; } catch (e) { return null; } })(cs.backgroundImage),
+               afterContent: af.content };
     })(),
     // 缩放原点必须与立绘重合（外卖窗口恒定一阶段，但牌面同样跟着一起缩放）：
     // 与 PROBE_BREAK 的 dialogNameZoom 同一套算法，见那里的说明。
@@ -1607,20 +1612,61 @@ async function run() {
         const n = document.getElementById("sup-preview-name");
         const box = document.getElementById("sup-preview");
         const content = document.querySelector(".sup-preview-content");
+        const fig = document.querySelector(".sup-preview-fig");
+        const pimg = document.getElementById("sup-preview-img");
         if (!n || !box) return null;
         const r = n.getBoundingClientRect();
         const br = box.getBoundingClientRect();
         const cr = content ? content.getBoundingClientRect() : null;
+        const cs = getComputedStyle(n);
+        const af = getComputedStyle(n, "::after");
+        // 墨块是不是现场生成的：data URI = 生成版；只剩渐变 = CSS 兜底（seal.js 没生效）。
+        // 预制 SVG 已于 2026-11-17 全部删除，所以这里没有第三条路可退。
+        const ink = (function () {
+          const bg = cs.backgroundImage || "";
+          if (/data:image\/svg\+xml/.test(bg)) return "data:seal";
+          return /linear-gradient/.test(bg) ? "css-fallback" : null;
+        })();
+        const spk = /data:image\/svg\+xml/.test(af.backgroundImage || "") ? "data:seal" : null;
+        const viewBox = function (bg) {
+          const i = (bg || "").indexOf("base64,");
+          if (i < 0) return null;
+          try {
+            const s = atob(bg.slice(i + 7).split('"')[0].split(")")[0]);
+            const m = s.match(/viewBox="0 0 ([0-9.]+) ([0-9.]+)"/);
+            return m ? [+m[1], +m[2]] : null;
+          } catch (e) { return null; }
+        };
         return {
           text: (n.textContent || "").trim(),
           shown: !!(r.width > 0 && r.height > 0),
+          // 层序：立绘 8 / 牌 9 / 对话框 9（DOM 在牌之后）—— 与真机 break.css 同口径。
+          // 2026-11-18 牌从 7 提到 9：牌顶下沉到颈线后右缘压在袖口上，立绘在上会切掉
+          // 最后一列字形。这层关系必须钉住，别只靠截图目检。
+          figZ: fig ? getComputedStyle(fig).zIndex : null,
+          nameZ: cs.zIndex,
+          contentZ: content ? getComputedStyle(content).zIndex : null,
+          // 上屏位图的高度：换人 / 切页都该是降采样后的 640，不是 1024×1536 的原图
+          // （原图首次上屏要在软件呈现通道上现解码，会先画出未就绪的矩形 —— 用户看到
+          // 的“长方块”就是它）。
+          imgNat: pimg ? [pimg.naturalWidth, pimg.naturalHeight] : null,
+          imgComplete: pimg ? !!pimg.complete : null,
           dx: Math.round(r.left - br.left),
           dy: Math.round(r.top - br.top),
           boxW: Math.round(br.width),
           boxH: Math.round(br.height),
           plateH: Math.round(r.height),
+          // 立绘可见区在**面板坐标**里的上下沿：预览的牌心是按它算的（可见高度 17%），
+          // 用面板高做分母会把顶部那段内边距算进去（实测 0.17 → 0.34，断言必假）。
+          figTop: fig ? Math.round(fig.getBoundingClientRect().top - br.top) : null,
+          figBottom: fig ? Math.round(fig.getBoundingClientRect().bottom - br.top) : null,
           // 牌底不能压到台词框：真机里牌子在立绘头部左侧，恒在对话条之上
           aboveContent: cr ? r.bottom <= cr.top + 1 : null,
+          // —— 墨块 / 碎点（与提醒窗口同一套判据，见 probe_renderer.py 的 _seal_pair）——
+          ink: ink, specks: spk,
+          key: n.dataset.sealKey || null, lay: { w: n.offsetWidth, h: n.offsetHeight },
+          inkBox: viewBox(cs.backgroundImage),
+          afterContent: af.content,
         };
       });
       console.log("[probe] supPreviewGeom:", JSON.stringify(metrics.supPreviewGeom));
