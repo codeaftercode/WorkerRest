@@ -3310,12 +3310,6 @@
       (new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / 864e5
     );
   }
-  function nextSlotDayLabel(at) {
-    const d = new Date(at);
-    const dayDiff = dayDiffOf(at);
-    const day = dayDiff === 0 ? "今天" : dayDiff === 1 ? "明天" : WEEKDAYS.find((w) => w.value === isoWeekday(d))?.label ?? "";
-    return `${day} ${pad22(d.getHours())}:${pad22(d.getMinutes())}`;
-  }
   function slotNextText(next) {
     if (!next) return "";
     // 卡头只报**当天**的下一次（2026-11-13 用户定稿）：跨天的下一次
@@ -4942,25 +4936,33 @@
       ? st.pausedAt
       : now;
     const otherKey = (name) => name.endsWith("提醒") ? `下次${name}` : `下次${name}提醒`;
-    // 一个格子的值有三种形态：{text} 给中文结论（等待空闲 / 未安排 / 明天 08:10 / —），
-    // {led} 给剩余毫秒、交给数码管。只有真正的倒计时才走段码 ——「等待空闲」不是时间，
-    // 硬画成段码只会得到一串 0。
+    // 一个格子的值有两种形态：{text} 给中文结论（只有「等待空闲」），{led} 给剩余毫秒、
+    // 交给数码管。只有真正的倒计时才走段码 ——「等待空闲」不是时间，硬画成段码
+    // 只会得到一串 0。
     //
     // idleWait：这一跳已经到点，但这条提醒勾了「系统空闲（秒）」，人还在忙 ——
     // 用户口径就是让时间格直接写“等待空闲”，等键鼠安静下来它自己会变成倒计时。
     //
-    // 跨午夜：不写“今日已无提醒”（那会把“还有 15 分钟”藏掉），改报“明天 00:10”。
-    // 再远的（周重复的提醒）报“周X 09:00”，与卡片摘要的写法同一套（nextSlotDayLabel）。
+    // 跨天的一律不显示（2026-11-18 用户第三次定稿，别再反复）：
+    // 侧栏这几格只报**当天**的下一次。跨过午夜的那次（明天 00:10 / 周四 09:00）
+    // 以及“今日已无提醒”这类占位，统统整格不渲染 —— 它在卡片摘要、今日时间线里
+    // 都看得到，侧栏再报一遍只会让“还有多久”变成一句没用的明天时刻。
+    // 供测试：sidebar_status_today_test.go 按 isToday 这个名字抓源码契约。
+    const isToday = (at) => dayDiffOf(at) === 0;
     const remainCell = (at, idleWait) => idleWait
       ? { text: "等待空闲" }
-      : dayDiffOf(at) > 0
-        ? { text: nextSlotDayLabel(at) }
-        : { led: Math.max(0, at - now) };
+      : { led: Math.max(0, at - now) };
     // “下次提醒”取外卖/自定义里最近的一次（st.other 已合并两者）。
-    // 不再按“是不是今天”整格隐藏：跨午夜的那一次同样要能看到，具体时刻由 remainCell 表达。
-    const otherCell = st.other
+    const otherCell = st.other && isToday(st.other.at)
       ? [otherKey(st.other.name), remainCell(st.other.at, st.other.idleWait)]
       : null;
+    // 短 / 长休息取最近的那一条（st.rest）。没排上（两张卡都没开）写“未安排”；
+    // 排上了但下一次在明天，就跟外卖 / 自定义那条一样整格消失。
+    const restCell = !st.rest
+      ? ["下次休息提醒", { text: "未安排" }]
+      : isToday(st.rest.at)
+        ? [`下次${st.rest.name}`, remainCell(st.rest.at, st.rest.idleWait)]
+        : null;
     const cells = [["状态", { text: phaseVal }, pauseTitle]];
     if (st.phase === "break") {
       cells.push(["正在休息", { led: Math.max(0, st.breakEndsAt - nowBreak) }]);
@@ -4968,9 +4970,7 @@
       // 这次休息之后的提醒整段藏掉了。st.other 已经是“这次休息消费之后”的下一次。
       if (otherCell) cells.push(otherCell);
     } else {
-      cells.push(
-        st.rest ? [`下次${st.rest.name}`, remainCell(st.rest.at, st.rest.idleWait)] : ["下次休息提醒", { text: "未安排" }]
-      );
+      if (restCell) cells.push(restCell);
       if (otherCell) cells.push(otherCell);
     }
     return cells;
