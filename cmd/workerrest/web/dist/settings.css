@@ -189,8 +189,22 @@ body {
 .sidebar-footer .status-cell { background: var(--panel-2); border-radius: var(--r-sm); padding: 6px 10px; }
 .sidebar-footer .status-cell .k { font-size: 11px; }
 .sidebar-footer .status-cell .v { font-size: 13px; margin-top: 2px; }
-.quick-actions { display: flex; gap: 6px; flex-wrap: wrap; }
-.sidebar-footer .quick-actions .btn { flex: 1 1 auto; padding: 7px 8px; font-size: 12px; text-align: center; }
+/* 快捷操作外框：GroupBox 形态。fieldset 自带“标题切断顶线”的绘制，legend 只需压住线宽；
+   min-inline-size 必须清掉 —— fieldset 默认 min-content，窄侧栏里会把按钮挤成竖排。 */
+.quick-group {
+  margin: 4px 0 0;
+  min-width: 0;
+  min-inline-size: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: 10px;
+  flex-shrink: 0;
+}
+.quick-group > legend { padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--text-2); line-height: 1.2; }
+/* 组内两列网格：立即休息独占一行（即时动作），其余四个两两成对（暂停/推迟、跳过/重置） */
+.quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.quick-actions #qa-break { grid-column: 1 / -1; }
+.sidebar-footer .quick-actions .btn { padding: 7px 8px; font-size: 12px; text-align: center; }
 
 /* 按钮 */
 .btn {

@@ -48,14 +48,19 @@
       </nav>
       <div class="sidebar-footer">
         <div id="data-status" class="status-grid"></div>
-        <div class="quick-actions">
-          <button class="btn ghost" id="qa-break">立即休息</button>
-          <!-- 文案由 renderStatus 按 st.paused 互斥切换：暂停中=恢复休息，否则=暂停休息 -->
-          <button class="btn ghost" id="qa-pause">暂停休息</button>
-          <button class="btn ghost" id="qa-postpone">推迟休息</button>
-          <button class="btn ghost" id="qa-skip">跳过本次</button>
-          <button class="btn ghost" id="qa-reset">重置周期</button>
-        </div>
+        <!-- 快捷操作按 Win32 GroupBox 的形态收边：fieldset+legend 天生让标题把顶线切开，
+             与原生 GroupBox 一致（自绘 div 得用底色去遮线段，换主题/换底色就会露馅）。 -->
+        <fieldset class="quick-group">
+          <legend>休息提醒</legend>
+          <div class="quick-actions">
+            <button class="btn ghost" id="qa-break">立即休息</button>
+            <!-- 文案由 renderStatus 按 st.paused 互斥切换：暂停中=恢复休息，否则=暂停休息 -->
+            <button class="btn ghost" id="qa-pause">暂停休息</button>
+            <button class="btn ghost" id="qa-postpone">推迟休息</button>
+            <button class="btn ghost" id="qa-skip">跳过本次</button>
+            <button class="btn ghost" id="qa-reset">重置周期</button>
+          </div>
+        </fieldset>
       </div>
     </aside>
 
