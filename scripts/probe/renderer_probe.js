@@ -399,10 +399,32 @@ async function galleryScrollChainProbe(page) {
   // 鼠标必须落在列表里（滚轮事件的目标决定谁先处理）
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
 
-  const init = await page.evaluate(snap);
+  let init = await page.evaluate(snap);
   // 列表装得下就没有“滚不动”这回事，这条用例无从验证
   if (!init || init.gMax <= 0) return { skipped: "画廊内容装得下（不可滚）", init: init };
-  if (init.cMax <= 0) return { skipped: "页面本身不可滚", init: init };
+  // 2026-11-18：督休页的卡改成**撑满可视高度**（settings.css 的 #tab-supervisor.active），
+  // 名单与台词再多也由内部列表滚动消化，默认视口下页面**本身不再需要滚**。
+  // 而这条用例验的是「列表滚到边界 → 滚轮交给外层页面」，没有外层可滚就无从验证。
+  // 所以先压矮视口把「页面确实要滚」造出来，三条断言跑完立刻恢复原视口
+  // （后面的截图与几何断言都按原视口量，不能带着小视口往下走）。
+  let viewportRestore = null;
+  if (init.cMax <= 0) {
+    const vp = page.viewportSize() || { width: 1000, height: 820 };
+    await page.setViewportSize({ width: vp.width, height: 560 });
+    await delay(600);
+    viewportRestore = vp;
+    const nb = await page.locator("#sup-gallery-body").boundingBox();
+    if (!nb) {
+      await page.setViewportSize(vp);
+      return { skipped: "压矮视口后找不到 #sup-gallery-body", init: init };
+    }
+    await page.mouse.move(nb.x + nb.width / 2, nb.y + nb.height / 2);
+    init = await page.evaluate(snap);
+    if (init.cMax <= 0) {
+      await page.setViewportSize(vp);
+      return { skipped: "压矮视口后页面仍不可滚", init: init };
+    }
+  }
 
   // ---- A：列表滚到底，继续下滚 → 外层应往下走 ----
   await page.evaluate(() => {
@@ -446,6 +468,10 @@ async function galleryScrollChainProbe(page) {
     document.getElementById("content").scrollTop = 0;
   });
   await delay(150);
+  if (viewportRestore) {
+    await page.setViewportSize(viewportRestore);
+    await delay(500);
+  }
 
   return {
     init: init,
@@ -1591,6 +1617,21 @@ async function run() {
       // 那 4px 的系统拖动带整条盖住 —— 右边框从此拖不动窗口大小（用户实测反馈）。
       // 断言 #content 有一条 ≥6px 的**透明**右边框把滚动条顶进来，而且这条边框真的落在
       // 视口内（contentRight == 视口宽），最外 6px 才回到普通背景、拖动带才命中得回来。
+      //
+      // 2026-11-18：这一页的卡改成撑满可视高度后，内容再多也由内部列表滚动消化，
+      // 默认视口下页面**可能不出现**滚动条 —— 而这条用例验的正是「有滚动条时」的情形。
+      // 所以先压矮视口把滚动条逼出来，量完立刻恢复（下面的预览几何仍按原视口量）。
+      const edgeVP = set.viewportSize() || { width: 1000, height: 820 };
+      let edgeShrunk = false;
+      const pageScrolls = await set.evaluate(() => {
+        const c = document.getElementById("content");
+        return c.scrollHeight > c.clientHeight + 1;
+      });
+      if (!pageScrolls) {
+        await set.setViewportSize({ width: edgeVP.width, height: 560 });
+        await delay(600);
+        edgeShrunk = true;
+      }
       metrics.edgeGutter = await set.evaluate(() => {
         const c = document.getElementById("content");
         const cs = getComputedStyle(c);
@@ -1605,6 +1646,10 @@ async function run() {
         };
       });
       console.log("[probe] edgeGutter:", JSON.stringify(metrics.edgeGutter));
+      if (edgeShrunk) {
+        await set.setViewportSize(edgeVP);
+        await delay(600);
+      }
       // 预览面板的名字牌要等这页真的切过来才有盒子：别的页签是 display:none，
       // getBoundingClientRect 全是 0（首屏 PROBE_SETTINGS 量出来的 dx/dy/boxH 都是 0 就是这个原因）。
       // 所以“显示了吗、摆在哪”这类断言只能在这里量。

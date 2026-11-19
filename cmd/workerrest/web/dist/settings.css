@@ -1382,9 +1382,59 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    调滑条、读台词。原来 <900px 就改单列，是为了救"整宽舞台 + 整宽列表"那版，
    现在左列本来就是窄条，没有需要抢救的空间。
 
-   与其它页 `max-width: 860` 不同，这一页放宽到 1040 —— 它是工作台不是表单，
-   窗口拉宽时该长大的是舞台。 */
-#tab-supervisor { max-width: 1040px; }
+   与其它页 `max-width: 860` 不同 —— **这一页和统计报表页一样不封顶**（2026-11-18 用户：
+   「像统计报表页面那样，宽度占满整个空间」）。原来封 1040 是怕舞台 16:9 跟着宽度长高、
+   把整页推走；现在高度那半已经由「卡片撑满 + 台词列表吃剩余」解决（见下一段），
+   宽窗口下多出来的宽度给舞台和台词行才是这一页该的走法。
+   舞台本身另有一条 `max-height` 兜底（见 .sup-preview），宽到 1920 以上才轮到它出手。 */
+#tab-supervisor { max-width: none; }
+
+/* ---------- 卡片撑满内容区可视高度（2026-11-18 用户：卡片高度随设置窗口高度变化） ----------
+   这一页是**工作台**不是表单，所以跟其它页取两种不同的高度口径：
+     · 其它页的卡 = 「内容有多高就多高」，窗口拉高只在底下留白（对表单是对的，卡片没有
+       可以变长的地方）；
+     · 这一页的卡 = 「撑满可视高度」，因为窗口多出来的高度有地方去 —— 左列名单
+       （.gallery-body）和右列台词列表（.msg-list）都是滚动区，长一点就少滚一点。
+   实测（1180 宽）：原来视口 560→1200 卡片恒为 859px，窗口高时底下空出 300+px 空白。
+   实现链条（缺一环就断）：
+     #tab-supervisor.active  min-height:100%   —— 铺满 #content 的内容盒（它是滚动容器，
+                                                 高度确定，百分比才有意义）
+     > .card                flex:1             —— 卡片吃掉这一整条
+     .sup-grid              flex:1             —— 工作台吃掉卡片除卡头外的全部
+     .sup-msg               flex:1             —— 右列剩下的高度给台词面板
+     .msg-body / .msg-list  flex:1             —— 一路传到列表体，列表变长
+   高度不足时**不压缩、不裁切**：卡片是 min-height（不是 height），flex 项的
+   min-height:auto 等于内容最小高度，所以窗口矮到放不下时卡片照旧长高、页面滚动，
+   与改动前完全一致。 */
+#tab-supervisor.active {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+#tab-supervisor > .card {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+}
+/* 折叠态（.foldable.closed 只剩一个卡头）绝不能跟着撑满 —— 否则收起后是一整屏空白面板 */
+#tab-supervisor > .card.closed { flex: 0 0 auto; }
+/* 卡头 32px 由常量钉死，不能被 flex 压扁（本页卡头的 26px 高按钮是度量基准，见
+   .card-head 的注释）。只在本页声明，其它页的卡本来就不参与 flex 分配。 */
+#tab-supervisor > .card > .card-head { flex: none; }
+#tab-supervisor .sup-grid { flex: 1 1 auto; min-height: 0; }
+#tab-supervisor .sup-stage { min-height: 0; }
+#tab-supervisor .sup-msg {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+#tab-supervisor .sup-msg > .msg-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
 
 .sup-grid {
   display: grid;
@@ -1543,8 +1593,20 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   border: none; border-top: 1px solid var(--sup-frame); border-radius: 0;
   background: var(--panel);
 }
-/* 台词列表在右列里限高滚动：别让一屏台词把整个工作台撑到需要翻页 */
-.sup-stage .msg-panel .msg-list { max-height: 264px; }
+/* 台词列表在右列里滚动，高度跟着窗口走（2026-11-18 用户：卡片高度随设置窗口高度变化）。
+   原来硬钉 264px 上限：窗口拉高时这 264 一动不动，多出来的高度全变成卡片底下的空白。
+   现在交给 flex 分配 —— 上界取消（max-height:none），下界 180（约 3 行；窗口矮到放不下时
+   卡片要长高、页面滚动，下界越大滚动越多，所以比原来的 264 收 84）。
+   **basis 必须是 0**（不是 auto）：这一条决定窗口矮时页面滚不滚。basis 取内容高时，
+   「卡片最小内容高度」就等于十句台词全展开的高度（实测 1180 宽下卡长到 1167、
+   比可视区高 300），min-height:100% 再怎么撑都追不上它，也永远分不出多余高度。
+   取 0 后卡片的最小高度由预览 / 调节 / 列表下界 180 决定（1180 宽实测约 760），
+   可视区高过它时卡片撑满、列表吃掉剩下的全部高度。 */
+#tab-supervisor .sup-stage .msg-panel .msg-list {
+  flex: 1 1 0;
+  min-height: 180px;
+  max-height: none;
+}
 /* 行尾的 ✎ / ✕ 平时浮在行右端、不占布局宽度（绝对定位），悬停或键盘聚焦本行才显形。
    它们原来只是 opacity:0，但仍在流里吃着 60px —— 472px 宽的一行台词只剩 21 个字，
    截断处右边还留着一片空白，看起来像渲染坏了。浮起来之后同一行能多放 3~4 个字。
@@ -1597,13 +1659,21 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .sup-preview {
   position: relative;
   flex: none;                      /* 别被 flex column 压扁，高度只由宽高比决定 */
-  /* 舞台尺寸严格跟着右列宽度走：16:9 撑开（真机提醒窗就是 16:9，所见即真机）。
-     这里**不能**加 max-height —— 高度一旦封顶，aspect-ratio 会反过来把宽度压低，
-     图就窄于右列、右侧露出一条白缝（1280 宽窗口实测 25px），与下方「立绘调节 /
-     提醒内容」的左缘对不齐，看着像一张贴上去的图。卡片本身有 #tab-supervisor
-     的 max-width: 1040px 封顶，图最高 466px，不会把整页推走。 */
+  /* 舞台宽度严格跟着右列走：**现在右列不再封顶**（2026-11-18 用户要求宽度占满，
+     见 #tab-supervisor 那段），所以宽屏下 16:9 会一路长到 2560 宽时的 1153px 高、
+     把「立绘调节 / 提醒内容」全推到首屏之外（实测 1920 就要滚 361px）。因此补一条
+     **高度上限：视口高的 62%（320 起、760 封顶）**。跟着视口高走而不是写死一个像素，
+     是因为这一页的右列本来就是「舞台 + 会滚的列表」：窗口高时舞台该跟着大（真机提醒窗
+     也是占满工作区，越大的屏立绘越大），窗口矮时它就该收，把高度让给台词列表。
+     —— 旧注释写“不能加 max-height，否则 aspect-ratio 会反过来把宽度压低、右侧露白缝”。
+     那条结论的前提是**卡片被 1040 封顶、舞台宽度由 aspect-ratio 反推**；现在舞台宽度
+     由 flex 列 stretch 给出（width 是确定值），max-height 只削高度、宽度仍是 100%
+     （1920/2560 实测舞台宽 1410/2050，与右列严丝合缝、无白缝）。代价是比例从 16:9
+     变成宽扁（1920×900 视口下 2.6:1、1080 高时 2.1:1）—— 与真机在宽屏工作区里占满
+     全屏的实际观感一致，预览面板本身就是“按窗口比例预演”，不是固定画幅。 */
   aspect-ratio: 16 / 9;
   min-height: 200px;
+  max-height: clamp(320px, 62vh, 760px);
   /* 四角都是直角：左上角要跟左边的候选专员名单直接连成一片，
      右上角交给 .sup-grid 的外圆角去裁（见上）。 */
   border-radius: 0;
