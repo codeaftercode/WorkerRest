@@ -113,6 +113,12 @@
     ShowSettingsWindow: 0,
     SetActiveTab: 1, // (tab)
 
+    // ---- 全局快捷键 ----
+    HotkeyStatus: 0,
+    CheckHotkeyConflicts: 0,
+    SetHotkeyCapture: 1, // (on)
+    SetShortcut: 2, // (key, accel)
+
     // ---- 统计 ----
     GetStats: 0,
     GetHistory: 2, // (start, end)
@@ -387,6 +393,32 @@
       return call("SetActiveTab", [str(tab)]);
     },
 
+    // ---- 全局快捷键（见 cmd/workerrest/hotkeys.go）----
+    // 最近一次注册的逐项结果：页面打开时拉一次（启动注册早于页面加载，事件已经错过），
+    // 之后靠 onHotkeyStatus 跟进配置保存后的重注册。返回 HotkeyStatus[]：
+    // { key, accel, state }，state ∈ ok / disabled / invalid / conflict / unsupported。
+    hotkeyStatus: function () {
+      return call("HotkeyStatus");
+    },
+    // 快捷键页「检测冲突」：让热键线程按当前配置重新注册一遍，返回同一形状的逐项结果。
+    checkHotkeyConflicts: function () {
+      return call("CheckHotkeyConflicts");
+    },
+    // 录入期间挂起四项全局热键（true = 挂起）。不这么做的话，用户按下的那个组合键
+    // 会被系统投给热键线程并执行动作（想录 Ctrl+Alt+P，结果真的推迟了一次休息），
+    // 输入框还收不到按键 —— RegisterHotKey 是系统级独占的。
+    setHotkeyCapture: function (on) {
+      return call("SetHotkeyCapture", [!!on]);
+    },
+    // 改一项快捷键：Go 侧按候选配置**真注册一遍**，注册成功才落盘，失败就原样退回。
+    // 返回 ShortcutApplyResult{ok, state, key, accel, kept, list}：
+    //   ok=true  → 已经生效并且已写进配置文件；
+    //   ok=false → 配置文件一个字节都没动，kept 是保留着的原快捷键。
+    // state 为空 = 没得出结论（线程未就绪 / 超时），此时 Go 已按老行为直接保存。
+    setShortcut: function (key, accel) {
+      return call("SetShortcut", [str(key), str(accel)]);
+    },
+
     // ---- 统计 ----
     getStats: function () {
       return call("GetStats");
@@ -451,6 +483,11 @@
     // 设置窗口被隐藏（隐藏到托盘 / 切换）时前端退出所有提醒内容的编辑态
     onSettingsHidden: function (cb) {
       on("settings:hidden", cb);
+    },
+    // 快捷键注册结果（配置保存 / 恢复默认后 Go 侧重新注册并广播）。
+    // 回调拿到 HotkeyStatus[]，与 hotkeyStatus() 同一形状。
+    onHotkeyStatus: function (cb) {
+      on("hotkeys:status", cb);
     },
   };
 

@@ -1942,6 +1942,32 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 .shortcut.bad { border-color: var(--danger); background: var(--danger-weak); }
 #sc-warn { color: var(--danger); }
 
+/* 快捷键行：input 仍是 180（全局默认），四行等宽、与其它字段行同一条控件列。
+   2026-11-19 第三轮：结果不再挂在输入框右侧，所以不再需要 .sc-line 那层 flex 容器，
+   也不再需要 760 下收窄 —— 没有文字跟它抢宽度，180 在 232 的控件列里放得下。 */
+
+/* 「检测冲突」是这张卡唯一的主动作，给主题色实体按钮。
+   必须按 id 覆盖：卡头通用的 .card-head-act.btn（见上文）把它降级成透明底 + 次级文字色，
+   而那条规则在样式表里更靠后，同特异性下会赢过 .btn.primary。 */
+#sc-check.card-head-act.btn {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+  padding: 0 10px;
+}
+#sc-check.card-head-act.btn:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+  color: var(--on-accent);
+}
+#sc-check.card-head-act.btn:disabled {
+  opacity: 0.6;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+}
+
 /* 快捷键页的两条说明都排在四行之后（其他卡片的 .hint 也一律在正文末尾，不在标题下当副标题）。
    .row 自身带 4px 下内边距，这里再补 4px：说明与最后一行之间 8px，错误行与操作说明之间 4px
    —— 两行都是 12px 小字，4px 已能读出层次，再大就把这一小段说明从四行里割出去了。 */
@@ -2726,6 +2752,22 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
   border: 1px solid var(--border-strong); border-radius: var(--r-md);
   font-size: 14px; z-index: 99;
   box-shadow: var(--sh-3);
+  /* 结果文案（尤其“某项不可用：xx、yy”这类汇总）可能很长：留出左右各 24px 安全边，
+     到边就换行、居中 —— 760 最小宽下也不会顶出窗口。 */
+  max-width: calc(100vw - 48px);
+  text-align: center;
+  line-height: 1.5;
+}
+/* 语气：失败红底、成功绿底，中性不配色。三条规则共用同一个节点，class 由 toast() 按
+   tone 每次覆盖（不清就会把上一条的颜色带过来）。配色与 .pill.err / .shortcut.bad 同源，
+   深浅两套主题都跟着令牌走（--*-weak 是给文字用的浅底，--*-fg 是压在上面的深字）。 */
+#toast.err {
+  background: var(--danger-weak); color: var(--danger-fg);
+  border-color: color-mix(in srgb, var(--danger) 55%, var(--border));
+}
+#toast.ok {
+  background: var(--success-weak); color: var(--success-fg);
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
 }
 
 /* ---------------- 指定应用运行时自动暂停（应用列表 + 多选弹窗） ---------------- */

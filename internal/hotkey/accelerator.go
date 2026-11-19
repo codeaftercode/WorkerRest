@@ -24,6 +24,14 @@ const (
 	WmHotkey = 0x0312
 	// HkReloadMsg WM_APP+1：配置变了，线程内重注册
 	HkReloadMsg = 0x8001
+	// HkCaptureMsg WM_APP+2：设置页进入 / 离开快捷键录入态（挂起 / 恢复全局热键）。
+	// 具体挂起还是恢复读 HotkeyManager.suspended 的最新值 —— 消息只负责叫醒线程，
+	// 这样连续 focus/blur 抢跑时也只会落到“最后一次请求的状态”。
+	HkCaptureMsg = 0x8002
+	// HkCandidateMsg WM_APP+3：提交一项改键。线程内按**候选配置**把四项真注册一遍，
+	// 再经 channel 回传逐项结果；不可用时线程当场还原成旧配置。判据与正式注册完全一致，
+	// 所以“注册成功”就是“改成了”，不存在“先存再报错”的中间态。
+	HkCandidateMsg = 0x8003
 )
 
 // modNames 修饰键段 → Win32 MOD_*。录入端（settings.js acceleratorFromEvent）只产出

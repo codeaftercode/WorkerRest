@@ -689,23 +689,24 @@ async function main() {
       check(vNext === nextKey, `靠后的“跳转下一次休息”录成 ${postponeKey}（与推迟撞车）被拒收`,
         `${JSON.stringify(nextKey)} → ${JSON.stringify(vNext)}`);
 
-      // b. 靠前的栏录成和靠后相同的键 → 接受，但后面那栏标红 + 出现汇总说明
+      // b. 靠前的栏录成和靠后相同的键 → **同样拒收**。两行同键只有一项能生效，
+      //    放它进去等于把后面那一项静默关掉；改键改为原子提交后，两个方向都在
+      //    录入阶段就拦住，不再分“靠前/靠后”。
       await pressCombo("#sc-postpone", nextKey);
       const vPost = await page.inputValue("#sc-postpone");
-      check(vPost === nextKey, `靠前的“推迟”录成 ${nextKey} 会被接受（判定归到靠后那一栏）`, vPost);
-      const mark = await page.evaluate((otherId) => {
-        const el = document.getElementById(otherId);
+      check(vPost === postponeKey, `靠前的“推迟”录成 ${nextKey}（与立即休息撞车）同样被拒收`,
+        `${JSON.stringify(postponeKey)} → ${JSON.stringify(vPost)}`);
+      const mark = await page.evaluate(() => {
+        const el = document.getElementById("sc-nextBreak");
         const warn = document.getElementById("sc-warn");
         return {
           bad: el.classList.contains("bad"),
-          title: el.title || "",
           warnHidden: warn ? warn.classList.contains("hidden") : true,
           warnText: warn ? (warn.textContent || "").trim() : "",
         };
-      }, "sc-nextBreak");
-      check(mark.bad, "重复键把靠后那一栏标红（.bad）", `title=${mark.title}`);
-      check(!mark.warnHidden && /同一个组合键/.test(mark.warnText), "页面给出“和某某用了同一个组合键”的说明",
-        mark.warnText.slice(0, 40));
+      });
+      check(!mark.bad && mark.warnHidden, "拒收后配置里没有重复值：行内不标红、不出汇总",
+        `bad=${mark.bad} warnHidden=${mark.warnHidden} ${mark.warnText.slice(0, 30)}`);
 
       // 复原：把推迟写回原键，红框与说明都应消失
       await pressCombo("#sc-postpone", postponeKey);

@@ -622,15 +622,41 @@
            收起来等于把整页清空，且折叠状态记本地，容易让人以为页面坏了。 -->
       <section class="tab" id="tab-shortcuts">
         <div class="card">
-          <div class="card-head"><h3>快捷键</h3></div>
-          <div class="row field"><label>推迟当前休息</label><input type="text" class="shortcut" id="sc-postpone" readonly placeholder="点击后按键录入" /></div>
-          <div class="row field"><label>提前结束休息</label><input type="text" class="shortcut" id="sc-endEarly" readonly placeholder="点击后按键录入" /></div>
-          <div class="row field"><label>暂停 / 恢复休息</label><input type="text" class="shortcut" id="sc-pause" readonly placeholder="点击后按键录入" /></div>
-          <div class="row field"><label>跳转到下一次休息</label><input type="text" class="shortcut" id="sc-nextBreak" readonly placeholder="点击后按键录入" /></div>
+          <div class="card-head">
+            <h3>快捷键</h3>
+            <!-- 检测 = 让热键线程按当前配置重新注册一遍（Windows 没有“查询组合键归谁”的
+                 API，这是唯一可靠判据）。放在卡头行尾：它是整张卡的动作（复查四项），
+                 不占正文一行，也不跟某一条绑定在一起。它是这张卡唯一的主动作，用主题色
+                 实体按钮（卡头通用的 .card-head-act.btn 是透明文本动作，见 CSS 覆盖）。 -->
+            <button class="btn primary mini card-head-act" id="sc-check" title="重新注册四项，复查是否被其他程序占用">检测冲突</button>
+          </div>
+          <!-- 2026-11-19 第三轮：注册结果不再占行内位置（右侧常驻文字会被误读成“这一行的
+               字段状态”，且四行同时写绿等于噪音）。录入 / 检测的结果统一走底部 toast，
+               2~5 秒自动消失；行内只保留本地校验（缺修饰键、两项同键）的红框与汇总说明。 -->
+          <div class="row field">
+            <label>推迟当前休息</label>
+            <input type="text" class="shortcut" id="sc-postpone" readonly placeholder="点击后按键录入" />
+          </div>
+          <div class="row field">
+            <label>提前结束休息</label>
+            <input type="text" class="shortcut" id="sc-endEarly" readonly placeholder="点击后按键录入" />
+          </div>
+          <div class="row field">
+            <label>暂停 / 恢复休息</label>
+            <input type="text" class="shortcut" id="sc-pause" readonly placeholder="点击后按键录入" />
+          </div>
+          <div class="row field">
+            <label>立即休息</label>
+            <input type="text" class="shortcut" id="sc-nextBreak" readonly placeholder="点击后按键录入" />
+          </div>
           <!-- 录入不合规（缺修饰键 / 和别的动作撞车）时在这里汇总说明，平时隐藏。
                紧跟在四行后面：它说的是上面那几个框，不是整页的注解。 -->
           <p class="hint hidden" id="sc-warn"></p>
           <p class="hint">点击输入框后按下组合键即可录入（至少要带一个修饰键：Ctrl / Alt / Shift / Super）；按 Esc 清空；留空表示禁用。</p>
+          <!-- 检测能力的边界写在页面上，而不是只留在代码注释里：
+               系统保留的组合（F12 / Win+L 一类）同样注册不上，会显示成“已被占用”（偏保守）；
+               反过来，用键盘钩子监听组合键的程序不占注册表，检测不到 —— 这种只能靠现象判断。 -->
+          <p class="hint">「检测冲突」按“能否向系统注册成功”判定，被系统保留的组合键也会算作被占用；若提示未发现冲突但按键仍无反应，通常是其他程序用键盘钩子截走了它（系统不提供“某组合键归谁”的查询接口，无法探测）。</p>
         </div>
       </section>
 

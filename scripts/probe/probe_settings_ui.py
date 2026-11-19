@@ -47,6 +47,10 @@ PROBE_JS = [
     # 最后跑：它只做 hover 与几何测量、不写配置，但会切 tab / 展开下拉，
     # 放在写配置的 options 之后，前面的探针才都看到初始形态。
     os.path.join(HERE, "settings_tip_probe.js"),
+    # 快捷键注册结果 toast / 检测冲突按钮（2026-11-19）：会切 tab、点检测，并通过
+    # autoSave 真的写几个键值（录键 / Esc 清空），所以必须收尾跑 —— 写的是隔离配置。
+    # server 模式没有热键管理器，其余状态靠 window.api 代理注入。
+    os.path.join(HERE, "hotkey_status_probe.js"),
 ]
 OUT = os.path.join(tempfile.gettempdir(), "wr_settings_ui")
 

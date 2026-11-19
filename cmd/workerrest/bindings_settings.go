@@ -109,6 +109,38 @@ func (a *App) SaveSettings(next map[string]any) bool {
 	return true
 }
 
+// saveShortcutsOnly 只把 shortcuts 子树写进配置文件，不触发 SaveSettings 那一串副作用
+// （emit / pushState / RefreshPlan / reloadHotkeys）。
+//
+// 为什么单独一条：改键必须由“注册成不成功”决定，而 SaveSettings 末尾会自动
+// reloadHotkeys —— 那会在 SetShortcut 刚按候选配置注册好之后再注册一遍，
+// 把一次原子提交搅成两次注册、两个结论。这里只负责把已验证过的值落盘。
+func (a *App) saveShortcutsOnly(sc map[string]any) bool {
+	a.mu.Lock()
+	merged, _ := settings.DeepMerge(a.cfg.Raw(), map[string]any{"shortcuts": sc}).(map[string]any)
+	if merged == nil {
+		a.mu.Unlock()
+		log.Printf("[settings] shortcuts 保存被忽略：合并结果为空")
+		return false
+	}
+	// 与 SaveSettings 同样的理由：DeepMerge 对未被覆盖的嵌套 map 是直接搬引用，
+	// 后面的 keepWindowLastSize / NormalizeForSave 会原地写，必须先深拷。
+	if cloned := jsonCloneMap(merged); cloned != nil {
+		merged = cloned
+	}
+	keepWindowLastSize(a.cfg.Raw(), merged)
+	settings.NormalizeForSave(merged)
+	s := settings.New(merged, a.cfg.Path())
+	if err := s.Save(); err != nil {
+		a.mu.Unlock()
+		log.Printf("[settings] shortcuts 保存失败: %v", err)
+		return false
+	}
+	a.cfg = s
+	a.mu.Unlock()
+	return true
+}
+
 // ResetSettings 恢复默认设置：先把当前配置备份成 settings.backup.json（每次覆盖），
 // 再整体重置为出厂默认。督休专员目录与已导入的音乐不受影响。
 func (a *App) ResetSettings() map[string]any {

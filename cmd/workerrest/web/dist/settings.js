@@ -1563,9 +1563,15 @@
     if (r === "busy") toast("外卖提醒窗口正在显示，暂时无法预览");
     return r;
   }
-  function toast(msg) {
+  var toastTimer = 0;
+  // tone：省略 = 中性（普通信息），"ok" 绿底（做成了），"err" 红底（失败了）。
+  function toast(msg, ms, tone) {
     const t = $("toast");
     t.textContent = msg;
+    // 节点是所有提示共用的一条：必须显式摘掉上一条的语气，否则一次失败之后
+    // 紧跟的成功提示会继续红着（反过来也一样）。
+    t.classList.toggle("ok", tone === "ok");
+    t.classList.toggle("err", tone === "err");
     t.classList.remove("hidden");
     // 视觉提示 + 语音播报两条通道：toast 显示 2.2 s 后消失，读屏靠常驻的 #sr-status。
     // 同一个 msg 连发两次时先进空串，否则内容没变、活区不会重新播报（“又超时了”这类）。
@@ -1574,7 +1580,10 @@
       live.textContent = "";
       requestAnimationFrame(() => { live.textContent = msg; });
     }
-    setTimeout(() => t.classList.add("hidden"), 2200);
+    // 上一条的定时器必须先清掉：否则“检测结果（5s）”紧跟一条普通提示时，
+    // 旧的 2.2s 定时器会把新的那条提前收走。
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => t.classList.add("hidden"), ms || 2200);
   }
   // ---- 对话框焦点管理（可访问性：域8 的“role=dialog 无焦点管理证据”）----
   // 十一个 .modal 全靠 classList 加/减 hidden 开关，调用点散在二十多处。逐个改必然漏，
@@ -4208,6 +4217,9 @@
     $("sc-nextBreak").value = S.shortcuts.nextBreak;
     // 回填后立刻判一次：配置文件里被手改出来的“裸键 / 两个动作同键”也要显形
     markShortcuts();
+    // 再拉一次 Go 侧的注册结果：启动时的注册早于页面加载，onHotkeyStatus 的广播已经错过，
+    // 只靠事件的话“上次就注册失败”的键要等到用户改一次设置才显形。
+    refreshHotkeyStatus();
     // “暂停休息时”行标签的“?”说明里带着当前空闲分钟数，首屏就按配置对齐
     refreshPauseHints();
     // 首屏把所有卡头开关的关闭态刷一遍（提醒卡在 fillBreakForm 里已经刷过，
@@ -4677,7 +4689,7 @@
     "sc-postpone": "推迟当前休息",
     "sc-endEarly": "提前结束休息",
     "sc-pause": "暂停 / 恢复休息",
-    "sc-nextBreak": "跳转到下一次休息"
+    "sc-nextBreak": "立即休息"
   };
   var SHORTCUT_MODS = ["Ctrl", "Alt", "Shift", "Super"];
   var SHORTCUT_TITLE_OK = "点击后按下组合键录入；留空表示禁用；Esc 清空";
@@ -4685,17 +4697,21 @@
   // 一道判断两处用：录入时挡下、回填后标红。裸键（A / F5 / 空格）注册成全局热键会把
   // 正常打字全吃掉，Go 侧 parseAccelerator 本来就拒绝 —— 这里必须当场说清楚，
   // 而不是让用户录进去一个永远不生效的键（P3-4）。
-  function shortcutIssue(id) {
+  // cand：待检查的组合键（录入时传候选值）。不传 = 检查输入框当前值（回填 / 失焦时用）。
+  // 之所以要支持候选值：录入必须先判定、后写值 —— 不通过的值一个字都不能进输入框，
+  // 否则它会跟着 autoSave 落进配置。
+  function shortcutIssue(id, cand) {
     const input = $(id);
-    const acc = input ? input.value.trim() : "";
+    const acc = (cand === undefined ? (input ? input.value : "") : cand).trim();
     if (!acc) return "";
     const parts = acc.split("+");
     if (parts.length < 2 || !SHORTCUT_MODS.includes(parts[0])) return SHORTCUT_NO_MOD;
     for (const other of SHORTCUT_IDS) {
       if (other === id) continue;
-      if (SHORTCUT_IDS.indexOf(other) > SHORTCUT_IDS.indexOf(id)) continue;
+      // 比**所有**其他项，不能只比前面几项：把第 1 行改成第 3 行已经在用的键时，
+      // 那一次改动会把第 3 行挤成冲突 —— 提交前必须拦住。
       if (($(other)?.value ?? "").trim() === acc) {
-        return `和“${SHORTCUT_LABELS[other]}”用了同一个组合键（只有它生效）`;
+        return `和“${SHORTCUT_LABELS[other]}”用了同一个组合键（只有一项能生效）`;
       }
     }
     return "";
@@ -4718,40 +4734,194 @@
       warn.classList.toggle("hidden", msgs.length === 0);
     }
   }
+  // 录入期间挂起 / 恢复四项全局热键。
+  // RegisterHotKey 是系统级独占的：四项注册着的时候，用户按下的组合键（往往就是其中
+  // 一项）会被系统直接投给热键线程并**执行动作** —— 想录 Ctrl+Alt+P，结果真的推迟了
+  // 一次休息，而输入框什么都收不到。只有这期间“系统里没有这个热键”，按键才会正常
+  // 落到前台窗口。调用点是 focus / blur，另有窗口失焦、页面隐藏、设置窗隐藏三处兜底：
+  // 挂起后一旦漏掉恢复，四项快捷键就永久失效了，这个代价比多调几次大得多。
+  function setHotkeyCapture(on) {
+    if (!window.api || !window.api.setHotkeyCapture) return;
+    Promise.resolve(window.api.setHotkeyCapture(!!on)).catch(() => {});
+  }
+  function releaseHotkeyCapture() {
+    setHotkeyCapture(false);
+  }
+  // 改键：交给 Go 侧做**一次原子提交** —— 按候选配置真注册一遍，注册成功才落盘。
+  // 前端既不预先写输入框、也不自己保存：没改成的时候，框里连一瞬间都不该出现那个键，
+  // 配置更不该先躺一个注定失效的值（那正是“先存再报错”的观感来源）。
+  function applyShortcut(id, acc) {
+    if (!window.api || !window.api.setShortcut) return Promise.resolve(null);
+    return Promise.resolve(window.api.setShortcut(SHORTCUT_KEYS[id], acc)).catch(() => null);
+  }
   function setupShortcutCapture() {
     for (const id of SHORTCUT_IDS) {
       const input = $(id);
+      input.addEventListener("focus", () => setHotkeyCapture(true));
+      input.addEventListener("blur", releaseHotkeyCapture);
       input.addEventListener("keydown", (e) => {
         e.preventDefault();
         e.stopPropagation();
         if (e.key === "Escape") {
-          input.value = "";
-          input.blur();
-          markShortcuts();
-          autoSave();
+          if (!input.value.trim()) {
+            input.blur();
+            return;
+          }
+          applyShortcut(id, "").then((res) => {
+            input.blur();
+            if (res && res.ok) {
+              input.value = "";
+              markShortcuts();
+              toast(`已清空“${SHORTCUT_LABELS[id]}”的快捷键`, 2200, "ok");
+            } else {
+              toast(`“${SHORTCUT_LABELS[id]}”未能清空，请稍后重试`, 4200, "err");
+            }
+          });
           return;
         }
         const acc = acceleratorFromEvent(e);
         if (!acc) return; // 只按住了修饰键：继续等主键
-        // 不合法的组合键**整条拒收**（框里保持原值）而不是写进去再标红：
-        // 后者会把它顺手存进配置，等于给了用户一个永远不生效的键。
-        // 拒收时用 toast 说清原因，录入框保持聚焦，直接重按即可。
-        const prev = input.value;
-        input.value = acc;
-        const issue = shortcutIssue(id);
+        if (e.repeat) return; // 按住不放的自动重复：没必要重复提交
+        // 本地校验先挡一道：缺修饰键的裸键会把正常打字全吃掉（Go 侧也拒）；
+        // 和另一项同键则必须在提交前拦住 —— 否则这次改键会把那一项挤成冲突。
+        const issue = shortcutIssue(id, acc);
         if (issue) {
-          input.value = prev;
           markShortcuts();
-          toast(issue);
+          // 这是“没录进去”，不是普通提示：红底，和 Go 侧拒绝的观感一致。
+          toast(issue, 2200, "err");
           return;
         }
-        markShortcuts();
-        input.blur();
-        autoSave();
+        // 真正的判据在 Go 侧：按候选配置注册四项，注册上了才落盘。
+        // 所以这里**先不写输入框、也不保存** —— 失败时框里连一瞬间都不该出现这个键。
+        applyShortcut(id, acc).then((res) => {
+          if (res && res.ok) {
+            input.value = acc;
+            markShortcuts();
+            input.blur();
+            toast(`“${SHORTCUT_LABELS[id]}”已改为 ${acc}`, 3600, "ok");
+            return;
+          }
+          markShortcuts(); // 框里仍是原值，红框 / 说明回到原值的状态
+          const kept = res && res.kept ? `，已保留原快捷键 ${res.kept}` : "，此项仍保持未设置";
+          const st = (res && res.state) || "";
+          let why = "未能注册";
+          if (st === "conflict") why = "已被其他程序占用";
+          else if (st === "invalid") why = "无法识别";
+          toast(`“${SHORTCUT_LABELS[id]}”的 ${acc} ${why}${kept}`, 4600, "err");
+          if (document.activeElement !== input) input.focus(); // 直接重按
+        });
       });
       // 失焦 / 粘贴改值也要重新判定：否则红框和说明会停在旧状态
       input.addEventListener("change", markShortcuts);
     }
+    // 三个兜底恢复点：窗口失焦、页面隐藏、设置窗被隐藏到托盘。
+    // 输入框 blur 漏一次（WebView 在窗口失焦时不保证发）就会让四项快捷键一直挂着，
+    // 所以宁可多调几次 false —— 它幂等，代价只是一次 IPC。
+    window.addEventListener("blur", releaseHotkeyCapture);
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) releaseHotkeyCapture();
+    });
+    window.addEventListener("focus", () => {
+      // 回到窗口时焦点若还在某个录入框上（失焦期间 WebView 保留了焦点），重新挂起
+      const el = document.activeElement;
+      if (el && el.classList && el.classList.contains("shortcut")) setHotkeyCapture(true);
+    });
+  }
+  // ---- 全局快捷键的注册结果（Go 侧 hotkeys.go 的 HotkeyStatus）----
+  // 行 id → 配置键名，与 Go 的 hotkeyDefs 一一对应。state 取值：
+  // ok / disabled / invalid / conflict / unsupported，语义见 hotkeys.go。
+  var SHORTCUT_KEYS = {
+    "sc-postpone": "postpone",
+    "sc-endEarly": "endEarly",
+    "sc-pause": "pause",
+    "sc-nextBreak": "nextBreak"
+  };
+  // 结果一律走 toast（2026-11-19 第三轮：用户要求不占行内位置）：
+  // 右侧常驻的注册结果会被读成“这个字段的取值”，四行同时写绿又像一列勾选清单。
+  // 现在的口径是——用户每做一个动作（录入 / 清空 / 点检测）就弹一条会自动消失的结果，
+  // 平时页面上不挂任何注册状态；本地校验（缺修饰键 / 两项同键）仍留在行内红框与 sc-warn。
+  function hotkeyStatusOf(list, id) {
+    if (!Array.isArray(list)) return null;
+    const key = SHORTCUT_KEYS[id];
+    for (const st of list) {
+      if (st && st.key === key) return st;
+    }
+    return null;
+  }
+  // 检测按钮的汇总文案：四项逐条念太长，只念有问题的；全好就报一句总数。
+  // 同时给出语气 tone —— ok 只给“查过了、没问题”，有问题 / 测不成一律 err（红底）。
+  function hotkeyCheckResult(list) {
+    // 检测没拿到结论（超时 / 绑定失败 → Go 返回 null）：不用上一次的状态冒充，
+    // 宁可承认没测成，也不能弹一句过期的“未发现冲突”。
+    if (!Array.isArray(list)) return { text: "检测失败，请稍后重试", tone: "err" };
+    const bad = [];
+    let good = 0;
+    let unsupported = 0;
+    for (const id of SHORTCUT_IDS) {
+      const st = hotkeyStatusOf(list, id);
+      if (!st) continue;
+      if (st.state === "conflict" || st.state === "invalid") bad.push(SHORTCUT_LABELS[id]);
+      else if (st.state === "ok") good++;
+      else if (st.state === "unsupported") unsupported++;
+    }
+    if (unsupported === SHORTCUT_IDS.length) {
+      return { text: "当前环境不支持全局快捷键，无法检测", tone: "err" };
+    }
+    if (bad.length) {
+      const tail = good ? `，其余 ${good} 项正常` : "";
+      return { text: `${bad.length} 项不可用：${bad.join("、")}${tail}`, tone: "err" };
+    }
+    if (good) return { text: `未发现冲突，已启用的 ${good} 项均可正常使用`, tone: "ok" };
+    // 四项都留空：不是“检测通过”，只是没什么可查的 —— 保持中性配色。
+    return { text: "四项快捷键均已留空（未启用）", tone: "" };
+  }
+  // 页面打开时拉一次：启动时的注册早于页面加载，那次广播已经错过。只在真有键被占用时
+  // 弹一条汇总——一切正常就什么都不弹（打开设置先挨一句“一切正常”只会让人以为又出事了）。
+  // 状态指纹：只为“真的变了”弹提示。任何设置项保存都会触发重注册并广播，
+  // 逐条弹就等于给每次保存都加一条噪音；而改键本身有 SetShortcut 的返回值单独解释。
+  var hotkeyProblemsSig = "";
+  function notifyHotkeyProblems(list) {
+    if (!Array.isArray(list)) return;
+    const sig = list.map((s) => `${s.key}:${s.state}`).join("|");
+    if (sig === hotkeyProblemsSig) return;
+    hotkeyProblemsSig = sig;
+    const bad = [];
+    for (const id of SHORTCUT_IDS) {
+      const st = hotkeyStatusOf(list, id);
+      if (st && (st.state === "conflict" || st.state === "invalid")) {
+        bad.push(SHORTCUT_LABELS[id]);
+      }
+    }
+    if (bad.length) {
+      toast(`${bad.join("、")}的快捷键未能注册（可能被其他程序占用），可点「检测冲突」复查`, 5000, "err");
+    }
+  }
+  function refreshHotkeyStatus() {
+    if (!window.api || !window.api.hotkeyStatus) return;
+    Promise.resolve(window.api.hotkeyStatus())
+      .then(notifyHotkeyProblems)
+      .catch(() => {});
+  }
+  function setupHotkeyCheck() {
+    const btn = $("sc-check");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      const label = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = "检测中…";
+      Promise.resolve(window.api.checkHotkeyConflicts())
+        // 检测结果比普通提示多留一会儿：用户点完按钮，视线才刚落到底部
+        .then((list) => {
+          const r = hotkeyCheckResult(list);
+          toast(r.text, 5000, r.tone);
+        })
+        .catch(() => toast("检测失败，请稍后重试", 4000, "err"))
+        .finally(() => {
+          btn.disabled = false;
+          btn.textContent = label;
+        });
+    });
   }
   function fmtRemain(ms) {
     const s = Math.max(0, Math.ceil(ms / 1e3));
@@ -8124,6 +8294,7 @@
     fillSupervisorImageName();
     fillGeomControls(normalizeSupGeom(geomOf(currentGeomName())));
     setupShortcutCapture();
+    setupHotkeyCheck();
     BUILTIN_MSGS = await window.api.builtinMsgDefaults();
     setupMsgPanels();
 
@@ -8533,7 +8704,11 @@
       if (checking) return;
       renderUpdate(st);
     });
-    window.api.onSettingsHidden(() => exitAllMsgEditing());
+    // 设置窗被隐藏到托盘：录入态必须一起结束，否则四项快捷键会一直挂着
+    window.api.onSettingsHidden(() => {
+      exitAllMsgEditing();
+      releaseHotkeyCapture();
+    });
     // “检查更新”：点下去必须立刻有反馈（状态条变“正在检查更新…”+ 按钮置灰改文案），
     // 否则联网要等几秒甚至十几秒，用户以为没点上会反复点。
     const checkBtn = $("d-checkupdate");
@@ -8660,6 +8835,9 @@
     window.api.onAutostart((v) => {
       $("autostart").checked = v;
     });
+    // 快捷键注册结果广播：改键的结论由 SetShortcut 的返回值单独解释（见 applyShortcut），
+    // 这里只兜“别的路径动了配置”（恢复默认 / 导入 / 外部改写），且只在状态真变了时说话。
+    window.api.onHotkeyStatus(notifyHotkeyProblems);
     renderStatus(await window.api.getState());
     // 数码管自走：读数只跟锚点时刻有关，本地时钟每 200ms 补绘一次即可，
     // 不再靠上面那条 1s 的 getState 往返驱动。往返只要晚半秒（Go 侧处置 / IPC /

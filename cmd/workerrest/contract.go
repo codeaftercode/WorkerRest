@@ -73,6 +73,16 @@ var wiredCalls = []string{
 	"ShowSettingsWindow",
 	"SetActiveTab",
 
+	// ---- 全局快捷键（见 hotkeys.go）----
+	// HotkeyStatus：设置页打开时拉一次最近一次注册结果（启动注册早于页面加载，事件已错过）
+	// CheckHotkeyConflicts：快捷键页「检测冲突」按钮，重新注册一遍并回传逐项结果
+	// SetHotkeyCapture：录入时挂起四项 —— 否则按下的组合键会被系统投给热键线程执行动作
+	// SetShortcut：改一项快捷键 —— 先按候选配置真注册，成功才落盘（原子提交）
+	"HotkeyStatus",
+	"CheckHotkeyConflicts",
+	"SetHotkeyCapture",
+	"SetShortcut",
+
 	// ---- 统计 ----
 	"GetStats",
 	"GetHistory",
@@ -176,6 +186,12 @@ var wiredArity = map[string]int{
 	// ---- 窗口 / 自更新重启恢复 ----
 	"ShowSettingsWindow": 0,
 	"SetActiveTab":       1, // (tab)
+
+	// ---- 全局快捷键 ----
+	"HotkeyStatus":         0,
+	"CheckHotkeyConflicts": 0,
+	"SetHotkeyCapture":     1, // (on bool) 录入中挂起 / 恢复
+	"SetShortcut":           2, // (key, accel) → ShortcutApplyResult{ok,state,kept,list}
 
 	// ---- 统计 ----
 	"GetStats":           0,
