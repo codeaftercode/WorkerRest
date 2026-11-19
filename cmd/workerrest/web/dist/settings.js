@@ -5025,11 +5025,23 @@
     if (!LAST_STATE) return;
     paintStatusCells(statusCells(LAST_STATE, Date.now()));
   }
+  // 侧栏快捷按钮是「图标 + 文案」两段结构（<span class="qa-ico"> + <span class="qa-txt">）。
+  // 文案必须落到 .qa-txt 上：给 button 直接赋 textContent 会把图标整段清掉。
+  // 没有 .qa-txt 时退回旧写法，保证别处复用不会静默什么都不改。
+  function setQaLabel(btn, text) {
+    const t = btn.querySelector(".qa-txt");
+    if (t) t.textContent = text;
+    else btn.textContent = text;
+  }
   function renderStatus(st) {
     LAST_STATE = st;
-    // “暂停休息/恢复休息”互斥显示：暂停中只显示“恢复休息”，否则只显示“暂停休息”
+    // “暂停休息/恢复休息”互斥显示：暂停中只显示“恢复休息”，否则只显示“暂停休息”。
+    // 图标跟着翻：暂停中给三角（继续），否则两条杠（停下）。
     const qaPause = $("qa-pause");
-    if (qaPause) qaPause.textContent = st.paused ? "恢复休息" : "暂停休息";
+    if (qaPause) {
+      setQaLabel(qaPause, st.paused ? "恢复休息" : "暂停休息");
+      qaPause.classList.toggle("resuming", !!st.paused);
+    }
     // 侧栏这组按钮（立即休息 / 推迟休息 / 跳过本次 / 重置周期）**全部只针对下一条
     // 短 / 长休息**（两者取最近的那一个，2026-11-14 用户口径）。外卖提醒与自定义提醒
     // 不参与：它们有自己的窗口与入口，被这里推走会把本该准点响的那次提醒吃掉。
@@ -5055,7 +5067,7 @@
     }
     const qaSkip = $("qa-skip");
     if (qaSkip) {
-      qaSkip.textContent = inRestBreak ? "提前结束" : "跳过本次";
+      setQaLabel(qaSkip, inRestBreak ? "提前结束" : "跳过本次");
       // 三种灰：
       //   1) 下一条短 / 长休息都没排上（noRest）—— 没有可跳的目标；
       //   2) 正在休息、但弹的不是短 / 长休息 —— “跳过本次”与“提前结束”都无从谈起；

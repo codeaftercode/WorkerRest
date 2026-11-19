@@ -49,16 +49,19 @@
       <div class="sidebar-footer">
         <div id="data-status" class="status-grid"></div>
         <!-- 快捷操作按 Win32 GroupBox 的形态收边：fieldset+legend 天生让标题把顶线切开，
-             与原生 GroupBox 一致（自绘 div 得用底色去遮线段，换主题/换底色就会露馅）。 -->
+             与原生 GroupBox 一致（自绘 div 得用底色去遮线段，换主题/换底色就会露馅）。
+             类名不带 ghost：组内按钮走「凸面」（--panel 底 + 描边），边框本身是凹面，
+             正负关系能一眼看出哪里能按；立即休息是这组里唯一的主动作，用 primary 实底。 -->
         <fieldset class="quick-group">
           <legend>休息提醒</legend>
           <div class="quick-actions">
-            <button class="btn ghost" id="qa-break">立即休息</button>
-            <!-- 文案由 renderStatus 按 st.paused 互斥切换：暂停中=恢复休息，否则=暂停休息 -->
-            <button class="btn ghost" id="qa-pause">暂停休息</button>
-            <button class="btn ghost" id="qa-postpone">推迟休息</button>
-            <button class="btn ghost" id="qa-skip">跳过本次</button>
-            <button class="btn ghost" id="qa-reset">重置周期</button>
+            <button class="btn primary" id="qa-break"><span class="qa-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 5h11.6v9.2a4.6 4.6 0 0 1-4.6 4.6H8.2a4.6 4.6 0 0 1-4.6-4.6z" fill="currentColor" stroke="none"/><path d="M15.2 8.6h1.8a3.3 3.3 0 0 1 0 6.6h-1.8" stroke-width="2.6"/></svg></span><span class="qa-txt">立即休息</span></button>
+            <!-- 文案与图标由 renderStatus 按 st.paused 互斥切换：暂停中=恢复休息（三角），否则=暂停休息（两条杠）。
+                 文案必须写进 .qa-txt 这个 span —— 直接给 button 赋 textContent 会把图标一起清掉。 -->
+            <button class="btn" id="qa-pause"><span class="qa-ico" aria-hidden="true"><svg class="ico-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M9.3 6.6v10.8"/><path d="M14.7 6.6v10.8"/></svg><svg class="ico-play" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"><path d="M8.9 6.4 17.4 12l-8.5 5.6z"/></svg></span><span class="qa-txt">暂停休息</span></button>
+            <button class="btn" id="qa-postpone"><span class="qa-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.6 3.5h10.8"/><path d="M6.6 20.5h10.8"/><path d="M17.4 3.5c0 3.3-5.4 5.5-5.4 8.5s5.4 5.2 5.4 8.5"/><path d="M6.6 3.5c0 3.3 5.4 5.5 5.4 8.5s-5.4 5.2-5.4 8.5"/></svg></span><span class="qa-txt">推迟休息</span></button>
+            <button class="btn" id="qa-skip"><span class="qa-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M6.4 5.9 14.6 12l-8.2 6.1z" fill="currentColor" stroke-width="1.3"/><path d="M18 5.9v12.2"/></svg></span><span class="qa-txt">跳过本次</span></button>
+            <button class="btn" id="qa-reset"><span class="qa-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3.6 12a8.4 8.4 0 1 0 2.6-6.05"/><path d="M3.2 3.6V9h5.4"/></svg></span><span class="qa-txt">重置周期</span></button>
           </div>
         </fieldset>
       </div>

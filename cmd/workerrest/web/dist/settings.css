@@ -189,22 +189,106 @@ body {
 .sidebar-footer .status-cell { background: var(--panel-2); border-radius: var(--r-sm); padding: 6px 10px; }
 .sidebar-footer .status-cell .k { font-size: 11px; }
 .sidebar-footer .status-cell .v { font-size: 13px; margin-top: 2px; }
-/* 快捷操作外框：GroupBox 形态。fieldset 自带“标题切断顶线”的绘制，legend 只需压住线宽；
+/* 快捷操作外框：GroupBox 形态，做成「凹面框 + 凸面按钮」的正负关系 —— 侧栏是 --panel，
+   框比所在面低一档（规范 1.2：凹下去的面永远比所在面板低一档），组内按钮再凸回 --panel，
+   “哪里能按”不靠文案就看得出来。legend 底色必须填 --panel（侧栏色）而不是框内的 --panel-2：
+   浏览器会把 legend 排在边框线**上方**半格，填框色就会在框顶鼓出一条色带；填侧栏色则上半天
+   与侧栏无缝、下半天在框内切出缺口 —— 正是 Win32 GroupBox「标题把顶线切开」的样子。
    min-inline-size 必须清掉 —— fieldset 默认 min-content，窄侧栏里会把按钮挤成竖排。 */
 .quick-group {
-  margin: 4px 0 0;
+  margin: 2px 0 0;
   min-width: 0;
   min-inline-size: 0;
   border: 1px solid var(--border);
   border-radius: var(--r-md);
   padding: 10px;
+  background: var(--panel-2);
   flex-shrink: 0;
 }
-.quick-group > legend { padding: 0 6px; font-size: 12px; font-weight: 600; color: var(--text-2); line-height: 1.2; }
+/* 组标题：12 / 500 + --text-2（设置窗口里 600 只留给页面级标题），前面一枚 accent 竖条当
+   组标记，与提醒卡的组标题同一套语言。字号小、字重轻，框的存在感靠面不靠字。 */
+.quick-group > legend {
+  padding: 0 7px;
+  background: var(--panel);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--text-2);
+  line-height: 1.2;
+}
+.quick-group > legend::before {
+  content: "";
+  display: inline-block;
+  width: 3px;
+  height: 11px;
+  margin-right: 6px;
+  border-radius: 1px;
+  background: var(--accent);
+  vertical-align: -1.5px;
+}
 /* 组内两列网格：立即休息独占一行（即时动作），其余四个两两成对（暂停/推迟、跳过/重置） */
 .quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
 .quick-actions #qa-break { grid-column: 1 / -1; }
-.sidebar-footer .quick-actions .btn { padding: 7px 8px; font-size: 12px; text-align: center; }
+/* 推迟休息被隐藏时（正在休息，或这条休息没勾「允许推迟」），剩下三个会留一个空槽 ——
+   让「重置周期」占满整行，别让一枚半宽按钮孤零零挂在左边。 */
+.quick-actions:has(#qa-postpone.hidden) #qa-reset { grid-column: 1 / -1; }
+/* 次动作：凸面白底 + 1px 描边 + 圆角 6。圆角取 6 而不是 9 —— 9px 的框里再放 9px 的按钮，
+   内外弧会顶在一起；13（卡片）→ 9（框）→ 6（按钮）才是能真正嵌套的三档。 */
+.sidebar-footer .quick-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 32px;
+  /* 横向内边距从 8 收到 6：图标占掉 14 + 5 间距，两列按钮宽 83.5，4 字文案（48）
+     加图标后总占位 79，留 4px 余量；再宽一点「重置周期」就会把文字挤到换行。 */
+  padding: 0 6px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: var(--r-sm);
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  color: var(--text);
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, transform 0.08s ease;
+}
+.sidebar-footer .quick-actions .btn:hover { border-color: var(--accent); color: var(--accent); }
+/* 按下去的手感：只压 1px，不加阴影（这套视觉里阴影静置近乎不可见，按下更不该浮起来） */
+.sidebar-footer .quick-actions .btn:active { transform: translateY(1px); }
+.sidebar-footer .quick-actions .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* 按钮图标：14px 描边字形，颜色用 currentColor 继承按钮前景 —— primary 实底时自动变
+   --on-accent，hover 转 accent 时一起转，不必再给图标单独写一套色（写死色值就再也
+   跟不上主题）。aria-hidden 在 HTML 上，名字仍由 .qa-txt 提供。
+   top: 0.8px 是量出来的，不是凑的：12px 中文在 32px 按钮里 flex 居中后，**墨迹**中心
+   在 16.73，而行盒中心在 16 —— 行盒给西文降部留了空档，汉字不占，于是字形整体坐在
+   中线偏下。图标按盒居中（15.90）就会比文字看起来高半格。0.8px 正好把两者墨迹中心对
+   齐；用相对位移而不是 margin，不参与 flex 计算，不改变按钮 32px 的高度与两列网格。 */
+.sidebar-footer .quick-actions .btn .qa-ico { position: relative; top: 0.8px; display: inline-flex; flex: none; width: 14px; height: 14px; }
+.sidebar-footer .quick-actions .btn .qa-ico svg { width: 14px; height: 14px; display: block; }
+.sidebar-footer .quick-actions .btn .qa-txt { white-space: nowrap; }
+/* 暂停 ↔ 恢复：文案翻了图标也得翻。原地同时放暂停（两条杠）与恢复（三角）两枚 svg，
+   靠 .resuming 切显隐而不是重写 innerHTML —— 换 DOM 会连带丢掉 aria-hidden 与描边属性。 */
+.sidebar-footer .quick-actions #qa-pause .qa-ico .ico-play { display: none; }
+.sidebar-footer .quick-actions #qa-pause.resuming .qa-ico .ico-pause { display: none; }
+.sidebar-footer .quick-actions #qa-pause.resuming .qa-ico .ico-play { display: block; }
+/* 主动作：唯一实底。禁用时（休息中 / 两张休息卡都没排上）退回次动作外观并撤掉半透明 ——
+   实底压到 40% 会透成一层脏蓝，看不出是“现在不能按”还是“样式坏了”。 */
+.sidebar-footer .quick-actions .btn.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--on-accent);
+  font-weight: 600;
+}
+.sidebar-footer .quick-actions .btn.primary:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--on-accent);
+}
+.sidebar-footer .quick-actions .btn.primary:disabled {
+  background: var(--panel);
+  border-color: var(--border);
+  color: var(--text-3);
+  opacity: 1;
+}
 
 /* 按钮 */
 .btn {
