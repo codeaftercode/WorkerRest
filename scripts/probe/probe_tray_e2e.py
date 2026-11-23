@@ -153,7 +153,7 @@ def kill(proc):
         pass
 
 
-def make_cfg(start_minimized):
+def make_cfg(start_minimized, short_on=False):
     with open(DEFAULTS, encoding="utf-8") as f:
         cfg = json.load(f)
     cfg["startMinimized"] = start_minimized
@@ -168,6 +168,12 @@ def make_cfg(start_minimized):
     cfg["short"]["enabled"] = False
     cfg["long"]["enabled"] = False
     cfg["takeout"]["enabled"] = False
+    if short_on:
+        # C 段要验“立即休息 / 提前结束休息”这条链：短休息必须真开，
+        # 且间隔拉到 30 分钟 —— 断言窗口内它不会自己弹出来干扰状态行。
+        cfg["short"].update({"enabled": True, "mode": "countdown",
+                             "intervalMs": 30 * 60 * 1000, "durationMs": 20000,
+                             "notifyBeforeMs": 10000, "slots": []})
     os.makedirs(ISO, exist_ok=True)
     p = os.path.join(ISO, "settings.json")
     with open(p, "w", encoding="utf-8") as f:
@@ -188,6 +194,143 @@ def wait_for(fn, timeout=25.0, step=0.3):
 def menu_windows(pid):
     """右键菜单是窗口类 #32768 的弹出窗口（TrackPopupMenu 建的）。"""
     return [h for h in proc_windows(pid) if class_of(h) == "#32768"]
+
+
+# ---------- 菜单内容读取与点击（2026-11-23 补：C 段） ----------
+#
+# 为什么不用鼠标点坐标：菜单项位置随文案长度变化（"暂停 30 分钟" ↔ "改到 30 分钟后结束"），
+# 坐标会飘。也为什么不猜命令 ID：Wails 的 id 是 menu 遍历时的自增序号，
+# 加一项菜单就全错位。这里走 **MN_GETHMENU（0x01E1）** 向 #32768 菜单窗口要真实的
+# HMENU，再按**文案**查项 —— 这是 owner-draw 菜单的标准问法，也是唯一不依赖内部序号的路。
+# 点动作则向托盘宿主投 WM_COMMAND（wParam = 命令 ID）：Wails 的 wndProc 就是拿
+# `wParam & 0xffff` 去 menuMapping 里查，和真点一下走同一条分支。
+
+MN_GETHMENU = 0x01E1
+MF_BYPOSITION = 0x400
+WM_COMMAND = 0x0111
+WM_CANCELMODE = 0x001F
+
+user32.SendMessageW.restype = ctypes.c_void_p
+user32.SendMessageW.argtypes = [wt.HWND, wt.UINT, ctypes.c_size_t, ctypes.c_ssize_t]
+user32.GetMenuItemCount.argtypes = [ctypes.c_void_p]
+user32.GetMenuItemCount.restype = ctypes.c_int
+user32.GetMenuStringW.argtypes = [ctypes.c_void_p, wt.UINT, ctypes.c_wchar_p, ctypes.c_int, wt.UINT]
+user32.GetMenuStringW.restype = ctypes.c_int
+user32.GetMenuItemID.argtypes = [ctypes.c_void_p, ctypes.c_int]
+user32.GetMenuItemID.restype = wt.UINT
+user32.GetSubMenu.argtypes = [ctypes.c_void_p, ctypes.c_int]
+user32.GetSubMenu.restype = ctypes.c_void_p
+
+
+def _walk_menu(hmenu):
+    out = []
+    if not hmenu:
+        return out
+    for i in range(user32.GetMenuItemCount(hmenu)):
+        buf = ctypes.create_unicode_buffer(512)
+        user32.GetMenuStringW(hmenu, i, buf, 512, MF_BYPOSITION)
+        mid = int(user32.GetMenuItemID(hmenu, i))
+        sub = user32.GetSubMenu(hmenu, i)
+        node = {"pos": i, "text": buf.value,
+                # 0xFFFFFFFF = 有子菜单的项；0 = 分隔符。两者都不能当命令 ID 投递
+                "id": None if mid in (0, 0xFFFFFFFF) else mid}
+        if sub:
+            node["children"] = _walk_menu(sub)
+        out.append(node)
+    return out
+
+
+def open_menu(pid, tray, timeout=6.0):
+    """右键打开菜单并读出项表（不关闭）。返回 (menu_hwnd, items)。"""
+    user32.PostMessageW(tray, WM_USER_SYSTRAY, 0, WM_RBUTTONUP)
+    menus = wait_for(lambda: menu_windows(pid), timeout=timeout)
+    if not menus:
+        return 0, []
+    return menus[0], _walk_menu(user32.SendMessageW(menus[0], MN_GETHMENU, 0, 0))
+
+
+def close_menu(menu_hwnd):
+    if menu_hwnd:
+        user32.PostMessageW(menu_hwnd, WM_CANCELMODE, 0, 0)
+        time.sleep(0.45)
+
+
+def read_menu(pid, tray, tries=4):
+    """开一次菜单、读完就关。每次都是新鲜文案（状态行每秒在变）。
+
+    刚关掉的那扇菜单窗口还在销毁队列里时，`menu_windows` 可能先枚举到它 ——
+    对已失效的 hwnd 发 MN_GETHMENU 会拿回 0，读出来是一张空表
+    （2026-11-23 实测：连续读两次，第二次状态行是空串）。所以读到空表就重开。
+    """
+    for _ in range(tries):
+        h, items = open_menu(pid, tray)
+        close_menu(h)
+        if items and any(it.get("text") for it in items):
+            return items
+        time.sleep(0.35)
+    return []
+
+
+def flat_items(items, prefix=""):
+    for it in items:
+        if it.get("text"):
+            yield prefix + it["text"], it
+        for c in it.get("children") or []:
+            yield from flat_items([c], prefix + it["text"] + " / ")
+
+
+def looks_like(name, want):
+    """菜单文案匹配：忽略尾部的快捷键标注（"\\tCtrl+…"）与省略号差异。"""
+    got = name.split("\t")[0].strip()
+    return got == want or got.rstrip("…") == want.rstrip("…")
+
+
+def find_menu_item(pid, tray, want):
+    for path, it in flat_items(read_menu(pid, tray)):
+        leaf = path.split(" / ")[-1]
+        if looks_like(leaf, want):
+            return it, path
+    return None, ""
+
+
+def click_menu_item(pid, tray, want):
+    """按文案找到项并向托盘宿主投 WM_COMMAND。返回 (ok, detail)。"""
+    it, path = find_menu_item(pid, tray, want)
+    if it is None:
+        return False, "菜单里没有 %r" % want
+    if not it.get("id"):
+        return False, "%r 没有命令 ID（是子菜单或分隔符）" % want
+    user32.PostMessageW(tray, WM_COMMAND, it["id"], 0)
+    return True, "id=%d（%s）" % (it["id"], path)
+
+
+def status_line(pid, tray):
+    """菜单第一项就是状态行。
+
+    不要按 "状态：" 前缀找：文案前缀本身就不统一（见 tray_test.go）——
+    默认分支是"下次短休息：约 10 分钟后"，只有休息 / 暂停 / 未安排这些分支
+    才写"状态：…"。按位置取才是稳的。
+    """
+    items = read_menu(pid, tray)
+    for it in items:
+        if it.get("pos") == 0 and it.get("text"):
+            return it["text"]
+    for path, it in flat_items(items):
+        if it.get("text", "").startswith("状态："):
+            return it["text"]
+    return ""
+
+
+def wait_status(pid, tray, pred, timeout=10.0, step=0.6):
+    t0 = time.time()
+    last = ""
+    while time.time() - t0 < timeout:
+        last = status_line(pid, tray)
+        if last and pred(last):
+            return last
+        time.sleep(step)
+    return last
+
 
 
 def main():
@@ -264,6 +407,91 @@ def main():
         if menus:
             user32.PostMessageW(menus[0], 0x001F, 0, 0)  # WM_CANCELMODE
             time.sleep(0.4)
+    finally:
+        kill(proc)
+
+    # ---------- C 菜单项动作：点下去世界真的变了 ----------
+    print("\n[C] 托盘菜单项的真实动作（按文案找项，不猜 id 顺序）")
+    cfg_path, app_name = make_cfg(True, short_on=True)
+    proc = start(cfg_path)
+    try:
+        hwnd = wait_for(lambda: find_titled(proc.pid, app_name))
+        host = wait_for(lambda: message_only_windows(proc.pid))
+        if not hwnd or not host:
+            check(False, "C · 托盘与设置窗口就绪")
+            return 1
+        tray = host[0]
+        time.sleep(2.0)  # 等首拍 refreshTray 把状态行写完
+
+        items = read_menu(proc.pid, tray)
+        texts = [p for p, _ in flat_items(items)]
+        for want in ("立即休息", "重置休息周期", "暂停休息", "设置…", "开机自启动", "退出"):
+            check(want in texts, "C · 菜单项在：%s" % want)
+        timed = [p for p, _ in flat_items(items) if " / " in p]
+        check(len(timed) >= 4, "C · 「暂停一段时间」下四项都在", timed)
+
+        # 第一次读菜单可能撞上"窗口刚建、文字还没填好"，用 wait_status 等它非空
+        st = wait_status(proc.pid, tray, lambda s: True, 6)
+        check("下次短休息" in st, "C · 初始状态行报下次短休息", repr(st))
+
+        # 立即休息 → 休息中
+        ok, detail = click_menu_item(proc.pid, tray, "立即休息")
+        check(ok, "C · 点到「立即休息」", detail)
+        st = wait_status(proc.pid, tray, lambda s: "休息中" in s, 10)
+        check("休息中" in st, "C · 立即休息后状态行变「休息中」", st)
+
+        # 同一项文案翻成「提前结束休息」→ 点它结束
+        it, path = find_menu_item(proc.pid, tray, "提前结束休息")
+        check(it is not None, "C · 休息中同一项翻成「提前结束休息」", path or "没翻")
+        if it is not None:
+            ok, detail = click_menu_item(proc.pid, tray, "提前结束休息")
+            check(ok, "C · 点到「提前结束休息」", detail)
+            st = wait_status(proc.pid, tray, lambda s: "休息中" not in s, 10)
+            check("休息中" not in st, "C · 提前结束后状态行离开休息中", st)
+
+        # 子菜单「暂停 30 分钟」→ 定时暂停，状态行给剩余时长。
+        # 必须趁"还没暂停"时点：暂停中子菜单标签会整体翻成"改到 30 分钟后结束"，
+        # 那时再按"暂停 30 分钟"找当然找不到（旧版探针就是这么红的）。
+        ok, detail = click_menu_item(proc.pid, tray, "暂停 30 分钟")
+        check(ok, "C · 点到子菜单「暂停 30 分钟」", detail)
+        st = wait_status(proc.pid, tray, lambda s: "暂停中" in s, 10)
+        check("还有 30 分钟" in st, "C · 定时暂停后状态行报剩余 30 分钟", st)
+        it, path = find_menu_item(proc.pid, tray, "改到 30 分钟后结束")
+        check(it is not None, "C · 定时暂停中子菜单翻成「改到 30 分钟后结束」", path or "没翻")
+
+        # 恢复（定时暂停中同一项叫「恢复休息」）
+        ok, detail = click_menu_item(proc.pid, tray, "恢复休息")
+        check(ok, "C · 点到「恢复休息」", detail)
+        st = wait_status(proc.pid, tray, lambda s: "暂停" not in s, 12)
+        check("暂停" not in st, "C · 恢复后状态行不再提暂停", st)
+
+        # 一键「暂停休息」→ 已暂停 + 同一项翻成「恢复休息」
+        ok, detail = click_menu_item(proc.pid, tray, "暂停休息")
+        check(ok, "C · 点到「暂停休息」", detail)
+        st = wait_status(proc.pid, tray, lambda s: "已暂停" in s, 10)
+        check("已暂停" in st, "C · 暂停后状态行变「已暂停」", st)
+        it, path = find_menu_item(proc.pid, tray, "恢复休息")
+        check(it is not None, "C · 暂停中同一项翻成「恢复休息」", path or "没翻")
+        ok, detail = click_menu_item(proc.pid, tray, "恢复休息")
+        check(ok, "C · 再点「恢复休息」回到工作", detail)
+
+        # 设置… → 窗口出现（启动时是隐藏的，所以这条同时证明“唤出”而不是“本来就在”）
+        check(not user32.IsWindowVisible(hwnd), "C · 前面几步都没把设置窗口带出来",
+              "visible=%d" % user32.IsWindowVisible(hwnd))
+        ok, detail = click_menu_item(proc.pid, tray, "设置…")
+        check(ok, "C · 点到「设置…」", detail)
+        shown = wait_for(lambda: user32.IsWindowVisible(hwnd), timeout=6.0)
+        check(bool(shown), "C · 「设置…」真的把设置窗口唤出来了")
+
+        # 退出（最后一步：它会结束进程）
+        ok, detail = click_menu_item(proc.pid, tray, "退出")
+        check(ok, "C · 点到「退出」", detail)
+        try:
+            rc = proc.wait(timeout=8)
+            # 退出码不做断言：这里要证明的是“真的自己退出了”，不是某个码
+            check(True, "C · 「退出」后进程自行结束", "rc=%d" % rc)
+        except subprocess.TimeoutExpired:
+            check(False, "C · 「退出」后进程自行结束", "8 秒内没退出")
     finally:
         kill(proc)
 

@@ -493,10 +493,28 @@ def main():
     # 对照组只跑短休息：它证明“抓图链路能看见提醒窗口”，一类就够
     ok1, why1, d1 = run_case(False, "short")
     check(ok1, "对照组（开关=关·短休息）跑通", why1)
-    if ok1:
-        check(d1["magenta"] >= MAGENTA_VISIBLE,
-              "开关=关时提醒窗口确实被抓进画面（探针链路有效）",
-              f"品红 {d1['magenta']:.2%} ≥ {MAGENTA_VISIBLE:.0%}")
+    if ok1 and d1["magenta"] < MAGENTA_VISIBLE:
+        # 2026-11-23 实测：对照组抓到的是**底下的桌面**（品红 0.00%），窗口明明可见、
+        # 亲和性也是 0。根因是 Wails 把提醒窗建成 BackgroundTypeTranslucent →
+        # 窗口带 WS_EX_NOREDIRECTIONBITMAP，**没有 DWM 重定向表面**，
+        # BitBlt(GetDC(NULL)) 里就没有它的像素 —— 与 WDA 是否生效无关。
+        # 旧版之所以能测，是 2026-10 那条 Chromium 上 --disable-direct-composition
+        # 真的把帧落回了窗口表面；现在 WebView2 158 下 PrintWindow(PW_RENDERFULLCONTENT)
+        # 也是整块黑，说明像素已经不在 GDI 表面里，这条判据**恒红**。
+        # 也就是说：实验组的"品红 0.00%"不能当作"隐藏生效"的证据，必须降级成无法测量，
+        # 否则就是在用一个失效的口径报“通过”。
+        print()
+        print("结论：本机无法测量 —— 屏幕 BitBlt 抓不到提醒窗口（品红 %.2f%%）。" % (d1["magenta"] * 100))
+        print("      窗口是 BackgroundTypeTranslucent（WS_EX_NOREDIRECTIONBITMAP），")
+        print("      没有 DWM 重定向表面，BitBlt / PrintWindow 都拿不到它的像素。")
+        print("      这条判据在当前 WebView2 下恒红，实验组的 0.00% 不能当作“隐藏生效”。")
+        print()
+        print("请人工确认（约 1 分钟）：")
+        print("  1. 设置页勾上「共享屏幕时隐藏提醒」，让一类提醒弹出来；")
+        print("  2. 打开任意支持预演的共享工具（Teams / 腾讯会议 / OBS 预览）看自己的画面；")
+        print("  3. 预演里看不到提醒窗 = 生效；看得到 = 已失效，需查")
+        print("     main.go 的 --disable-direct-composition 是否仍被 Chromium 认。")
+        return 3
 
     # 实验组：每一类提醒窗口各自跑一遍 —— 三条建窗路径（休息 / 提前提示 / 外卖）
     # 是独立的代码，一类的结论推不到另一类上

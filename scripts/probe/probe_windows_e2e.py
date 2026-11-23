@@ -347,8 +347,21 @@ def phase_takeout():
     # 提前量也给 60s：启动后 now+60 恰好落在槽的那一分钟里 → 预通知秒级弹出，
     # 原定时刻（≤60s 后）主窗再弹一次。两个时刻都是确定的，不用碰运气。
     lead = 60
-    target = time.localtime(now + lead)
+    # 槽的时刻是该分钟的 00 秒。若 now 已经落在 xx:59，now+60 只剩 1 秒 ——
+    # 预通知还没来得及画出来，主窗就已经到点了（2026-11-23 实测：主窗 0.0s 弹出、
+    # 预通知 80 秒内一次都没出现）。把槽推到距 now 至少 25 秒的那一分钟，
+    # 预通知才有可观测的窗口，主窗也有确定的等待时长。
+    # 注意算的是"槽时刻"（该分钟的 00 秒）与 now 的距离，不是 cand 的距离：
+    # cand = now + 60 时 cand-now 恒为 60，但若 now 落在 xx:58，槽时刻其实只差 2 秒。
+    cand = now + lead
+    while True:
+        slot_epoch = (int(cand) // 60) * 60
+        if slot_epoch - now >= 25:
+            break
+        cand += 60
+    target = time.localtime(slot_epoch)
     slot_hour, slot_min = target.tm_hour, target.tm_min
+    wait_sec = int(slot_epoch - now) + 45
     cfg["takeout"] = {
         "enabled": True, "leadSec": lead, "postponeMin": 2, "pauseAction": "postpone",
         "slots": [{
@@ -365,15 +378,15 @@ def phase_takeout():
         if not wait_main_window(proc.pid):
             check(False, "B · 主窗口起来了", log_tail(1200))
             return
-        tl = poll_timeline(proc.pid, 80)
+        tl = poll_timeline(proc.pid, wait_sec)
 
         t_pre, _ = first_seen(tl, "即将休息")
         check(t_pre is not None and t_pre <= 10, "B · 进入提前区间时弹出预通知小窗",
-              ("%.1fs" % t_pre) if t_pre is not None else "80s 内没出现")
+              ("%.1fs" % t_pre) if t_pre is not None else "%ds 内没出现" % wait_sec)
 
         t_tk, r_tk = first_seen(tl, "外卖提醒")
         check(t_tk is not None, "B · 原定时刻弹出外卖主窗",
-              ("%.1fs" % t_tk) if t_tk is not None else "80s 内没出现（槽 %02d:%02d）" % (slot_hour, slot_min))
+              ("%.1fs" % t_tk) if t_tk is not None else "%ds 内没出现（槽 %02d:%02d）" % (wait_sec, slot_hour, slot_min))
         if t_tk is not None:
             wa = work_area_of_pid(proc.pid)
             if wa:
