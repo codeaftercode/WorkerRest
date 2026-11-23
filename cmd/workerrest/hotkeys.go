@@ -165,7 +165,11 @@ func (h *HotkeyManager) run() {
 	logx.GuardRun("hotkeys.apply", h.apply)
 	for {
 		if !hotkey.GetMessage(&m) { // WM_QUIT / 错误
+			// 必须在这条线程上注销（键位跟着注册线程走），然后才把 tid 清 0 ——
+			// tid==0 在调用方眼里就是“线程已退出、键位已归还”，测试靠它等收尾。
 			h.unregisterAll()
+			h.threadID.Store(0)
+			log.Printf("[hotkey] 消息循环退出，全局热键已注销（此后按快捷键不会有反应）")
 			return
 		}
 		switch m.Message {
@@ -185,6 +189,21 @@ func (h *HotkeyManager) run() {
 func (h *HotkeyManager) reload() {
 	if id := h.threadID.Load(); id != 0 {
 		hotkey.PostThreadMessage(id, hotkey.HkReloadMsg)
+	}
+}
+
+// shutdown 让消息循环线程收尾退出（幂等，可重复调用）。
+//
+// 必须走 WM_QUIT，不能从调用方直接 unregisterAll()：全局热键挂在**注册它的那条线程**上，
+// 跨线程注销不会报错，只是静默什么都不做 —— 于是那个组合键被那条线程占到进程结束。
+// 这不是理论问题：测试里每起一个消息循环就占掉一组，跑到后面 F13~F24 就分不出来了。
+// GetMessage 收到 WM_QUIT 返回 false，run() 在自己的线程上 unregisterAll 后 return。
+//
+// 生产侧进程退出时系统会回收键位，所以这个方法当前的唯一调用方是测试；放在这里是因为
+// “只有消息循环线程能注销”这条约束属于 HotkeyManager 自己，不该让每个测试各自猜着写。
+func (h *HotkeyManager) shutdown() {
+	if id := h.threadID.Load(); id != 0 {
+		hotkey.PostThreadMessage(id, hotkey.WmQuit)
 	}
 }
 

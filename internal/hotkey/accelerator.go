@@ -32,6 +32,13 @@ const (
 	// 再经 channel 回传逐项结果；不可用时线程当场还原成旧配置。判据与正式注册完全一致，
 	// 所以“注册成功”就是“改成了”，不存在“先存再报错”的中间态。
 	HkCandidateMsg = 0x8003
+	// WmQuit WM_QUIT：投给消息循环线程让它收尾退出。
+	//
+	// 这是**唯一**能让“注册过全局热键的线程”把键位还回去的方式 ——
+	// RegisterHotKey/UnregisterHotKey 与注册线程绑定，从别的 goroutine 调 unregisterAll
+	// 只会静默失败。GetMessage 收到 WM_QUIT 返回 false，run() 就在自己的线程上
+	// unregisterAll 后 return。
+	WmQuit = 0x0012
 )
 
 // modNames 修饰键段 → Win32 MOD_*。录入端（settings.js acceleratorFromEvent）只产出

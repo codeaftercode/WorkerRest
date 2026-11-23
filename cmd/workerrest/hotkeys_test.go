@@ -126,6 +126,7 @@ func TestHotkeyCheckRoundTrip(t *testing.T) {
 	}, "")
 	h := &HotkeyManager{app: a}
 	go h.run()
+	defer stopHotkeys(t, h)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for h.threadID.Load() == 0 {
@@ -181,6 +182,7 @@ func TestHotkeyCaptureRoundTrip(t *testing.T) {
 	}, "")
 	h := &HotkeyManager{app: a}
 	go h.run()
+	defer stopHotkeys(t, h)
 
 	deadline := time.Now().Add(2 * time.Second)
 	for h.threadID.Load() == 0 {
@@ -219,6 +221,41 @@ func TestHotkeyCaptureRoundTrip(t *testing.T) {
 	}
 }
 
+// tryHotkeyFree 试注册一个组合键、成功就立刻注销，返回“当时它是不是空着的”。
+//
+// 两步必须在**同一条 OS 线程**上：RegisterHotKey / UnregisterHotKey 是线程绑定的
+// （见 internal/hotkey/hotkey_windows.go 头注释）。测试 goroutine 会在 OS 线程间漂移，
+// 中间漂一次，注销就静默失败 —— 那个组合键会被占到测试进程退出，后面所有用例都跟着红。
+func tryHotkeyFree(id int, mods, vk uintptr) bool {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	if !hotkey.RegisterHotKey(id, mods, vk) {
+		return false
+	}
+	hotkey.UnregisterHotKey(id)
+	return true
+}
+
+// stopHotkeys 停掉消息循环，并等它**真的**退出（= 那几组键位已还给系统）。
+//
+// 为什么不只 shutdown()：WM_QUIT 只是投一条消息，线程还得在自己的栈上跑完 unregisterAll
+// 才 return。不等就进下一个用例，键位仍被那条线程占着 —— 这正是“键位预算”被吃光的原因：
+// 每个起过消息循环的用例都留下一组永不归还的组合键。
+//
+// 收尾信号用 threadID：run() 在注销之后才把它清 0（顺序反了就说明“tid 已清但键位没还”，
+// 那等于把隐患藏起来）。
+func stopHotkeys(t *testing.T, h *HotkeyManager) {
+	t.Helper()
+	h.shutdown()
+	deadline := time.Now().Add(2 * time.Second)
+	for h.threadID.Load() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatalf("消息循环线程没在 2s 内退出：全局热键仍占着系统键位")
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+}
+
 // TestHotkeyCaptureReleasesRegistration 验证挂起真的把四项从**系统里**注销了，
 // 而不是只让 dispatch 忽略按键。
 //
@@ -243,10 +280,9 @@ func TestHotkeyCaptureReleasesRegistration(t *testing.T) {
 	if !ok {
 		t.Fatal(`ParseAccelerator("Ctrl+Alt+Shift+F23") 失败`)
 	}
-	if !hotkey.RegisterHotKey(probeID, envMods, envVK) {
+	if !tryHotkeyFree(probeID, envMods, envVK) {
 		t.Skip("本环境不允许注册全局热键（无桌面会话 / 被策略拦下），无法用再注册当判据")
 	}
-	hotkey.UnregisterHotKey(probeID)
 
 	a := &App{}
 	a.cfg = settings.New(map[string]any{
@@ -254,6 +290,7 @@ func TestHotkeyCaptureReleasesRegistration(t *testing.T) {
 	}, "")
 	h := &HotkeyManager{app: a}
 	go h.run()
+	defer stopHotkeys(t, h)
 
 	// 等第一轮 apply 跑完（applied 由 publish 置位），不能只看 threadID：
 	// 线程 id 是 Store 在 apply 之前，那一刻四项还没注册。
@@ -266,11 +303,7 @@ func TestHotkeyCaptureReleasesRegistration(t *testing.T) {
 	}
 
 	tryRegister := func() bool {
-		got := hotkey.RegisterHotKey(probeID, mods, vk)
-		if got {
-			hotkey.UnregisterHotKey(probeID)
-		}
-		return got
+		return tryHotkeyFree(probeID, mods, vk)
 	}
 
 	if tryRegister() {
@@ -287,6 +320,15 @@ func TestHotkeyCaptureReleasesRegistration(t *testing.T) {
 	time.Sleep(80 * time.Millisecond)
 	if tryRegister() {
 		t.Fatalf("取消挂起后 %s 没有被重新注册（四项快捷键恢复不了）", combo)
+	}
+
+	// 收尾并**证明**键位真的还给了系统。
+	// 这条用例自己就是“键位预算被吃光”的元凶之一：线程注册的 F24 曾一直占到进程结束，
+	// 后面的用例只能往更低的功能键退，退到没得退就开始互相干扰。
+	// defer 已兜底一次，这里再显式跑一遍（幂等）并断言 —— 不然“清理了”这件事没任何判据。
+	stopHotkeys(t, h)
+	if !tryHotkeyFree(probeID, mods, vk) {
+		t.Fatalf("消息循环退出后 %s 仍注册不上：键位没有归还（stopHotkeys 没等到线程真退出？）", combo)
 	}
 }
 
@@ -422,6 +464,15 @@ func TestSetShortcutAtomicOnConflict(t *testing.T) {
 	if runtime.GOOS != "windows" {
 		t.Skip("全局热键只有 Windows 实现")
 	}
+	// RegisterHotKey / UnregisterHotKey 是**线程绑定**的：注册在哪条 OS 线程上，就只能由
+	// 那条线程注销。测试 goroutine 默认可以在 OS 线程间漂移，一旦 Register 落在 A 线程、
+	// Unregister 落在 B 线程，注销会静默失败，组合键被 A 线程占到测试进程退出 ——
+	// 后面重试改键就一直报 conflict。这不是假想：实测本测试在这个位置有约 1/5 的偶发
+	// 失败（`释放后改键仍失败 … State:conflict`）。所以这一段必须锁线程。
+	// 生产侧不受影响：HotkeyManager.run() 第一行就是 runtime.LockOSThread()。
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
 	envMods, envVK, ok := hotkey.ParseAccelerator("Ctrl+Alt+Shift+F14")
 	if !ok {
 		t.Fatal(`ParseAccelerator("Ctrl+Alt+Shift+F14") 失败`)
@@ -440,7 +491,9 @@ func TestSetShortcutAtomicOnConflict(t *testing.T) {
 	h := &HotkeyManager{app: a}
 	a.hotkeys = h
 	go h.run()
-	defer h.unregisterAll()
+	// 曾经这里写的是 defer h.unregisterAll() —— 跨线程调用，静默失败，等于没清理：
+	// 那条线程注册的 Ctrl+Alt+K 一直占到进程结束。必须让线程自己注销（见 stopHotkeys）。
+	defer stopHotkeys(t, h)
 	deadline := time.Now().Add(2 * time.Second)
 	for h.snapshot() == nil {
 		if time.Now().After(deadline) {

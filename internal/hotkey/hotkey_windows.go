@@ -31,6 +31,12 @@ type WinMsg struct {
 	Pt      struct{ X, Y int32 }
 }
 
+// ⚠️ 线程亲和：这两个函数都是**线程绑定**的 —— hwnd=NULL 时，热键挂在“调用线程”的消息
+// 队列上，也只有那条线程能注销它。跨线程调用 UnregisterHotKey 不会报错，只是静默什么都不做，
+// 于是那个组合键被原线程占到进程退出（表现为“明明注销了还是被占用”）。
+// 调用方因此必须保证 register / unregister 成对出现在同一条 OS 线程上：
+// HotkeyManager.run() 用 runtime.LockOSThread() 钉住，测试里临时占用也要显式锁线程。
+
 // RegisterHotKey 注册线程级热键（hwnd=NULL 时 WM_HOTKEY 投递到注册线程消息队列）。
 // 返回 0 表示失败（组合键被占用等）。
 func RegisterHotKey(id int, mods, vk uintptr) bool {
@@ -38,7 +44,8 @@ func RegisterHotKey(id int, mods, vk uintptr) bool {
 	return r != 0
 }
 
-// UnregisterHotKey 注销热键（未注册的 id 返回 0，无害）。
+// UnregisterHotKey 注销热键。必须与对应的 RegisterHotKey 在同一条线程上调用；
+// 跨线程调用会静默失败（返回 0，无害但等于没注销）。
 func UnregisterHotKey(id int) {
 	procUnregisterHotKey.Call(0, uintptr(id))
 }
