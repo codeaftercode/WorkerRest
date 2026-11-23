@@ -3,6 +3,7 @@
   // renderer/prebreak.ts
   var api = window.api;
   var secondsEl = document.getElementById("pb-seconds");
+  var countdownEl = document.getElementById("pb-countdown");
   var postEl = document.getElementById("pb-post");
   var titleEl = document.getElementById("pb-title");
   var tipsEl = document.getElementById("pb-tips");
@@ -185,9 +186,20 @@
         titleEl.textContent = "已暂停";
         secondsEl.textContent = "--";
         postEl.textContent = "";
+        // 整行倒计时一起收掉：前缀“还有”是 HTML 里的静态文字，只清后缀的话屏幕上会留下
+        // “还有 --”这么一句半截话 —— 看着像坏了，而且“还有几秒”在暂停里本来也没有答案。
+        countdownEl.classList.add("hidden");
+        // 暂停中这扇窗是**留着给人看**的（那条提醒配的是“正常提醒”，见
+        // clearForAutoPause 的 keepPre）：收起“暂停计时” —— 它走的是 pauseToggle，
+        // 已经在暂停里再按一下就是**恢复**，还会顺手把勿扰 / 投屏那些自动原因记成
+        // “用户已忽略”。按钮写着暂停、按下去是恢复，是这里最容易骗到人的一处。
+        pauseBtn.classList.add("hidden");
       } else {
         titleEl.textContent = st.title || "您已连续工作较长时间，建议您短休息";
         secondsEl.textContent = String(Math.max(0, Math.ceil(st.remainMs / 1e3)));
+        countdownEl.classList.remove("hidden");
+        // applyVariant 会按版式重新决定“暂停计时”露不露（自定义提醒不显示它），
+        // 所以恢复那一支不用单独把它显示回来。
         applyVariant(st.custom, st.countdownTail);
       }
     } catch {

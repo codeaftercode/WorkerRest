@@ -482,6 +482,15 @@ func (a *App) preBreakAct(action string) error {
 			a.schedSkip()
 		}
 	case "pause":
+		// 已经在暂停里：这个动作没有语义（它叫“暂停计时”，而计时已经停了）。
+		// 往下走 schedPauseToggle 是**恢复**提醒，还会顺手把勿扰 / 投屏那些自动原因
+		// 记成“用户已忽略” —— 一次误触就能让整场会议的自动暂停失效。
+		// 窗口上这个按钮在暂停态已经藏起来（见 prebreak.js），这里给旧窗口 / 自动化
+		// 调用再挡一道，动作本身保持幂等。
+		if a.sched != nil && a.sched.IsPaused() {
+			log.Printf("[prebreak] 已在暂停中，忽略“暂停计时”请求（它不负责恢复）")
+			return nil
+		}
 		a.schedPauseToggle()
 	default:
 		return fmt.Errorf("未知的提前提示动作 %q（可用：breakNow / postpone / skip / pause）", action)

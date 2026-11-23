@@ -57,7 +57,13 @@ func (a *App) checkTakeoutReminders() {
 	// 空闲门：到点后要求键鼠连续无活动达到配置时长才弹（见 takeout.go 的 armGatedTakeout）。
 	// 必须排在下面那份“推迟线快照”之前 —— 达标后落成的 armed 计划要能被这一拍看见。
 	gateMs := cfg.TakeoutIdleGateMs()
-	a.armGatedTakeout(cfg, now)
+	// 但“暂停处置接管”的那一拍不能 arm：arm 一旦落成 armed 计划，下面的处置就因为
+	// “已有推迟线”而什么都不做（连“跳过”也清不掉它），恢复之后照样弹出来 ——
+	// 推迟与跳过都会失效。所以先判接管，再决定 arm 不 arm。
+	takeOver := a.takeoutPauseTakeover(cfg, a.TakeoutPostponedSnapshot())
+	if !takeOver {
+		a.armGatedTakeout(cfg, now)
+	}
 	// 推迟计划一律锁内取快照：TakeoutAction（UI 线程）会同时改写 DueAt / PreFired，
 	// 锁外直接读这几个字段是数据竞争（真机上表现为“刚点的推迟被 tick 回退”）。
 	// 判“过期作废”也放在同一把锁里，避免读到写了一半的状态。
@@ -90,30 +96,46 @@ func (a *App) checkTakeoutReminders() {
 	// **暂停原因不参与判断**（2026-11-12 用户口径：“不存在例外”）：手动暂停、系统空闲、
 	// 勿扰/专注、全屏/演示、投屏、指定应用占用统统按这份配置走。这里曾有一条例外
 	//（自动暂停一律跳过、不看配置），已删除。
-	if a.sched != nil && a.sched.IsPaused() {
-		// 空闲门等待中的那一笔碰上“只有空闲这一条原因”的暂停不算拦阻 ——
-		// 人已经离开工位达到设定时长，正是这次提醒要等的那一刻。按暂停处置跳过的话，
-		// 空闲门一旦大于「系统空闲 N 分钟自动暂停」（出厂 5 分钟），这个功能永远触发不了。
-		gateHold := !a.sched.PausedForBusyReason() &&
-			(a.TakeoutIdleWaitSnapshot() != nil || (hasPP && pp.Armed))
-		if !gateHold {
-			switch cfg.TakeoutPauseAction() {
-			case settings.PauseActionRemind:
-				// 照常提醒：继续往下走下面的四条触发线
-			case settings.PauseActionPostpone:
-				// 没勾「允许推迟提醒」时没有时长可推：降级成跳过（与调度器 pauseDisposition
-				// 同一口径）。不降级的话 DueAt = now + 0，下一秒 tick 又到点，无限循环。
-				if !cfg.TakeoutCanPostpone() {
-					a.skipTakeoutWhilePaused(cfg)
-					return
+	if takeOver {
+		// 处置接管：先把“等空闲”的挂起取下来。不撤的两条后果都真实发生过 ——
+		// 状态卡一直写“等待空闲”（而外卖其实已排进推迟线），以及推迟线走完之后
+		// 那份挂起还在，下次空闲达标被 armGatedTakeout 捡起来，把已经提醒过的那一笔
+		// 按当初的时刻再弹一遍。
+		//
+		// 取下来还要按处置落到**这一笔**上：它已经被空闲门记账消费（occurrence 记过
+		// fired），下面两个 helper 扫的是“本分钟到点的条目”，那张表里已经找不到它了 ——
+		// 不单独处理的话，暂停结束时才知道这一笔既没推迟也没跳过，白等一场。
+		a.mu.Lock()
+		gated := a.takeoutGated
+		a.takeoutGated = nil
+		a.mu.Unlock()
+		if gated != nil {
+			if cfg.TakeoutPauseAction() == settings.PauseActionPostpone && cfg.TakeoutCanPostpone() {
+				ms := int64(cfg.TakeoutPostponeMin()) * 60_000
+				a.mu.Lock()
+				if a.takeoutPostponed == nil {
+					a.takeoutPostponed = &model.TakeoutPostponed{Slot: gated.Slot, DueAt: now + ms, Count: 1}
 				}
-				a.postponeTakeoutWhilePaused(cfg, hasPP)
-				return
-			default:
-				a.skipTakeoutWhilePaused(cfg)
+				a.mu.Unlock()
+				log.Printf("[takeout] 暂停休息期间 %02d:%02d 还在等空闲，推迟 %d 分钟再提醒",
+					gated.Slot.Hour, gated.Slot.Minute, ms/60_000)
+				a.closeTakeoutPreNotifyIfOpen()
 				return
 			}
+			log.Printf("[takeout] 暂停休息期间 %02d:%02d 还在等空闲，按跳过处理",
+				gated.Slot.Hour, gated.Slot.Minute)
+			a.statsStore().RecordTakeoutAction("skip")
+			a.closeTakeoutPreNotifyIfOpen()
+			return
 		}
+		// 没勾「允许推迟提醒」时没有时长可推：降级成跳过（与调度器 pauseDisposition
+		// 同一口径）。不降级的话 DueAt = now + 0，下一秒 tick 又到点，无限循环。
+		if cfg.TakeoutPauseAction() == settings.PauseActionPostpone && cfg.TakeoutCanPostpone() {
+			a.postponeTakeoutWhilePaused(cfg, hasPP)
+			return
+		}
+		a.skipTakeoutWhilePaused(cfg)
+		return
 	}
 	leadSec := cfg.TakeoutLeadSec()
 	leadMs := int64(leadSec) * 1000
@@ -220,6 +242,33 @@ func (a *App) checkTakeoutReminders() {
 	for _, h := range toPreNotify {
 		a.showTakeoutPreNotify(h.slot, h.at)
 	}
+}
+
+// takeoutPauseTakeover 这一拍外卖到点会不会被“暂停休息时”接管（推迟 / 跳过）。
+//
+// 接管的意思很具体：这一笔交给外卖卡的处置，既不再等空闲门，也不该先 arm 一条计划
+// （arm 出来的计划会让处置无从下手，见 checkTakeoutReminders 里的注释）。
+// 两种情况下**不接管**：
+//
+//   - 外卖卡选的是“正常提醒”（remind）：暂停不改变任何行为，空闲门照常等；
+//   - 暂停只挂着 idle 这一条原因，且这一笔已经在“等空闲”或已 armed：人离开工位
+//     达到设定时长，正是空闲门要等的那一刻。这里若按暂停处置跳过，“空闲门 15 分钟 +
+//     系统空闲 5 分钟自动暂停”这个组合会让功能永远触发不了。
+//
+// pp 是**arm 之前**的推迟线快照（arm 会写它，所以调用方必须在 arm 前取）。
+func (a *App) takeoutPauseTakeover(cfg *settings.Settings, pp *model.TakeoutPostponed) bool {
+	if a.sched == nil || !a.sched.IsPaused() {
+		return false
+	}
+	if cfg.TakeoutPauseAction() == settings.PauseActionRemind {
+		return false
+	}
+	if !a.sched.PausedForBusyReason() {
+		if a.TakeoutIdleWaitSnapshot() != nil || (pp != nil && pp.Armed) {
+			return false
+		}
+	}
+	return true
 }
 
 // postponeTakeoutWhilePaused 暂停休息期间的“推迟提醒”：到点不弹窗，把提醒窗口的弹出

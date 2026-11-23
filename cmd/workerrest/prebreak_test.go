@@ -448,7 +448,14 @@ func TestPreBreakActionBreakNow(t *testing.T) {
 	}
 }
 
-func TestPreBreakActionPauseToggles(t *testing.T) {
+// 「暂停计时」是**单向**的：按下就暂停，再按不会有任何事发生（2026-11-23 改）。
+//
+// 老行为是 toggle（“与托盘暂停同一入口”），但这条窗上的按钮叫“暂停计时”，不叫
+// “暂停/恢复”。而它只会在两种情形出现：正常未暂停时（按下去暂停、窗随之关掉），
+// 以及那条提醒配“正常提醒”、暂停中窗被留着时 —— 后者再按一下就是**恢复**，还会把
+// 勿扰 / 投屏那些自动原因记成“用户已忽略”。按钮写着暂停、按下去是恢复，用户没法预期。
+// 页面层已经把这个按钮在暂停态藏起来（prebreak_page_probe.js），这里是后端的第二道。
+func TestPreBreakActionPauseIsOneWay(t *testing.T) {
 	a, s := newPreBreakApp(t, shortCountdown)
 	if err := a.PreBreakAction("pause"); err != nil {
 		t.Fatalf("pause 不该报错：%v", err)
@@ -458,10 +465,10 @@ func TestPreBreakActionPauseToggles(t *testing.T) {
 		t.Fatalf("pause 应等价于托盘暂停，得到 paused=%v reasons=%v", st.Paused, st.PauseReasons)
 	}
 	if err := a.PreBreakAction("pause"); err != nil {
-		t.Fatalf("再次 pause（恢复）不该报错：%v", err)
+		t.Fatalf("暂停中再次 pause 不该报错（应是空操作）：%v", err)
 	}
-	if s.StateCopy().Paused {
-		t.Fatal("再次 pause 应恢复（与托盘暂停同一入口）")
+	if !s.StateCopy().Paused {
+		t.Fatal("暂停中再次 pause 不能恢复 —— 按钮写的是“暂停计时”，恢复另有入口")
 	}
 }
 

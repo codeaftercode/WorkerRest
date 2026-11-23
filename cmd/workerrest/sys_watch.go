@@ -68,8 +68,11 @@ const (
 // “投屏”时，用户为复制模式点一次“恢复休息”，正在用的无线投放会被一起静音。
 // 前两条是 2026-11-06 从原来的一条“系统勿扰”合并开关拆出来的：判据来源不同、
 // 开关不同、暂停原因不同，互不牵连。“勿扰”读 WNF 档位，“全屏或演示”读 QUNS。
-// 一度拆成三条（勿扰 / 系统忙碌 / 演示设置），但 QUNS 是互斥单值、微软未公开
-// 2 与 4 谁对应演示设置的判定顺序，于是 2 / 3 / 4 统一并回一条选项。
+//
+// 2026-11-20 起全屏拆成两条原因（两条独立开关，见 settings_break.go）：
+//   - pauseReasonFullScr      QUNS 3/4（D3D 独占全屏、演示设置）：永远直接暂停、从不询问；
+//   - pauseReasonFullScrBusy  QUNS 2（非独占全屏）：出厂 off，可选“直接暂停”或实验性询问。
+//     它的常量定义在 fs_ask.go（与那一档的状态机放一起）。
 const (
 	pauseReasonDnd          = "勿扰"
 	pauseReasonFullScr      = "全屏或演示"
@@ -85,12 +88,13 @@ const (
 // 在 App 侧，是因为“该忽略谁”只认已知的六条：将来万一有别的原因名混进 PauseReasons，
 // 也不该被当成可忽略的自动原因。
 //
-// 顺序同时决定托盘 / 到期提示里原因的排列：请勿打扰、全屏或演示在最前
+// 顺序同时决定托盘 / 到期提示里原因的排列：请勿打扰、全屏两条在最前
 // （用户最常问的两个），其后是投屏两条，最后是应用占用。
 var autoPauseReasons = []string{
 	scheduler.PauseReasonIdle,
 	pauseReasonDnd,
 	pauseReasonFullScr,
+	pauseReasonFullScrBusy,
 	pauseReasonCastMirror,
 	pauseReasonCastWireless,
 	pauseReasonAppPause,
@@ -103,10 +107,12 @@ var autoPauseReasons = []string{
 //   - 空闲：人回来了 = 条件消失就是场景结束，必须自动恢复。否则每次离开几分钟回来
 //     都要去托盘点一下，提醒会停摆一整天 —— 而空闲暂停时人不在场，本来就没有尴尬可言。
 //   - 应用占用：目标应用退出 = 忙完了，同样是明确的结束信号，自动恢复。
-//   - 请勿打扰 / 全屏或演示 / 复制模式 / 无线投放：条件消失 **不等于** 场景结束
-//     —— 退出全屏还可以继续开会、投屏线松一下还会接回去、勿扰可能被系统或别人随手关掉。这几条
-//     一律保留暂停，等用户自己点“恢复休息”，否则提醒会在会议中途弹出来，正是自动
-//     暂停要拦的那一幕。
+//   - 请勿打扰 / 全屏或演示 / 非独占全屏 / 复制模式 / 无线投放：条件消失 **不等于**
+//     场景结束 —— 退出全屏还可以继续开会、投屏线松一下还会接回去、勿扰可能被系统或
+//     别人随手关掉。这几条一律保留暂停，等用户自己点“恢复休息”，否则提醒会在会议中途
+//     弹出来，正是自动暂停要拦的那一幕。
+//     非独占全屏这条尤其如此：能走到“已暂停”说明用户自己在询问窗里答了“暂停”，
+//     退个全屏就自动恢复等于把他的答复作废。
 //
 // 新增自动原因时先想清楚落在哪一侧：拿不准就选“不自动恢复”（用户多点一次，
 // 好过在客户面前弹一次窗）。
@@ -293,12 +299,14 @@ func (a *App) resumeFromIdle() {
 	a.statsStore().EndAway()
 }
 
-// dndWatchTick 推进一次系统状态判定：请勿打扰 / 全屏或演示。
+// dndWatchTick 推进一次系统状态判定：请勿打扰 / 全屏（两档）。
 //
-// 名字沿用旧 watcher，但这一拍现在读两条独立信号（见 windnd.Query），落到两条暂停原因：
+// 名字沿用旧 watcher，但这一拍现在读两条独立信号（见 windnd.Query），落到三条暂停原因：
 //   - WNF 勿扰档位 ≠ 0 → 勿扰（开关 dndPause）
-//   - QUNS 2 / 3 / 4 → 全屏或演示（开关 fullscreenPause）；2 = 非独占全屏或
-//     演示设置已应用，3 = D3D 独占全屏，4 = 演示设置主动屏蔽通知
+//   - QUNS 3 / 4 → 全屏或演示（开关 fullscreenPause）；3 = D3D 独占全屏，
+//     4 = 演示设置主动屏蔽通知。两者都直接暂停，从不询问
+//   - QUNS 2 → 非独占全屏（fullscreenBusyMode：off / pause / ask）；2 = 非独占全屏
+//     或演示设置已应用，误报集中区，出厂 off
 //
 // 与 上一版有一处**刻意不同**：那边每一跳（3 秒）都打一条 `[dnd] active: …`，
 // 勿扰开着的时候日志会被刷满；这里只在“进入 / 退出暂停”的那一次打日志。
@@ -307,10 +315,14 @@ func (a *App) dndWatchTick() {
 		return
 	}
 	cfg := a.CfgSnapshot()
-	a.dndApply(windnd.Query(), cfg.DndPause(), cfg.FullScreenPause())
+	a.dndApply(windnd.Query(), cfg.DndPause(), cfg.FullScreenPause(), cfg.FullScreenBusyMode())
 }
 
-// dndApply 把一次系统状态采样落到调度器上，两条原因各走各的开关、日志与忽略表。
+// dndApply 把一次系统状态采样落到调度器上：勿扰一条、全屏两条（按 Tier 分开）。
+//
+// 全屏的两个桶**分开处置**（2026-11-20）：
+//   - Tier=FSExclusive（QUNS 3/4）→ 直接暂停并保持，受 fullscreenPause 管；
+//   - Tier=FSBusy（QUNS 2）→ 交给 fsBusyApply，三档 off / pause / ask。
 //
 // **探测失败（Supported=false）时只跳过它自己那条**，不是当成“条件不成立”，也不是
 // 整拍作废。两者差别很大：SHQueryUserNotificationState 偶发调用失败（会话切换、系统忙、
@@ -318,12 +330,12 @@ func (a *App) dndWatchTick() {
 // 分支 —— 误恢复提醒、把用户点过恢复的忽略表清掉（下次条件成立又挂回来，用户会疑惑
 // “我明明点过恢复了”）、还会在日志里留下一句假的“已关闭”。没有结论就什么都别做。
 //
-// 两条信号**互相独立**：WNF 读不到只让“勿扰”这一条没有结论，QUNS 的全屏或演示
-// 照常判；反过来 QUNS 失败也不影响勿扰。这正是两条选项“互不相关”在探测层的保证。
+// 两条信号**互相独立**：WNF 读不到只让“勿扰”这一条没有结论，QUNS 的全屏照常判；
+// 反过来 QUNS 失败也不影响勿扰。这正是两条选项“互不相关”在探测层的保证。
 //
 // 抽出独立函数是为了让这条判据可测：真机上没法让系统 API 按需失败（测试见
 // probe_failure_test.go）。
-func (a *App) dndApply(st windnd.BusyStatus, dndOn, fsOn bool) {
+func (a *App) dndApply(st windnd.BusyStatus, dndOn, fsOn bool, busyMode string) {
 	if st.WnfSupported {
 		d := st.Dnd()
 		a.applyAutoPause(dndOn && d.Active, pauseReasonDnd, &a.dndActiveLogged,
@@ -334,9 +346,12 @@ func (a *App) dndApply(st windnd.BusyStatus, dndOn, fsOn bool) {
 		return
 	}
 	fs := st.FullScreen()
-	a.applyAutoPause(fsOn && fs.Active, pauseReasonFullScr, &a.fsActiveLogged,
-		"[screen] 检测到全屏应用或演示设置（"+fs.Detail+"），暂停提醒",
-		"[screen] 全屏或演示已结束：恢复提醒")
+	// 3/4：强信号，直接暂停并保持（独占画面画不出窗；投影上不能多窗）
+	a.applyAutoPause(fsOn && fs.Tier == windnd.FSExclusive, pauseReasonFullScr, &a.fsActiveLogged,
+		"[screen] 检测到独占全屏或演示设置（"+fs.Detail+"），暂停提醒",
+		"[screen] 独占全屏或演示已结束：恢复提醒")
+	// 2：垃圾桶档，按配置三档处置（off 时什么都不做）
+	a.fsBusyApply(fs.Tier == windnd.FSBusy, busyMode, fs.Detail)
 }
 
 // castWatchTick 推进一次“是否正在投屏”判定。
