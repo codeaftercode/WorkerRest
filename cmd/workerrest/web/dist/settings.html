@@ -92,19 +92,58 @@
             <!-- “?”挂在句尾而不是名称后面：这一行在名称后还要接分钟数，插在中间会把句子断开 -->
             <span class="tail">分钟<span class="q-mark" data-tip="无鼠标动作、无键盘输入持续时间超过设置值时自动暂停">?</span></span>
           </div>
-          <!-- 四条系统状态开关并排一行：选项名只留最短的辨识词，判据与边界都写在各自的“?”里 -->
+          <!-- 系统状态开关并排一行：选项名只留最短的辨识词，判据与边界都写在各自的“?”里。
+               2026-11-20：全屏拆成两档（误报太多），从这一行搬出去单独占两行，这里只剩三条。 -->
           <div class="row check check-inline">
             <label class="switch-row"><input type="checkbox" id="dndPause" /> 勿扰/专注<span class="q-mark" data-tip="系统处于“请勿打扰”模式时自动暂停">?</span></label>
-            <label class="switch-row"><input type="checkbox" id="fullscreenPause" /> 全屏/演示<span class="q-mark" data-tip="播放器、浏览器、游戏等真全屏窗口或 Windows 演示设置生效时自动暂停（要求整个屏幕被无边框窗口铺满；最大化不算，它留了边框和任务栏）">?</span></label>
             <label class="switch-row"><input type="checkbox" id="castWirelessPause" /> 无线投放<span class="q-mark" data-tip="连接到无线显示器时自动暂停">?</span></label>
             <label class="switch-row"><input type="checkbox" id="castMirrorPause" /> 复制投影<span class="q-mark" data-tip="投影方式为“复制”时自动暂停">?</span></label>
           </div>
+          <!-- 全屏分两档（2026-11-20，见 fs_ask.go 与 internal/windnd/dnd.go 的 FullScreenTier）：
+               上档 = QUNS 3/4（D3D 独占全屏 / Windows「演示设置」），强信号、默认开、直接暂停；
+               下档 = QUNS 2（浏览器 F11、看图、视频全屏、PPT 放映），成因不明、误报多，
+                      出厂默认「不处理」，选「询问」为实验性功能。
+               两档互相独立：取消勾选上档不影响下档。 -->
           <div class="row check">
-            <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 运行应用：</label>
+            <label class="switch-row"><input type="checkbox" id="fullscreenPause" /> 独占全屏与演示设置<span class="q-mark" data-tip="D3D 独占全屏（游戏、部分播放器）与 Windows「演示设置」生效时自动暂停。这一档几乎不误报，建议保持勾选">?</span></label>
+          </div>
+          <!-- 下档：一个三选一下拉（不处理 / 直接暂停 / 询问）。
+               它不是开关，所以没有勾选框；用 .fs-sub 保留 24px 缩进，让文字仍落在全卡
+               唯一的文字列上（与上面几行的开关文字同列），同时把标签列回退同样 24px ——
+               下拉左缘因此仍与全卡其它 field 行的控件列严格同线（2026-11-21 用户要求）。
+               「实验性」徽标挂在这一行的标签上、不挂在下拉选项里：它标识的是这一档的整体
+               性质，挂在选项上会让人以为只有「询问」那一项才实验。 -->
+          <div class="row field fs-sub">
+            <label class="fs-sub-label">非独占全屏<span class="exp-badge">实验性</span><span class="q-mark" data-tip="浏览器 F11、看图软件、视频全屏、PPT 临时全屏预览都属于这一档：系统会报「全屏」，但拿不到可靠成因，误报较多，所以出厂不处理。选「询问」为实验性功能">?</span></label>
+            <div id="fsBusy-drop"></div>
+          </div>
+          <p class="hint fs-note hidden" id="fs-busy-note">实验性功能：这一档可能把看剧、开会、临时全屏预览误判成“该暂停”。遇到误报请改回「不处理」，或在被询问时选「永不询问」，把这个应用加进下面的名单。</p>
+          <!-- 全屏时不暂停的名单：只在「询问」这一档有意义，其余两档整块收起
+               （见 settings.js 的 syncFsBusyUI）—— 留着会让人以为“不处理”时也要维护它。
+               .sub-block 让它整体缩进 24px：读起来是「非独占全屏」那一行的下级，
+               而不是又一张并列的卡片。添加方式与「应用列表」完全同款（三个按钮）。 -->
+          <details class="advanced sub-block hidden" id="fs-skip-advanced">
+            <summary>
+              <span class="adv-title">全屏时不暂停的应用</span>
+              <span class="adv-summary" id="fs-skip-summary">—</span>
+            </summary>
+            <div class="adv-body">
+              <div class="row inline">
+                <button class="btn ghost" id="fs-skip-pick">从运行的应用选择</button>
+                <button class="btn ghost" id="fs-skip-file">从应用安装路径选择</button>
+                <button class="btn ghost" id="fs-skip-add">手动输入应用名称</button>
+              </div>
+              <div id="fs-skip-list" class="tk-list"></div>
+              <p class="hint">这些程序全屏时既不暂停也不询问。被询问时选「今天不问 / 永不询问」会自动加到这里；手动添加的一律按「永不」处理，也可以在行尾删掉一条（删掉后这个应用全屏时会重新询问）。按可执行文件名匹配，忽略路径、不区分大小写。</p>
+            </div>
+          </details>
+          <div class="row check">
+            <label class="switch-row"><input type="checkbox" id="appPause-enabled" /> 运行以下应用时自动暂停</label>
           </div>
           <!-- 应用列表：与“提醒内容”“高级选项”共用同一套折叠外观（details.advanced），默认收起；
-               卡片内顺序固定为“按钮行 → 列表 → 说明”，三个添加入口都在列表上方 -->
-          <details class="advanced" id="app-advanced">
+               卡片内顺序固定为“按钮行 → 列表 → 说明”，三个添加入口都在列表上方。
+               .sub-block 缩进 24px：它是上面那行开关的下级（名单描述的就是“下面这些应用”）。 -->
+          <details class="advanced sub-block" id="app-advanced">
             <summary>
               <span class="adv-title">应用列表</span>
               <span class="adv-summary" id="app-advanced-summary">—</span>
@@ -165,17 +204,22 @@
           <div class="card-head">
             <button type="button" class="card-fold" title="折叠 / 展开">▾</button>
             <h3>声音</h3>
-            <!-- 总开关与“时间规划”三张提醒卡同一处：卡头行尾（拨动开关）。卡里再无别的
-                 卡级开关，正文直接从“音量”开始。 -->
-            <label class="card-switch" title="启用声音">
-              <input type="checkbox" id="snd-enabled" aria-label="启用声音" />
-              <span class="card-switch-track" aria-hidden="true"></span>
-            </label>
+            <!-- 卡头不再挂总开关（2026-11-21 用户要求）：拨动开关收进正文，改成音量下一行
+                 的一枚普通勾选框「启用提示音」。卡头开关那套 .off 联动只认 .card-head 里的
+                 开关（见 settings.js 的 syncCardOff），移走后这张卡不再整块变灰 ——
+                 正文里的复选框自己不该被一起调暗。 -->
           </div>
           <div class="row field"><label for="snd-volume">音量</label><div class="slider-row"><input type="range" id="snd-volume" min="0" max="1" step="0.05" /><span class="slider-val" id="snd-volume-val"></span></div></div>
+          <!-- 声音总开关：出厂勾选（default_settings.json 的 sound.enabled = true）。
+               位置固定为“音量 → 启用提示音 → 提示音列表”，它管的就是下面那份列表 -->
+          <div class="row check">
+            <label class="switch-row"><input type="checkbox" id="snd-enabled" /> 启用提示音</label>
+          </div>
           <!-- 提示音：默认折叠（自建折叠面板，不走提醒内容的 .msg-panel 接线）；
-               “播放方式”为标题行的图标按钮（全局生效的播放策略），与列表展开/收起无关 -->
-          <div class="fold-panel" id="snd-music-panel">
+               “播放方式”为标题行的图标按钮（全局生效的播放策略），与列表展开/收起无关。
+               .sub-block 缩进 24px：与「应用列表」「全屏时不暂停的应用」同一档，
+               在本页三个折叠列表里读起来都是上面某一行的下级清单。 -->
+          <div class="fold-panel sub-block" id="snd-music-panel">
             <!-- 标题行：折叠开关占满 + 右侧“播放方式”图标按钮（紧贴标题行、居“＋”左侧、同组无外框直角）+“＋”导入 -->
             <div class="snd-music-head">
               <button type="button" class="msg-toggle" id="snd-music-toggle"><span class="msg-arrow">▸</span>提示音</button>
@@ -305,7 +349,7 @@
             <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
             <div class="pg-body">
               <div class="row field">
-                <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+                <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏或演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
                 <div class="cdrop-host" id="short-pause"></div>
               </div>
               <div class="row field"><label for="short-duration">提醒窗口显示时长</label><div class="field-line"><input type="number" id="short-duration" min="5" max="600" /><span class="unit">秒</span></div></div>
@@ -399,7 +443,7 @@
             <div class="pg-head"><span class="pg-title">弹窗设置</span></div>
             <div class="pg-body">
               <div class="row field">
-                <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+                <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏或演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
                 <div class="cdrop-host" id="long-pause"></div>
               </div>
               <div class="row field"><label for="long-duration">提醒窗口显示时长</label><div class="field-line"><input type="number" id="long-duration" min="5" max="3600" /><span class="unit">秒</span></div></div>
@@ -473,7 +517,7 @@
                标签上的“?”说明“暂停休息”包括哪几种情况；控件下方原来那行“当前选中项
                会怎样”的小字已按用户要求删除（2026-11-10），含义留在操作手册里 -->
               <div class="row field">
-                <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
+                <label>暂停休息时<span class="q-mark pause-scope-help" data-tip="“暂停休息”指：系统空闲 5 分钟自动暂停，勿扰/专注、全屏或演示、无线投放、复制投影、指定应用运行时自动暂停，以及手动暂停休息。">?</span></label>
                 <div class="cdrop-host" id="tk-pause"></div>
               </div>
               <div class="row field num-gate"><label class="switch-row"><input type="checkbox" id="tk-leadOn" />提醒前弹出通知，提前时长</label><div class="field-line"><input type="number" id="tk-lead" min="1" max="300" aria-label="提前通知秒数" /><span class="unit">秒</span></div></div>

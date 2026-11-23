@@ -8,8 +8,10 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 	"workerrest/internal/display"
 	"workerrest/internal/jsonx"
+	"workerrest/internal/model"
 	"workerrest/internal/role"
 )
 
@@ -678,5 +680,160 @@ func TestSplitPauseAccessors(t *testing.T) {
 	s := New(map[string]any{"dndPause": false, "fullscreenPause": true}, "")
 	if s.DndPause() || !s.FullScreenPause() {
 		t.Fatal("两条访问器必须各自读自己的键")
+	}
+}
+
+// 全屏分两档（2026-11-20）：QUNS 3/4 的开关仍在、默认开；QUNS=2 的处置默认 off。
+// 这条测试钉的是“实验性功能默认不启用”——以后谁想改默认值，必须先想清楚误报会不会回来。
+func TestFullScreenTierDefaults(t *testing.T) {
+	def := DefaultSettingsMap()
+	if v, ok := def["fullscreenPause"].(bool); !ok || !v {
+		t.Fatalf("fullscreenPause（独占全屏与演示设置）出厂必须是 true，得到 %v", def["fullscreenPause"])
+	}
+	if v, ok := def["fullscreenBusyMode"].(string); !ok || v != FullScreenBusyModeOff {
+		t.Fatalf("fullscreenBusyMode（非独占全屏）出厂必须是 off，得到 %v", def["fullscreenBusyMode"])
+	}
+	if v, ok := def["fullscreenSkipApps"].([]any); !ok || len(v) != 0 {
+		t.Fatalf("fullscreenSkipApps 出厂必须是空数组，得到 %v", def["fullscreenSkipApps"])
+	}
+	s := New(map[string]any{}, "")
+	if s.FullScreenBusyMode() != FullScreenBusyModeOff {
+		t.Fatal("缺键必须回落 off")
+	}
+	if !s.FullScreenPause() {
+		t.Fatal("缺键的 fullscreenPause 必须回落 true")
+	}
+}
+
+// 三档枚举只认 off / pause / ask，其余一律 off：
+// 手改配置写错值时，宁可这一档不生效，也不能猜成“直接暂停”而把误报放回来。
+func TestFullScreenBusyModeNormalization(t *testing.T) {
+	cases := map[string]string{
+		"ask":    FullScreenBusyModeAsk,
+		" ASK ":  FullScreenBusyModeAsk,
+		"pause":  FullScreenBusyModePause,
+		"off":    FullScreenBusyModeOff,
+		"on":     FullScreenBusyModeOff,
+		"true":   FullScreenBusyModeOff,
+		"":       FullScreenBusyModeOff,
+		"ask us": FullScreenBusyModeOff,
+	}
+	for raw, want := range cases {
+		if got := New(map[string]any{"fullscreenBusyMode": raw}, "").FullScreenBusyMode(); got != want {
+			t.Fatalf("%q 应收敛成 %q，得到 %q", raw, want, got)
+		}
+	}
+	if got := New(map[string]any{"fullscreenBusyMode": true}, "").FullScreenBusyMode(); got != FullScreenBusyModeOff {
+		t.Fatalf("类型不对必须回落 off，得到 %q", got)
+	}
+	saved := map[string]any{"fullscreenBusyMode": "whatever"}
+	NormalizeForSave(saved)
+	if saved["fullscreenBusyMode"] != FullScreenBusyModeOff {
+		t.Fatalf("归一化后落盘的必须是合法值，得到 %v", saved["fullscreenBusyMode"])
+	}
+}
+
+// “全屏时不暂停”名单：宿主进程拒收、过期 today 失效、never 覆盖 today、路径取 basename。
+func TestFullScreenSkipList(t *testing.T) {
+	now := time.Now().UnixMilli()
+	raw := map[string]any{"fullscreenSkipApps": []any{
+		map[string]any{"exe": `C:\Program Files\VideoLAN\VLC\vlc.exe`, "label": "VLC", "mode": "never"},
+		map[string]any{"exe": "ApplicationFrameHost.exe", "mode": "never"},
+		map[string]any{"exe": "rundll32.exe", "mode": "today", "until": now + 60000},
+		map[string]any{"exe": "photos.exe", "mode": "today", "until": now - 1000},
+		map[string]any{"exe": "potplayer.exe", "mode": "today", "until": now + 60000},
+		map[string]any{"exe": "vlc.exe", "mode": "today", "until": now + 900000},
+		"oops",
+		map[string]any{},
+	}}
+	s := New(raw, "")
+	items := s.FullScreenSkipItemsAt(now)
+	if len(items) != 2 {
+		t.Fatalf("应只剩 vlc 与 potplayer 两条，得到 %+v", items)
+	}
+	if items[0].Exe != "vlc.exe" || items[0].Mode != model.FullScreenSkipNever || items[0].Label != "VLC" {
+		t.Fatalf("never 必须覆盖同 exe 的 today，得到 %+v", items[0])
+	}
+	if items[1].Exe != "potplayer.exe" || items[1].Mode != model.FullScreenSkipToday {
+		t.Fatalf("today 条目应保留，得到 %+v", items[1])
+	}
+	if got := s.FullScreenSkipMode("VLC.EXE", now); got != model.FullScreenSkipNever {
+		t.Fatalf("查名单要大小写不敏感，得到 %q", got)
+	}
+	if got := s.FullScreenSkipMode("photos.exe", now); got != "" {
+		t.Fatalf("过期的 today 必须失效，得到 %q", got)
+	}
+	if got := s.FullScreenSkipMode("potplayer.exe", now+120000); got != "" {
+		t.Fatalf("跨过 until 之后必须失效，得到 %q", got)
+	}
+	if got := s.FullScreenSkipMode("", now); got != "" {
+		t.Fatal("空 exe 永远不命中")
+	}
+}
+
+// FullScreenSkipItems 是 FullScreenSkipItemsAt 吃“此刻”的包装。它自己不带逻辑，
+// 但被 fs_ask 的按钮与设置页列表两处调用 —— 这条只钉"包装没被写歪"：
+// 用永不过期的 never 条目，断言两个入口给出同一份结果。
+func TestFullScreenSkipItemsDelegatesToNow(t *testing.T) {
+	raw := map[string]any{"fullscreenSkipApps": []any{
+		map[string]any{"exe": `C:\Tools\obs64.exe`, "label": "OBS", "mode": "never"},
+	}}
+	s := New(raw, "")
+
+	items := s.FullScreenSkipItems()
+	if len(items) != 1 || items[0].Exe != "obs64.exe" || items[0].Label != "OBS" {
+		t.Fatalf("never 条目必须原样返回，得到 %+v", items)
+	}
+	// 与显式传"此刻"的结果一致（差的只是调用瞬间的毫秒，never 不受影响）
+	if again := s.FullScreenSkipItemsAt(time.Now().UnixMilli()); len(again) != len(items) {
+		t.Fatalf("两个入口结果不一致：%+v vs %+v", items, again)
+	}
+	// 条目数组缺失时给空切片而不是 nil：调用方直接 range / len，nil 也安全，
+	// 但前端拿到 nil 会渲染成 null；这条钉住"始终是数组"
+	if got := New(map[string]any{}, "").FullScreenSkipItems(); got == nil {
+		t.Fatal("没有名单时必须返回空切片，不能是 nil")
+	}
+}
+
+// 归一化重建名单：路径收敛成 basename、宿主进程丢弃、过期 today 丢弃、同 exe 收敛成一条。
+func TestNormalizeFullScreenSkipRebuilds(t *testing.T) {
+	raw := map[string]any{"fullscreenSkipApps": []any{
+		map[string]any{"exe": `D:\Games\Hades\Hades.exe`, "label": "Hades", "mode": "never"},
+		map[string]any{"exe": "hades.exe", "mode": "today", "until": time.Now().Add(time.Hour).UnixMilli()},
+		map[string]any{"exe": "old.exe", "mode": "today", "until": 10},
+		map[string]any{"exe": "dllhost.exe", "mode": "never"},
+	}}
+	NormalizeForSave(raw)
+	got, ok := raw["fullscreenSkipApps"].([]any)
+	if !ok {
+		t.Fatalf("必须重建为数组，得到 %T", raw["fullscreenSkipApps"])
+	}
+	if len(got) != 1 {
+		t.Fatalf("宿主进程与过期 today 都该被丢掉，得到 %+v", got)
+	}
+	m := got[0].(map[string]any)
+	if m["exe"] != "Hades.exe" || m["mode"] != model.FullScreenSkipNever || m["label"] != "Hades" {
+		t.Fatalf("同 exe 应收敛成 never 且保留标签与原始大小写，得到 %+v", m)
+	}
+	if u, ok := m["until"].(int64); !ok || u != 0 {
+		t.Fatalf("never 的 until 必须是 0，得到 %v", m["until"])
+	}
+}
+
+// 归一化写回内存树后必须还能被自己读懂：until 是 int64，只认 float64 的解析会把它读成 0，
+// 表现为“用户刚点完今天不再问，下一拍就又开始问”。
+func TestFullScreenSkipRoundTrip(t *testing.T) {
+	until := time.Now().Add(2 * time.Hour).UnixMilli()
+	raw := map[string]any{"fullscreenSkipApps": []any{
+		map[string]any{"exe": "vlc.exe", "mode": "today", "until": until},
+	}}
+	NormalizeForSave(raw)
+	s := New(raw, "")
+	if got := s.FullScreenSkipMode("vlc.exe", time.Now().UnixMilli()); got != model.FullScreenSkipToday {
+		t.Fatalf("归一化后立刻读取必须仍命中 today，得到 %q（%+v）", got, raw["fullscreenSkipApps"])
+	}
+	items := s.FullScreenSkipItemsAt(time.Now().UnixMilli())
+	if len(items) != 1 || items[0].Until != until {
+		t.Fatalf("until 必须原样读回，得到 %+v", items)
 	}
 }

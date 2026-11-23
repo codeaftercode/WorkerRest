@@ -32,6 +32,8 @@
   "idlePause": true,
   "dndPause": true,
   "fullscreenPause": true,
+  "fullscreenBusyMode": "off",
+  "fullscreenSkipApps": [],
   "castWirelessPause": true,
   "castMirrorPause": true,
   "appPause": {

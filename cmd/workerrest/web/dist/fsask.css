@@ -1,0 +1,177 @@
+/* 非独占全屏的询问小窗（见 fs_ask_window.go）。
+ *
+ * 与 pause.css 同一套取舍：固定的深色玻璃，不跟随用户配的提醒窗口主色。
+ * 理由是同一个 —— 这扇窗会出现在**用户正在看的东西**（幻灯片、视频、网页全屏）上面，
+ * 一块跟着主题走的彩色方块比深色浮层更抢眼，也更容易被误认成“到点了”。
+ *
+ * 尺寸是死的（420×200，见 fs_ask_window.go 的 fsAskWidth/fsAskHeight）：
+ * 一行应用名 + 一行问句 + 一条倒计时 + 一排四个按钮，不多不少。
+ * 版面用 flex 居中而不是写死 padding-top —— 缩放比变化时高度不会溢出。
+ */
+
+:root {
+  --fs-bg: rgba(26, 30, 39, 0.95);
+  --fs-border: rgba(255, 255, 255, 0.14);
+  --fs-text: #eef1f6;
+  --fs-text-dim: rgba(238, 241, 246, 0.68);
+  --fs-line: rgba(255, 255, 255, 0.14);
+  --fs-btn-bg: rgba(255, 255, 255, 0.07);
+  --fs-btn-bg-hover: rgba(255, 255, 255, 0.15);
+  --fs-accent: #7aa2ff;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  /* 无边框小窗：不要滚动条、不要能选中文字、不要文本光标 */
+  -webkit-user-select: none;
+  user-select: none;
+  cursor: default;
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+}
+
+#card {
+  box-sizing: border-box;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px 18px 14px;
+  border-radius: 14px;
+  background: var(--fs-bg);
+  border: 1px solid var(--fs-border);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.38);
+  color: var(--fs-text);
+  animation: fs-in 160ms ease-out;
+}
+
+/* 应用名可能很长（浏览器标签式标题），单行截断：把版面撑破比截断难看得多 */
+#head {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#who {
+  /* 名字本身不额外强调：整句是一句话，读起来不该被切开 */
+  font-weight: 600;
+}
+
+#question {
+  margin: 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--fs-text-dim);
+}
+
+/* 倒计时条：宽度由 fsask.js 按剩余秒数写 style.width，transition 只负责走顺 */
+#bar-wrap {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--fs-line);
+  overflow: hidden;
+}
+
+#bar {
+  width: 100%;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--fs-accent);
+  transition: width 1s linear;
+}
+
+#actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.btn {
+  /* flex-basis 必须是 0：四个按钮等宽，最长的“本次不暂停”不会把别人挤扁 */
+  flex: 1 1 0;
+  min-width: 0;
+  height: 32px;
+  padding: 0 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: var(--fs-btn-bg);
+  color: var(--fs-text);
+  font-size: 13px;
+  font-family: inherit;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--fs-btn-bg-hover);
+  border-color: rgba(255, 255, 255, 0.36);
+}
+
+.btn:active:not(:disabled) {
+  background: rgba(255, 255, 255, 0.24);
+}
+
+.btn.primary {
+  background: var(--fs-accent);
+  border-color: var(--fs-accent);
+  color: #10131a;
+  font-weight: 600;
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: #96b6ff;
+  border-color: #96b6ff;
+}
+
+/* 灰掉 = 真的不能用（canMark=0 时的“今天不问 / 永不询问”），必须看得出来 */
+.btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+#left {
+  margin: 0;
+  font-size: 12px;
+  line-height: 14px;
+  color: var(--fs-text-dim);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 键盘可达：带 WS_EX_NOACTIVATE 也仍可能被 Tab 到，焦点必须看得见 */
+.btn:focus-visible {
+  outline: 2px solid rgba(140, 180, 255, 0.9);
+  outline-offset: 1px;
+}
+
+@keyframes fs-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* 减少动效：只保留“出现”，不要位移动画 */
+@media (prefers-reduced-motion: reduce) {
+  #card {
+    animation: none;
+  }
+  #bar {
+    transition: none;
+  }
+}

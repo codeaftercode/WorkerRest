@@ -154,8 +154,10 @@
   // 具体哪几条在你的机器上生效，看“自动暂停”卡片里各开关的状态。
   function pauseScopeHint() {
     const n = Math.max(1, Math.round(Number(S && S.idlePauseMin) || 5));
+    // 2026-11-20 起全屏是两档（独占全屏与演示设置 / 非独占全屏），这里合并成一句话：
+    // 它列的是“可能导致暂停的所有情况”，不必把档位名搬进来
     return "“暂停休息”指：系统空闲 " + n +
-      " 分钟自动暂停，勿扰/专注、全屏/演示、无线投放、复制投影、指定应用运行时自动暂停，" +
+      " 分钟自动暂停，勿扰/专注、全屏或演示、无线投放、复制投影、指定应用运行时自动暂停，" +
       "以及手动暂停休息。";
   }
   function refreshPauseHints() {
@@ -179,18 +181,23 @@
   // 纯文本节点则包一层 span —— 只包文字本身，flex 的 gap / 行高都不受影响。
   function qTipHostOf(q) {
     let node = q.previousSibling;
-    while (node && node.nodeType === 3 && !node.textContent.trim()) node = node.previousSibling;
-    if (!node) return null;
-    if (node.nodeType === 1) {
-      node.classList.add("q-tip-host");
-      return node;
+    while (node) {
+      if (node.nodeType === 1) {
+        // 装饰徽标（.exp-badge，如「实验性」）不是被解释的对象：跳过它继续往前找真正的
+        // 文字。否则提示只挂在徽标上，悬停「非独占全屏」四个字反而不出提示（2026-11-21）。
+        if (node.classList.contains("exp-badge")) { node = node.previousSibling; continue; }
+        node.classList.add("q-tip-host");
+        return node;
+      }
+      if (node.nodeType !== 3) return null;
+      if (!node.textContent.trim()) { node = node.previousSibling; continue; }
+      const span = document.createElement("span");
+      span.className = "q-tip-host";
+      node.parentNode.insertBefore(span, node);
+      span.appendChild(node);
+      return span;
     }
-    if (node.nodeType !== 3) return null;
-    const span = document.createElement("span");
-    span.className = "q-tip-host";
-    node.parentNode.insertBefore(span, node);
-    span.appendChild(node);
-    return span;
+    return null;
   }
 
   // 文案可能变（“暂停休息时”的空闲分钟数、下拉每一项各自的说明），统一走这里。
@@ -233,8 +240,16 @@
   // 缝隙上误判成离开（气泡闪一下），只按 relatedTarget 是否等于圆圈判断则完全判不出
   // “还在文字上”，这正是浮层收不掉的根源之一。
   function qTipArea(q) {
-    const host = q.previousElementSibling;
-    return host && host.classList.contains("q-tip-host") ? [q, host] : [q];
+    // 文字 ↔ 圆圈之间可能夹着一枚装饰徽标：三块都算同一触发区，否则指针扫过徽标
+    // 那一下会被判成“离开”，气泡闪一下（2026-11-21）。
+    const out = [q];
+    let el = q.previousElementSibling;
+    while (el) {
+      if (el.classList.contains("exp-badge")) { out.push(el); el = el.previousElementSibling; continue; }
+      if (el.classList.contains("q-tip-host")) out.push(el);
+      break;
+    }
+    return out;
   }
   function qTipInArea(q, node) {
     if (!q || !node || !node.closest) return false;
@@ -1020,6 +1035,15 @@
       label.textContent = opt.label;
       // 选中标识由 CSS 的 ::before 竖条承担（不再插勾选列，避免把文字顶离左缘）
       item.append(optIco, label);
+      // 可选徽标：只出现在菜单里，不进触发器 —— 触发器只有 180px，
+      // 文字 + 徽标 + 箭头挤在一起会把当前值压成省略号。
+      // 目前没有档位用它（「实验性」2026-11-21 改挂在「非独占全屏」标签旁），能力留着备用。
+      if (opt.badge) {
+        const badge = document.createElement("span");
+        badge.className = "cdrop-badge";
+        badge.textContent = opt.badge;
+        item.appendChild(badge);
+      }
       item.addEventListener("click", () => {
         api.set(opt.value);
         close();
@@ -4148,6 +4172,161 @@
     const min = $("idlePauseMin");
     if (min) min.disabled = !on;
   }
+  // 非独占全屏（QUNS 2）的三档处置（2026-11-20）。值域与 Go 侧
+  // settings.FullScreenBusyModeOff/Pause/Ask 一一对应；缺键/未知值一律回落到 off
+  // （与 normalizeFullScreenBusy 同口径 —— 这一档宁可不处理，也不要猜用户想要暂停）。
+  // 「实验性」徽标不在选项上（2026-11-21）：它挂在这一行的标签旁，标识整档的性质。
+  var FS_BUSY_ITEMS = [
+    { value: "off", label: "不处理" },
+    { value: "pause", label: "直接暂停" },
+    { value: "ask", label: "询问" }
+  ];
+  function mountFsBusyDrop(value) {
+    return mountDrop($("fsBusy-drop"), FS_BUSY_ITEMS, value, "off", () => {
+      syncFsBusyUI();
+      void autoSave();
+    }, "非独占全屏");
+  }
+  // 「询问」档才需要那行实验性提示与不暂停名单；另外两档整块收起来。
+  // 收起时顺手移除 details 的 open：下次切回 ask 时名单是收好的，不会突然撑开一段空白。
+  function syncFsBusyUI() {
+    const ask = dropValue($("fsBusy-drop"), "off") === "ask";
+    const note = $("fs-busy-note");
+    if (note) note.classList.toggle("hidden", !ask);
+    const box = $("fs-skip-advanced");
+    if (box) {
+      box.classList.toggle("hidden", !ask);
+      if (!ask) box.removeAttribute("open");
+    }
+  }
+  function fsSkipItems() {
+    return Array.isArray(S.fullscreenSkipApps) ? S.fullscreenSkipApps : [];
+  }
+  // 名单里一条的失效说法：never = 永不，today = 到 until 那个零点失效。
+  // until 就是“下一个本地 24:00”（见 fs_ask_bindings.go 的 nextLocalMidnightMs），
+  // 所以直接把它读成“X 日 00:00 失效”比“今天”更准确 —— 用户可能第二天才来看这页。
+  function fsSkipModeText(it) {
+    if (it.mode === "never") return "永不";
+    const until = Number(it.until) || 0;
+    if (until <= Date.now()) return "今天（已过期）";
+    const d = new Date(until);
+    return `今天 · ${d.getMonth() + 1} 月 ${d.getDate()} 日 00:00 失效`;
+  }
+  function buildFsSkipRow(it) {
+    const row = document.createElement("div");
+    row.className = "tk-item";
+    row.dataset.exe = it.exe;
+    const name = document.createElement("span");
+    name.className = "fs-skip-name";
+    name.textContent = it.label || it.exe;
+    name.title = it.label || it.exe;
+    const exe = document.createElement("span");
+    exe.className = "fs-skip-exe";
+    exe.textContent = it.exe;
+    const mode = document.createElement("span");
+    mode.className = "fs-skip-mode";
+    mode.textContent = fsSkipModeText(it);
+    const del = mkBtn("✕", "从名单里删除（删除后这个应用再次全屏时会重新按当前档位处理）", () => {
+      void confirmDialog({
+        title: "从名单里删除？",
+        desc: "删除后这个应用再次全屏时会重新询问（或按当前档位处理）。",
+        detail: it.label ? `${it.label}（${it.exe}）` : it.exe,
+        okText: "删除"
+      }).then((ok) => {
+        if (!ok) return;
+        const key = it.exe.toLowerCase();
+        S.fullscreenSkipApps = fsSkipItems().filter((x) => String(x.exe).toLowerCase() !== key);
+        renderFsSkipList();
+        void autoSave();
+      });
+    });
+    del.classList.add("danger");
+    row.append(name, exe, mode, del);
+    return row;
+  }
+  // 名单只有“删除”一个动作：新增入口在询问窗里（用户当时正看着那个应用），
+  // 在这里手打一个 exe 名既容易打错，也没法验证它真的存在。
+  function renderFsSkipList() {
+    const list = $("fs-skip-list");
+    if (!list) return;
+    const items = fsSkipItems();
+    const sum = $("fs-skip-summary");
+    if (sum) sum.textContent = items.length > 0 ? `${items.length} 项` : "空";
+    list.innerHTML = "";
+    if (items.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "tk-empty";
+      empty.textContent = "还没有应用，点上方按钮添加";
+      list.appendChild(empty);
+      return;
+    }
+    for (const it of items) list.appendChild(buildFsSkipRow(it));
+  }
+  // 名单只有“删除”一个改法，但添加与「应用列表」同款三条路（2026-11-21 用户要求）：
+  // 从运行的应用挑、从安装路径挑、手动打一个 exe 名。
+  // 这一份黑名单与 internal/winproc/proc.go 的 hostProcessNames 同口径：这类名字是
+  // **别的程序**的宿主（UWP 窗口壳 / PhotoViewer 宿主 / COM 代理 / 系统本身），
+  // 写进按进程名生效的名单等于一口气放行一大片不相干的东西。Go 侧归一化也会把它们剔掉，
+  // 这里先拦住，免得用户填完看到条目“自己消失”。
+  var FS_SKIP_HOST_EXES = new Set([
+    "applicationframehost.exe", "rundll32.exe", "dllhost.exe",
+    "svchost.exe", "explorer.exe", "shellhost.exe"
+  ]);
+  function fsSkipHas(exe) {
+    const key = String(exe).toLowerCase();
+    return fsSkipItems().some((x) => String(x.exe).toLowerCase() === key);
+  }
+  function addFsSkips(names) {
+    const added = [];
+    for (const raw of names) {
+      const exe = exeBasename(raw);
+      const key = exe.toLowerCase();
+      if (!exe || FS_SKIP_HOST_EXES.has(key) || fsSkipHas(exe)) continue;
+      // 手动加进名单的一律按「永不」：用户是主动把这个程序划出去的，不是“今天就算了”
+      S.fullscreenSkipApps = fsSkipItems().concat([
+        { exe: exe, label: appPauseLabel(exe) || "", mode: "never", until: 0 }
+      ]);
+      added.push({ exe: exe });
+    }
+    if (added.length > 0) {
+      renderFsSkipList();
+      autoSave();
+    }
+    return added;
+  }
+  function setupFsSkip() {
+    const rejectHost = (exe) => {
+      if (!FS_SKIP_HOST_EXES.has(String(exe).toLowerCase())) return false;
+      toast("系统宿主进程不能加入名单：它承载的是别的程序的窗口");
+      return true;
+    };
+    $("fs-skip-add").addEventListener("click", () => {
+      void promptDialog({
+        title: "手动输入应用名称",
+        desc: "请输入可执行文件名，例如 Code.exe。",
+        okText: "添加"
+      }).then((v) => {
+        if (v === null || rejectHost(exeBasename(v))) return;
+        const added = addFsSkips([v]);
+        if (added.length === 0) {
+          toast("没有新增（名称为空或已在名单里）");
+          return;
+        }
+        toast(`已添加 ${added[0].exe}（永不暂停）`);
+      });
+    });
+    $("fs-skip-file").addEventListener("click", async () => {
+      const r = await window.api.pickAppExe();
+      if (!r || rejectHost(r.exe)) return;
+      const added = addFsSkips([r.exe]);
+      if (added.length === 0) {
+        toast(`${r.exe} 已在名单里`);
+        return;
+      }
+      toast(`已添加 ${added[0].exe}（永不暂停）`);
+    });
+    $("fs-skip-pick").addEventListener("click", () => openAppPickModal("fs"));
+  }
   function fillForm() {
     $("appName").value = S.appName ?? "";
     $("tb-title").textContent = S.appName || "吃饼人也敢休息？";
@@ -4168,6 +4347,11 @@
     // 老配置里可能没有 fullscreenPause；后端 deepMerge 会补上出厂 true，
     // 这里不额外兜底，避免与后端下发的实际值不一致
     $("fullscreenPause").checked = !!S.fullscreenPause;
+    // 非独占全屏的第二档（QUNS 2）：三选一下拉 + 名单。缺键时下拉回落“不处理”，
+    // 与 Go 侧默认值一致（fullscreenBusyMode 缺省 = off）
+    mountFsBusyDrop(S.fullscreenBusyMode);
+    renderFsSkipList();
+    syncFsBusyUI();
     // 缺键按“开”（后端 Flag(true,…) 同口径），所以判据是 !== false，不能写成 !!
     $("castWirelessPause").checked = S.castWirelessPause !== false;
     $("castMirrorPause").checked = S.castMirrorPause !== false;
@@ -4242,6 +4426,10 @@
     S.window.rememberSize = $("win-remember").checked;
     S.dndPause = $("dndPause").checked;
     S.fullscreenPause = $("fullscreenPause").checked;
+    // 只回写模式：名单（fullscreenSkipApps）由询问窗与上面的删除按钮各自落盘，
+    // collectForm 不碰它 —— 页面这份 S 是打开窗口那一刻的快照，把它整份写回去
+    // 会把用户在询问窗里刚加的条目顶掉。
+    S.fullscreenBusyMode = dropValue($("fsBusy-drop"), "off");
     S.castWirelessPause = $("castWirelessPause").checked;
     S.castMirrorPause = $("castMirrorPause").checked;
     S.checkUpdateOnStart = $("chk-update").checked;
@@ -7838,12 +8026,19 @@
     }
     return added;
   }
+  // 这扇「从运行的应用选择」弹窗被两处复用（应用列表 / 全屏时不暂停的应用，2026-11-21）。
+  // 判重集合与“加进哪个列表”都按 pickTarget 走 —— 否则在全屏名单里打开时，勾中的
+  // 全是拿应用列表判的重复项，自己列表里已有的反而能重复加。
+  var pickTarget = "app";
+  function pickExistingExes() {
+    const items = pickTarget === "fs" ? fsSkipItems() : (S.appPause ? S.appPause.items : []);
+    return new Set(items.map((i) => String(i.exe).toLowerCase()));
+  }
   function renderAppPickItems(filter) {
     const list = $("app-pick-list");
     if (!list) return;
     const kw = filter.trim().toLowerCase();
-    const items = S.appPause ? S.appPause.items : [];
-    const have = new Set(items.map((i) => i.exe.toLowerCase()));
+    const have = pickExistingExes();
     const names = runningApps.filter((n) => !kw || n.toLowerCase().includes(kw));
     list.innerHTML = "";
     if (names.length === 0) {
@@ -7854,7 +8049,10 @@
       return;
     }
     for (const name of names) {
-      const dup = have.has(name.toLowerCase());
+      const key = name.toLowerCase();
+      // 全屏名单不收宿主进程：读得到它，但存进去会被后端剔掉
+      const blocked = pickTarget === "fs" && FS_SKIP_HOST_EXES.has(key);
+      const dup = have.has(key) || blocked;
       const row = document.createElement("div");
       row.className = "pk-item" + (dup ? " disabled" : "");
       const box = document.createElement("input");
@@ -7873,7 +8071,7 @@
       }
       if (dup) {
         const tag = document.createElement("em");
-        tag.textContent = "已在列表";
+        tag.textContent = blocked ? "系统宿主进程，不能加入" : "已在列表";
         row.appendChild(tag);
       }
       row.addEventListener("click", (e) => {
@@ -7883,7 +8081,8 @@
       list.appendChild(row);
     }
   }
-  function openAppPickModal() {
+  function openAppPickModal(target) {
+    pickTarget = target === "fs" ? "fs" : "app";
     const modal = $("app-pick-modal");
     const list = $("app-pick-list");
     const note = $("app-pick-note");
@@ -7934,7 +8133,7 @@
       toast(`已添加 ${added[0].exe}`);
       focusAppName(added[0].id);
     });
-    $("app-pause-pick").addEventListener("click", () => openAppPickModal());
+    $("app-pause-pick").addEventListener("click", () => openAppPickModal("app"));
     $("app-pick-cancel").addEventListener("click", () => modal.classList.add("hidden"));
     modal.addEventListener("click", (e) => {
       if (e.target === modal) modal.classList.add("hidden");
@@ -7947,7 +8146,7 @@
         $("app-pick-list").querySelectorAll("input[type=checkbox]:checked")
       ).map((b) => b.value);
       modal.classList.add("hidden");
-      const added = addApps(names);
+      const added = pickTarget === "fs" ? addFsSkips(names) : addApps(names);
       toast(added.length > 0 ? `已添加 ${added.length} 个应用` : "没有新增（未勾选或都已在列表中）");
     });
     document.addEventListener("keydown", (e) => {
@@ -8300,6 +8499,7 @@
 
     renderTakeoutList();
     setupAppPause();
+    setupFsSkip();
     setupColorPicker();
     bindAutoSave();
     // 空闲门（“系统空闲（秒）”）的输入规范化：自定义提醒卡的在自己建卡时绑（见
@@ -8838,6 +9038,16 @@
     // 快捷键注册结果广播：改键的结论由 SetShortcut 的返回值单独解释（见 applyShortcut），
     // 这里只兜“别的路径动了配置”（恢复默认 / 导入 / 外部改写），且只在状态真变了时说话。
     window.api.onHotkeyStatus(notifyHotkeyProblems);
+    // 询问窗里点了「今天不问 / 永不询问」时，Go 侧已经把名单写进配置文件并广播。
+    // 这里必须重拉一份 S：页面上这份快照是打开窗口那一刻的，而保存是“整份覆盖数组”，
+    // 拿着旧快照去存任何别的设置都会把刚加的那条顶掉。
+    window.api.onFsAskListChanged(() => {
+      void (async () => {
+        S = await window.api.getSettings();
+        renderFsSkipList();
+        syncFsBusyUI();
+      })();
+    });
     renderStatus(await window.api.getState());
     // 数码管自走：读数只跟锚点时刻有关，本地时钟每 200ms 补绘一次即可，
     // 不再靠上面那条 1s 的 getState 往返驱动。往返只要晚半秒（Go 侧处置 / IPC /

@@ -2,9 +2,11 @@ package settings
 
 import (
 	"strings"
+	"time"
 
 	"workerrest/internal/jsonx"
 	"workerrest/internal/model"
+	"workerrest/internal/winproc"
 )
 
 // ---------- 配置读出（计划层要用的那几个视图） ----------
@@ -44,22 +46,112 @@ func (s *Settings) IdlePauseMin() int {
 	return int(n)
 }
 
-// 两条独立的“系统状态”自动暂停开关（2026-11-06 三次收敛定稿）。以前只有
-// 一个 dndPause 管着勿扰 / 忙碌 / 演示设置，关掉一条就得把三条一起关；现在各管各的：
-//   - DndPause        请勿打扰（Win11 通知中心“请勿打扰”/ Win10 专注助手档位，WNF）
-//   - FullScreenPause 全屏或演示（QUNS 2 / 3 / 4，见下方）
-// 出厂全开。presentationPause 已按用户口径删除：微软从未公开 QUNS 2 与 4 谁对应
-// 演示设置的判定顺序，两条独立开关在未文档化的实现细节上分家没有依据。
+// 全屏自动暂停分两档（2026-11-20 定稿，替代 2026-11-06 的“2/3/4 合并一条开关”）：
+//
+//   - FullScreenPause 只管 QUNS 3 / 4：D3D 独占全屏、Windows 演示设置。两者都有明确
+//     成因、几乎不误报，而且**都不能弹窗**（独占画面 DWM 不合成第三方窗口；投影上多一扇
+//     窗就是事故），所以永远“直接暂停、不询问”。出厂开，与旧行为完全一致。
+//   - FullScreenBusyMode 只管 QUNS 2：非独占全屏（浏览器 F11、看图、视频全屏、PPT 放映、
+//     远程桌面、无边框游戏）。官方定义就是垃圾桶（“全屏应用在跑**或**演示设置已应用”），
+//     误报与漏报全部集中在这一档，出厂 off（不处理）。可选 pause（旧的直接暂停）与
+//     ask（实验性：弹小窗问一次并记住答案）。
+//
+// 两者互相独立：取消勾选 FullScreenPause 不影响下拉，反之亦然。
 // 软件未发布，不做旧键迁移；磁盘上残留的 presentationPause 键无人读取，无害。
+
+// 非独占全屏（QUNS=2）的三种处置
+const (
+	// FullScreenBusyModeOff 不处理：全屏时不暂停、不询问、不打扰（出厂默认）
+	FullScreenBusyModeOff = "off"
+	// FullScreenBusyModePause 直接暂停（2026-11-20 之前的行为）
+	FullScreenBusyModePause = "pause"
+	// FullScreenBusyModeAsk 实验性：弹小窗询问是否暂停，并按答复记住这个应用
+	FullScreenBusyModeAsk = "ask"
+)
 
 // DndPause 系统勿扰时暂停
 func (s *Settings) DndPause() bool { return s.Flag(true, "dndPause") }
 
-// FullScreenPause 全屏应用或 Windows 演示设置生效时暂停（QUNS 2 / 3 / 4）。
-// 2 = 非独占全屏或演示设置已应用，3 = D3D 独占全屏，4 = 演示设置主动屏蔽通知。
+// FullScreenPause 独占全屏（QUNS=3）与 Windows 演示设置（QUNS=4）生效时暂停。
 // 缺键兜底取“开”，与 default_settings.json 的 fullscreenPause 同值
 // （2026-10-29 用户把出厂默认定为“开”，见 settings.go 的 AppearanceCfg 注释）。
 func (s *Settings) FullScreenPause() bool { return s.Flag(true, "fullscreenPause") }
+
+// FullScreenBusyMode 非独占全屏（QUNS=2）的处置：off（默认）/ pause / ask。
+// 缺键与非法值一律回 off —— 这一档本来就误报最多，“什么都不做”是唯一不会误伤的选择。
+func (s *Settings) FullScreenBusyMode() string {
+	return NormFullScreenBusyMode(s.Str(FullScreenBusyModeOff, "fullscreenBusyMode"))
+}
+
+// NormFullScreenBusyMode 把任意输入收敛成三个合法值之一（未知 → off）
+func NormFullScreenBusyMode(v string) string {
+	switch strings.ToLower(strings.TrimSpace(v)) {
+	case FullScreenBusyModePause:
+		return FullScreenBusyModePause
+	case FullScreenBusyModeAsk:
+		return FullScreenBusyModeAsk
+	default:
+		return FullScreenBusyModeOff
+	}
+}
+
+// FullScreenSkipItems “全屏时不暂停”名单（按当前时间过滤掉过期的 today）
+func (s *Settings) FullScreenSkipItems() []model.FullScreenSkipItem {
+	return s.FullScreenSkipItemsAt(time.Now().UnixMilli())
+}
+
+// FullScreenSkipItemsAt 同上，时间由调用方给（单测用固定时间）
+func (s *Settings) FullScreenSkipItemsAt(nowMs int64) []model.FullScreenSkipItem {
+	out := []model.FullScreenSkipItem{}
+	seen := map[string]bool{}
+	for _, it := range jsonx.AnySlice(s.lookup("fullscreenSkipApps")) {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		exe := exeBasename(mapStr(m, "exe", ""))
+		if exe == "" || winproc.IsHostProcess(exe) {
+			continue
+		}
+		key := strings.ToLower(exe)
+		if seen[key] {
+			continue
+		}
+		mode := model.FullScreenSkipNever
+		if strings.EqualFold(mapStr(m, "mode", ""), model.FullScreenSkipToday) {
+			mode = model.FullScreenSkipToday
+		}
+		until := numI64(m["until"])
+		// 过期的“今天”直接不认：跨过本地 24:00 就该重新问，不需要任何定时器
+		if mode == model.FullScreenSkipToday && until <= nowMs {
+			continue
+		}
+		seen[key] = true
+		label := normalizeAppName(mapStr(m, "label", ""))
+		if label == "" {
+			label = appPauseLabel(exe)
+		}
+		out = append(out, model.FullScreenSkipItem{Exe: exe, Label: label, Mode: mode, Until: until})
+	}
+	return out
+}
+
+// FullScreenSkipMode 查某个 exe 当前的豁免方式：""（没有豁免）/ never / today
+func (s *Settings) FullScreenSkipMode(exe string, nowMs int64) string {
+	want := strings.ToLower(strings.TrimSpace(exe))
+	if want == "" {
+		return ""
+	}
+	for _, it := range s.FullScreenSkipItemsAt(nowMs) {
+		if strings.ToLower(it.Exe) == want {
+			if it.Mode == model.FullScreenSkipToday && it.Until <= nowMs {
+				return ""
+			}
+			return it.Mode
+		}
+	}
+	return ""
+}
 
 // 投屏暂停拆成两个独立开关（2026-11-03）：两条判据的误判率差得很远，
 // 合在一个开关里只能“要么全信要么全不信”。

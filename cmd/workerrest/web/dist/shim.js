@@ -70,6 +70,9 @@
     PreviewBreak: 2, // (type, forceKey)
     StartBreak: 1, // (kind)
 
+    // ---- 全屏询问窗（fsask.html） ----
+    FullScreenAskAnswer: 1, // (answer)
+
     // ---- 通用 / 窗口 ----
     CloseWindow: 1, // (win)
     SupActivity: 1, // (win)
@@ -242,6 +245,11 @@
     // ---- 休息提醒窗口 ----
     breakCurrent: function () {
       return call("BreakCurrent", [win]);
+    },
+    // 全屏询问窗的答复：pause / skip / today / never。
+    // 迟到的点击（窗口已关）Go 侧静默忽略，所以这里不需要 try/catch。
+    fullScreenAskAnswer: function (answer) {
+      return call("FullScreenAskAnswer", [str(answer)]);
     },
     action: function (name) {
       return call("Action", [win, str(name)]);
@@ -488,6 +496,11 @@
     // 回调拿到 HotkeyStatus[]，与 hotkeyStatus() 同一形状。
     onHotkeyStatus: function (cb) {
       on("hotkeys:status", cb);
+    },
+    // 「全屏时不暂停」名单被询问窗改动（用户在里面点了今天不问 / 永不询问）。
+    // 设置页收到后重拉配置：它手里那份 S 是旧快照，整份覆盖式保存会把新条目顶掉。
+    onFsAskListChanged: function (cb) {
+      on("fsask:list-changed", cb);
     },
   };
 

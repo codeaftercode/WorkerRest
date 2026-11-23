@@ -231,6 +231,12 @@ func (a *App) pickMessage(cfg *settings.Settings, kind, fallbackName string) []s
 // 会话构建与“弹窗”必须分开：渲染层随后会自己再拉一次 breakCurrent，
 // 所以这里先把会话写完再放窗（跨多次调用期间保持一致）。
 func (a *App) ShowBreakSession(kind string, preview bool, forceKey string) string {
+	// 全屏询问窗还开着（用户没答完）时先软关掉：否则六秒后休息窗与询问窗同屏，
+	// 而询问窗是置顶的，会压在休息窗上面。未答复按“不暂停”处理 —— 是用户自己
+	// 点了“立即休息”，本来也就不需要再暂停了。抢不到建窗锁就跳过，绝不阻塞建窗。
+	if !preview {
+		a.fsAskDismissSoft("即将显示休息窗口")
+	}
 	a.mu.Lock()
 	cfg := a.cfg
 	bcfg, ok := cfg.BreakByID(kind)

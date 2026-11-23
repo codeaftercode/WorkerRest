@@ -252,6 +252,30 @@ type AppPauseConfig struct {
 	Items   []AppPauseItem
 }
 
+// 全屏时不暂停的两种豁免方式（2026-11-20）
+//
+// 只对“非独占全屏（QUNS=2）”这一档有意义：独占全屏与演示设置永远直接暂停、从不询问，
+// 也就没有“免问”这回事。
+const (
+	// FullScreenSkipNever 永不暂停该应用的全屏（长期，直到用户在设置页删掉）
+	FullScreenSkipNever = "never"
+	// FullScreenSkipToday 今天（本地日界 24:00）不再询问；跨天后自动失效
+	FullScreenSkipToday = "today"
+)
+
+// FullScreenSkipItem “非独占全屏时不暂停”名单的一条。
+//
+//   - Exe 小写 basename，匹配用（与 winproc.ListProcessNames 的口径一致）；
+//   - Label 只用于展示：商店应用更新后 exe 可能改名，用户认的是“照片”而不是文件名；
+//   - Mode 见上面两个常量；
+//   - Until 仅 Mode=today 有意义（本地当日 24:00 的毫秒时间戳），0 视为已过期。
+type FullScreenSkipItem struct {
+	Exe   string
+	Label string
+	Mode  string
+	Until int64
+}
+
 // CustomBreak 一条自定义提醒（设置页“时间规划”页底部新建的第 3 种及以后提醒）。
 // 选项、默认值与含义与“短休息”完全一致（同一套 BreakConfig），提醒内容也自成一套。
 type CustomBreak struct {

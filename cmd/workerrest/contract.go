@@ -27,6 +27,9 @@ var wiredCalls = []string{
 	"PreviewBreak",
 	"StartBreak",
 
+	// ---- 全屏询问窗（fsask.html） ----
+	"FullScreenAskAnswer",
+
 	// ---- 通用 / 窗口 ----
 	"CloseWindow",
 	"SupActivity",
@@ -144,6 +147,9 @@ var wiredArity = map[string]int{
 	"PreviewBreak": 2, // (type, forceKey)
 	"StartBreak":   1, // (kind)
 
+	// ---- 全屏询问窗（fsask.html） ----
+	"FullScreenAskAnswer": 1, // (answer)
+
 	// ---- 通用 / 窗口 ----
 	"CloseWindow":     1, // (win)
 	"SupActivity":     1, // (win)
@@ -191,7 +197,7 @@ var wiredArity = map[string]int{
 	"HotkeyStatus":         0,
 	"CheckHotkeyConflicts": 0,
 	"SetHotkeyCapture":     1, // (on bool) 录入中挂起 / 恢复
-	"SetShortcut":           2, // (key, accel) → ShortcutApplyResult{ok,state,kept,list}
+	"SetShortcut":          2, // (key, accel) → ShortcutApplyResult{ok,state,kept,list}
 
 	// ---- 统计 ----
 	"GetStats":           0,
@@ -258,6 +264,9 @@ var diagnosticCalls = []string{
 	"ApplyAutostart",
 	"CfgSnapshot",
 	"IdleMs",
+	// 调度器 Host 接口要求的方法：只读一个内存字段（询问窗是否在等答复），
+	// 供 onTick 在到点那一拍决定要不要先按住休息窗。前端永远不该调它。
+	"BreakHoldRequested",
 	// 诊断探针：scripts/probe/*.py 与本机排查用
 	"SysProbe",
 	"StatsProbe",

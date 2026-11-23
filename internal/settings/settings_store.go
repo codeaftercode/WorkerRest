@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
+
 	"workerrest/internal/jsonx"
 )
 
@@ -156,6 +158,9 @@ func normalizeLoad(raw map[string]any) (presetSeeded, idsRenumbered, displayFill
 	if raw["appPause"].(map[string]any)["seeded"] != true {
 		raw["appPause"] = seedAppPause(raw["appPause"].(map[string]any))
 	}
+	// ⑤·1 全屏分两档：QUNS 2 的处置 + “全屏时不暂停”名单（过期的 today 在这里清掉）
+	normalizeFullScreenBusy(raw)
+	normalizeFullScreenSkip(raw, time.Now().UnixMilli())
 	// ⑥ 开关类字段
 	normalizeToggles(raw)
 	// ⑥·1 出厂 displayIds 是空的：枚举一次，把主屏 ID 记进配置（首次启动就落盘，
@@ -195,6 +200,8 @@ func normalizeForSave(raw map[string]any) {
 	raw["takeout"] = normalizeTakeout(raw)
 	normalizeSound(raw)
 	raw["appPause"] = normalizeAppPause(raw)
+	normalizeFullScreenBusy(raw)
+	normalizeFullScreenSkip(raw, time.Now().UnixMilli())
 	normalizeToggles(raw)
 	normalizeWindow(raw)
 	// 历史显示器目录：保存路径也要过一遍 —— 删除是前端按 ID 过滤后整份回写的，

@@ -191,9 +191,11 @@ body {
 .sidebar-footer .status-cell .v { font-size: 13px; margin-top: 2px; }
 /* 快捷操作外框：GroupBox 形态，做成「凹面框 + 凸面按钮」的正负关系 —— 侧栏是 --panel，
    框比所在面低一档（规范 1.2：凹下去的面永远比所在面板低一档），组内按钮再凸回 --panel，
-   “哪里能按”不靠文案就看得出来。legend 底色必须填 --panel（侧栏色）而不是框内的 --panel-2：
-   浏览器会把 legend 排在边框线**上方**半格，填框色就会在框顶鼓出一条色带；填侧栏色则上半天
-   与侧栏无缝、下半天在框内切出缺口 —— 正是 Win32 GroupBox「标题把顶线切开」的样子。
+   “哪里能按”不靠文案就看得出来。
+   legend **不给底色**（2026-11-23 用户要求去掉标题的底色块）：Chromium 会把 legend 的矩形从
+   fieldset 背景里挖掉，透明 legend 透出的本来就是侧栏色 —— 实测「上半天无缝、下半天在框内
+   切出缺口」的 GroupBox 效果照旧，不需要再拿 background 去遮。若哪天换引擎后发现框顶鼓出
+   一条色带，那是挖洞行为变了，应改结构（把标题移出 fieldset）而不是回来补底色。
    min-inline-size 必须清掉 —— fieldset 默认 min-content，窄侧栏里会把按钮挤成竖排。 */
 .quick-group {
   margin: 2px 0 0;
@@ -205,26 +207,15 @@ body {
   background: var(--panel-2);
   flex-shrink: 0;
 }
-/* 组标题：12 / 500 + --text-2（设置窗口里 600 只留给页面级标题），前面一枚 accent 竖条当
-   组标记，与提醒卡的组标题同一套语言。字号小、字重轻，框的存在感靠面不靠字。 */
+/* 组标题：12 / 500 + --text-2（设置窗口里 600 只留给页面级标题）。字号小、字重轻，
+   框的存在感靠面不靠字 —— 所以标题本身不带任何装饰：没有左侧竖条，也没有底色块。 */
 .quick-group > legend {
   padding: 0 7px;
-  background: var(--panel);
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
   color: var(--text-2);
   line-height: 1.2;
-}
-.quick-group > legend::before {
-  content: "";
-  display: inline-block;
-  width: 3px;
-  height: 11px;
-  margin-right: 6px;
-  border-radius: 1px;
-  background: var(--accent);
-  vertical-align: -1.5px;
 }
 /* 组内两列网格：立即休息独占一行（即时动作），其余四个两两成对（暂停/推迟、跳过/重置） */
 .quick-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
@@ -751,6 +742,51 @@ body {
 /* 未勾选“系统空闲”时分钟数不可编辑：只降不透明度，框体样式照旧 —— 另造一套“禁用样式”
    就等于在页面上多出一种输入框长相，和别处的输入框对不上。 */
 .row.mixed > input[type='number']:disabled { opacity: .45; cursor: not-allowed; }
+
+/* 全屏第二档（非独占全屏，QUNS 2）的下拉行（2026-11-20，2026-11-21 对齐修正）。
+   它不是开关，没有勾选框，但整张卡只有一条文字列 —— 所以保留 24px 左内边距，用 24px
+   补上勾选框占的那一格（16px 框 + 8px 间距），它的文字就和上面四行开关的文字左缘同线。
+   同时**把标签列回退同样 24px**：24 + (216-24) + 12 = 228，下拉左缘因此仍落在全卡
+   其它 field 行的控件列上（实测与「音量」「标题」等输入框同为 509，2026-11-21 用户
+   要求“与其他卡片的下拉框对齐”）。只回退标签列、不回退内边距，才同时守住这两条线。 */
+.row.field.fs-sub {
+  padding-left: 24px;
+  grid-template-columns: calc(var(--label-w) - 24px) minmax(0, 1fr);
+}
+/* 这一行的标签本身就是一条 flex 行（与 .switch-row 同构）：只有让“?”和文字共处一个
+   高度等于行盒的容器里，align-self: center 才落在**文字盒中心**。把“?”直接挂在 .row 上
+   是不行的 —— .row 的高度被旁边的下拉撑到 41px，“?”居中后比汉字字形中心高出 2px
+   （实测 -2px，探针会红）。 */
+.row.field.fs-sub > .fs-sub-label {
+  display: flex; align-items: center; gap: 8px;
+  color: var(--text-2); font-size: 14px; flex-shrink: 0;
+}
+/* 左边距 -5px 抵掉行内 8px 的 flex gap，视觉间距仍是 3px（与 .switch-row 同一口径） */
+.row.field.fs-sub > .fs-sub-label > .q-mark { margin-left: -5px; align-self: center; }
+/* 「实验性」徽标（2026-11-21）：原来挂在下拉菜单的「询问」选项上，移到这里 ——
+   它标识的是这一档的整体性质，挂在选项上会让人以为只有那一项才实验。
+   视觉沿用下拉菜单里的 .cdrop-badge（品牌色描边 + 品牌色字），免得同一颗徽标两种长相。 */
+.exp-badge {
+  flex: none;
+  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 11px; font-weight: 600; line-height: 1.4;
+  white-space: nowrap;
+}
+
+/* 从属于上面某一行的折叠清单（2026-11-21）。
+   适用：应用列表 / 全屏时不暂停的应用（details.advanced）、提示音（.fold-panel）。
+   默认的 margin-left 是 -13px（盒子左缘在正文左缘左侧 13px，内部 12+1 恰好抵回正文线）。
+   这一档要它们整体往里退 37px：盒子左缘落到勾选行文字列（正文 +24）上，一眼读得出
+   “这是上面那条开关的下级清单”，而不是又一张并列的卡片。
+   **本页三个折叠列表必须同一个值**，所以写成类而不是逐处覆盖。 */
+details.advanced.sub-block,
+.fold-panel.sub-block { margin-left: 24px; }
+
+/* 实验性提示：与下档行的文字同一条左缘（不是 .hint.sub 那个 216px 的控件列） */
+.hint.fs-note { margin: 0 0 2px 24px; }
 
 /* 度量字段行：标签列写参数名，控件列里是“数字框 + 紧跟的单位/后半句”。
    ————————————————————————————————————————————————————————————————
@@ -2783,6 +2819,20 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
 /* 软件名输入框：宽度由 fitNameInput 按实测文本宽度写成内联 style（这里是兜底初值）。
    它是 flex: 0 0 auto，所以名字一长，前面 flex: 1 的可执行名输入框就自动收窄。 */
 .app-name { flex: 0 0 auto; width: 110px; }
+/* “全屏时不暂停”名单的行（2026-11-20）：软件名占满剩余宽度并截断，可执行名与
+   失效说法按内容宽跟在后头，删除按钮由 .tk-item > .btn.danger 收到行尾。
+   名单只能删不能改 —— 新增入口在询问窗里（用户当时正看着那个应用）。 */
+.fs-skip-name {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 14px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.fs-skip-exe {
+  flex: 0 0 auto;
+  font-family: ui-monospace, Consolas, "Courier New", monospace;
+  font-size: 12px; color: var(--text-2);
+}
+.fs-skip-mode { flex: 0 0 auto; font-size: 12px; color: var(--text-2); white-space: nowrap; }
 .pk-list {
   display: flex; flex-direction: column; gap: 2px;
   max-height: 300px; overflow-y: auto;
@@ -3055,6 +3105,19 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    排在同一列上，所以这里用 :has 精确限定，别改成全局。 */
 .cdrop-item:has(> .q-mark) > .cdrop-label { flex: 0 1 auto; }
 .cdrop-item > .q-mark { margin-left: -3px; align-self: center; flex-shrink: 0; }
+/* 菜单项上的徽标（如「实验性」）：只有菜单里有，触发器里没有 —— 触发器 180px 太窄，
+   文字 + 徽标 + 箭头挤在一起会把当前值压成省略号。描边用主色，深浅主题都读得清。 */
+.cdrop-badge {
+  flex: none;
+  margin-left: 2px;
+  padding: 1px 5px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--accent);
+  font-size: 11px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
 
 /* “显示的屏幕”多选下拉：单选那套用左侧竖条表示选中，多选要能一眼看出“勾了哪几块”，
    所以每项前面换成方框。面板允许比触发器宽 —— “DELL U2719DS · 2560×1440 · 主屏”

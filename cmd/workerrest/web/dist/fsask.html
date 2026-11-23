@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;" />
+  <!-- 禁缩放守卫：必须在页面脚本之前执行（外链，内联会被上面的 CSP 拦掉） -->
+  <script src="./nozoom.js"></script>
+  <title>全屏询问</title>
+  <link rel="stylesheet" href="./fsask.css" />
+</head>
+<body>
+  <!-- 非独占全屏的询问小窗（见 fs_ask_window.go / fs_ask_bindings.go）。
+
+       三条版式约束，改动前先读：
+       一、应用名由主进程经 URL 的 name 下发，页面不自己拼 —— 名字的唯一真源在
+           ForegroundInfo.DisplayName()，页面只负责摆位置。
+       二、canMark=0 表示这个前台进程没有可记录的进程名（ApplicationFrameHost 之类的
+           宿主进程）。此时「今天不问 / 永不询问」必须禁用：Go 侧同样会拒收，
+           点了没反应比灰掉更让人困惑。
+       三、**不给任何元素自动 focus**。这扇窗带 WS_EX_NOACTIVATE，主动 focus() 有可能
+           把前台窗口激活走 —— 而无边框游戏一旦失去前台就不再是全屏，询问自身就失效了。 -->
+  <div id="card">
+    <p id="head">「<span id="who">某个应用</span>」正在全屏运行</p>
+    <p id="question">现在要暂停提醒吗？</p>
+    <div id="bar-wrap" aria-hidden="true"><div id="bar"></div></div>
+    <div id="actions">
+      <button class="btn primary" type="button" data-answer="pause">暂停</button>
+      <button class="btn" type="button" data-answer="skip" title="这一轮全屏不再询问，也不暂停">本次不暂停</button>
+      <button class="btn" type="button" data-answer="today" title="今晚 24:00 之前，这个应用全屏时不再询问">今天不问</button>
+      <button class="btn" type="button" data-answer="never" title="以后这个应用全屏时永不暂停（可在设置里改）">永不询问</button>
+    </div>
+    <p id="left">12 秒后自动暂停</p>
+  </div>
+  <script src="./shim.js"></script>
+  <script src="./fsask.js"></script>
+</body>
+</html>

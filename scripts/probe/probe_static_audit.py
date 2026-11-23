@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""静态资产审计：七个页面 + 全部前端脚本/样式的“引号级”完整性。
+"""静态资产审计：八个页面 + 全部前端脚本/样式的“引号级”完整性。
 
 为什么单独一层：无头/真机探针只能在**跑起来之后**发现问题，而漏引一个脚本、
 重复一个 id、CSP 拦掉一段内联脚本，往往表现为“某个功能悄悄不工作”而不是报错。
@@ -30,11 +30,13 @@ DIST = os.path.join(ROOT, "cmd", "workerrest", "web", "dist")
 
 PAGES = {
     "index.html": ["shim.js", "index.js"],
-    "settings.html": ["shim.js", "role_thumb.js", "settings.js"],
-    "break.html": ["nozoom.js", "break-early.js", "shim.js", "break.js"],
+    "settings.html": ["shim.js", "seal.js", "role_thumb.js", "settings.js"],
+    "break.html": ["nozoom.js", "break-early.js", "shim.js", "seal.js", "break.js"],
     "prebreak.html": ["nozoom.js", "shim.js", "prebreak.js"],
     "pause.html": ["nozoom.js", "shim.js", "pause.js"],
-    "takeout.html": ["nozoom.js", "shim.js", "takeout.js"],
+    "takeout.html": ["nozoom.js", "shim.js", "seal.js", "takeout.js"],
+    # 非独占全屏的询问小窗（实验性，见 fs_ask_window.go）
+    "fsask.html": ["nozoom.js", "shim.js", "fsask.js"],
     "sound.html": [],
 }
 

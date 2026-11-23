@@ -6,6 +6,8 @@ import (
 	"strings"
 	"workerrest/internal/display"
 	"workerrest/internal/jsonx"
+	"workerrest/internal/model"
+	"workerrest/internal/winproc"
 )
 
 // soundMusic 内置提示音（与 config.ts 的 BUILTIN_MUSIC 逐字一致）
@@ -304,6 +306,87 @@ func seedAppPause(cfg map[string]any) map[string]any {
 		})
 	}
 	return map[string]any{"enabled": cfg["enabled"] == true, "seeded": true, "items": out}
+}
+
+// numI64 读毫秒时间戳。JSON 解析出来的是 float64，而归一化重建后的内存树里是我们自己
+// 写的 int64 —— 两种都必须认。只认 float64 的话，“刚写进名单”的 today 条目会被读成
+// until=0（= 已过期），用户点完“今天不再问”当场就失效。
+func numI64(v any) int64 {
+	switch t := v.(type) {
+	case int64:
+		return t
+	case int:
+		return int64(t)
+	case float64:
+		return int64(t)
+	}
+	if f, ok := jsonx.ToNumber(v); ok {
+		return int64(f)
+	}
+	return 0
+}
+
+// normalizeFullScreenBusy 非独占全屏（QUNS=2）的处置：
+// 只认 off / pause / ask，其余（含缺键）一律 off。
+//
+// 不做“猜用户想要什么”：未知值当 off 只是让这一档不生效，绝不会造成误暂停。
+func normalizeFullScreenBusy(raw map[string]any) {
+	raw["fullscreenBusyMode"] = NormFullScreenBusyMode(jsonx.StrOf(raw["fullscreenBusyMode"]))
+}
+
+// normalizeFullScreenSkip “全屏时不暂停”名单的归一化：
+//   - 丢弃非对象项、空 exe、系统宿主进程（applicationframehost / rundll32 / dllhost …）——
+//     宿主进程一旦入名单会一口气放行一大片不相干的应用；
+//   - 丢弃已过期的 today（跨过本地 24:00 就该重新问，不需要定时器）；
+//   - 同 exe 去重：never 优先（“永不暂停”覆盖“今天”），两条 today 取更晚的 until。
+//
+// nowMs 由调用方给，便于单测固定在某个时刻。
+func normalizeFullScreenSkip(raw map[string]any, nowMs int64) {
+	index := map[string]int{}
+	out := []any{}
+	for _, it := range jsonx.AnySlice(raw["fullscreenSkipApps"]) {
+		m, ok := it.(map[string]any)
+		if !ok {
+			continue
+		}
+		exe := exeBasename(jsonx.StrOf(m["exe"]))
+		if exe == "" || winproc.IsHostProcess(exe) {
+			continue
+		}
+		mode := model.FullScreenSkipNever
+		if strings.EqualFold(jsonx.StrOf(m["mode"]), model.FullScreenSkipToday) {
+			mode = model.FullScreenSkipToday
+		}
+		until := numI64(m["until"])
+		if mode == model.FullScreenSkipToday && until <= nowMs {
+			continue
+		}
+		label := normalizeAppName(jsonx.StrOf(m["label"]))
+		if label == "" {
+			label = appPauseLabel(exe)
+		}
+		key := strings.ToLower(exe)
+		if i, seen := index[key]; seen {
+			prev := out[i].(map[string]any)
+			prevMode, _ := prev["mode"].(string)
+			prevUntil, _ := prev["until"].(int64)
+			switch {
+			case prevMode == model.FullScreenSkipNever:
+				continue // “永不暂停”覆盖一切
+			case mode == model.FullScreenSkipNever:
+				out[i] = map[string]any{"exe": exe, "label": label, "mode": mode, "until": 0}
+			default: // 两条都是 today：取更晚的 until
+				if until < prevUntil {
+					until = prevUntil
+				}
+				out[i] = map[string]any{"exe": exe, "label": label, "mode": mode, "until": until}
+			}
+			continue
+		}
+		index[key] = len(out)
+		out = append(out, map[string]any{"exe": exe, "label": label, "mode": mode, "until": until})
+	}
+	raw["fullscreenSkipApps"] = out
 }
 
 // normalizeToggles 开关类字段的归一化

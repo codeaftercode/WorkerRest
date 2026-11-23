@@ -17,6 +17,7 @@ import (
 	"workerrest/internal/settings"
 	"workerrest/internal/sound"
 	"workerrest/internal/stats"
+	"workerrest/internal/windnd"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 )
@@ -148,6 +149,26 @@ type App struct {
 	// appPauseMissStreak “目标应用退出”的连续未命中拍数（见 appPauseExitConfirmMisses）。
 	// 探测失败不计入：读不到不等于不在跑。只被应用占用那条 goroutine 读写。
 	appPauseMissStreak int
+	// fsBusyLogged 非独占全屏（QUNS=2）这条原因“上一拍是否已经打过进入日志”。
+	// 与其余几条 logged 同语义，只被勿扰那条 goroutine 读写。
+	fsBusyLogged bool
+	// fsAsk 非独占全屏的询问状态（见 fs_ask.go）。fsAskMu 同时保护它、超时定时器与答复入口
+	// （答复来自 UI 线程，tick 来自监视 goroutine）。
+	fsAsk   fsAskState
+	fsAskMu sync.Mutex
+	// fsLastGeo / fsHasGeo 上一拍的“非自家”前台快照。询问窗自己（WebView2 初始化时的
+	// WM_SETFOCUS）偶尔会被 Wails 显式 SetForegroundWindow 顶成前台，此时几何判定会看到
+	// 一扇 420×200 的窗而误判“全屏已结束”—— 那会把段反复 reset，变成每 6 秒弹一次的循环。
+	// 判据层因此忽略自家窗：沿用上一拍真正的前台应用。受 fsAskMu 保护。
+	fsLastGeo windnd.ForegroundInfo
+	fsHasGeo  bool
+	// fsAskWinMu 串行化“建 / 关询问窗”：退出清理用 TryLock，绝不阻塞退出
+	// （与 pauseNoticeWinMu 同一套做法）。
+	fsAskWinMu sync.Mutex
+	// fsFgMu / fsFgStop 询问窗的前台守卫（见 fs_ask_fg_windows.go）。守卫只做一件事：
+	// 发现前台被询问窗自己抢走就立刻还给原窗口 —— 无边框游戏失焦就不再是全屏了。
+	fsFgMu   sync.Mutex
+	fsFgStop chan struct{}
 	// autoPauseStreak 每条“保持暂停”原因的“条件连续成立”拍数（见 autoPauseEnterConfirmTicks）。
 	// 进入侧去抖用：单次尖峰不暂停，攒满两拍才认。键 = 原因名，只被 applyAutoPause 读写
 	// （四条支路各写自己的键），与 autoReasonActive 共用 autoPauseMu。
@@ -334,6 +355,11 @@ func (a *App) ServiceShutdown() error {
 	if a.pauseNoticeWinMu.TryLock() {
 		a.closePauseNoticeWindowLocked()
 		a.pauseNoticeWinMu.Unlock()
+	}
+	// 全屏询问窗同理：抢不到建窗锁就随进程一起消失，绝不阻塞退出
+	if a.fsAskWinMu.TryLock() {
+		a.closeFSAskWindowLocked()
+		a.fsAskWinMu.Unlock()
 	}
 	a.stopSystemWatchers()
 	a.stopTrayRefresh()

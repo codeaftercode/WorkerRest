@@ -518,6 +518,11 @@ func (a *App) ensureWindowsOnScreen() {
 	if w := a.wins[pauseNoticeWindowName]; w != nil {
 		ws = append(ws, w)
 	}
+	// 全屏询问窗同理：它按“当前屏右下角”定位，拔屏后可能整扇都在屏幕外 ——
+	// 那时用户既看不到问题、也无法答复，只能等 12 秒超时
+	if w := a.wins[fsAskWindowName]; w != nil {
+		ws = append(ws, w)
+	}
 	a.mu.Unlock()
 	if len(ws) == 0 {
 		return

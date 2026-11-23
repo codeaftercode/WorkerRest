@@ -118,6 +118,11 @@ func (a *App) CloseWindow(win string) {
 		a.closePreBreakWindow()
 		return
 	}
+	// 全屏询问窗同理：它可能在“段结束关旧窗 → 新段建新窗”之间被通用分支撞上
+	if win == fsAskWindowName {
+		a.closeFSAskWindow()
+		return
+	}
 	if win == "break" {
 		// 预览点任意处关闭（真实休息的结束由调度器 finishBreak 走 closeBreakWindows）：
 		// 收尾走同一条路径，只是不出声。预览会话的 info.Preview 会让统计那一段自动跳过。
@@ -297,6 +302,10 @@ func (a *App) schedPauseToggle() {
 	if !a.sched.IsPaused() {
 		// 手动暂停：作废可能残留的忽略，回到常规自动暂停判定
 		a.resetAutoPauseIgnored()
+		// 正要按下的这次暂停会让全屏询问窗上的问题失去意义（都已经暂停了，还问“要不要暂停”
+		// 干什么），而且它会把 12 秒倒计时走完、再叠一条“非独占全屏”原因。两者都不该发生：
+		// 用户已经用动作回答了。与“立即休息”同一个口径（见 app_session 的 ShowBreakSession）。
+		a.fsAskDismissSoft("用户手动暂停")
 	} else {
 		// 从这里往下是“恢复”那一支：暂停结束，“已暂停多久”小窗一并收掉。
 		// 放在 PauseToggle 之前——恢复会触发 emitState，窗口晚一步收会闪一下
