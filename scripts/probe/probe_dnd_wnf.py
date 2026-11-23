@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-"""“请勿打扰”/“全屏或演示”两条判据的只读诊断（仅 Windows）。
+"""“请勿打扰”/“全屏”两条判据的只读诊断（仅 Windows）。
 
 为什么要它：Win11 通知中心手动开“请勿打扰”、以及“开始专注”启动专注会话，
 都**不改变** SHQueryUserNotificationState 的返回值（QUNS 恒为 5）。软件改读
 WNF_SHEL_QUIETHOURS_ACTIVE_PROFILE_CHANGED 的勿扰档位，本脚本把两条原始信号
 并排打出来，用于人工核对“用户按了勿扰 → 档位确实变了”。
+
+全屏自 2026-11-20 起分两档，判定列也分开写：QUNS 3/4（独占全屏与演示设置）命中即
+直接暂停；QUNS 2（非独占全屏）按配置的 fullscreenBusyMode 三档处置，出厂不处理。
 
 用法：
     python scripts/probe/probe_dnd_wnf.py              # 采一次
@@ -79,9 +82,13 @@ def sample():
     flags = []
     if p:
         flags.append("勿扰=开")
-    # QUNS 2 / 3 / 4 合并为一条“全屏或演示”开关；具体成因看左边 QUNS 列。
-    if q in (2, 3, 4):
-        flags.append("全屏或演示=开")
+    # 2026-11-20 起全屏分两档，这里也分行写：档位与软件里的处置一一对应
+    #（3/4 = 直接暂停且不受配置影响；2 = 三档可选，出厂不处理）。
+    # 具体成因仍看左边 QUNS 列。
+    if q in (3, 4):
+        flags.append("独占全屏/演示=开（直接暂停）")
+    if q == 2:
+        flags.append("非独占全屏=开（按 fullscreenBusyMode）")
     return "QUNS=%-28s 勿扰档位=%-18s 判定：%s" % (
         q_txt, p_txt, "、".join(flags) if flags else "两条都不成立")
 

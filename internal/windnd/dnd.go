@@ -23,6 +23,11 @@ import "fmt"
 //   - 全屏 / 演示 → QUNS 2（非独占全屏或演示设置已应用）、3（D3D 独占全屏）、
 //     4（Windows 演示设置主动屏蔽通知），三者任一即成立
 //
+// 2026-11-20 起 QUNS 的两个桶**分开处置**（Tier）：3 / 4 是“有明确成因的强信号”，
+// 直接暂停；2 是官方定义的垃圾桶（“全屏应用在跑**或**演示设置已应用”），误报集中区，
+// 默认不处理、可选“直接暂停”或“实验性询问”。Tier 只在这里分档，谁信哪一档由
+// cmd/workerrest 的开关决定 —— 包本身仍然只回答“系统现在处于哪一档”。
+//
 // 判据没删、只并了开关：2 是浏览器 F11 / 播放器全屏这类“非独占全屏”的唯一兜底，
 // 应用占用按进程名匹配、原来只认 3，删掉会让全屏看视频时弹窗无人拦。
 //
@@ -60,12 +65,46 @@ type DndStatus struct {
 	Detail    string `json:"detail"`
 }
 
+// FullScreenTier 全屏的“可信度分档”。Windows 只给一个互斥的 QUNS 值，而这三个值
+// 的可信度差得很远，2026-11-20 起不再合并处置：
+//
+//   - FSBusy      → QUNS_BUSY(2)：官方定义“全屏应用在跑**或**演示设置已应用”。这是
+//     垃圾桶档：浏览器 F11、看图、视频全屏、PPT 放映、远程桌面、无边框游戏全在这里，
+//     误报与漏报都集中于此。默认不处理。
+//   - FSExclusive  → QUNS 3（D3D 独占全屏）/ 4（演示设置）。两者都有明确成因，几乎不
+//     误报，且**都不能弹窗**（独占画面 DWM 不合成；投影上多一扇窗就是事故），所以
+//     永远直接暂停、不询问。
+type FullScreenTier int
+
+const (
+	// FSNone 没有全屏（或探测失败）
+	FSNone FullScreenTier = iota
+	// FSBusy 非独占全屏（QUNS=2，含少量报 2 的演示设置）
+	FSBusy
+	// FSExclusive 独占全屏或演示设置（QUNS=3/4）
+	FSExclusive
+)
+
+// String 给日志与诊断页用，绝不返回空串
+func (t FullScreenTier) String() string {
+	switch t {
+	case FSBusy:
+		return "busy"
+	case FSExclusive:
+		return "exclusive"
+	default:
+		return "none"
+	}
+}
+
 // FullScreenStatus 全屏应用 / 演示设置检测结果（QUNS 2 / 3 / 4）。
-// 类型名沿用旧的全屏判据，内部标识符不改以缩小改动面；对外文案一律写“全屏或演示”。
+// 类型名沿用旧的全屏判据，内部标识符不改以缩小改动面；对外文案按档位分写
+// “非独占全屏” / “独占全屏或演示”。
 type FullScreenStatus struct {
-	Supported bool   `json:"supported"`
-	Active    bool   `json:"active"`
-	Detail    string `json:"detail"`
+	Supported bool           `json:"supported"`
+	Active    bool           `json:"active"` // = Tier != FSNone，保住旧调用方语义
+	Tier      FullScreenTier `json:"tier"`
+	Detail    string         `json:"detail"`
 }
 
 // BusyStatus 一次系统采样的原始值。两条信号各带自己的 Supported —— 这是“两条选项
@@ -124,22 +163,31 @@ func dndStatusOfProfile(profile uint32, ok bool) DndStatus {
 	return DndStatus{Supported: true, Active: true, Detail: text}
 }
 
-// fullScreenStatusOf 认 2 / 3 / 4，三者合起来才是“屏幕上正在放内容”的全部场景：
+// fullScreenStatusOf 认 2 / 3 / 4，并把它们分到两个可信度档上：
 //   - QUNS_BUSY(2)：官方定义“全屏应用运行或应用了演示设置”，覆盖浏览器 F11、
-//     播放器全屏、无边框覆盖整屏的窗口（非独占全屏），也覆盖演示设置。
-//   - QUNS_RUNNING_D3D_FULL_SCREEN(3)：D3D 独占全屏（真全屏游戏）。
-//   - QUNS_PRESENTATION_MODE(4)：Windows 演示设置被用户主动激活以屏蔽通知。
+//     播放器全屏、无边框覆盖整屏的窗口（非独占全屏），也覆盖少量报 2 的演示设置
+//     → FSBusy（默认不处理，可选用“直接暂停 / 询问”）。
+//   - QUNS_RUNNING_D3D_FULL_SCREEN(3)：D3D 独占全屏（真全屏游戏）→ FSExclusive。
+//   - QUNS_PRESENTATION_MODE(4)：Windows 演示设置被用户主动激活 → FSExclusive。
 //
-// 三者互斥（同一次查询只返回一个值），微软没公开 2 与 4 谁对应演示设置的判定顺序，
-// 函数页的契约也只规定“只有 5 允许弹通知”。既然 API 不给成因，就统一归一条开关。
-// 2026-11-06 起 QUNS=2 不再单列“系统忙碌”、QUNS=4 不再单列“演示设置”。
+// 三者互斥（同一次查询只返回一个值）。微软没公开 2 与 4 谁对应演示设置的判定顺序，
+// 函数页的契约也只规定“只有 5 允许弹通知”——这正是把 2 单独降档的理由：拿不准的那一档
+// 不参与自动处置，只提供可选的询问。
 func fullScreenStatusOf(state uint32, ok bool) FullScreenStatus {
 	if !ok {
-		return FullScreenStatus{Supported: false, Detail: "SHQueryUserNotificationState 调用失败"}
+		return FullScreenStatus{Supported: false, Tier: FSNone, Detail: "SHQueryUserNotificationState 调用失败"}
+	}
+	tier := FSNone
+	switch state {
+	case qunsBusy:
+		tier = FSBusy
+	case qunsRunningD3DFullScreen, qunsPresentationMode:
+		tier = FSExclusive
 	}
 	return FullScreenStatus{
 		Supported: true,
-		Active:    state == qunsBusy || state == qunsRunningD3DFullScreen || state == qunsPresentationMode,
+		Active:    tier != FSNone,
+		Tier:      tier,
 		Detail:    qunsText(state),
 	}
 }

@@ -9,39 +9,45 @@ func TestBusyStateMapping(t *testing.T) {
 		name       string
 		state      uint32
 		screenBusy bool
+		tier       FullScreenTier
 	}{
-		{"锁屏/屏保", qunsNotPresent, false},
-		{"全屏应用（非独占）/ 忙碌", qunsBusy, true},
-		{"全屏独占", qunsRunningD3DFullScreen, true},
-		{"演示设置", qunsPresentationMode, true},
-		{"正常接收", qunsAcceptsNotifications, false},
-		{"升级后静默时间", qunsQuietTime, false},
-		{"商店应用在前台", qunsApp, false},
-		{"未知取值", 99, false},
+		{"锁屏/屏保", qunsNotPresent, false, FSNone},
+		{"全屏应用（非独占）/ 忙碌", qunsBusy, true, FSBusy},
+		{"全屏独占", qunsRunningD3DFullScreen, true, FSExclusive},
+		{"演示设置", qunsPresentationMode, true, FSExclusive},
+		{"正常接收", qunsAcceptsNotifications, false, FSNone},
+		{"升级后静默时间", qunsQuietTime, false, FSNone},
+		{"商店应用在前台", qunsApp, false, FSNone},
+		{"未知取值", 99, false, FSNone},
 	}
 	for _, c := range cases {
 		fs := fullScreenStatusOf(c.state, true)
-		if !fs.Supported || fs.Active != c.screenBusy || fs.Detail == "" {
-			t.Fatalf("%s（state=%d）：全屏/演示结论应为 active=%v，得到 %+v", c.name, c.state, c.screenBusy, fs)
+		if !fs.Supported || fs.Active != c.screenBusy || fs.Tier != c.tier || fs.Detail == "" {
+			t.Fatalf("%s（state=%d）：应为 active=%v tier=%v，得到 %+v",
+				c.name, c.state, c.screenBusy, c.tier, fs)
 		}
 	}
 }
 
-// QUNS 2 / 3 / 4 都归同一条开关：这是“全屏 / 演示合并”的核心回归。
-// QUNS 是互斥单值，三个值永远不会同时出现，但都要落到同一条开关、同一条暂停原因上。
-// 特别是 4：微软枚举页把“演示设置”同时写进 2 和 4，函数页只给“只有 5 允许弹通知”
-// 的二分契约，单列 4 会把“返回 2 的演示设置”漏掉。
-func TestScreenBusyCoversAllQunsValues(t *testing.T) {
-	for _, state := range []uint32{qunsBusy, qunsRunningD3DFullScreen, qunsPresentationMode} {
+// 分档是 2026-11-20 的核心决定：QUNS=2 单独降档（默认不处理），3/4 保持“直接暂停”。
+// 三个值仍然都是 Active —— Active 只表示“屏幕上有全屏内容”，怎么处置由 App 层按档决定。
+func TestScreenTiersSplitBusyFromExclusive(t *testing.T) {
+	if fs := fullScreenStatusOf(qunsBusy, true); fs.Tier != FSBusy || !fs.Active {
+		t.Fatalf("QUNS=2 必须是 FSBusy 且 Active，得到 %+v", fs)
+	}
+	for _, state := range []uint32{qunsRunningD3DFullScreen, qunsPresentationMode} {
 		fs := fullScreenStatusOf(state, true)
-		if !fs.Supported || !fs.Active {
-			t.Fatalf("QUNS=%d 应命中“全屏或演示”，得到 %+v", state, fs)
+		if fs.Tier != FSExclusive || !fs.Active {
+			t.Fatalf("QUNS=%d 必须是 FSExclusive 且 Active，得到 %+v", state, fs)
 		}
 	}
 	for _, state := range []uint32{qunsNotPresent, qunsAcceptsNotifications, qunsQuietTime, qunsApp, 99} {
-		if fullScreenStatusOf(state, true).Active {
-			t.Fatalf("QUNS=%d 不该命中“全屏或演示”", state)
+		if fs := fullScreenStatusOf(state, true); fs.Active || fs.Tier != FSNone {
+			t.Fatalf("QUNS=%d 不该命中任何档，得到 %+v", state, fs)
 		}
+	}
+	if s := FSBusy.String(); s != "busy" {
+		t.Fatalf("档位文案要能进日志，得到 %q", s)
 	}
 }
 
@@ -80,7 +86,7 @@ func TestProbeFailureNeverReportsActive(t *testing.T) {
 		}
 	}
 	fs := fullScreenStatusOf(qunsPresentationMode, false)
-	if fs.Supported || fs.Active || fs.Detail == "" {
+	if fs.Supported || fs.Active || fs.Tier != FSNone || fs.Detail == "" {
 		t.Fatalf("QUNS 失败结论错误：%+v", fs)
 	}
 }
