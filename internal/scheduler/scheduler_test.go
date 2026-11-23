@@ -58,10 +58,13 @@ type fakeHost struct {
 	counted []string
 	// completed 按“完成”收尾的窗口次数（长休息抢占短休息时 +1）
 	completed int
+	// hold 是否“到点先按住”（非独占全屏询问窗还在等答复时）
+	hold bool
 }
 
 func (h *fakeHost) CfgSnapshot() *settings.Settings  { return h.cfg }
 func (h *fakeHost) IdleMs() int64                    { return h.idleMs }
+func (h *fakeHost) BreakHoldRequested() bool         { return h.hold }
 func (h *fakeHost) OnSchedulerState()                { h.states++ }
 func (h *fakeHost) OnPreNotify(kind string, _ int64) { h.pre = append(h.pre, kind) }
 func (h *fakeHost) OnPaused(preKind string)          { h.pauses++; h.pauseKeepPre = preKind }

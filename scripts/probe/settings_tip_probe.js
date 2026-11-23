@@ -53,6 +53,22 @@ const GEOM = `(function () {
   for (const q of document.querySelectorAll('.q-mark')) {
     const r = q.getBoundingClientRect();
     if (!r.width || !r.height) continue;            // 隐藏 tab / 收起菜单里的不算
+    // 左侧若是一枚装饰徽标（如「实验性」），对齐对象就是**徽标的盒子**（2026-11-21）。
+    // 徽标是 11px 字 + 内边距 + 描边的小方块，拿它内部的字去比 14px 正文的墨迹中心
+    // 没有意义：量出来 gap 会把徽标的 6px 内边距算进“文字到圆圈的距离”，垂直也会
+    // 偏 2px。圆圈真正要对齐的是这枚徽标的整体轮廓。
+    const prevEl = q.previousElementSibling;
+    if (prevEl && prevEl.classList.contains('exp-badge')) {
+      const br = prevEl.getBoundingClientRect();
+      out.push({
+        text: '「实验性」徽标',
+        host: 'badge',
+        gap: Math.round((r.left - br.right) * 10) / 10,
+        off: Math.round(((r.top + r.bottom) / 2 - (br.top + br.bottom) / 2) * 10) / 10,
+        dia: Math.round(r.width * 10) / 10,
+      });
+      continue;
+    }
     const node = lastTextNode(q.previousSibling);
     if (!node) { out.push({ text: '(无前置文字)', gap: null, off: null }); continue; }
     const raw = node.textContent;
@@ -113,7 +129,10 @@ const TIP = `(function () {
       noRole: qs.filter((q) => q.getAttribute("role") !== "note").length,
       noLabel: qs.filter((q) => !(q.getAttribute("aria-label") || "").trim()).length,
       noHost: qs.filter((q) => {
-        const p = q.previousElementSibling;
+        // 「?」左边可能隔着一枚装饰徽标（.exp-badge / 「实验性」）：按 settings.js 的
+        // qTipHostOf 口径，宿主是徽标再往前那个元素，不是徽标本身（2026-11-21）
+        let p = q.previousElementSibling;
+        while (p && p.classList.contains("exp-badge")) p = p.previousElementSibling;
         return !p || !p.classList.contains("q-tip-host");
       }).length,
       hasTipBox: !!document.getElementById("q-tip"),

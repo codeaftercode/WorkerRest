@@ -9,7 +9,8 @@
  *
  * 七段场景（配置由 probe_ui_matrix.py 预置：短休息 25 分钟倒计时 + 喝水提醒 45 分钟）：
  *   1. 基线：两格都是数码管（短休息 / 喝水提醒），时间线列出两条且来源写“倒计时”；
- *   2. 跨午夜：短休息改成 00:10 固定时刻 → 那一格写“明天 00:10”（不是“今日已无提醒”）；
+ *   2. 跨午夜：短休息改成 00:10 固定时刻 → 下一次在明天，那一格**整格不渲染**（2026-11-18
+ *      定稿口径：侧栏只报当天，跨天与“今日已无提醒”占位都不画）；凌晨 00:10 之前跑则是今天的数码管；
  *   3. 全关：三格收成一格“下次休息提醒 / 未安排”，「立即休息」禁用并说明原因；
  *   4. 手动暂停：状态格写“暂停休息”、原因挂在 title；“恢复休息”后回到“努力工作中”；
  *   5. 休息中 + 另一条提醒仍在排队：侧栏同时有“正在休息”与“下次喝水提醒”两格
@@ -148,19 +149,30 @@ async function main() {
   check(tl.rows.every((r) => r.src === "倒计时"), "基线：两条来源都写“倒计时”", JSON.stringify(tl.rows.map((r) => r.src)));
   check(tl.rows.every((r) => /^\d{2}:\d{2}$/.test(r.time)), "基线：时间线每行都有 HH:MM", JSON.stringify(tl.rows.map((r) => r.time)));
 
-  // ---------- 2. 跨午夜：明天 00:10 ----------
+  // ---------- 2. 跨午夜：明天的 00:10 → 侧栏整格不渲染 ----------
+  // 口径来源：settings.js 的 statusCells（2026-11-18 用户第三次定稿）——“侧栏这几格只报
+  // **当天**的下一次。跨过午夜的那次（明天 00:10 / 周四 09:00）以及『今日已无提醒』这类
+  // 占位，统统整格不渲染”，由 sidebar_status_today_test.go 钉住源码契约。
+  // 本段原来断言“跨天写『明天 00:10』且不是数码管”，那是 11-18 之前的形态，已作废。
   await patchSettings(page, {
     short: { enabled: true, mode: "fixed", durationMs: 20_000, notifyBeforeMs: 0, postponeMs: 120_000, pauseAction: "postpone", slots: [{ id: "s-mid", hour: 0, minute: 10, repeat: "daily", days: [], enabled: true }] },
     customBreaks: [],
   });
   await waitState(page, (st) => st && st.rest && st.rest.name === "短休息");
   cells = await statusCells(page);
-  const now = new Date();
-  const pastMidnightSlot = now.getHours() > 0 || (now.getHours() === 0 && now.getMinutes() > 10);
-  const wantText = pastMidnightSlot ? "明天 00:10" : "00:10";
-  check(cells[1] && cells[1].text === wantText,
-    "跨午夜：固定时刻 00:10 写成“明天 00:10”（不写“今日已无提醒”）", (cells[1] || {}).text);
-  check(cells[1] && cells[1].led === false, "跨午夜：跨天那一格不是数码管（没有时间可倒数）", JSON.stringify(cells[1]));
+  const stMid = await getState(page);
+  const midIsTomorrow = new Date(stMid.rest.at).getDate() !== new Date().getDate();
+  if (midIsTomorrow) {
+    check(cells.length === 1 && cells[0].k === "状态",
+      "跨午夜：下一次在明天 → 侧栏只剩状态格（跨天整格不渲染）", JSON.stringify(cells.map((c) => c.k)));
+    const bodyText = await page.evaluate(() => document.getElementById("data-status").textContent);
+    check(!/明天|明日/.test(bodyText),
+      "跨午夜：侧栏不出现“明天 …”这种没有倒计时意义的占位", bodyText.slice(0, 80));
+  } else {
+    // 00:00–00:10 之间跑：下一次还在今天，那就该是数码管倒计时
+    check(cells.length === 2 && cells[1].led === true,
+      "跨午夜（凌晨 00:10 之前）：下一次还在今天 → 数码管倒计时", JSON.stringify(cells));
+  }
 
   // ---------- 3. 全关：未安排 + 立即休息禁用 ----------
   await patchSettings(page, { short: { enabled: false }, long: { enabled: false }, takeout: { enabled: false }, customBreaks: [] });

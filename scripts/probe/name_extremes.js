@@ -171,6 +171,10 @@ const SNAP = `(function(){
     lTop: Math.round(lTop * 100) / 100,
     lRight: Math.round((lLeft + n.offsetWidth) * 100) / 100,
     lBottom: Math.round((lTop + n.offsetHeight) * 100) / 100,
+    // 牌底的**渲染坐标**。lBottom 走 offsetTop 链（布局值，不含 transform / scale），
+    // 而 dialogTop 走 getBoundingClientRect（渲染值，含 scale / translate）——
+    // 两个坐标系混着相减，间隙会凭空少掉几像素。判“牌有没有压进对话框”要两边同源。
+    rBottom: Math.round((r.bottom - appR.top) * 100) / 100,
     rLeft: Math.round(r.left * 100) / 100,
     rTop: Math.round(r.top * 100) / 100,
     winW: innerWidth,

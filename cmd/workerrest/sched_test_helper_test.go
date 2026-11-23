@@ -49,10 +49,13 @@ type testHost struct {
 	// breakOK OnBreakExtra 的返回值（是否“有可挂的休息会话”）；默认 true，
 	// 需要模拟“窗口被 Alt+F4 关掉”的用例把它置 false
 	breakOK bool
+	// hold 是否“到点先按住”（非独占全屏询问窗还在等答复时）
+	hold bool
 }
 
 func (h *testHost) CfgSnapshot() *settings.Settings  { return h.cfg }
 func (h *testHost) IdleMs() int64                    { return h.idleMs }
+func (h *testHost) BreakHoldRequested() bool         { return h.hold }
 func (h *testHost) OnSchedulerState()                { h.states++ }
 func (h *testHost) OnPreNotify(kind string, _ int64) { h.pre = append(h.pre, kind) }
 func (h *testHost) OnPaused(preKind string)          { h.pauses++; h.pauseKeepPre = preKind }

@@ -22,6 +22,7 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -124,6 +125,11 @@ def main():
         # 显式关掉，探针才真的自给自足（idlePauseMin 观察 12 秒内到不了，不用管）。
         cfg_seed["dndPause"] = False
         cfg_seed["fullscreenPause"] = False
+        # 同理（2026-11-23 补）：开着腾讯会议 / Teams / Zoom 时「应用占用」会立刻
+        # `[scheduler] 暂停（应用占用）`，pre 阶段永远不到，两条提前提示断言在本机必挂
+        # —— 那是机器的状态，不是代码的状态。应用暂停的预设命中不看 items 是否为空
+        # （preset-<exe> 会自己匹配），所以只能整条关掉。
+        cfg_seed["appPause"] = dict(cfg_seed.get("appPause") or {}, enabled=False)
         # 同理：投屏检测在复制模式的机器上恒为真，不关掉 pre 阶段永远不到（两条判据都要关）。
         cfg_seed["castWirelessPause"] = False
         cfg_seed["castMirrorPause"] = False
@@ -167,12 +173,24 @@ def main():
     check("无头模式：不启动空闲" not in text,
           "GUI 构建**不是**无头分支（三条监视都应启动）", "")
     check("[plan]" in text, "计划摘要落日志（调度器真的起来了）", "")
-    # 快捷键注册：hotkeys.go 只在**失败**时打 [hotkey] 行（无法识别 / 被别的程序占用），
-    # 所以“日志里没有 [hotkey]”就是四个默认快捷键都拿到了。这是缺席式判据，
-    # 只能证明“没失败”，不能证明“按下真的触发”—— 后者要真机按键注入，见验收报告。
-    hk_fail = [ln for ln in text.splitlines() if "[hotkey]" in ln]
-    check(not hk_fail, "四个默认快捷键注册无失败（日志里没有 [hotkey] 行）",
-          hk_fail[:2])
+    # 快捷键注册：热键线程每轮收尾都会打一行摘要
+    # `[hotkey] 注册完成：4/4 项可用（冲突 0、禁用 0）`，逐项失败另有「注册失败」「无法识别」。
+    # 判据 = 最后一行摘要里全可用 + 没有任何失败行。
+    # ⚠️ 这里原本是“日志里没有 [hotkey] 行就是全成功”的缺席式判据 —— 加了收尾摘要之后
+    # 它恒假（2026-11-23 修正，别再改回去）。
+    hk_sum = [ln for ln in text.splitlines() if "[hotkey] 注册完成：" in ln]
+    hk_bad = [
+        ln for ln in text.splitlines()
+        if "[hotkey]" in ln and ("注册失败" in ln or "无法识别" in ln)
+    ]
+    ok_cnt = tot_cnt = -1
+    if hk_sum:
+        m = re.search(r"注册完成：(\d+)/(\d+) 项可用", hk_sum[-1])
+        if m:
+            ok_cnt, tot_cnt = int(m.group(1)), int(m.group(2))
+    check(ok_cnt == tot_cnt and tot_cnt > 0 and not hk_bad,
+          "四个默认快捷键注册无失败（收尾摘要全可用、无失败行）",
+          ([hk_sum[-1].split("] ", 1)[-1]] + hk_bad[:1]) if hk_sum else "没有收尾摘要")
     # 提前提示窗：无头冒烟结构性看不见的那块 —— GUI 下“真的建窗”只有这里验得到
     check("[prebreak] 即将休息" in text,
           "进入提前提示区间（调度器 → onPreNotify 这条链路在 GUI 下通了）", "")

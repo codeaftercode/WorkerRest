@@ -630,6 +630,93 @@ async function main() {
       }, idsBeforeForeign);
     }
 
+    // ---------- 零·三、非独占全屏三档：条件显隐 + 名单增删 ----------
+    // 这一档是 2026-11-20/21 新增的实验性功能，三档的**条件显隐**此前没有任何持久探针：
+    // 「实验性提示 + 全屏时不暂停的应用」只在「询问」档出现，另两档整块收起（见
+    // settings.js 的 syncFsBusyUI）。显隐写错的表现很隐蔽：功能看起来开着，用户却永远
+    // 找不到名单入口；或者关掉功能后页面上还留着一块要维护的黑名单。
+    console.log("\n[F0c] 非独占全屏三档：只有「询问」显示实验性提示与不暂停名单");
+    // 「自动暂停」卡在「通用」tab 里（#tab-general 的 #gen-autopause），不在「计时」页
+    await tab("general");
+    const fsView = async () => await page.evaluate(() => {
+      const root = document.querySelector("#fsBusy-drop .cdrop");
+      const note = document.getElementById("fs-busy-note");
+      const box = document.getElementById("fs-skip-advanced");
+      return {
+        value: root ? root.dataset.value : null,
+        note: !!note && !note.classList.contains("hidden"),
+        box: !!box && !box.classList.contains("hidden"),
+        open: !!box && box.hasAttribute("open"),
+        rows: document.querySelectorAll("#fs-skip-list .tk-item").length,
+        summary: (document.getElementById("fs-skip-summary") || {}).textContent || "",
+      };
+    });
+    const pickFsBusy = async (value) => {
+      await page.click("#fsBusy-drop .cdrop-btn");
+      await delay(120);
+      await page.locator(`#fsBusy-drop .cdrop-item[data-value="${value}"]`).click();
+      await delay(SAVE_WAIT);
+    };
+    {
+      const fsBefore = (await cfg()).fullscreenBusyMode;
+      const offView = await fsView();
+      check(offView.value === fsBefore, "三档下拉显示的档位与配置一致", `${offView.value} vs ${fsBefore}`);
+      if (fsBefore !== "off") await pickFsBusy("off");
+      const v0 = await fsView();
+      check(!v0.note && !v0.box, "「不处理」：实验性提示与名单都收起", JSON.stringify(v0));
+
+      await pickFsBusy("pause");
+      check((await cfg()).fullscreenBusyMode === "pause", "「直接暂停」落盘", (await cfg()).fullscreenBusyMode);
+      const v1 = await fsView();
+      check(!v1.note && !v1.box, "「直接暂停」：提示与名单仍收起（只有询问才需要它们）", JSON.stringify(v1));
+
+      await pickFsBusy("ask");
+      check((await cfg()).fullscreenBusyMode === "ask", "「询问」落盘", (await cfg()).fullscreenBusyMode);
+      const v2 = await fsView();
+      check(v2.note, "「询问」：实验性提示出现");
+      check(v2.box, "「询问」：全屏时不暂停名单出现");
+      check(v2.open === false, "名单默认是收起的（切档不该自动撑开一段空白）", v2.open);
+
+      // 手动添加一条 → 配置里出现 mode=never → 行真的画出来 → 删掉（过确认框）→ 配置复原
+      const probeExe = "WrProbeSkip.exe";
+      await page.locator("#fs-skip-advanced > summary").click();
+      await delay(150);
+      await page.click("#fs-skip-add");
+      await delay(150);
+      await page.fill("#pm-input", probeExe);
+      await page.click("#pm-ok");
+      await delay(SAVE_WAIT);
+      const added = ((await cfg()).fullscreenSkipApps || []).filter(
+        (it) => String(it.exe).toLowerCase() === probeExe.toLowerCase());
+      check(added.length === 1 && added[0].mode === "never",
+        "手动添加：写进名单且 mode=never（这类条目一律按“永不”处理）", JSON.stringify(added));
+      const v3 = await fsView();
+      check(v3.rows >= 1 && /项/.test(v3.summary), "手动添加：列表行与摘要都跟着更新",
+        `rows=${v3.rows} summary=${v3.summary}`);
+
+      await page.click(`#fs-skip-list .tk-item[data-exe="${probeExe}"] .btn.danger`);
+      await delay(150);
+      check(await page.isVisible("#confirm-modal"), "删除一条：先弹确认框（不是点一下就没了）");
+      await page.click("#cf-cancel");
+      await delay(150);
+      check(((await cfg()).fullscreenSkipApps || []).length === added.length,
+        "确认框点取消：名单一字未改");
+      await page.click(`#fs-skip-list .tk-item[data-exe="${probeExe}"] .btn.danger`);
+      await delay(150);
+      await page.click("#cf-ok");
+      await delay(SAVE_WAIT);
+      const left = ((await cfg()).fullscreenSkipApps || []).filter(
+        (it) => String(it.exe).toLowerCase() === probeExe.toLowerCase());
+      check(left.length === 0, "确认框点删除：该条从配置里消失");
+
+      // 回到「询问」之外：名单整块收起，且 details 的 open 被清掉
+      await pickFsBusy("off");
+      const v4 = await fsView();
+      check(!v4.note && !v4.box && !v4.open,
+        "切回「不处理」：提示与名单一起收起，open 也清掉", JSON.stringify(v4));
+      check((await cfg()).fullscreenBusyMode === "off", "收尾：档位回到「不处理」");
+    }
+
     // ---------- 一、快捷键录入 ----------
     console.log("\n[F1] 快捷键录入：合法组合写进去、裸键与重复键整条拒收");
     await tab("shortcuts");

@@ -480,8 +480,8 @@ func TestDndWatchIsIdempotent(t *testing.T) {
 	// 真机上此刻的勿扰档位 / QUNS 都不确定：喂一份确定的“两条都不成立”采样，
 	// 连推两拍，验证不会凭空叠出暂停原因。真机探测形状由 windnd 自己的用例覆盖。
 	none := windnd.BusyStatus{QunsSupported: true, Quns: 5, WnfSupported: true, QuietProfile: 0}
-	a.dndApply(none, true, true)
-	a.dndApply(none, true, true)
+	a.dndApply(none, true, true, settings.FullScreenBusyModeOff)
+	a.dndApply(none, true, true, settings.FullScreenBusyModeOff)
 	if st := s.StateCopy(); st.Paused || len(st.PauseReasons) != 0 {
 		t.Fatalf("两条条件都不成立时不该留下暂停原因，得到 %v", st.PauseReasons)
 	}
@@ -492,8 +492,8 @@ func TestDndWatchIsIdempotent(t *testing.T) {
 func TestSplitPauseReasonsHaveSeparateIgnoreTables(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
 	dndOn := windnd.BusyStatus{QunsSupported: true, Quns: 5, WnfSupported: true, QuietProfile: 1}
-	a.dndApply(dndOn, true, true)
-	a.dndApply(dndOn, true, true)
+	a.dndApply(dndOn, true, true, settings.FullScreenBusyModeOff)
+	a.dndApply(dndOn, true, true, settings.FullScreenBusyModeOff)
 	a.schedPauseToggle() // 用户为“勿扰”点恢复休息
 	if !a.isAutoPauseIgnored(pauseReasonDnd) {
 		t.Fatal("前置：勿扰条件仍成立，点恢复应记忽略")
@@ -504,8 +504,8 @@ func TestSplitPauseReasonsHaveSeparateIgnoreTables(t *testing.T) {
 
 	// QUNS=4（演示设置）合并后归“全屏或演示”，仍要能独立触发。
 	screenOn := windnd.BusyStatus{QunsSupported: true, Quns: 4, WnfSupported: true, QuietProfile: 0}
-	a.dndApply(screenOn, true, true)
-	a.dndApply(screenOn, true, true)
+	a.dndApply(screenOn, true, true, settings.FullScreenBusyModeOff)
+	a.dndApply(screenOn, true, true, settings.FullScreenBusyModeOff)
 	if !containsReason(s.StateCopy().PauseReasons, pauseReasonFullScr) {
 		t.Fatalf("QUNS=4 应照常自动暂停，得到 %v", s.StateCopy().PauseReasons)
 	}

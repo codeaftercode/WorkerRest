@@ -3,6 +3,7 @@ package main
 import (
 	"testing"
 
+	"workerrest/internal/settings"
 	"workerrest/internal/windnd"
 	"workerrest/internal/winproc"
 )
@@ -39,7 +40,7 @@ func TestDndProbeFailureChangesNothing(t *testing.T) {
 	a.setAutoReasonActive(pauseReasonDnd, true)
 	a.ignoreAutoPause([]string{pauseReasonDnd})
 
-	a.dndApply(windnd.BusyStatus{}, true, true) // QUNS / WNF 都失败
+	a.dndApply(windnd.BusyStatus{}, true, true, settings.FullScreenBusyModeOff) // QUNS / WNF 都失败
 
 	if !s.IsPaused() {
 		t.Fatal("探测失败不该解除暂停")
@@ -62,7 +63,7 @@ func TestDndRealClearDoesClearIgnore(t *testing.T) {
 
 	// QUNS=5 正常、WNF 档位 0（用户没按勿扰）：两条条件都不成立
 	a.dndApply(windnd.BusyStatus{QunsSupported: true, Quns: 5, WnfSupported: true, QuietProfile: 0},
-		true, true)
+		true, true, settings.FullScreenBusyModeOff)
 
 	if a.isAutoPauseIgnored(pauseReasonDnd) {
 		t.Fatal("条件真的消失了，忽略应该解除（下次再开勿扰照常暂停）")
@@ -76,13 +77,14 @@ func TestDndRealClearDoesClearIgnore(t *testing.T) {
 }
 
 // 两条探测链路互不牵连（2026-11-06 拆分的核心回归）：
-// WNF 读不到只让“勿扰”没有结论，QUNS 的全屏或演示照常判；反之亦然。
+// WNF 读不到只让“勿扰”没有结论，QUNS 的全屏那条照常判；反之亦然。
+// 用 QUNS=3（独占全屏）做样本：QUNS=2 从 2026-11-20 起默认不处理，不能用来证明这条。
 func TestDndProbeLinksAreIndependent(t *testing.T) {
-	t.Run("WNF 失败，QUNS=2 仍命中全屏或演示", func(t *testing.T) {
+	t.Run("WNF 失败，QUNS=3 仍命中全屏", func(t *testing.T) {
 		a, s := newWatchApp(t, shortCountdown)
-		st := windnd.BusyStatus{QunsSupported: true, Quns: 2, WnfSupported: false}
-		a.dndApply(st, true, true)
-		a.dndApply(st, true, true) // 进入侧去抖第二拍
+		st := windnd.BusyStatus{QunsSupported: true, Quns: 3, WnfSupported: false}
+		a.dndApply(st, true, true, settings.FullScreenBusyModeOff)
+		a.dndApply(st, true, true, settings.FullScreenBusyModeOff) // 进入侧去抖第二拍
 		rs := s.StateCopy().PauseReasons
 		if len(rs) != 1 || rs[0] != pauseReasonFullScr {
 			t.Fatalf("WNF 失败时仍应命中“全屏或演示”，得到 %v", rs)
@@ -95,8 +97,8 @@ func TestDndProbeLinksAreIndependent(t *testing.T) {
 	t.Run("QUNS 失败，WNF 仍命中勿扰", func(t *testing.T) {
 		a, s := newWatchApp(t, shortCountdown)
 		st := windnd.BusyStatus{QunsSupported: false, WnfSupported: true, QuietProfile: 1}
-		a.dndApply(st, true, true)
-		a.dndApply(st, true, true)
+		a.dndApply(st, true, true, settings.FullScreenBusyModeOff)
+		a.dndApply(st, true, true, settings.FullScreenBusyModeOff)
 		rs := s.StateCopy().PauseReasons
 		if len(rs) != 1 || rs[0] != pauseReasonDnd {
 			t.Fatalf("QUNS 失败时仍应命中“勿扰”，得到 %v", rs)
@@ -110,8 +112,8 @@ func TestSplitPauseSwitchesAreIndependent(t *testing.T) {
 	a, s := newWatchApp(t, shortCountdown)
 	// QUNS=4（演示设置）+ WNF=1（勿扰）；两拍确认
 	st := windnd.BusyStatus{QunsSupported: true, Quns: 4, WnfSupported: true, QuietProfile: 1}
-	a.dndApply(st, true, true)
-	a.dndApply(st, true, true)
+	a.dndApply(st, true, true, settings.FullScreenBusyModeOff)
+	a.dndApply(st, true, true, settings.FullScreenBusyModeOff)
 
 	rs := s.StateCopy().PauseReasons
 	if !containsReason(rs, pauseReasonDnd) || !containsReason(rs, pauseReasonFullScr) {
@@ -120,7 +122,7 @@ func TestSplitPauseSwitchesAreIndependent(t *testing.T) {
 
 	// 单独关掉“全屏或演示”：它的原因留在 PauseReasons 里（按策略保持暂停），
 	// 但条件登记要变 false，勿扰那条不受影响。
-	a.dndApply(st, true, false)
+	a.dndApply(st, true, false, settings.FullScreenBusyModeOff)
 	if a.autoReasonActiveSnapshot()[pauseReasonFullScr] {
 		t.Fatal("关掉全屏或演示开关后，它的条件不该再登记为成立")
 	}

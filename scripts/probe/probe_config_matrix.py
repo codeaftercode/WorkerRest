@@ -132,6 +132,9 @@ def base_settings():
         "idlePauseMin": 5,
         "dndPause": True,
         "fullscreenPause": True,
+        # 全屏第二档（2026-11-20）：三选一枚举 + “全屏时不暂停”名单
+        "fullscreenBusyMode": "off",
+        "fullscreenSkipApps": [],
         "appPause": {"enabled": False, "seeded": True, "items": []},
         "theme": "light",
         "appearance": {"color": "#4f7cff", "transparency": 0.05, "blur": True,
@@ -361,6 +364,31 @@ def phase_a():
         check(isinstance(s3, dict), "类型错误的开关不影响服务状态读取", type(s3).__name__)
         save_get(base, {"dndPause": True, "fullscreenPause": True,
                         "appPause": {"enabled": False}, "window": {"rememberSize": False}})
+
+        # ---- 全屏第二档（fullscreenBusyMode / fullscreenSkipApps）----
+        # 这一档的默认值就是“不处理”，所以未知值的正确归宿也是不处理 —— 猜错方向的
+        # 代价是替用户误停提醒，宁可什么都不做。
+        cfg = save_get(base, {"fullscreenBusyMode": "bogus"})
+        check(at(cfg, "fullscreenBusyMode") == "off",
+              "fullscreenBusyMode='bogus' → 回落 off（未知值不猜）", at(cfg, "fullscreenBusyMode"))
+        cfg = save_get(base, {"fullscreenBusyMode": "ask"})
+        check(at(cfg, "fullscreenBusyMode") == "ask",
+              "fullscreenBusyMode='ask' 原样保留", at(cfg, "fullscreenBusyMode"))
+        # 名单：非对象 / 空 exe / 系统宿主进程 / 过期 today 都要在落盘时被丢掉，
+        # 否则“宿主进程被标成永不询问”会一次放行一大片不相干的应用。
+        cfg = save_get(base, {"fullscreenSkipApps": [
+            "not-an-object",
+            {"exe": "", "label": "空名", "mode": "never", "until": 0},
+            {"exe": "applicationframehost.exe", "label": "宿主", "mode": "never", "until": 0},
+            {"exe": "vlc.exe", "label": "VLC", "mode": "never", "until": 0},
+            {"exe": "game.exe", "label": "旧游戏", "mode": "today", "until": 1000},
+            {"exe": "vlc.exe", "label": "VLC 再来一条", "mode": "never", "until": 0},
+        ]})
+        items = at(cfg, "fullscreenSkipApps")
+        exes = [i.get("exe") for i in items] if isinstance(items, list) else items
+        check(isinstance(items, list) and exes == ["vlc.exe"],
+              "名单归一化：丢掉非对象 / 空 exe / 宿主进程 / 过期 today，同 exe 去重", exes)
+        save_get(base, {"fullscreenSkipApps": []})
 
         # ---- window 尺寸 ----
         cfg = save_get(base, {"window": {"width": 0, "height": -20}})

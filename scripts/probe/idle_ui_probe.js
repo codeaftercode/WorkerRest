@@ -185,7 +185,10 @@ async function main() {
     check(/无鼠标动作|无键盘输入/.test(tail.tailTitle), "“?”的说明写清了判据", tail.tailTitle);
 
     const appText = await page.evaluate(() => document.querySelector("#appPause-enabled").parentElement.textContent.trim());
-    check(appText.endsWith("："), "「运行应用：」带冒号（它是下面列表的引子）", appText);
+    // 2026-11-21 用户口径：这一条从「运行应用：」改成了完整的句子「运行以下应用时自动暂停」，
+    // 与「系统空闲」「勿扰/专注」那几条同构（都是“什么时候自动暂停”），所以不再带冒号。
+    // 原来钉的是“带冒号（它是下面列表的引子）”——改成句子之后那条恒假。
+    check(appText === "运行以下应用时自动暂停", "文案是完整句子「运行以下应用时自动暂停」", appText);
 
     // ---------- ③ 文字列与行高（874 宽） ----------
     const idleText = await textLeft(page, 'label:has(#idlePause)');
@@ -198,7 +201,7 @@ async function main() {
     // 不是“同一列”。四项挤成两行才是这一行加控件之后真会出的事故。
     check(dndText && castText && dndText.y === castText.y, "四条系统状态选项仍并排一行",
       `dnd.y=${dndText && dndText.y} cast.y=${castText && castText.y}`);
-    check(idleText && appTextLeft && idleText.x === appTextLeft.x, "与「运行应用：」文字同列",
+    check(idleText && appTextLeft && idleText.x === appTextLeft.x, "与「运行以下应用时自动暂停」文字同列",
       `idle=${idleText && idleText.x} app=${appTextLeft && appTextLeft.x}`);
 
     const rowR = await rect(page, ".row.mixed");

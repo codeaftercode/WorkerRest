@@ -2780,10 +2780,15 @@ async function verifySlotPanel(page) {
 
 /* 卡片缩进体系（2026-11-13）：时间规划 / 通用配置 / 督休专员三页共用一套
    ——「卡内正文 +24，描边面板再往左挂 13」。
-   督休专员页这一条是当天傍晚补的：用户要求候选专员 / 高级选项 / 提醒内容的缩进
-   与通用配置「声音」卡的「提示音」列表相同。量的是**绝对位置**（同一窗口宽度下
-   两页的卡左缘相同），因此三块面板与提示音面板必须落在同一个 x 上，而不是各自
-   “相对卡左缘 -13”就算过 —— 那正是改之前的错误状态（260 vs 284）。 */
+   2026-11-21 起通用配置页多一档：自动暂停卡的「应用列表」「全屏时不暂停的应用」与
+   声音卡的「提示音」是**上级开关的子级清单**，整体缩进到正文 +24（.sub-block），
+   于是这三条必须彼此同线、但不再与其它页的面板同线 —— 下面按“组内一致”断言。
+   督休专员页那一条是 2026-11-13 傍晚补的：当时要求候选专员 / 高级选项 / 提醒内容的
+   缩进与通用配置「声音」卡的「提示音」列表相同，量的是**绝对位置**（同一窗口宽度下
+   两页的卡左缘相同），因此三块面板必须落在同一个 x 上，而不是各自“相对卡左缘 -13”
+   就算过 —— 那正是改之前的错误状态（260 vs 284）。
+   **2026-11-21 起这条跨页等价关系不再成立**：提示音面板已改成下级清单（正文 +24），
+   督休页那三块仍是默认 -13。两页各自组内一致即可，不再跨页比绝对值。 */
 async function verifyCardIndent(page) {
   console.log("\n[缩进] 三页卡内正文与描边面板同线");
 
@@ -2814,6 +2819,21 @@ async function verifyCardIndent(page) {
       rowLabel: cards.map((c) => L(c.querySelector(":scope > .row label, :scope > .row .switch-row"))),
       soundLine: sound ? line(sound) : null,
       soundPanel: L(document.getElementById("snd-music-panel")),
+      // 三个“下级折叠列表”必须落在同一条左缘上（2026-11-21 用户要求）。
+      // 全屏名单在默认档位（不处理）下是 hidden 的，临时摘掉量完立刻还原 ——
+      // 这里量的是布局值，与可见性无关。
+      folds: (() => {
+        const fs = document.getElementById("fs-skip-advanced");
+        const was = fs ? fs.classList.contains("hidden") : false;
+        if (was) fs.classList.remove("hidden");
+        const out = [
+          L(document.getElementById("app-advanced")),
+          L(document.getElementById("snd-music-panel")),
+          L(fs),
+        ];
+        if (was) fs.classList.add("hidden");
+        return out;
+      })(),
     };
   });
 
@@ -2835,10 +2855,13 @@ async function verifyCardIndent(page) {
     "缩进 · 通用配置：五张卡正文左缘同一条竖线，且与卡头标题、卡片行标签齐平",
     JSON.stringify({ lines: gen.lines, h3: gen.h3, rows: gen.rowLabel }),
   );
+  // 2026-11-21：三个折叠列表改成“上面某一行开关的下级清单”，整体缩进 24px
+  // （.sub-block），不再是默认的 -13px 负外边距。三条必须同值 —— 这是用户当天的
+  // 明确要求（“本页面的 3 个折叠列表缩进要一致”），所以一次量三个而不是只量提示音。
   check(
-    gen.soundPanel !== null && Math.abs(gen.soundLine - 13 - gen.soundPanel) <= 1,
-    "缩进 · 通用配置「提示音」面板左缘比正文线外挂 13px（左侧伸进卡片留白）",
-    JSON.stringify({ line: gen.soundLine, panel: gen.soundPanel }),
+    gen.folds.every((v) => v !== null && Math.abs(v - gen.soundLine - 24) <= 1),
+    "缩进 · 通用配置三个折叠列表（应用列表 / 全屏时不暂停 / 提示音）左缘一致，且比正文线缩进 24px",
+    JSON.stringify({ line: gen.soundLine, folds: gen.folds }),
   );
 
   await pick("supervisor");

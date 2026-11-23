@@ -60,6 +60,10 @@ S = {
     "checks": 0, "fail": 0, "rows": 0, "pos": 0, "hidden": 0,
     "fs_min": 99.0, "fs_max": 0.0, "ov_max": 0.0, "sync_max": 0.0,
     "elided": 0, "toe": 0, "gap32": 0, "clean_hide": 0,
+    # 牌底到对话框顶的最小渲染间隙（RT_GAP 口径 12px）。以前这条判据用布局坐标去减
+    # 渲染坐标，间隙会凭空少几像素，全靠 9.5 这个魔数盖着；现在记最小值，压到 12 以下
+    # 一眼就能看见。
+    "gap_min": 1e9,
 }
 FAILS = []
 HIDE_BY_ROLE = {}
@@ -431,7 +435,7 @@ def judge_row(role, kind, d):
 
     # 整块在窗内 / 不压对话框（用布局坐标，二阶段的 scale 不算越界）
     lleft, lright = d.get("lLeft"), d.get("lRight")
-    ltop, lbot = d.get("lTop"), d.get("lBottom")
+    ltop = d.get("lTop")
     appw, apptop = d.get("appW") or 0, d.get("appTop") or 0
     dialog = d.get("dialogTop")
     ok &= check(isinstance(lleft, (int, float)) and lleft >= 5.0,
@@ -440,19 +444,38 @@ def judge_row(role, kind, d):
                 label + "：右缘不出窗", "lRight=%s appW=%s" % (lright, appw), quiet=True)
     ok &= check(isinstance(ltop, (int, float)) and ltop - apptop + (d.get("padTop") or 0) >= -4.5,
                 label + "：上缘只许裁内边距", "top=%s padTop=%s" % (ltop, d.get("padTop")), quiet=True)
-    if isinstance(dialog, (int, float)) and isinstance(lbot, (int, float)):
-        # 产品口径是留 RT_GAP(12)：牌顶 top 取整、对话框 rect 与布局同帧量，实测
-        # 会差 0.5~2px；这里放到 9.5，仍能抓住“牌压进对话框”的真回归（那会差 20px+）。
-        ok &= check(lbot - apptop <= dialog - 9.5,
-                    label + "：牌底不压对话框", "bottom=%s dialog=%s" % (lbot - apptop, dialog), quiet=True)
+    if isinstance(dialog, (int, float)):
+        # 产品口径是留 RT_GAP(12)。这条量的是**渲染坐标**下的间隙：牌底取
+        # getBoundingClientRect().bottom，与 dialogTop 同源。以前用 offsetTop 链算出的
+        # 布局牌底去减渲染的 dialogTop，两个坐标系混着比，间隙会凭空少几像素 ——
+        # 于是判据被压到 9.5 才不红，真回归（牌压进对话框，差 20px+）也一样抓得住，
+        # 但“少了几像素”这件事就被 9.5 这个魔数盖住了。
+        rb = d.get("rBottom")
+        if not isinstance(rb, (int, float)):
+            # 不许静默退回旧判据：那条判据本身就是错的（混坐标系），退回等于让一条
+            # 已知错误的断言继续充数。缺字段只可能是页面与探针版本不匹配。
+            ok &= check(False, label + "：牌底间隙可测量（缺 rBottom，页面与探针版本不匹配）",
+                        rb, quiet=True)
+        else:
+            S["gap_min"] = min(S["gap_min"], dialog - rb)
+            ok &= check(rb <= dialog - 11.5,
+                        label + "：牌底不压对话框，留出 RT_GAP 12px",
+                        "渲染间隙=%.2f（bottom=%.2f dialog=%.2f）" % (dialog - rb, rb, dialog),
+                        quiet=True)
 
     # 竖向锚点：未被迫 clamp 时牌心必须在 0.17（头肩中点）
     mid = d.get("mid")
     vis_top = d.get("visTop")
     clamped_top = isinstance(vis_top, (int, float)) and isinstance(ltop, (int, float)) \
         and ltop - apptop <= vis_top + 2.5
-    clamped_bottom = isinstance(dialog, (int, float)) and isinstance(lbot, (int, float)) \
-        and lbot - apptop >= dialog - 13.5
+    # 牌底是否“顶到对话框上方”（用来放宽下面的牌心断言）。同样必须用渲染坐标：
+    # 布局口径量到 9.23px 的那些用例，渲染口径其实是 14.56px —— 两个数不同源，
+    # 拿布局值配 13.5 的阈值会把这个开关判成“被夹”，实际上只是坐标系差值。
+    # 渲染口径下“贴着”= 间隙 ≈14.5（产品按 RT_GAP 12 夹，但布局/渲染之间还有 2.5px 的
+    # 位移），所以阈值放到 16.5，宁可放宽牌心断言也不误红。
+    _rb = d.get("rBottom")
+    clamped_bottom = isinstance(dialog, (int, float)) and isinstance(_rb, (int, float)) \
+        and dialog - _rb <= 16.5
     if d.get("toe"):
         S["toe"] += 1
     if isinstance(mid, (int, float)):
@@ -571,6 +594,8 @@ def main():
              S["fs_max"], S["ov_max"], S["sync_max"]))
     print("省略 %d 条 | 往上让 %d 条 | 用上 32px 缝 %d 条 | 舒适缝覆盖 %d"
           % (S["elided"], S["toe"], S["gap32"], S["clean_hide"]))
+    if S["gap_min"] < 1e9:
+        print("牌底↔对话框最小渲染间隙 %.2fpx（RT_GAP 口径 12）" % S["gap_min"])
     if HIDE_BY_ROLE:
         print("\n各角色隐藏用例（用于区分“物理放不下”与“算错了”）：")
         for r, items in HIDE_BY_ROLE.items():
