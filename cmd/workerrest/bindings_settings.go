@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"workerrest/internal/logx"
 
 	"github.com/wailsapp/wails/v3/pkg/application"
@@ -603,6 +604,13 @@ func (a *App) wireSettingsWindow(w application.Window) {
 	// 拖拽期间不会因为文件 IO 卡住主线程。
 	w.OnWindowEvent(events.Common.WindowDidResize, func(*application.WindowEvent) {
 		a.rememberSettingsWindowSize()
+	})
+	// 首次显示时再兜一次夹紧。建窗时已经用原生探测（主屏工作区）夹过一次，这里主要
+	// 兜两种情况：托盘等路径在屏信息就绪前就把窗口 Show 出来，以及建窗后用户换了屏 /
+	// 改了缩放。尺寸没变时 applySettingsWindowSize 会直接返回。
+	var firstShow sync.Once
+	w.OnWindowEvent(events.Common.WindowShow, func(*application.WindowEvent) {
+		firstShow.Do(func() { a.applySettingsWindowSize(w) })
 	})
 }
 

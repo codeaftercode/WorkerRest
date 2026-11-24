@@ -19,55 +19,138 @@ const winSizeSaveDelay = time.Second
 
 // ---------- App 侧：解析 / 应用 / 记录 ----------
 
-// settingsWindowSize 这次该用的窗口尺寸（已按屏幕工作区夹紧）。
+// settingsWindowSize 这次该用的窗口尺寸（已按**窗口所在屏**的工作区夹紧）。
+//
+// 只用 Wails 的屏幕信息：取不到就不夹。**建窗那一刻不能调它**（那时 Wails 还没枚举
+// 屏），要用 settingsWindowSizeForCreate。
 func (a *App) settingsWindowSize() (int, int) {
-	a.mu.Lock()
-	w, h := a.cfg.WindowSizeCfg().Size()
-	a.mu.Unlock()
-	return a.fitSizeToScreen(w, h)
+	waW, waH, ok := a.workAreaDipForWindow(a.settingsWindowOrNil())
+	return a.settingsWindowSizeWith(waW, waH, ok)
 }
 
-// fitSizeToScreen 把尺寸夹进主屏工作区。
+// settingsWindowSizeForCreate 建窗那一刻用的尺寸。
 //
-// 高分屏上 WorkArea 是**物理**像素，而窗口的 Width / Height 是 DIP，所以先按
-// ScaleFactor 折回 DIP 再比 —— 不折的话 1.5 倍屏上永远夹不住，默认 857 的高度会顶到
-// 任务栏外面去。夹不住主屏的情况（小屏笔记本）宁可矮一点让内容滚动，也不要开出一扇
-// 一开机就超出屏幕的窗口。
-func (a *App) fitSizeToScreen(width, height int) (int, int) {
-	waW, waH, ok := a.primaryWorkAreaDip()
+// 设置窗口在 app.Run() 之前创建，而 Wails 要到 Run 里才枚举屏幕
+// （newPlatformApp → processAndCacheScreens）—— 此时 Screen.GetPrimary() 是空的。
+// 不兜底的话，超屏的记录值（手改配置 / 从大屏换到小屏）会先被 Windows 按“最大追踪
+// 尺寸”限一次（实测 2500×1500 → 1575×1055），等 Run 起来再补夹，用户看到窗口缩一下。
+// 所以这里补一次原生主屏工作区探测（见 window_size_native_windows.go）。
+func (a *App) settingsWindowSizeForCreate() (int, int) {
+	waW, waH, ok := a.workAreaDipForWindow(a.settingsWindowOrNil())
 	if !ok {
-		return width, height
+		waW, waH, ok = primaryWorkAreaDipWin32()
 	}
-	return fitSizeInWorkArea(width, height, waW, waH, settings.SettingsWindowMinWidth)
+	return a.settingsWindowSizeWith(waW, waH, ok)
 }
 
-// primaryWorkAreaDip 主屏工作区折算成 DIP（取不到屏信息时 ok=false）。
+// settingsWindowSizeWith 已知工作区（DIP）时该用的尺寸；ok=false 表示没有屏幕信息。
+func (a *App) settingsWindowSizeWith(waW, waH int, ok bool) (int, int) {
+	a.mu.Lock()
+	cfg := a.cfg.WindowSizeCfg()
+	a.mu.Unlock()
+	w, h := cfg.Size()
+	if !ok {
+		return w, h
+	}
+	if cfg.Remember && validWindowSize(cfg.LastWidth, cfg.LastHeight) {
+		// 记录过的尺寸是用户亲手拖出来的窗口大小，上限就是**工作区本身**：任务栏
+		// 已经在 WorkArea 里扣掉了，再按默认尺寸那样留 40 DIP 余量，就等于每次重开
+		// 都把用户拖出来的窗口缩小一截 —— 远程桌面里会话高度小，这截还挺显眼
+		//（工作区 688 时记录 688，重开变 648，用户看到的就是“尺寸记不住”）。
+		return fitSizeInWorkAreaExact(w, h, waW, waH, settings.SettingsWindowMinWidth)
+	}
+	return fitSizeInWorkArea(w, h, waW, waH, settings.SettingsWindowMinWidth)
+}
+
+// settingsWindowOrNil 取设置窗口，App 还没建起来（单测 / 极早期）时返回 nil。
+// 直接用 settingsWindow() 会在 a.app 为 nil 时解引用崩溃，而尺寸计算恰恰是
+// 启动最早期就会走到的一段代码。
+func (a *App) settingsWindowOrNil() application.Window {
+	if a.app == nil {
+		return nil
+	}
+	return a.settingsWindow()
+}
+
+// workAreaDipForWindow 目标屏工作区（DIP）：优先窗口当前所在屏，取不到回退主屏。
 //
-// WorkArea 是物理像素、窗口尺寸是 DIP，两者不换算就没法比较：1.5 倍屏上 1040 物理
-// 像素的工作区只有 693 DIP，而 857 的默认高度在 DIP 里看是“放得下”的假象。
-func (a *App) primaryWorkAreaDip() (w, h int, ok bool) {
+// 窗口隐藏（收进托盘）时 GetWindowRect 依然带着上次的位置，所以“上次停在哪块屏上”
+// 这条信息在隐藏态也是可用的；窗口上次停在已拔掉的副屏上时，最近屏算法会落到主屏，
+// 与用户此刻能看到的那块屏一致。
+func (a *App) workAreaDipForWindow(w application.Window) (int, int, bool) {
 	if a.app == nil || a.app.Screen == nil {
 		return 0, 0, false
 	}
-	s := a.app.Screen.GetPrimary()
-	if s == nil || s.WorkArea.Width <= 0 || s.WorkArea.Height <= 0 {
+	if w != nil {
+		x, y := w.Position()
+		if s := a.app.Screen.ScreenNearestDipPoint(application.Point{X: x, Y: y}); s != nil {
+			if waW, waH, ok := screenWorkAreaDip(s); ok {
+				return waW, waH, true
+			}
+		}
+	}
+	return a.primaryWorkAreaDip()
+}
+
+// primaryWorkAreaDip 主屏工作区折算成 DIP（取不到屏信息时 ok=false）。
+func (a *App) primaryWorkAreaDip() (int, int, bool) {
+	if a.app == nil || a.app.Screen == nil {
+		return 0, 0, false
+	}
+	return screenWorkAreaDip(a.app.Screen.GetPrimary())
+}
+
+// screenWorkAreaDip 单块屏的工作区（DIP）。
+//
+// **别拿 Screen.WorkArea 再除一次 ScaleFactor**：Wails v3 在
+// ScreenManager.applyDPIScaling 里已经把 WorkArea 从 PhysicalWorkArea 换算成 DIP 了，
+// 窗口的 Size() / Position() 也是 DIP（PhysicalToDipRect）。早先这里按“WorkArea 是
+// 物理像素”又除了一遍缩放，200% 屏上 1560×992 的工作区被算成 780×496 —— 用户拖到
+// 1100×700 关了重开，被这个假工作区夹成 780×496，看到的就是“每次关掉再打开都小一圈”。
+// 用 PhysicalWorkArea 自己折算，口径不依赖 WorkArea 到底是哪一种。
+func screenWorkAreaDip(s *application.Screen) (w, h int, ok bool) {
+	if s == nil {
 		return 0, 0, false
 	}
 	scale := float64(s.ScaleFactor)
 	if scale <= 0 {
 		scale = 1
 	}
-	return int(float64(s.WorkArea.Width) / scale), int(float64(s.WorkArea.Height) / scale), true
+	if pw, ph := s.PhysicalWorkArea.Width, s.PhysicalWorkArea.Height; pw > 0 && ph > 0 {
+		return int(float64(pw) / scale), int(float64(ph) / scale), true
+	}
+	// 物理工作区缺失（极端兜底）：WorkArea 在 Wails v3 里已经是 DIP，直接用。
+	if s.WorkArea.Width > 0 && s.WorkArea.Height > 0 {
+		return s.WorkArea.Width, s.WorkArea.Height, true
+	}
+	return 0, 0, false
 }
 
-// settingsWindowMinHeight 创建 / 调整窗口时该用的最小高度。
+// settingsWindowMinHeight 创建 / 调整窗口时该用的最小高度（只用 Wails 的屏信息）。
 //
-// 常规就是设计下限 600。但主屏工作区**比它还矮**的时候（1366×768 @125% 只剩 574 DIP，
+// 常规就是设计下限 600。但窗口所在屏的工作区**比它还矮**的时候（1366×768 @125% 只剩 574 DIP，
 // @150% 只剩 472），600 这个下限反而会把窗口顶到屏幕底下：底部那 26～128px 永远在任务栏
 // 后面，连滚动条都拖不到，用户没法把内容看全。这时让下限让位于屏幕 —— 窗口矮一点能滚，
 // 窗口比屏幕高是没救的。
 func (a *App) settingsWindowMinHeight() int {
-	_, waH, ok := a.primaryWorkAreaDip()
+	_, waH, ok := a.workAreaDipForWindow(a.settingsWindowOrNil())
+	return settingsWindowMinHeightWith(waH, ok)
+}
+
+// settingsWindowMinHeightForCreate 建窗那一刻用的最小高度。
+//
+// 与 settingsWindowSizeForCreate 同理：建窗时 Wails 还没枚举屏，不补原生探测的话，
+// 小屏（1366×768 @150%，工作区 472 DIP）会把 MinHeight 定成 600 —— 窗口一比屏幕还高，
+// 连 SetSize 都会被系统按 min 顶回去。
+func (a *App) settingsWindowMinHeightForCreate() int {
+	_, waH, ok := a.workAreaDipForWindow(a.settingsWindowOrNil())
+	if !ok {
+		_, waH, ok = primaryWorkAreaDipWin32()
+	}
+	return settingsWindowMinHeightWith(waH, ok)
+}
+
+func settingsWindowMinHeightWith(waH int, ok bool) int {
 	if !ok || waH >= settings.SettingsWindowMinHeight {
 		return settings.SettingsWindowMinHeight
 	}
@@ -82,8 +165,9 @@ func (a *App) settingsWindowMinHeight() int {
 	return m
 }
 
-// settingsWindowTinyHeight 极端小屏（<400 DIP 高）下的兜底：再小窗口就没法用了。
-const settingsWindowTinyHeight = 240
+// settingsWindowTinyHeight 极端小屏下的兜底：再小窗口就没法用了。
+// 与“上次尺寸”的有效下限是同一个数，改一处即可（见 settings.SettingsWindowMinUsableHeight）。
+const settingsWindowTinyHeight = settings.SettingsWindowMinUsableHeight
 
 // fitSizeInWorkArea 把窗口尺寸夹进工作区（全部是 DIP）。纯函数，单测直接验。
 //
@@ -114,6 +198,28 @@ func fitSizeInWorkArea(width, height, waW, waH, minW int) (int, int) {
 	return width, height
 }
 
+// fitSizeInWorkAreaExact 与 fitSizeInWorkArea 同义，但**不额外留边**：上限就是工作区。
+//
+// 给“记录过的尺寸”用：那是用户亲手拖出来的窗口大小，任务栏已经算在 WorkArea 之外，
+// 再留 40 DIP 余量会让每次重开都比上次小一截。只有真的超出工作区才夹。
+func fitSizeInWorkAreaExact(width, height, waW, waH, minW int) (int, int) {
+	maxW := waW
+	if maxW < minW {
+		maxW = minW
+	}
+	maxH := waH
+	if maxH < 1 {
+		maxH = 1
+	}
+	if width > maxW {
+		width = maxW
+	}
+	if height > maxH {
+		height = maxH
+	}
+	return width, height
+}
+
 // applySettingsWindowSize 按配置给设置窗口换尺寸（每次 Show 之前调用）。
 //
 // 只有**尺寸真的不同**才动窗口：勾了“自动记录”且这次记录的尺寸就是当前尺寸时，
@@ -127,14 +233,39 @@ func (a *App) applySettingsWindowSize(w application.Window) {
 	if curW == width && curH == height {
 		return
 	}
-	// 最小尺寸跟着当前屏走：换到更矮的屏（或用户改了缩放）之后，旧的 MinHeight
-	// 会把窗口底部顶到屏幕外，连 SetSize 都会被系统按 min 顶回去。
-	w.SetMinSize(settings.SettingsWindowMinWidth, a.settingsWindowMinHeight())
+	// 日志里带上目标屏工作区：远程桌面 / 多屏下“记录 1119 却开成 1024”这类反馈，
+	// 只有把工作区一起打出来才能一眼分清是配置没记上还是被屏夹了。
+	waW, waH, haveWA := a.workAreaDipForWindow(w)
+	// 窗口还没真正创建（启动期 ServiceStartup 就会走到这里，此时 Size() = 0x0）：
+	//   · 不能调 SetMinSize —— Wails 的实现是“当前尺寸小于 min 就把 options 尺寸抬到
+	//     min”，0x0 必然触发，会把刚算好的宽度改回最小宽度 760；
+	//   · SetSize 只写回 options，等窗口创建时按它落地，正是我们想要的。
+	created := curW > 0 && curH > 0
+	if created {
+		// 最小尺寸跟着当前屏走：换到更矮的屏（或用户改了缩放）之后，旧的 MinHeight
+		// 会把窗口底部顶到屏幕外，连 SetSize 都会被系统按 min 顶回去。
+		w.SetMinSize(settings.SettingsWindowMinWidth, a.settingsWindowMinHeight())
+	}
 	w.SetSize(width, height)
 	// 换了尺寸就回到屏幕中央：否则窗口以左上角为锚点单向长出去，缩小再放大时
 	// 很容易一半跑到屏幕外，用户只能先最大化再还原把它捞回来。
 	w.Center()
-	log.Printf("[window] 设置窗口 %dx%d → %dx%d", curW, curH, width, height)
+	switch {
+	case !created:
+		log.Printf("[window] 设置窗口创建尺寸 %dx%d（屏工作区 %dx%d DIP，窗口尚未创建）",
+			width, height, waW, waH)
+	case haveWA:
+		log.Printf("[window] 设置窗口 %dx%d → %dx%d（屏工作区 %dx%d DIP）", curW, curH, width, height, waW, waH)
+	default:
+		log.Printf("[window] 设置窗口 %dx%d → %dx%d（屏信息不可用）", curW, curH, width, height)
+	}
+	// 系统有时会按 MinSize / MaxSize 把尺寸顶回去（或 DPI 换算取整），读回来对不上
+	// 就记一行：用户反馈“记不住尺寸”时，这条能直接区分“配置没记上”与“系统没接受”。
+	if created {
+		if aw, ah := w.Size(); aw != width || ah != height {
+			log.Printf("[window] 设置窗口尺寸未生效：期望 %dx%d，实际 %dx%d", width, height, aw, ah)
+		}
+	}
 }
 
 // keepWindowLastSize 把 prev 里的“上次尺寸”覆盖到 next 上（SaveSettings 用）。
@@ -203,11 +334,13 @@ func (a *App) flushSettingsWindowSize() {
 	a.saveWindowLastSize(size[0], size[1])
 }
 
-// validWindowSize 一对尺寸是否可用作“上次尺寸”：两边都得 ≥ 最小值。
-// 只有一边合法（手改坏 / 旧版本残留）时整对作废 —— 拿一个合法 + 一个 0 去开窗
-// 会得到一扇高度 0 的窗口。
+// validWindowSize 一对尺寸是否可用作“上次尺寸”：宽度 ≥ 最小宽度，高度 ≥ 可用下限。
+//
+// 高度判据与 internal/settings 的 validWindowSize 保持一致，**不是**设计下限 600：
+// 远程桌面 / 小屏上工作区只有 500 出头，用户拖出来的就是那个高度，拿 600 判会把
+// 记录当脏数据丢掉（这正是“勾了自动记录却记不住尺寸”的根因之一）。
 func validWindowSize(w, h int) bool {
-	return w >= settings.SettingsWindowMinWidth && h >= settings.SettingsWindowMinHeight
+	return w >= settings.SettingsWindowMinWidth && h >= settings.SettingsWindowMinUsableHeight
 }
 
 // saveWindowLastSize 落盘“上次尺寸”；值没变就不写（拖拽期间的重复调用靠它挡住）。

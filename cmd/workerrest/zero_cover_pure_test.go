@@ -55,10 +55,13 @@ func TestNextLocalMidnightIsLocalZeroOfNextDay(t *testing.T) {
 
 // ---------- validWindowSize ----------
 
-// "上次尺寸"的校验：两边都得够大。只有一边合法时整对作废 ——
+// "上次尺寸"的校验：宽度够大、高度够用。只有一边合法时整对作废 ——
 // 拿一个合法 + 一个 0 去开窗会得到一扇高度 0 的窗口。
+//
+// ⚠️ 高度下限是 **可用下限 240**，不是设计下限 600：远程桌面 / 小屏上工作区只有
+// 500 出头，用户拖出来的就是那个高度，用 600 判会把正常的记录当脏数据清掉。
 func TestValidWindowSizeRejectsHalfValidPairs(t *testing.T) {
-	minW, minH := settings.SettingsWindowMinWidth, settings.SettingsWindowMinHeight
+	minW, minH := settings.SettingsWindowMinWidth, settings.SettingsWindowMinUsableHeight
 	cases := []struct {
 		name string
 		w, h int
@@ -71,6 +74,8 @@ func TestValidWindowSizeRejectsHalfValidPairs(t *testing.T) {
 		{"宽 0 高合法", 0, minH, false},
 		{"负数", -1, -1, false},
 		{"很大也合法", 4000, 3000, true},
+		// 关键回归：小屏 / 远程会话里 500 出头的窗口高度必须算合法记录
+		{"小屏合理高度（500 < 设计下限 600）", minW, 500, true},
 	}
 	for _, c := range cases {
 		if got := validWindowSize(c.w, c.h); got != c.want {

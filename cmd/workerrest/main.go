@@ -140,6 +140,11 @@ func main() {
 		}
 	}
 
+	// 设置窗口尺寸要在建窗时就算好，而 Wails 要到 app.Run() 才枚举屏幕。先把进程
+	// DPI 感知定下来（Wails 之后检测到已设置会跳过），下面 settingsWindowSize 才能
+	// 用原生探测拿到正确的工作区。见 window_size_native_windows.go。
+	ensurePerMonitorDpiAware()
+
 	// 音频请求不走默认资源服务（内置提示音在随包 sounds/ 目录、用户导入的音频在
 	// config/sounds/，都不在 embed 的前端资源里），需要一条自己的分发中间件，而
 	// 自定义音的白名单校验要读配置 —— 所以转交给 backend。
@@ -209,9 +214,12 @@ func main() {
 	// 最小尺寸是布局下限（常量），不是用户偏好，故不进配置。
 	// 唯一的例外是“主屏工作区比这个下限还矮”（小屏 + 大缩放）：这时最小高度跟着
 	// 工作区收，否则窗口会比屏幕还高，底部永远在任务栏后面 —— 见 settingsWindowMinHeight。
-	winW, winH := backend.settingsWindowSize()
-	minH := backend.settingsWindowMinHeight()
-	log.Printf("[boot] 设置窗口初始尺寸 %dx%d（min %dx%d）",
+	winW, winH := backend.settingsWindowSizeForCreate()
+	minH := backend.settingsWindowMinHeightForCreate()
+	// 这几个值就是**建窗尺寸**：Wails 在 Run 里才枚举屏幕，这里靠原生探测（主屏工作区）
+	// 先把尺寸夹好，所以窗口一建出来就是最终大小，不会出现“先按未夹的初值闪一下、
+	// 再被补夹缩一截”。见 window_size_native_windows.go。
+	log.Printf("[boot] 设置窗口建窗尺寸 %dx%d（min %dx%d）",
 		winW, winH, settings.SettingsWindowMinWidth, minH)
 	// 路由 / 另有一个 Go 版诊断页（index.html），用来手点一次提醒、看环境信息。
 	win := app.Window.NewWithOptions(application.WebviewWindowOptions{

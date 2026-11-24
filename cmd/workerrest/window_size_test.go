@@ -205,11 +205,14 @@ func TestSaveWindowLastSizePersists(t *testing.T) {
 	}
 }
 
-// TestFitSizeToScreenNoApp 无窗口环境（单测 / server 模式）下不夹紧，原样返回。
-func TestFitSizeToScreenNoApp(t *testing.T) {
-	a := &App{}
-	w, h := a.fitSizeToScreen(874, 858)
-	if w != 874 || h != 858 {
-		t.Fatalf("没有屏幕信息时应原样返回，实际 %dx%d", w, h)
+// TestSettingsWindowSizeWithoutScreen 无屏幕信息（单测 / server 模式）时不夹紧，原样返回。
+func TestSettingsWindowSizeWithoutScreen(t *testing.T) {
+	s := testSettings(t, `{"window":{"width":874,"height":858,"rememberSize":true,"lastWidth":1119,"lastHeight":688}}`)
+	a := &App{cfg: s}
+	if w, h := a.settingsWindowSize(); w != 1119 || h != 688 {
+		t.Fatalf("没有屏幕信息时应原样返回记录值，实际 %dx%d", w, h)
+	}
+	if _, _, ok := a.workAreaDipForWindow(nil); ok {
+		t.Fatal("没有屏幕信息时 workAreaDipForWindow 应返回 ok=false")
 	}
 }

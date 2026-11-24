@@ -23,6 +23,14 @@ const (
 	// 各页都能滚，没有布局下限。
 	SettingsWindowMinWidth  = 760
 	SettingsWindowMinHeight = 600
+	// SettingsWindowMinUsableHeight “上次尺寸”的有效下限（不是窗口的设计下限）。
+	//
+	// 为什么不能拿 600 来判：远程桌面 / 小屏笔记本的工作区 DIP 高度本来就可能低于
+	// 600（RDP 客户端窗口模式下很常见），用户在那里把窗口拖到 500 出头就是**那块屏上
+	// 唯一可用的尺寸**。用 600 判有效性会把它当脏数据清掉，于是每次重开都回落默认尺寸、
+	// 再被工作区夹一次 —— 用户看到的就是“自动记录窗口尺寸根本记不住”。
+	// 这里只拦真正没法用的值（< 240），屏幕容不容得下交给运行时按工作区夹紧。
+	SettingsWindowMinUsableHeight = 240
 	// 上界只在“手改配置写了个荒唐值”时兜底，正常路径永远碰不到（屏幕夹紧会先生效）。
 	SettingsWindowMaxWidth  = 10000
 	SettingsWindowMaxHeight = 10000
@@ -72,19 +80,21 @@ func (s *Settings) WindowSizeCfg() WindowSizeConfig {
 }
 
 // Size 这次打开要用的尺寸：勾了“自动记录”且确实记过一对合法值就用上次的，
-// 否则用默认尺寸。返回值已夹进最小尺寸（配置被手改成 300 也不会开出残窗）。
+// 否则用默认尺寸。默认尺寸夹进设计下限（配置被手改成 300 也不会开出残窗）；
+// 上次尺寸只夹“能不能用”的下限，屏幕放不放得下由调用方按工作区夹紧。
 func (c WindowSizeConfig) Size() (int, int) {
-	w, h := c.Width, c.Height
 	if c.Remember && validWindowSize(c.LastWidth, c.LastHeight) {
-		w, h = c.LastWidth, c.LastHeight
+		return clampInt(int64(c.LastWidth), SettingsWindowMinWidth, SettingsWindowMaxWidth),
+			clampInt(int64(c.LastHeight), SettingsWindowMinUsableHeight, SettingsWindowMaxHeight)
 	}
-	return clampInt(int64(w), SettingsWindowMinWidth, SettingsWindowMaxWidth),
-		clampInt(int64(h), SettingsWindowMinHeight, SettingsWindowMaxHeight)
+	return clampInt(int64(c.Width), SettingsWindowMinWidth, SettingsWindowMaxWidth),
+		clampInt(int64(c.Height), SettingsWindowMinHeight, SettingsWindowMaxHeight)
 }
 
-// validWindowSize 一对尺寸是否可用作“上次尺寸”：两边都得 ≥ 最小值。
-// 只有一边合法（手改坏 / 旧版本残留）时整对作废 —— 拿一个合法 + 一个 0 去开窗
-// 会得到一扇高度 0 的窗口。
+// validWindowSize 一对尺寸是否可用作“上次尺寸”：宽度 ≥ 最小宽度，高度 ≥ 可用下限。
+//
+// 高度判据刻意**不用** SettingsWindowMinHeight（600）：小屏 / 远程会话里 500 出头
+// 的窗口高度是正常的，用 600 判会把它们当脏数据清掉（见 SettingsWindowMinUsableHeight）。
 func validWindowSize(w, h int) bool {
-	return w >= SettingsWindowMinWidth && h >= SettingsWindowMinHeight
+	return w >= SettingsWindowMinWidth && h >= SettingsWindowMinUsableHeight
 }
