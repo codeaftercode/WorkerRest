@@ -10,6 +10,7 @@ import (
 
 	"workerrest/internal/hotkey"
 	"workerrest/internal/logx"
+	"workerrest/internal/settings"
 )
 
 // 全局快捷键（对应 上一版 globalShortcut）：推迟 / 提前结束 / 暂停恢复 / 跳到下次休息。
@@ -121,12 +122,14 @@ type HotkeyManager struct {
 	waiters []chan []HotkeyStatus // 正在等“检测”结果的调用方（见 check）
 	applied bool                  // 至少完整跑过一次 apply（区分“还没注册”和“全部禁用”）
 
-	// 改单项快捷键的请求（见 SetShortcut）。参数与回传 channel 一起挂在结构体上，
-	// 消息只负责叫醒线程 —— 与 SetCapture 同一套路，避免 busy 时消息乱序配错参数。
-	candMu  sync.Mutex
-	candSc  map[string]any
-	candKey string
-	candCh  chan candidateOutcome
+	// 改单项快捷键 / 恢复默认的请求（见 SetShortcut、ResetShortcuts）。参数与回传 channel
+	// 一起挂在结构体上，消息只负责叫醒线程 —— 与 SetCapture 同一套路，避免 busy 时消息
+	// 乱序配错参数。
+	candMu    sync.Mutex
+	candSc    map[string]any
+	candKey   string
+	candReset bool // true = 整组恢复默认：没有“目标项”，任一默认键不可用即整体放弃
+	candCh    chan candidateOutcome
 }
 
 // candidateOutcome 线程内按候选配置试注册的结果。
@@ -376,7 +379,10 @@ func (h *HotkeyManager) check() []HotkeyStatus {
 //
 // 第二个返回 false = 线程未就绪 / 超时，本轮没有结论。调用方按“测不了”处理
 // （直接落盘），不能把它当成冲突 —— 否则消息循环还没起来时一个键都改不了。
-func (h *HotkeyManager) requestCandidate(key string, cand map[string]any) (candidateOutcome, bool) {
+//
+// key 只有改单项时才用；reset = 整组恢复默认，判定的是“四项是否都注册得上”，
+// 没有“目标项”这一说。
+func (h *HotkeyManager) requestCandidate(key string, cand map[string]any, reset bool) (candidateOutcome, bool) {
 	id := h.threadID.Load()
 	if id == 0 {
 		return candidateOutcome{}, false
@@ -385,6 +391,7 @@ func (h *HotkeyManager) requestCandidate(key string, cand map[string]any) (candi
 	h.candMu.Lock()
 	h.candSc = cand
 	h.candKey = key
+	h.candReset = reset
 	h.candCh = ch
 	h.candMu.Unlock()
 
@@ -415,9 +422,11 @@ func (h *HotkeyManager) applyCandidate() {
 	h.candMu.Lock()
 	cand := h.candSc
 	key := h.candKey
+	reset := h.candReset
 	ch := h.candCh
 	h.candSc = nil
 	h.candKey = ""
+	h.candReset = false
 	h.candCh = nil
 	h.candMu.Unlock()
 	if ch == nil {
@@ -431,13 +440,25 @@ func (h *HotkeyManager) applyCandidate() {
 	list, target := h.register(cand, key)
 
 	blame := "" // 被这次改动挤掉的另一项（正常情况下前端本地校验就挡住了）
-	if target.State != hotkeyStateOK && target.State != hotkeyStateDisabled {
+	if reset {
+		// 恢复默认：四项都是“目标项”，任一不可用就整体放弃 —— 只恢复一半比不恢复更难解释
+		for _, st := range list {
+			if st.State == hotkeyStateConflict || st.State == hotkeyStateInvalid {
+				blame = st.Key
+				break
+			}
+		}
+	} else if target.State != hotkeyStateOK && target.State != hotkeyStateDisabled {
 		blame = target.Key
 	} else if k := newlyBroken(prevList, list, target.Key); k != "" {
 		blame = k
 	}
 	if blame != "" {
-		log.Printf("[hotkey] 拒绝改键 %s=%q（%s 不可用），已还原配置", target.Key, target.Accel, blame)
+		if reset {
+			log.Printf("[hotkey] 拒绝恢复默认快捷键（%s 不可用），已还原配置", blame)
+		} else {
+			log.Printf("[hotkey] 拒绝改键 %s=%q（%s 不可用），已还原配置", target.Key, target.Accel, blame)
+		}
 		a := h.app
 		a.mu.Lock()
 		cur, _ := a.cfg.Raw()["shortcuts"].(map[string]any)
@@ -600,7 +621,7 @@ func (a *App) SetShortcut(key, accel string) ShortcutApplyResult {
 		return res
 	}
 
-	out, done := a.hotkeys.requestCandidate(key, cand)
+	out, done := a.hotkeys.requestCandidate(key, cand, false)
 	if !done {
 		// 线程未就绪 / 超时：测不了。按老行为直接保存 —— 测不了不等于有冲突，
 		// 否则消息循环没起来时用户一个键都改不了。
@@ -645,6 +666,98 @@ func unsupportedHotkeyStatuses() []HotkeyStatus {
 	out := make([]HotkeyStatus, 0, len(hotkeyDefs))
 	for _, d := range hotkeyDefs {
 		out = append(out, HotkeyStatus{Key: d.key, State: hotkeyStateUnsupported})
+	}
+	return out
+}
+
+// ShortcutResetResult 「恢复默认快捷键」的结果。
+//
+// 与 ShortcutApplyResult 分开的原因：恢复默认没有“某一项”这个主语，它判定的是
+// **四项整体**能不能落地（任一默认键被占用就一项都不改）。
+type ShortcutResetResult struct {
+	OK    bool   `json:"ok"`    // 四项都已按默认组合键注册成功并写入配置
+	State string `json:"state"` // ok / conflict / unsupported / ""（没测出结论，已按老行为落盘）
+	Key   string `json:"key"`   // 失败的配置键名（空 = 没有失败项），前端据此点名是哪一项
+	// List 收尾后四项的真实状态与当前生效的组合键：前端直接照它回填输入框，
+	// 不必再拉一次配置（失败时是“保持原样”的值）。
+	List []HotkeyStatus `json:"list"`
+}
+
+// ResetShortcuts 把四项快捷键恢复出厂默认（见 internal/settings/default_settings.json）。
+//
+// 与 SetShortcut 同一口径、同一条原子提交路径，只是候选值是**四项一起**换成默认：
+//  1. 线程内按候选配置真注册一遍（RegisterHotKey 是唯一可靠判据）；
+//  2. 四项都注册得上 → 只写 shortcuts 子树；
+//  3. 任一项不可用 → 线程内当场按旧配置注册回去，配置文件一个字节都不动。
+//
+// 为什么不做成前端逐条调 SetShortcut：那会变成四次独立提交 —— 中途失败就停在
+// “一半默认一半自定义”，而且交换场景（A 改成 B、B 改回 A）逐条走还会互相挡住。
+func (a *App) ResetShortcuts() ShortcutResetResult {
+	res := ShortcutResetResult{}
+
+	// 默认值只认出厂配置这一份源：不在前端或这里手抄第二份
+	def, _ := settings.DefaultSettingsMap()["shortcuts"].(map[string]any)
+	cand := make(map[string]any, len(hotkeyDefs))
+	for _, d := range hotkeyDefs {
+		s, _ := def[d.key].(string)
+		cand[d.key] = strings.TrimSpace(s)
+	}
+
+	// 没有热键能力（server / 非 Windows / 启动失败）：本机不存在“被占用”，直接落盘，
+	// 行为与改键那条路径一致。
+	if a.hotkeys == nil {
+		res.List = plannedStatuses(cand)
+		for i := range res.List {
+			if res.List[i].Accel == "" {
+				res.List[i].State = hotkeyStateDisabled
+			} else {
+				res.List[i].State = hotkeyStateUnsupported
+			}
+		}
+		res.OK = a.saveShortcutsOnly(cand)
+		res.State = hotkeyStateUnsupported
+		return res
+	}
+
+	out, done := a.hotkeys.requestCandidate("", cand, true)
+	if !done {
+		// 线程未就绪 / 超时：测不了。与 SetShortcut 一样按老行为直接保存 ——
+		// 测不了不等于有冲突，否则消息循环没起来时连“恢复默认”都用不了。
+		// 回包里给的是**将要生效**的默认值（不是 snapshot：那是重注册完成前的旧状态）。
+		res.OK = a.saveShortcutsOnly(cand)
+		a.hotkeys.reload()
+		res.List = plannedStatuses(cand)
+		return res
+	}
+
+	res.List = out.list
+	if out.blame != "" {
+		// 线程内已按旧配置还原，配置不动；list 就是“保持原样”的那份值
+		res.Key = out.blame
+		res.State = hotkeyStateConflict
+		return res
+	}
+
+	if !a.saveShortcutsOnly(cand) {
+		log.Printf("[hotkey] 恢复默认快捷键落盘失败，已还原注册")
+		a.hotkeys.reload()
+		return res
+	}
+
+	res.OK = true
+	res.State = hotkeyStateOK
+	a.hotkeys.publish(out.list)
+	return res
+}
+
+// plannedStatuses 按给定 shortcuts 子表回一份形状完整的结果（Accel 已填，
+// State 为空 = 还没真注册过）。没热键能力时用它给出“将要写入的值”。
+func plannedStatuses(sc map[string]any) []HotkeyStatus {
+	out := make([]HotkeyStatus, 0, len(hotkeyDefs))
+	for _, d := range hotkeyDefs {
+		s, _ := sc[d.key].(string)
+		st, _, _ := planHotkey(d.key, s)
+		out = append(out, st)
 	}
 	return out
 }

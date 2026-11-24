@@ -50,6 +50,15 @@ const ROWS = [
 ];
 
 const OK_LIST = ROWS.map(([, key]) => ({ key, accel: "Ctrl+Alt+X", state: "ok" }));
+// 「恢复默认」的回包（mock）：四项出厂组合键。真正的默认值只在 Go 侧
+// （internal/settings/default_settings.json），探针这里验的是“前端照回包回填”，
+// 不重复抄一份真理 —— 所以这几个字面量只是 mock 的输入。
+const DEFAULT_LIST = [
+  { key: "postpone", accel: "Ctrl+Alt+P", state: "ok" },
+  { key: "endEarly", accel: "Ctrl+Alt+X", state: "ok" },
+  { key: "pause", accel: "Ctrl+Alt+S", state: "ok" },
+  { key: "nextBreak", accel: "Ctrl+Alt+B", state: "ok" },
+];
 const shot = (page, name) =>
   page
     .screenshot({ path: path.join(process.env.WR_OUT || ".", name), fullPage: false })
@@ -137,6 +146,10 @@ async function main() {
       // （按候选组合键索引），或直接给一个函数。delay 用来验“失败时输入框连一瞬间都不变”。
       setResult: {},
       setCalls: [],
+      // 恢复默认的结果：默认成功并回一份“出厂四键”。用例可换成失败态
+      // （ok:false + key = 被占用的那一项），验“点名 + 四项都不动”。
+      resetResult: null,
+      resetCalls: 0,
     };
     let raw = null;
     Object.defineProperty(window, "api", {
@@ -180,6 +193,22 @@ async function main() {
               return (cb) => {
                 window.__WR_MOCK__.onStatus = cb;
               };
+            // 恢复默认：Go 侧整组原子提交，前端只照回包回填。这里模拟它的返回，
+            // 顺便数一下调用次数（“取消”不该惊动 Go）。
+            if (prop === "resetShortcuts")
+              return () => {
+                window.__WR_MOCK__.resetCalls++;
+                const out = Object.assign(
+                  {
+                    ok: true,
+                    state: "ok",
+                    key: "",
+                    list: window.__WR_MOCK__.status || [],
+                  },
+                  window.__WR_MOCK__.resetResult || {}
+                );
+                return Promise.resolve(out);
+              };
             return Reflect.get(target, prop, target);
           },
         });
@@ -219,10 +248,13 @@ async function main() {
     widths.join(",")
   );
 
-  // ---- 2. 检测按钮：卡头行尾 + 主题色实体按钮 ----
+  // ---- 2. 卡底动作区：一条虚线把「四项配置」和「整卡动作」分开，两个按钮并排左对齐 ----
+  // 2026-11-23（用户要求）：检测冲突从卡头行尾挪到虚线下方左侧，旁边加「恢复默认」；
+  // 原来说明判定边界的那段小字删掉了。
   const btn = await page.evaluate(() => {
     const b = document.getElementById("sc-check");
     if (!b) return null;
+    const r = document.getElementById("sc-reset");
     const cs = getComputedStyle(b);
     const probe = document.createElement("span");
     probe.style.color = "var(--accent)";
@@ -230,45 +262,80 @@ async function main() {
     const accent = getComputedStyle(probe).color;
     probe.style.color = "var(--on-accent)";
     const onAccent = getComputedStyle(probe).color;
+    probe.style.color = "var(--border)";
+    const borderC = getComputedStyle(probe).color;
     probe.remove();
-    const r = b.getBoundingClientRect();
-    const cardR = b.closest(".card").getBoundingClientRect();
+    const foot = b.closest(".sc-foot");
+    const fs = foot ? getComputedStyle(foot) : null;
+    const br = b.getBoundingClientRect();
+    const rr = r ? r.getBoundingClientRect() : null;
+    const fr = foot ? foot.getBoundingClientRect() : null;
+    const label = document.querySelector("#tab-shortcuts .row.field > label");
+    const lr = label ? label.getBoundingClientRect() : null;
+    const tab = document.getElementById("tab-shortcuts");
     return {
       inHead: !!b.closest(".card-head"),
+      inFoot: !!foot,
+      resetInFoot: !!(r && r.closest(".sc-foot")),
       cls: b.className,
       visible: !!(b.offsetWidth && b.offsetHeight),
+      resetVisible: !!(r && r.offsetWidth && r.offsetHeight),
       bg: cs.backgroundColor,
       color: cs.color,
       borderColor: cs.borderTopColor,
       accent,
       onAccent,
-      right: r.right,
-      cardRight: cardR.right,
-      height: Math.round(r.height),
+      borderC,
+      height: Math.round(br.height),
+      resetHeight: rr ? Math.round(rr.height) : 0,
+      left: Math.round(br.left),
+      right: Math.round(br.right),
+      resetLeft: rr ? Math.round(rr.left) : 0,
+      resetRight: rr ? Math.round(rr.right) : 0,
+      footLeft: fr ? Math.round(fr.left) : 0,
+      labelLeft: lr ? Math.round(lr.left) : 0,
+      footTop: fr ? Math.round(fr.top) : 0,
+      // 虚线必须在两个按钮**之上**（footer 的 border-top），否则就是把动作压在了配置里
+      btnTop: Math.round(br.top),
+      footBorderStyle: fs ? fs.borderTopStyle : "",
+      footBorderWidth: fs ? fs.borderTopWidth : "",
+      footBorderColor: fs ? fs.borderTopColor : "",
+      hints: tab ? tab.innerText.includes("键盘钩子") || tab.innerText.includes("无法探测") : true,
     };
   });
   check(btn && btn.visible, "「检测冲突」按钮可见");
-  check(btn && btn.inHead, "按钮在卡头行尾");
-  check(
-    btn && btn.cardRight - btn.right < 40,
-    "按钮贴卡片右内边距",
-    btn && `按钮右缘 ${Math.round(btn.right)} / 卡片右缘 ${Math.round(btn.cardRight)}`
-  );
+  check(btn && btn.resetVisible, "「恢复默认」按钮可见");
+  check(btn && btn.inFoot && !btn.inHead, "两个按钮都在卡底动作区（不在卡头行尾）");
+  check(btn && btn.resetInFoot, "「恢复默认」与检测按钮同在一个动作区");
   check(
     btn && /\bprimary\b/.test(btn.cls) && !/\bghost\b/.test(btn.cls),
-    "按钮走主题色实体样式（primary，不再是 ghost 文本动作）",
+    "检测按钮仍是主题色实体样式（primary）",
     btn && btn.cls
   );
   check(
     btn && btn.bg === btn.accent && btn.borderColor === btn.accent,
-    "按钮底色与描边 = --accent",
+    "检测按钮底色与描边 = --accent",
     btn && `${btn.bg} vs ${btn.accent}`
   );
+  check(btn && btn.color === btn.onAccent, "检测按钮文字 = --on-accent（对比度由主题保证）", btn && btn.color);
   check(
-    btn && btn.color === btn.onAccent,
-    "按钮文字 = --on-accent（对比度由主题保证）",
-    btn && `${btn.color} vs ${btn.onAccent}`
+    btn && btn.footBorderStyle === "dashed" && btn.footBorderWidth === "1px" && btn.footBorderColor === btn.borderC,
+    "动作区上方是一条 1px dashed var(--border) 的水平虚线（与关于页软件信息卡同款）",
+    btn && `${btn.footBorderStyle} ${btn.footBorderWidth} ${btn.footBorderColor} vs ${btn.borderC}`
   );
+  check(btn && btn.btnTop > btn.footTop, "按钮在虚线下方", btn && `虚线 ${btn.footTop} / 按钮 ${btn.btnTop}`);
+  check(
+    btn && Math.abs(btn.footLeft - btn.labelLeft) <= 1 && Math.abs(btn.left - btn.labelLeft) <= 1,
+    "动作区与检测按钮都贴着正文左缘（与四行标签同一条竖线）",
+    btn && `虚线起 ${btn.footLeft} / 按钮 ${btn.left} / 标签 ${btn.labelLeft}`
+  );
+  check(
+    btn && btn.resetLeft > btn.right && btn.resetLeft - btn.right <= 16,
+    "「恢复默认」紧挨在检测按钮右侧（8px 间距）",
+    btn && `检测右缘 ${btn.right} / 恢复默认左缘 ${btn.resetLeft}`
+  );
+  check(btn && btn.height === btn.resetHeight, "两个按钮等高", btn && `${btn.height} / ${btn.resetHeight}`);
+  check(btn && !btn.hints, "判定边界那段小字已从页面删掉（不再出现“键盘钩子 / 无法探测”）");
 
   // ---- 3. 初始状态静默：一份全 ok 的注册结果不该在打开页面时弹东西 ----
   await sleep(400);
@@ -589,6 +656,100 @@ async function main() {
     `${narrow.toastLeft}~${narrow.toastRight} / ${narrow.vw}`
   );
   await shot(page, "hotkey_toast_760.png");
+
+  // ---- 13. 恢复默认：确认后按 Go 回包回填；取消 / 失败都不动配置 ----
+  await page.setViewportSize({ width: 1000, height: 900 });
+  await sleep(300);
+  await hideToast(page);
+  // 先把第一行改成自定义键，才看得出“恢复”有没有真的动它
+  await page.click("#sc-postpone");
+  await page.keyboard.press("Control+Alt+U");
+  await sleep(300);
+  const beforeReset = await page.$eval("#sc-postpone", (e) => e.value);
+
+  // 13a. 取消：确认框只是确认，不该惊动 Go
+  await page.evaluate(() => {
+    window.__WR_MOCK__.resetCalls = 0;
+  });
+  await page.click("#sc-reset");
+  await sleep(200);
+  const dlg = await page.evaluate(() => ({
+    open: !document.getElementById("confirm-modal").classList.contains("hidden"),
+    title: document.getElementById("cf-title").textContent,
+  }));
+  check(dlg.open && dlg.title.includes("恢复默认"), "点「恢复默认」先弹确认框", dlg.title);
+  await page.click("#cf-cancel");
+  await sleep(200);
+  const cancelCalls = await page.evaluate(() => window.__WR_MOCK__.resetCalls);
+  check(cancelCalls === 0, "确认框取消：不提交给 Go（一次调用都没有）", cancelCalls);
+  const afterCancel = await page.$eval("#sc-postpone", (e) => e.value);
+  check(afterCancel === beforeReset, "确认框取消：输入框原样", `${beforeReset} → ${afterCancel}`);
+
+  // 13b. 成功：四项按回包回填（前端不自己算默认值）
+  await hideToast(page);
+  await page.evaluate((list) => {
+    window.__WR_MOCK__.resetResult = { ok: true, state: "ok", key: "", list };
+  }, DEFAULT_LIST);
+  await page.click("#sc-reset");
+  await sleep(200);
+  await page.click("#cf-ok");
+  await sleep(300);
+  const filled = await page.evaluate(() => ({
+    vals: ["sc-postpone", "sc-endEarly", "sc-pause", "sc-nextBreak"].map(
+      (id) => document.getElementById(id).value
+    ),
+    toast: document.getElementById("toast").textContent,
+    ok: document.getElementById("toast").classList.contains("ok"),
+    bg: getComputedStyle(document.getElementById("toast")).backgroundColor,
+  }));
+  check(
+    filled.vals.join(",") === DEFAULT_LIST.map((s) => s.accel).join(","),
+    "恢复默认后四个输入框 = Go 回包里的组合键",
+    filled.vals.join(",")
+  );
+  check(
+    filled.toast.includes("已恢复默认") && filled.ok && looksGreen(filled.bg),
+    "恢复默认成功：toast 是绿的并说清做了什么",
+    `${filled.toast} / ${filled.bg}`
+  );
+
+  // 13c. 失败：点名被占用的那一项，四项都不动（不能先刷成默认再报错）
+  await hideToast(page);
+  const now = filled.vals.slice();
+  await page.evaluate((vals) => {
+    window.__WR_MOCK__.resetResult = {
+      ok: false,
+      state: "conflict",
+      key: "pause",
+      list: ["postpone", "endEarly", "pause", "nextBreak"].map((key, i) => ({
+        key,
+        accel: vals[i],
+        state: "ok",
+      })),
+    };
+  }, now);
+  await page.click("#sc-reset");
+  await sleep(200);
+  await page.click("#cf-ok");
+  await sleep(300);
+  const failed = await page.evaluate(() => ({
+    vals: [...document.querySelectorAll("#tab-shortcuts input.shortcut")].map((e) => e.value),
+    toast: document.getElementById("toast").textContent,
+    err: document.getElementById("toast").classList.contains("err"),
+    bg: getComputedStyle(document.getElementById("toast")).backgroundColor,
+  }));
+  check(failed.err && looksRed(failed.bg), "恢复默认失败：toast 是红的", failed.bg);
+  check(
+    failed.toast.includes("暂停 / 恢复休息") && failed.toast.includes("未改动"),
+    "失败时点名是哪一项的默认键被占用，并说明四项都没改",
+    failed.toast
+  );
+  check(
+    failed.vals.join(",") === now.join(","),
+    "失败时输入框保持原值（不刷成默认值）",
+    failed.vals.join(",")
+  );
+  await shot(page, "hotkey_foot.png");
 
   await browser.close();
   console.log("\n结果：%d 项，失败 %d 项", checks, failures.length);

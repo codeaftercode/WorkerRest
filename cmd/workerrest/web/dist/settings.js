@@ -5111,6 +5111,80 @@
         });
     });
   }
+  // 配置键名 → 行内显示名（SHORTCUT_LABELS 是按行 id 索引的，这里反查一次）。
+  // 恢复默认失败时要能指名道姓说“哪一项的默认键被占了”，而不是笼统说“失败了”。
+  function shortcutLabelOfKey(key) {
+    for (const id of SHORTCUT_IDS) {
+      if (SHORTCUT_KEYS[id] === key) return SHORTCUT_LABELS[id];
+    }
+    return "";
+  }
+  // 恢复默认：四项一起回到出厂组合键。
+  // **不**在前端逐条调 setShortcut —— 那会变成四次独立提交，中途失败就停在
+  // “一半默认一半自定义”，交换键位的场景还会互相挡住。整组判定交给 Go（同一条
+  // 原子提交路径：全部注册得上才落盘，任一默认键被占用就整体放弃）。
+  // 默认值也不在前端手抄一份：回填一律用 Go 返回的 list（= 现在真正生效的值）。
+  function setupShortcutReset() {
+    const btn = $("sc-reset");
+    if (!btn) return;
+    btn.addEventListener("click", () => {
+      if (btn.disabled) return;
+      void (async () => {
+        const ok = await confirmDialog({
+          title: "恢复默认快捷键",
+          desc: "把四项快捷键恢复为出厂默认组合键？",
+          detail: "当前的自定义组合键会被覆盖。若某个默认组合键已被其他程序占用，本次恢复不会生效，四项都保持原样。",
+          okText: "恢复默认"
+        });
+        if (!ok) return;
+        const label = btn.textContent;
+        btn.disabled = true;
+        btn.textContent = "恢复中…";
+        let res = null;
+        try {
+          res = await window.api.resetShortcuts();
+        } catch (e) {
+          res = null;
+        }
+        btn.disabled = false;
+        btn.textContent = label;
+        if (!res) {
+          toast("恢复默认失败，请稍后重试", 4200, "err");
+          return;
+        }
+        // 无论成败都以 Go 回的结果回填：成功 = 新的默认值，失败 = 还原后的原值。
+        // S.shortcuts 也要跟着改 —— 它会在下一次任意保存时被写回配置，留着旧值
+        // 会把刚落盘的默认值又盖回去。
+        if (Array.isArray(res.list)) {
+          for (const id of SHORTCUT_IDS) {
+            const st = hotkeyStatusOf(res.list, id);
+            if (!st) continue;
+            const acc = st.accel || "";
+            $(id).value = acc;
+            S.shortcuts[SHORTCUT_KEYS[id]] = acc;
+          }
+          markShortcuts();
+        }
+        if (!res.ok) {
+          const name = shortcutLabelOfKey(res.key || "");
+          // 三种失败说清楚是哪种：点名某项被占用（Go 给了 key）→ 笼统的注册不上
+          // → 落盘失败/没结论。别让磁盘问题也背上“被别的程序占用”的锅。
+          let msg = "恢复默认失败，请稍后重试";
+          if (name) msg = `“${name}”的默认组合键已被其他程序占用，四项快捷键均未改动`;
+          else if (res.state === "conflict") msg = "默认组合键无法注册（可能已被其他程序占用），四项快捷键均未改动";
+          toast(msg, 4600, "err");
+          return;
+        }
+        toast(
+          res.state === "unsupported"
+            ? "已恢复默认快捷键（当前环境不支持全局热键，仅写入配置）"
+            : "四项快捷键已恢复默认",
+          3600,
+          "ok"
+        );
+      })();
+    });
+  }
   function fmtRemain(ms) {
     const s = Math.max(0, Math.ceil(ms / 1e3));
     if (s < 60) return `${s}秒`;
@@ -8494,6 +8568,7 @@
     fillGeomControls(normalizeSupGeom(geomOf(currentGeomName())));
     setupShortcutCapture();
     setupHotkeyCheck();
+    setupShortcutReset();
     BUILTIN_MSGS = await window.api.builtinMsgDefaults();
     setupMsgPanels();
 

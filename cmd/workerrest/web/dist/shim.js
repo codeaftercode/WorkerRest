@@ -121,6 +121,7 @@
     CheckHotkeyConflicts: 0,
     SetHotkeyCapture: 1, // (on)
     SetShortcut: 2, // (key, accel)
+    ResetShortcuts: 0,
 
     // ---- 统计 ----
     GetStats: 0,
@@ -425,6 +426,14 @@
     // state 为空 = 没得出结论（线程未就绪 / 超时），此时 Go 已按老行为直接保存。
     setShortcut: function (key, accel) {
       return call("SetShortcut", [str(key), str(accel)]);
+    },
+    // 四项一起恢复出厂默认组合键：Go 侧按同一套原子提交走 —— 全部注册得上才落盘，
+    // 任一默认键被别的程序占用就整体放弃（配置一个字节都不动）。
+    // 返回 ShortcutResetResult{ok, state, key, list}：
+    //   key  = 失败的那一项（空 = 没有失败项）；
+    //   list = 收尾后四项的真实状态与当前生效的组合键，前端照它回填输入框。
+    resetShortcuts: function () {
+      return call("ResetShortcuts");
     },
 
     // ---- 统计 ----

@@ -549,3 +549,133 @@ func TestSetShortcutAtomicOnConflict(t *testing.T) {
 		t.Errorf("落盘后的 postpone=%q，应为 %q", got, taken)
 	}
 }
+
+// TestResetShortcutsNoManager 「恢复默认」在没有热键能力时的语义（server / 非 Windows /
+// 启动失败）：本机不存在“被占用”，直接把出厂默认写进 shortcuts 子树，
+// 并把**将要生效**的四个组合键回给前端（前端照它回填输入框，不再自己抄一份默认值）。
+func TestResetShortcutsNoManager(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	base := settings.DefaultSettingsMap()
+	base["shortcuts"] = map[string]any{
+		"postpone": "Ctrl+Alt+K", "endEarly": "Ctrl+Alt+J",
+		"pause": "", "nextBreak": "",
+	}
+	a := &App{} // hotkeys == nil
+	a.cfg = settings.New(base, path)
+
+	res := a.ResetShortcuts()
+	if !res.OK {
+		t.Fatalf("无热键能力时恢复默认失败：%+v", res)
+	}
+	if res.State != hotkeyStateUnsupported {
+		t.Errorf("State=%q，应为 %q", res.State, hotkeyStateUnsupported)
+	}
+	if res.Key != "" {
+		t.Errorf("Key=%q，没有失败项时必须是空串", res.Key)
+	}
+
+	def, _ := settings.DefaultSettingsMap()["shortcuts"].(map[string]any)
+	if len(res.List) != len(hotkeyDefs) {
+		t.Fatalf("回包应有 %d 项，实际 %d", len(hotkeyDefs), len(res.List))
+	}
+	for _, st := range res.List {
+		want, _ := def[st.Key].(string)
+		if strings.TrimSpace(want) == "" {
+			t.Fatalf("出厂默认里 %s 是空的，这条用例的前提不成立", st.Key)
+		}
+		if st.Accel != strings.TrimSpace(want) {
+			t.Errorf("%s 的 Accel=%q，应为出厂默认 %q（前端照它回填）", st.Key, st.Accel, want)
+		}
+	}
+
+	var raw map[string]any
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("恢复默认后配置文件没写出来：%v", err)
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("写出的配置不是合法 JSON：%v", err)
+	}
+	sc, _ := raw["shortcuts"].(map[string]any)
+	for _, d := range hotkeyDefs {
+		want, _ := def[d.key].(string)
+		if got, _ := sc[d.key].(string); got != strings.TrimSpace(want) {
+			t.Errorf("落盘后的 %s=%q，应为出厂默认 %q", d.key, got, want)
+		}
+	}
+}
+
+// TestResetShortcutsAtomicOnConflict 恢复默认是**整组原子提交**：任一出厂组合键不可用，
+// 配置文件一个字节都不动，系统里的热键也当场还原成原配置。
+//
+// 与 SetShortcut 的原子性测试同一套构造方式：让测试线程先占住一项的出厂默认组合键
+// （其它线程再注册必然失败），于是四项里必然有一项被系统判成 conflict。
+// 之所以要“整组”而不是逐条：逐条会停在“一半默认一半自定义”，用户既没恢复也没保住。
+func TestResetShortcutsAtomicOnConflict(t *testing.T) {
+	if runtime.GOOS != "windows" {
+		t.Skip("全局热键只有 Windows 实现")
+	}
+	// 消息循环线程会 LockOSThread；这里占键的线程也必须锁住，理由见
+	// TestSetShortcutAtomicOnConflict 的长注释（跨线程注销会静默失败）。
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	def, _ := settings.DefaultSettingsMap()["shortcuts"].(map[string]any)
+	taken, _ := def["nextBreak"].(string)
+	if strings.TrimSpace(taken) == "" {
+		t.Fatal("出厂默认里 nextBreak 是空的，这条用例的前提不成立")
+	}
+	tMods, tVK, ok := hotkey.ParseAccelerator(taken)
+	if !ok {
+		t.Fatalf("ParseAccelerator(%q) 失败", taken)
+	}
+	// id 90 以下、且与 hotkeyDefs 的 1..4 不重叠
+	const holdID = 90
+	if !hotkey.RegisterHotKey(holdID, tMods, tVK) {
+		t.Skipf("%s 在本环境注册不上（无桌面会话 / 已被别的程序占用），构不出“被占用”场景", taken)
+	}
+	defer hotkey.UnregisterHotKey(holdID)
+
+	path := filepath.Join(t.TempDir(), "settings.json")
+	base := settings.DefaultSettingsMap()
+	// 当前配置刻意避开出厂默认：否则首轮 apply 自己就把四个默认键占住了
+	base["shortcuts"] = map[string]any{
+		"postpone": "Ctrl+Alt+K", "endEarly": "",
+		"pause": "", "nextBreak": "",
+	}
+	a := &App{}
+	a.cfg = settings.New(base, path)
+	h := &HotkeyManager{app: a}
+	a.hotkeys = h
+	go h.run()
+	defer stopHotkeys(t, h)
+	deadline := time.Now().Add(2 * time.Second)
+	for h.snapshot() == nil {
+		if time.Now().After(deadline) {
+			t.Fatal("首轮 apply 没在 2s 内完成")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	res := a.ResetShortcuts()
+	if res.OK {
+		t.Fatalf("%s 已被占用，恢复默认竟然成功了：%+v", taken, res)
+	}
+	if res.State != hotkeyStateConflict {
+		t.Errorf("State=%q，应为 %q", res.State, hotkeyStateConflict)
+	}
+	if res.Key != "nextBreak" {
+		t.Errorf("Key=%q，应点名被占用的 nextBreak（前端据此说清是哪一项）", res.Key)
+	}
+	// 要害：配置文件根本没被写过 —— 不是“写了默认再回滚”，是压根没写
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		raw, _ := os.ReadFile(path)
+		t.Fatalf("恢复失败时不该产生配置文件，实际内容：%s", string(raw))
+	}
+	// 回包里的值必须是**还原后的原配置**（前端照它回填，不能把输入框刷成默认值）
+	for _, st := range res.List {
+		if st.Key == "postpone" && st.Accel != "Ctrl+Alt+K" {
+			t.Errorf("失败后回包的 postpone=%q，应为原值 Ctrl+Alt+K", st.Accel)
+		}
+	}
+}

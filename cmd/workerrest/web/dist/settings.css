@@ -1982,31 +1982,24 @@ details.advanced[open] > summary::before { transform: rotate(90deg); }
    2026-11-19 第三轮：结果不再挂在输入框右侧，所以不再需要 .sc-line 那层 flex 容器，
    也不再需要 760 下收窄 —— 没有文字跟它抢宽度，180 在 232 的控件列里放得下。 */
 
-/* 「检测冲突」是这张卡唯一的主动作，给主题色实体按钮。
-   必须按 id 覆盖：卡头通用的 .card-head-act.btn（见上文）把它降级成透明底 + 次级文字色，
-   而那条规则在样式表里更靠后，同特异性下会赢过 .btn.primary。 */
-#sc-check.card-head-act.btn {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--on-accent);
-  font-weight: 600;
-  padding: 0 10px;
-}
-#sc-check.card-head-act.btn:hover {
-  border-color: var(--accent-hover);
-  background: var(--accent-hover);
-  color: var(--on-accent);
-}
-#sc-check.card-head-act.btn:disabled {
-  opacity: 0.6;
-  background: var(--accent);
-  border-color: var(--accent);
-  color: var(--on-accent);
+/* 卡底动作区：虚线以上是四项配置，以下是整张卡的动作（检测冲突 / 恢复默认）。
+   虚线样式与关于页软件信息卡（#tab-about .info-line 的 border-bottom）同一条：
+   1px dashed var(--border)。两个按钮并排左对齐 —— 它们不属某一行，也不该被
+   推到行尾当“行内动作”；间距 8px 与 .btn-row 一致。
+   按钮外观直接用 .btn / .btn.primary：卡头那条透明文本动作的覆盖规则
+   （.card-head-act.btn）不再适用，原来按 id 覆盖的那几条也一并删掉。 */
+#tab-shortcuts .sc-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 14px;
+  border-top: 1px dashed var(--border);
 }
 
-/* 快捷键页的两条说明都排在四行之后（其他卡片的 .hint 也一律在正文末尾，不在标题下当副标题）。
-   .row 自身带 4px 下内边距，这里再补 4px：说明与最后一行之间 8px，错误行与操作说明之间 4px
-   —— 两行都是 12px 小字，4px 已能读出层次，再大就把这一小段说明从四行里割出去了。 */
+/* 快捷键页的说明排在四行之后（其他卡片的 .hint 也一律在正文末尾，不在标题下当副标题）。
+   .row 自身带 4px 下内边距，这里再补 4px：说明与最后一行之间 8px。
+   2026-11-23：关于「检测冲突」判定边界的那段说明已删（用户要求），页面上只剩录入提示。 */
 #tab-shortcuts .card > .hint { margin-top: 4px; }
 
 .status-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }

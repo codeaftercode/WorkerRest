@@ -81,10 +81,12 @@ var wiredCalls = []string{
 	// CheckHotkeyConflicts：快捷键页「检测冲突」按钮，重新注册一遍并回传逐项结果
 	// SetHotkeyCapture：录入时挂起四项 —— 否则按下的组合键会被系统投给热键线程执行动作
 	// SetShortcut：改一项快捷键 —— 先按候选配置真注册，成功才落盘（原子提交）
+	// ResetShortcuts：四项一起恢复出厂组合键 —— 同一套原子提交，任一默认键被占用就整体放弃
 	"HotkeyStatus",
 	"CheckHotkeyConflicts",
 	"SetHotkeyCapture",
 	"SetShortcut",
+	"ResetShortcuts",
 
 	// ---- 统计 ----
 	"GetStats",
@@ -198,6 +200,7 @@ var wiredArity = map[string]int{
 	"CheckHotkeyConflicts": 0,
 	"SetHotkeyCapture":     1, // (on bool) 录入中挂起 / 恢复
 	"SetShortcut":          2, // (key, accel) → ShortcutApplyResult{ok,state,kept,list}
+	"ResetShortcuts":       0, // → ShortcutResetResult{ok,state,key,list}（四项一起恢复默认）
 
 	// ---- 统计 ----
 	"GetStats":           0,
