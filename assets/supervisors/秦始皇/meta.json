@@ -6,7 +6,8 @@
     "sizePct": 80,
     "posXPct": 5,
     "posYPct": 0,
-    "flip": false
+    "flip": false,
+    "showName": true
   },
   "messages": {
     "order": "random",
